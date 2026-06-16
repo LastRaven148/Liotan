@@ -172,9 +172,9 @@ app.use(
   hpp()
 );
 
-app.use(
-  apiLimiter
-);
+// app.use(
+//   apiLimiter
+// );
 
 app.get(
   "/health",
