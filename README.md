@@ -68,7 +68,7 @@ Example:
 
 ```env
 PORT=3001
-MONGO_URI=mongodb://127.0.0.1:27017/ravensnest
+MONGO_URI=mongodb://127.0.0.1:27017/liotan
 JWT_SECRET=your_secret
 ```
 
