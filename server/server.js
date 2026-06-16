@@ -75,12 +75,60 @@ if (!process.env.MONGO_URI) {
   );
 }
 
-const CLIENT_URL =
-  process.env.CLIENT_URL ||
-  "http://localhost:3000";
-
 const PORT =
   process.env.PORT || 3001;
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://liotan.onrender.com",
+  process.env.CLIENT_URL
+].filter(Boolean);
+
+function corsOrigin(
+  origin,
+  callback
+) {
+
+  if (!origin) {
+    return callback(
+      null,
+      true
+    );
+  }
+
+  if (
+    allowedOrigins.includes(origin)
+  ) {
+    return callback(
+      null,
+      true
+    );
+  }
+
+  return callback(
+    new Error(
+      `CORS blocked: ${origin}`
+    )
+  );
+
+}
+
+const corsOptions = {
+  origin: corsOrigin,
+  credentials: true,
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS"
+  ],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization"
+  ]
+};
 
 const app =
   express();
@@ -95,12 +143,7 @@ const server =
 
 const io =
   new Server(server, {
-    cors: {
-      origin: [
-        CLIENT_URL
-      ],
-      credentials: true
-    }
+    cors: corsOptions
   });
 
 app.use(
@@ -112,12 +155,12 @@ app.use(
 );
 
 app.use(
-  cors({
-    origin: [
-      CLIENT_URL
-    ],
-    credentials: true
-  })
+  cors(corsOptions)
+);
+
+app.options(
+  "*",
+  cors(corsOptions)
 );
 
 app.use(
@@ -138,37 +181,37 @@ app.use(
   apiLimiter
 );
 
-if (
-  !fs.existsSync(
-    path.join(
-      __dirname,
-      "uploads"
-    )
-  )
-) {
+app.get(
+  "/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      app: "Liotan"
+    });
+  }
+);
+
+const uploadsPath =
+  path.join(
+    __dirname,
+    "uploads"
+  );
+
+const avatarsPath =
+  path.join(
+    uploadsPath,
+    "avatars"
+  );
+
+if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(
-    path.join(
-      __dirname,
-      "uploads"
-    )
+    uploadsPath
   );
 }
 
-if (
-  !fs.existsSync(
-    path.join(
-      __dirname,
-      "uploads",
-      "avatars"
-    )
-  )
-) {
+if (!fs.existsSync(avatarsPath)) {
   fs.mkdirSync(
-    path.join(
-      __dirname,
-      "uploads",
-      "avatars"
-    ),
+    avatarsPath,
     {
       recursive: true
     }
@@ -178,10 +221,7 @@ if (
 app.use(
   "/uploads",
   express.static(
-    path.join(
-      __dirname,
-      "uploads"
-    )
+    uploadsPath
   )
 );
 
@@ -207,6 +247,11 @@ async function start() {
       () => {
         console.log(
           `SERVER READY ${PORT}`
+        );
+
+        console.log(
+          "ALLOWED ORIGINS:",
+          allowedOrigins
         );
       }
     );
