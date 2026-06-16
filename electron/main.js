@@ -6,7 +6,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: "RavensNest",
+    title: "Liotan",
     webPreferences: {
       contextIsolation: true
     }

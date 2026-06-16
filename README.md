@@ -43,7 +43,7 @@ Clone repository:
 
 ```bash
 git clone <repository-url>
-cd RavensNest
+cd Liotan
 ```
 
 Install dependencies:
