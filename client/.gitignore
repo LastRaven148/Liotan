@@ -1,0 +1,17 @@
+node_modules
+client/node_modules
+server/node_modules
+
+dist
+client/build
+
+.env
+server/.env
+
+uploads
+server/uploads
+
+*.log
+
+WATCHPACK_POLLING=true
+CHOKIDAR_USEPOLLING=true

@@ -1,0 +1,54 @@
+.attach-wrapper{
+  position:relative;
+  left:44px;
+  bottom:10px;
+  flex-shrink:0;
+}
+
+.attach-button{
+  width:28px;
+  height:28px;
+  border:none;
+  background:none;
+  color:#7f91a4;
+  font-size:24px;
+  line-height:28px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+}
+
+.attach-button:hover{
+  background:#2b394a;
+  color:white;
+}
+
+.attach-menu{
+  bottom:48px;
+  left:-6px;
+  width:160px;
+  background:#17212b;
+  border:1px solid #243342;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 8px 30px rgba(0,0,0,.35);
+  z-index:20;
+}
+
+.attach-menu button{
+  width:100%;
+  border:none;
+  background:transparent;
+  color:white;
+  padding:12px 14px;
+  text-align:left;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:14px;
+}
+
+.attach-menu button:hover{
+  background:#243342;
+}

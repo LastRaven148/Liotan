@@ -1,0 +1,47 @@
+# dependencies
+node_modules
+client/node_modules
+server/node_modules
+
+# builds
+dist
+build
+client/build
+
+# environment
+.env
+.env.*
+!.env.example
+server/.env
+
+# uploads
+uploads
+server/uploads
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode
+
+# Electron
+release
+out
+
+# coverage
+coverage
+
+# cache
+.cache
+
+RavensNest_Source.txt
+RavensNest_All_Code.txt
+*_Source.txt
+*_All_Code.txt

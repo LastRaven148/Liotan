@@ -1,0 +1,24 @@
+.toast{
+  position:fixed;
+  bottom:24px;
+  right:24px;
+  background:#17212b;
+  color:white;
+  padding:14px 18px;
+  border-radius:12px;
+  box-shadow:0 6px 30px rgba(0,0,0,.35);
+  z-index:9999;
+  animation:toastFade .2s ease;
+}
+
+@keyframes toastFade{
+  from{
+    opacity:0;
+    transform:translateY(10px);
+  }
+
+  to{
+    opacity:1;
+    transform:translateY(0);
+  }
+}

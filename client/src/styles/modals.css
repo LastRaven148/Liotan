@@ -1,0 +1,42 @@
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:999;
+}
+
+.profile-modal{
+  width:350px;
+  background:#17212b;
+  border-radius:16px;
+  padding:24px;
+  text-align:center;
+}
+
+.profile-modal-avatar{
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  overflow:hidden;
+  margin:0 auto 20px;
+  background:#3390ec;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  color:white;
+  font-size:42px;
+}
+
+.profile-modal-name{
+  color:white;
+  font-size:22px;
+  font-weight:600;
+}
+
+.profile-modal-bio{
+  margin-top:12px;
+  color:#7f91a4;
+}

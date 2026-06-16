@@ -1,0 +1,174 @@
+import { useRef, useState } from "react";
+import { API } from "../../config/api";
+
+import useSocket from "../useSocket";
+import useProfile from "../useProfile";
+import useAuth from "../useAuth";
+import useDialogs from "../useDialogs";
+import useChat from "../useChat";
+import useUI from "../ui/useUI";
+import useGlobalEsc from "../ui/useGlobalEsc";
+import useAppInitialization
+from "./useAppInitialization";
+
+import {
+  useToastContext
+} from "../../context/ToastContext";
+
+export default function useAppController() {
+
+  const {
+    profileMenu,
+    setProfileMenu,
+    profileUser,
+    setProfileUser,
+    settingsOpen,
+    setSettingsOpen
+  } = useUI();
+
+  const [avatar, setAvatar] =
+    useState("");
+
+  const [bio, setBio] =
+    useState("");
+
+  const [chats, setChats] =
+    useState({});
+
+  const [onlineUsers, setOnlineUsers] =
+    useState([]);
+
+  const [typingUsers, setTypingUsers] =
+    useState({});
+
+  const [unread, setUnread] =
+    useState({});
+
+  const fileInputRef =
+    useRef(null);
+
+  const socketRef =
+    useRef(null);
+
+  const {
+    showToast
+  } = useToastContext();
+
+  const auth =
+    useAuth({
+      showToast
+    });
+
+  const {
+    username,
+    token
+  } = auth;
+
+  const profile =
+    useProfile({
+      username,
+      setAvatar,
+      setBio,
+      showToast
+    });
+
+  const dialogs =
+    useDialogs();
+
+  const chat =
+    useChat({
+      username,
+      socketRef,
+      setUnread,
+      chats,
+      dialogs: dialogs.dialogs
+    });
+
+  useGlobalEsc({
+    profileMenu,
+    setProfileMenu,
+
+    settingsOpen,
+    setSettingsOpen,
+
+    profileUser,
+    setProfileUser,
+
+    activeChat: chat.activeChat,
+    setActiveChat: chat.setActiveChat
+  });
+
+  useSocket({
+  token,
+  username,
+  activeChat: chat.activeChat,
+  setActiveChat: chat.setActiveChat,
+  setChats,
+  setUnread,
+  setOnlineUsers,
+  setTypingUsers,
+  updateDialog: dialogs.updateDialog,
+  updateUserLastSeen: dialogs.updateUserLastSeen,
+  removeDialog: dialogs.removeDialog,
+  socketRef,
+  API
+});
+
+  useAppInitialization({
+    token,
+    username,
+    loadDialogs: dialogs.loadDialogs,
+    loadProfile: profile.loadProfile,
+    loadPinnedChats: dialogs.loadPinnedChats,
+    loadArchivedChats: dialogs.loadArchivedChats
+  });
+
+  return {
+    API,
+
+    ...auth,
+
+    avatar,
+    bio,
+    setBio,
+
+    chats,
+    onlineUsers,
+    typingUsers,
+    unread,
+
+    fileInputRef,
+    socketRef,
+
+    profileMenu,
+    setProfileMenu,
+
+    profileUser,
+    setProfileUser,
+
+    settingsOpen,
+    setSettingsOpen,
+
+    uploadAvatar: profile.uploadAvatar,
+    saveBio: profile.saveBio,
+
+    dialogs: dialogs.dialogs,
+
+    pinnedChats: dialogs.pinnedChats,
+    loadPinnedChats: dialogs.loadPinnedChats,
+    togglePin: dialogs.togglePin,
+
+    archivedChats: dialogs.archivedChats,
+    loadArchivedChats: dialogs.loadArchivedChats,
+    toggleArchive: dialogs.toggleArchive,
+    showArchive: dialogs.showArchive,
+    setShowArchive: dialogs.setShowArchive,
+
+    search: dialogs.search,
+    setSearch: dialogs.setSearch,
+    filteredDialogs: dialogs.filteredDialogs,
+
+    chat
+  };
+
+}
