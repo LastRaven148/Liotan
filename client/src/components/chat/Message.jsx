@@ -60,13 +60,22 @@ function Message({
 
   function handleContextMenu(e) {
 
-    e.preventDefault();
-
-    setMenuOpen(
-      prev => !prev
-    );
-
+  if (
+    e.target.closest("a") ||
+    e.target.closest("textarea") ||
+    e.target.closest("input")
+  ) {
+    return;
   }
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  setMenuOpen(
+    prev => !prev
+  );
+
+}
 
   function formatFileSize(size) {
 
@@ -136,6 +145,44 @@ function Message({
     );
 
   }
+
+  function renderTextWithLinks(value) {
+
+  const parts =
+    value.split(
+      /(https?:\/\/[^\s]+)/g
+    );
+
+  return parts.map((part, index) => {
+
+    if (
+      part.startsWith("http://") ||
+      part.startsWith("https://")
+    ) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="message-link"
+          onClick={(e) =>
+            e.stopPropagation()
+          }
+          onContextMenu={(e) =>
+            e.stopPropagation()
+          }
+        >
+          {part}
+        </a>
+      );
+    }
+
+    return part;
+
+  });
+
+}
 
   return (
     <>
@@ -246,7 +293,7 @@ function Message({
 
         {message.text && (
           <div className="message-text">
-            {message.text}
+            {renderTextWithLinks(message.text)}
           </div>
         )}
 
