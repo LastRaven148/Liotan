@@ -54,6 +54,8 @@ const en = {
   archiveChat: "Archive chat",
   unarchiveChat: "Unarchive chat",
 
+  cancel: "Cancel",
+
   deleteChat: "Delete chat",
 
   deleteChatConfirm:

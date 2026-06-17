@@ -24,6 +24,30 @@ export default function useAuth({
       localStorage.getItem("token") || ""
     );
 
+  async function saveSession(data) {
+
+    localStorage.setItem(
+      "token",
+      data.token
+    );
+
+    localStorage.setItem(
+      "username",
+      data.username
+    );
+
+    setToken(
+      data.token
+    );
+
+    setUsername(
+      data.username
+    );
+
+    setPassword("");
+
+  }
+
   async function login() {
 
     try {
@@ -34,25 +58,7 @@ export default function useAuth({
           password
         );
 
-      localStorage.setItem(
-        "token",
-        data.token
-      );
-
-      localStorage.setItem(
-        "username",
-        data.username
-      );
-
-      setToken(
-        data.token
-      );
-
-      setUsername(
-        data.username
-      );
-
-      setPassword("");
+      await saveSession(data);
 
     } catch (err) {
 
@@ -83,6 +89,14 @@ export default function useAuth({
         username,
         password
       );
+
+      const data =
+        await loginUser(
+          username,
+          password
+        );
+
+      await saveSession(data);
 
       showToast(
         "Registered"

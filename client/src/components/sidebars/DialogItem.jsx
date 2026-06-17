@@ -27,10 +27,11 @@ export default function DialogItem({
   const { t } =
     useLanguage();
 
-  const [
-    menuOpen,
-    setMenuOpen
-  ] = useState(false);
+  const [menuOpen, setMenuOpen] =
+    useState(false);
+
+  const [deleteModalOpen, setDeleteModalOpen] =
+    useState(false);
 
   const menuRef =
     useRef(null);
@@ -55,6 +56,7 @@ export default function DialogItem({
 
       if (e.key === "Escape") {
         setMenuOpen(false);
+        setDeleteModalOpen(false);
       }
 
     }
@@ -67,18 +69,14 @@ export default function DialogItem({
 
       if (
         menuRef.current &&
-        menuRef.current.contains(
-          e.target
-        )
+        menuRef.current.contains(e.target)
       ) {
         return;
       }
 
       if (
         itemRef.current &&
-        itemRef.current.contains(
-          e.target
-        )
+        itemRef.current.contains(e.target)
       ) {
         return;
       }
@@ -135,20 +133,15 @@ export default function DialogItem({
 
     e.stopPropagation();
 
-    const ok =
-      window.confirm(
-        isSavedMessages
-          ? t.clearSavedMessages
-          : `${t.deleteChatConfirm} ${dialog.username}?`
-      );
-
-    if (!ok) {
-      setMenuOpen(false);
-      return;
-    }
-
     setMenuOpen(false);
+    setDeleteModalOpen(true);
+
+  }
+
+  function confirmDelete() {
+
     deleteChat(dialog.username);
+    setDeleteModalOpen(false);
 
   }
 
@@ -171,118 +164,166 @@ export default function DialogItem({
   }
 
   return (
-    <div
-      ref={itemRef}
-      className={
-        activeChat === dialog.username
-          ? "user active"
-          : "user"
-      }
-      onClick={handleOpenChat}
-      onContextMenu={handleContextMenu}
-    >
+    <>
+      <div
+        ref={itemRef}
+        className={
+          activeChat === dialog.username
+            ? "user active"
+            : "user"
+        }
+        onClick={handleOpenChat}
+        onContextMenu={handleContextMenu}
+      >
 
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          className="dialog-context-menu"
-          onClick={(e) =>
-            e.stopPropagation()
-          }
-        >
-
-          <button
-            type="button"
-            onClick={handlePin}
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className="dialog-context-menu"
+            onClick={(e) =>
+              e.stopPropagation()
+            }
           >
-            <span>
-              {isPinned ? "📌" : "📍"}
-            </span>
 
-            {isPinned
-              ? t.unpinChat
-              : t.pinChat}
-          </button>
+            <button
+              type="button"
+              onClick={handlePin}
+            >
+              <span>
+                {isPinned ? "📌" : "📍"}
+              </span>
 
-          <button
-            type="button"
-            onClick={handleArchive}
-          >
-            <span>▣</span>
+              {isPinned
+                ? t.unpinChat
+                : t.pinChat}
+            </button>
 
-            {isArchived || showArchive
-              ? t.unarchiveChat
-              : t.archiveChat}
-          </button>
+            <button
+              type="button"
+              onClick={handleArchive}
+            >
+              <span>▣</span>
 
-          <button
-            type="button"
-            className="danger"
-            onClick={handleDelete}
-          >
-            <span>🗑</span>
-            {t.deleteChat}
-          </button>
+              {isArchived || showArchive
+                ? t.unarchiveChat
+                : t.archiveChat}
+            </button>
 
-        </div>
-      )}
+            <button
+              type="button"
+              className="danger"
+              onClick={handleDelete}
+            >
+              <span>🗑</span>
+              {t.deleteChat}
+            </button>
 
-      <div className="avatar">
-        {isSavedMessages ? (
-          <div className="saved-icon">
-            ★
           </div>
-        ) : dialog.avatar ? (
-          <img
-            src={avatarUrl(dialog.avatar)}
-            alt=""
-            className="avatar-image"
-          />
-        ) : (
-          dialog.username
-            .charAt(0)
-            .toUpperCase()
         )}
-      </div>
 
-      <div className="dialog-info">
-        <div className="user-name">
-          {displayName}
-
-          {isPinned && (
-            <span className="dialog-pin">
-              📌
-            </span>
+        <div className="avatar">
+          {isSavedMessages ? (
+            <div className="saved-icon">
+              ★
+            </div>
+          ) : dialog.avatar ? (
+            <img
+              src={avatarUrl(dialog.avatar)}
+              alt=""
+              className="avatar-image"
+            />
+          ) : (
+            dialog.username
+              .charAt(0)
+              .toUpperCase()
           )}
         </div>
 
-        <div className="dialog-preview">
-          {dialog.lastMessage || t.noMessages}
-        </div>
-      </div>
+        <div className="dialog-info">
+          <div className="user-name">
+            {displayName}
 
-      <div className="dialog-meta">
-        <div className="dialog-time">
-          {dialog.createdAt
-            ? new Date(dialog.createdAt)
-                .toLocaleTimeString(
-                  [],
-                  {
-                    hour: "2-digit",
-                    minute: "2-digit"
-                  }
-                )
-            : ""}
-        </div>
-
-        {unreadCount > 0 && (
-          <div className="unread">
-            {unreadCount}
+            {isPinned && (
+              <span className="dialog-pin">
+                📌
+              </span>
+            )}
           </div>
-        )}
+
+          <div className="dialog-preview">
+            {dialog.lastMessage || t.noMessages}
+          </div>
+        </div>
+
+        <div className="dialog-meta">
+          <div className="dialog-time">
+            {dialog.createdAt
+              ? new Date(dialog.createdAt)
+                  .toLocaleTimeString(
+                    [],
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    }
+                  )
+              : ""}
+          </div>
+
+          {unreadCount > 0 && (
+            <div className="unread">
+              {unreadCount}
+            </div>
+          )}
+        </div>
+
       </div>
 
-    </div>
+      {deleteModalOpen && (
+        <div
+          className="modal-overlay"
+          onMouseDown={() =>
+            setDeleteModalOpen(false)
+          }
+        >
+          <div
+            className="confirm-modal"
+            onMouseDown={(e) =>
+              e.stopPropagation()
+            }
+          >
+            <div className="confirm-title">
+              {t.deleteChat}
+            </div>
+
+            <div className="confirm-text">
+              {isSavedMessages
+                ? t.clearSavedMessages
+                : `${t.deleteChatConfirm} ${dialog.username}?`}
+            </div>
+
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="confirm-cancel"
+                onClick={() =>
+                  setDeleteModalOpen(false)
+                }
+              >
+                {t.cancel}
+              </button>
+
+              <button
+                type="button"
+                className="confirm-danger"
+                onClick={confirmDelete}
+              >
+                {t.delete}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 
 }

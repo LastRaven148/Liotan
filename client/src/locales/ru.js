@@ -54,6 +54,8 @@ const ru = {
   archiveChat: "В архив",
   unarchiveChat: "Из архива",
 
+  cancel: "Отмена",
+
   deleteChat: "Удалить чат",
 
   deleteChatConfirm:
