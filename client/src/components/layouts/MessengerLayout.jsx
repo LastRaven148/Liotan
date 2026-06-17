@@ -103,9 +103,7 @@ export default function MessengerLayout({
   openProfile={() =>
     setProfileUser(chat.activeDialog)
   }
-  onBack={() =>
-  chat.setActiveChat(null)
-}
+  onBack={chat.closeChat}
 />
 
       <ModalsLayer

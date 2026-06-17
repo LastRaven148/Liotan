@@ -1,7 +1,8 @@
 import {
-  useState,
+  useEffect,
   useMemo,
-  useRef
+  useRef,
+  useState
 } from "react";
 
 import { getChatId } from "../utils/chat";
@@ -35,11 +36,65 @@ export default function useChat({
     setReplyMessage
   ] = useState(null);
 
+  const activeChatRef =
+    useRef(null);
+
   const typingTimerRef =
     useRef(null);
 
   const typingChatRef =
     useRef(null);
+
+  useEffect(() => {
+
+    activeChatRef.current =
+      activeChat;
+
+  }, [
+    activeChat
+  ]);
+
+  useEffect(() => {
+
+    window.history.replaceState(
+      {
+        liotanScreen: "dialogs"
+      },
+      ""
+    );
+
+    function handleBrowserBack() {
+
+      if (!activeChatRef.current) {
+        return;
+      }
+
+      stopTyping(
+        activeChatRef.current
+      );
+
+      setActiveChat(null);
+      setEditingMessage(null);
+      setReplyMessage(null);
+      setTextState("");
+
+    }
+
+    window.addEventListener(
+      "popstate",
+      handleBrowserBack
+    );
+
+    return () => {
+
+      window.removeEventListener(
+        "popstate",
+        handleBrowserBack
+      );
+
+    };
+
+  }, []);
 
   function stopTyping(
     user = activeChat
@@ -142,6 +197,14 @@ export default function useChat({
     setReplyMessage(null);
     setTextState("");
 
+    window.history.pushState(
+      {
+        liotanScreen: "chat",
+        chat: user
+      },
+      ""
+    );
+
     setUnread(prev => ({
       ...prev,
       [user]: 0
@@ -171,6 +234,23 @@ export default function useChat({
         user2: user
       }
     );
+
+  }
+
+  function closeChat() {
+
+    if (!activeChatRef.current) {
+      return;
+    }
+
+    stopTyping(
+      activeChatRef.current
+    );
+
+    setActiveChat(null);
+    setEditingMessage(null);
+    setReplyMessage(null);
+    setTextState("");
 
   }
 
@@ -435,6 +515,7 @@ export default function useChat({
   return {
     activeChat,
     setActiveChat,
+    closeChat,
 
     text,
     setText,
@@ -457,8 +538,7 @@ export default function useChat({
     openChat,
     sendMessage,
     sendAttachment,
-    handleKey,
-    setActiveChat
+    handleKey
   };
 
 }

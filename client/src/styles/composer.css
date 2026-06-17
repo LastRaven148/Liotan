@@ -1,5 +1,3 @@
-/* COMPOSER FINAL */
-
 .composer-shell{
   padding:0 15px 8px;
   background:#0e1621;
@@ -34,7 +32,7 @@
   background:#242f3d;
   color:white;
 
-  padding:12px 14px 12px 53px;
+  padding:12px 64px 12px 53px;
 
   font-family:inherit;
   font-size:14px;
@@ -133,23 +131,27 @@
 }
 
 .send-button{
-  width:42px;
-  height:42px;
+  position:absolute;
+  right:0;
+  bottom:0;
+
+  width:52px;
+  height:48px;
 
   border:none;
-  border-radius:50%;
+  border-radius:0 12px 12px 0;
 
   background:#3390ec;
   color:white;
 
-  font-size:18px;
+  font-size:20px;
   cursor:pointer;
 
   display:flex;
   align-items:center;
   justify-content:center;
 
-  flex-shrink:0;
+  z-index:4;
 }
 
 .send-button:disabled{
@@ -157,18 +159,19 @@
   cursor:default;
 }
 
-@media (min-width:769px){
-  .send-button{
-    display:none;
-  }
+.reply-panel + .composer .send-button{
+  border-radius:0 0 12px 0;
 }
 
-@media (max-width:768px){
-  .composer{
-    gap:8px;
-  }
+.composer textarea::-webkit-scrollbar{
+  width:4px;
+}
 
-  .composer textarea{
-    padding-right:14px;
-  }
+.composer textarea::-webkit-scrollbar-thumb{
+  background:#3b4c5e;
+  border-radius:10px;
+}
+
+.composer textarea::placeholder{
+  transform:translateY(2px);
 }
