@@ -103,7 +103,8 @@ export default function ChatHeader({
   onlineUsers,
   typingUsers,
   openProfile,
-  username
+  username,
+  onBack
 }) {
 
   const { t } =
@@ -122,63 +123,65 @@ export default function ChatHeader({
     onlineUsers?.includes(activeChat);
 
   return (
-    <div
-      className="chat-header"
-      onClick={
-        isSavedMessages
-          ? undefined
-          : openProfile
-      }
+  <div
+    className="chat-header"
+    onClick={
+      isSavedMessages
+        ? undefined
+        : openProfile
+    }
+  >
+
+    <button
+      type="button"
+      className="mobile-back-button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onBack?.();
+      }}
     >
-      <div className="chat-avatar">
+      ←
+    </button>
 
-        {isSavedMessages ? (
-
-          <div className="saved-icon">
-            ★
-          </div>
-
-        ) : activeDialog?.avatar ? (
-
-          <img
-            src={avatarUrl(activeDialog.avatar)}
-            alt=""
-            className="avatar-image"
-          />
-
-        ) : (
-
-          activeChat
-            ? activeChat.charAt(0).toUpperCase()
-            : "?"
-
-        )}
-
-      </div>
-
-      <div>
-
-        <div className="chat-name">
-          {isSavedMessages
-            ? t.savedMessages
-            : activeChat}
+    <div className="chat-avatar">
+      {isSavedMessages ? (
+        <div className="saved-icon">
+          ★
         </div>
+      ) : activeDialog?.avatar ? (
+        <img
+          src={avatarUrl(activeDialog.avatar)}
+          alt=""
+          className="avatar-image"
+        />
+      ) : (
+        activeChat
+          ? activeChat.charAt(0).toUpperCase()
+          : "?"
+      )}
+    </div>
 
-        {!isSavedMessages && (
-          <div className="chat-status">
-            {isTyping
-              ? t.typing
-              : isOnline
-                ? t.online
-                : getLastSeenText(
-                    activeDialog?.lastSeen,
-                    t
-                  )}
-          </div>
-        )}
-
+    <div>
+      <div className="chat-name">
+        {isSavedMessages
+          ? t.savedMessages
+          : activeChat}
       </div>
 
+      {!isSavedMessages && (
+        <div className="chat-status">
+          {isTyping
+            ? t.typing
+            : isOnline
+              ? t.online
+              : getLastSeenText(
+                  activeDialog?.lastSeen,
+                  t
+                )}
+        </div>
+      )}
     </div>
-  );
+
+  </div>
+);
 }

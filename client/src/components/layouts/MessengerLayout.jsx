@@ -42,7 +42,13 @@ export default function MessengerLayout({
   } = app;
 
   return (
-    <div className="app">
+  <div
+    className={
+      chat.activeChat
+        ? "app has-active-chat"
+        : "app"
+    }
+  >
 
       <Sidebar
         username={username}
@@ -97,6 +103,9 @@ export default function MessengerLayout({
   openProfile={() =>
     setProfileUser(chat.activeDialog)
   }
+  onBack={() =>
+  chat.setActiveChat(null)
+}
 />
 
       <ModalsLayer

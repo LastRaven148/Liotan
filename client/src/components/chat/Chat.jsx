@@ -161,6 +161,7 @@ const Chat = memo(function Chat({
   handleKey,
   sendMessage,
   sendAttachment,
+  onBack,
   openProfile
 }) {
 
@@ -264,13 +265,14 @@ const Chat = memo(function Chat({
     {activeChat ? (
       <>
         <ChatHeader
-          activeChat={activeChat}
-          activeDialog={activeDialog}
-          onlineUsers={onlineUsers}
-          typingUsers={typingUsers}
-          openProfile={openProfile}
-          username={username}
-        />
+  activeChat={activeChat}
+  activeDialog={activeDialog}
+  onlineUsers={onlineUsers}
+  typingUsers={typingUsers}
+  openProfile={openProfile}
+  username={username}
+  onBack={onBack}
+/>
 
         <div
           className="messages"

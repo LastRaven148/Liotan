@@ -457,7 +457,8 @@ export default function useChat({
     openChat,
     sendMessage,
     sendAttachment,
-    handleKey
+    handleKey,
+    setActiveChat
   };
 
 }
