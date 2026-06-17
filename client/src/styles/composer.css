@@ -131,3 +131,44 @@
   background:#2b394a;
   color:white;
 }
+
+.send-button{
+  width:42px;
+  height:42px;
+
+  border:none;
+  border-radius:50%;
+
+  background:#3390ec;
+  color:white;
+
+  font-size:18px;
+  cursor:pointer;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  flex-shrink:0;
+}
+
+.send-button:disabled{
+  opacity:.45;
+  cursor:default;
+}
+
+@media (min-width:769px){
+  .send-button{
+    display:none;
+  }
+}
+
+@media (max-width:768px){
+  .composer{
+    gap:8px;
+  }
+
+  .composer textarea{
+    padding-right:14px;
+  }
+}
