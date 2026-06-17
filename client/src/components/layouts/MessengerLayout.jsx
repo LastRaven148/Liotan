@@ -100,6 +100,7 @@ export default function MessengerLayout({
   handleKey={chat.handleKey}
   sendMessage={chat.sendMessage}
   sendAttachment={chat.sendAttachment}
+  sendAttachments={chat.sendAttachments}
   openProfile={() =>
     setProfileUser(chat.activeDialog)
   }

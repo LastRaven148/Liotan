@@ -90,7 +90,6 @@ function buildMessagesWithDates(
       `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
     if (dateKey !== lastDateKey) {
-
       result.push({
         type: "date",
         id: `date-${dateKey}`,
@@ -103,7 +102,6 @@ function buildMessagesWithDates(
 
       lastDateKey =
         dateKey;
-
     }
 
     result.push({
@@ -161,6 +159,7 @@ const Chat = memo(function Chat({
   handleKey,
   sendMessage,
   sendAttachment,
+  sendAttachments,
   onBack,
   openProfile
 }) {
@@ -183,9 +182,27 @@ const Chat = memo(function Chat({
   const fileInputRef =
     useRef(null);
 
+  const draftRef =
+    useRef([]);
+
   const [
     attachMenuOpen,
     setAttachMenuOpen
+  ] = useState(false);
+
+  const [
+    attachmentDraft,
+    setAttachmentDraft
+  ] = useState([]);
+
+  const [
+    attachmentCaption,
+    setAttachmentCaption
+  ] = useState("");
+
+  const [
+    sendingDraft,
+    setSendingDraft
   ] = useState(false);
 
   const canSend =
@@ -209,6 +226,27 @@ const Chat = memo(function Chat({
 
   useEffect(() => {
 
+    draftRef.current =
+      attachmentDraft;
+
+  }, [
+    attachmentDraft
+  ]);
+
+  useEffect(() => {
+
+    return () => {
+
+      draftRef.current.forEach(item =>
+        URL.revokeObjectURL(item.url)
+      );
+
+    };
+
+  }, []);
+
+  useEffect(() => {
+
     if (
       !messages.length ||
       !messagesRef.current
@@ -227,10 +265,8 @@ const Chat = memo(function Chat({
       text === "" &&
       textareaRef.current
     ) {
-
       textareaRef.current.style.height =
         "48px";
-
     }
 
   }, [text]);
@@ -248,6 +284,141 @@ const Chat = memo(function Chat({
     editingMessage,
     replyMessage
   ]);
+
+  function createDraftItems(files) {
+
+    return Array
+      .from(files)
+      .filter(file =>
+        file.type.startsWith("image/")
+      )
+      .slice(0, 10)
+      .map(file => ({
+        file,
+        url:
+          URL.createObjectURL(file)
+      }));
+
+  }
+
+  function addDraftFiles(files) {
+
+    const nextItems =
+      createDraftItems(files);
+
+    if (!nextItems.length) {
+      return;
+    }
+
+    setAttachmentDraft(prev => {
+
+      const available =
+        Math.max(
+          0,
+          10 - prev.length
+        );
+
+      return [
+        ...prev,
+        ...nextItems.slice(
+          0,
+          available
+        )
+      ];
+
+    });
+
+  }
+
+  function closeAttachmentDraft() {
+
+    attachmentDraft.forEach(item =>
+      URL.revokeObjectURL(item.url)
+    );
+
+    setAttachmentDraft([]);
+    setAttachmentCaption("");
+    setSendingDraft(false);
+
+  }
+
+  function removeDraftItem(index) {
+
+    setAttachmentDraft(prev => {
+
+      const item =
+        prev[index];
+
+      if (item) {
+        URL.revokeObjectURL(item.url);
+      }
+
+      return prev.filter(
+        (_, i) =>
+          i !== index
+      );
+
+    });
+
+  }
+
+  async function sendAttachmentDraft() {
+
+    if (
+      sendingDraft ||
+      !attachmentDraft.length
+    ) {
+      return;
+    }
+
+    setSendingDraft(true);
+
+    await sendAttachments(
+      attachmentDraft.map(item => item.file),
+      attachmentCaption
+    );
+
+    closeAttachmentDraft();
+
+  }
+
+  function handlePaste(e) {
+
+    const files =
+      Array.from(
+        e.clipboardData?.files || []
+      );
+
+    const imageFiles =
+      files.filter(file =>
+        file.type.startsWith("image/")
+      );
+
+    if (!imageFiles.length) {
+      return;
+    }
+
+    e.preventDefault();
+
+    addDraftFiles(imageFiles);
+
+  }
+
+  function handlePhotoChange(e) {
+
+    const files =
+      e.target.files;
+
+    if (!files?.length) {
+      return;
+    }
+
+    addDraftFiles(files);
+
+    e.target.value = "";
+    setAttachMenuOpen(false);
+
+  }
 
   function handleFileChange(e) {
 
@@ -424,8 +595,9 @@ const Chat = memo(function Chat({
                   ref={photoInputRef}
                   type="file"
                   hidden
+                  multiple
                   accept="image/*"
-                  onChange={handleFileChange}
+                  onChange={handlePhotoChange}
                 />
 
                 <input
@@ -440,6 +612,7 @@ const Chat = memo(function Chat({
               <textarea
                 ref={textareaRef}
                 value={text}
+                onPaste={handlePaste}
                 onChange={(e) => {
 
                   setText(
@@ -484,6 +657,95 @@ const Chat = memo(function Chat({
       ) : (
         <div className="empty">
           {t.selectChat}
+        </div>
+      )}
+
+      {attachmentDraft.length > 0 && (
+        <div className="attachment-preview-overlay">
+          <div className="attachment-preview-modal">
+
+            <div className="attachment-preview-header">
+              <button
+                type="button"
+                className="attachment-preview-close"
+                onClick={closeAttachmentDraft}
+              >
+                ×
+              </button>
+
+              <div className="attachment-preview-title">
+                {attachmentDraft.length === 1
+                  ? "Отправить 1 фото"
+                  : `Отправить ${attachmentDraft.length} фото`}
+              </div>
+
+              <button
+                type="button"
+                className="attachment-preview-more"
+              >
+                ⋮
+              </button>
+            </div>
+
+            <div className="attachment-preview-list">
+              {attachmentDraft.map((item, index) => (
+                <div
+                  key={item.url}
+                  className="attachment-preview-item"
+                >
+                  <img
+                    src={item.url}
+                    alt=""
+                  />
+
+                  <button
+                    type="button"
+                    className="attachment-preview-remove"
+                    onClick={() =>
+                      removeDraftItem(index)
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="attachment-preview-footer">
+              <button
+                type="button"
+                className="attachment-preview-add"
+                onClick={() =>
+                  photoInputRef.current?.click()
+                }
+                disabled={
+                  attachmentDraft.length >= 10
+                }
+              >
+                +
+              </button>
+
+              <input
+                value={attachmentCaption}
+                onChange={(e) =>
+                  setAttachmentCaption(
+                    e.target.value
+                  )
+                }
+                placeholder="Добавить подпись..."
+              />
+
+              <button
+                type="button"
+                className="attachment-preview-send"
+                onClick={sendAttachmentDraft}
+                disabled={sendingDraft}
+              >
+                ➤
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 

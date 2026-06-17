@@ -254,6 +254,37 @@ export default function useChat({
 
   }
 
+  function emitMessage({
+    target,
+    messageText = "",
+    attachment = null
+  }) {
+
+    if (
+      !socketRef.current ||
+      !target
+    ) {
+      return;
+    }
+
+    socketRef.current.emit(
+      SOCKET_EVENTS.SEND_MESSAGE,
+      {
+        to: target,
+        text: messageText,
+        attachment,
+        replyTo:
+          replyMessage
+            ? {
+                messageId:
+                  replyMessage._id
+              }
+            : null
+      }
+    );
+
+  }
+
   function sendMessage(
     attachment = null
   ) {
@@ -301,29 +332,69 @@ export default function useChat({
       return;
     }
 
-    socketRef.current.emit(
-      SOCKET_EVENTS.SEND_MESSAGE,
-      {
-        to: activeChat,
-        text:
-          hasText
-            ? text
-            : "",
-        attachment,
-        replyTo:
-          replyMessage
-            ? {
-                messageId:
-                  replyMessage._id
-              }
-            : null
-      }
-    );
+    emitMessage({
+      target: activeChat,
+      messageText:
+        hasText
+          ? text
+          : "",
+      attachment
+    });
 
     stopTyping(activeChat);
 
     setReplyMessage(null);
     setTextState("");
+
+  }
+
+  async function sendAttachments(
+    files,
+    caption = ""
+  ) {
+
+    if (
+      !socketRef.current ||
+      !activeChat ||
+      !files?.length
+    ) {
+      return;
+    }
+
+    const target =
+      activeChat;
+
+    const safeFiles =
+      Array.from(files).slice(0, 10);
+
+    try {
+
+      for (let i = 0; i < safeFiles.length; i += 1) {
+
+        const attachment =
+          await uploadAttachmentApi(
+            safeFiles[i]
+          );
+
+        emitMessage({
+          target,
+          messageText:
+            i === 0
+              ? caption.trim()
+              : "",
+          attachment
+        });
+
+      }
+
+      stopTyping(target);
+
+      setReplyMessage(null);
+      setTextState("");
+
+    } catch (err) {
+      console.error(err);
+    }
 
   }
 
@@ -538,6 +609,7 @@ export default function useChat({
     openChat,
     sendMessage,
     sendAttachment,
+    sendAttachments,
     handleKey
   };
 
