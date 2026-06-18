@@ -15,6 +15,7 @@ export default function SettingsModal({
   bio,
   saveBio,
   uploadAvatar,
+  logout,
   onClose
 }) {
 
@@ -47,6 +48,93 @@ export default function SettingsModal({
     );
   }
 
+  if (editing) {
+    return (
+      <div
+        className="drawer-overlay drawer-overlay-left"
+        onClick={onClose}
+      >
+        <aside
+          className="settings-drawer"
+          onClick={(e) =>
+            e.stopPropagation()
+          }
+        >
+          <div className="drawer-topbar">
+            <button
+              type="button"
+              className="drawer-icon-button"
+              onClick={() =>
+                setEditing(false)
+              }
+            >
+              ←
+            </button>
+
+            <div className="drawer-title">
+              {t.editProfile || "Изменить профиль"}
+            </div>
+
+            <button
+              type="button"
+              className="drawer-save-button"
+              onClick={handleSave}
+            >
+              {t.save || "Сохранить"}
+            </button>
+          </div>
+
+          <label className="edit-avatar">
+            <div className="settings-avatar large">
+              {avatar ? (
+                <img
+                  src={avatarUrl(avatar)}
+                  alt=""
+                  className="avatar-image"
+                />
+              ) : (
+                username
+                  .charAt(0)
+                  .toUpperCase()
+              )}
+            </div>
+
+            <input
+              type="file"
+              hidden
+              accept="image/*"
+              onChange={uploadAvatar}
+            />
+          </label>
+
+          <div className="settings-card">
+            <div className="settings-field-label">
+              {t.username || "Имя пользователя"}
+            </div>
+
+            <div className="settings-readonly">
+              {username}
+            </div>
+
+            <div className="settings-field-label">
+              {t.bio || "О себе"}
+            </div>
+
+            <textarea
+              className="settings-bio-input"
+              value={value}
+              onChange={(e) =>
+                setValue(e.target.value)
+              }
+              placeholder={t.aboutYou || "О себе"}
+              maxLength={100}
+            />
+          </div>
+        </aside>
+      </div>
+    );
+  }
+
   return (
     <div
       className="drawer-overlay drawer-overlay-left"
@@ -62,173 +150,143 @@ export default function SettingsModal({
           <button
             type="button"
             className="drawer-icon-button"
-            onClick={
-              editing
-                ? () => setEditing(false)
-                : onClose
-            }
+            onClick={onClose}
           >
             ←
           </button>
 
           <div className="drawer-title">
-            {editing
-              ? t.editProfile
-              : t.settings}
+            {t.settings || "Настройки"}
           </div>
-
-          {editing ? (
-            <button
-              type="button"
-              className="drawer-save-button"
-              onClick={handleSave}
-            >
-              {t.save}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="drawer-icon-button"
-              onClick={() =>
-                setEditing(true)
-              }
-            >
-              ✎
-            </button>
-          )}
         </div>
 
-        {editing ? (
-          <>
-            <label className="edit-avatar">
-              <div className="settings-avatar large">
-                {avatar ? (
-                  <img
-                    src={avatarUrl(avatar)}
-                    alt=""
-                    className="avatar-image"
-                  />
-                ) : (
-                  username
-                    .charAt(0)
-                    .toUpperCase()
-                )}
-              </div>
-
-              <div className="edit-avatar-badge">
-                📷
-              </div>
-
-              <input
-                type="file"
-                hidden
-                accept="image/*"
-                onChange={uploadAvatar}
+        <button
+          type="button"
+          className="settings-profile-button"
+          onClick={() =>
+            setEditing(true)
+          }
+        >
+          <div className="settings-avatar">
+            {avatar ? (
+              <img
+                src={avatarUrl(avatar)}
+                alt=""
+                className="avatar-image"
               />
-            </label>
+            ) : (
+              username
+                .charAt(0)
+                .toUpperCase()
+            )}
+          </div>
 
-            <div className="settings-card">
-              <div className="settings-field-label">
-                {t.username}
-              </div>
-
-              <div className="settings-readonly">
-                {username}
-              </div>
-
-              <div className="settings-field-label">
-                {t.bio}
-              </div>
-
-              <textarea
-                className="settings-bio-input"
-                value={value}
-                onChange={(e) =>
-                  setValue(e.target.value)
-                }
-                placeholder={t.aboutYou}
-                maxLength={100}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="settings-profile">
-              <div className="settings-avatar">
-                {avatar ? (
-                  <img
-                    src={avatarUrl(avatar)}
-                    alt=""
-                    className="avatar-image"
-                  />
-                ) : (
-                  username
-                    .charAt(0)
-                    .toUpperCase()
-                )}
-              </div>
-
-              <div className="settings-name">
-                {username}
-              </div>
-
-              <div className="settings-online">
-                {t.online}
-              </div>
+          <div>
+            <div className="settings-name">
+              {username}
             </div>
 
-            <div className="settings-card">
-              <div className="settings-row">
-                <span>@</span>
+            <div className="settings-online">
+              {t.online || "онлайн"}
+            </div>
+          </div>
+        </button>
 
-                <div>
-                  <div className="settings-row-main">
-                    {username}
-                  </div>
+        <div className="settings-card">
+          <button
+            type="button"
+            className="settings-row button-row"
+            onClick={toggleLanguage}
+          >
+            <span>•</span>
 
-                  <div className="settings-row-sub">
-                    {t.username}
-                  </div>
-                </div>
+            <div className="settings-row-main">
+              {t.language || "Язык"}
+            </div>
+
+            <div className="settings-row-value">
+              {language === "en"
+                ? t.english || "English"
+                : t.russian || "Русский"}
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Фон чата
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Цвет сообщений
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Размер текста
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Формат времени
+            </div>
+          </button>
+        </div>
+
+        <div className="settings-card">
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Конфиденциальность
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+          >
+            <span>•</span>
+            <div className="settings-row-main">
+              Устройства
+            </div>
+          </button>
+        </div>
+
+        {logout && (
+          <div className="settings-card">
+            <button
+              type="button"
+              className="settings-row button-row danger-row"
+              onClick={logout}
+            >
+              <span>×</span>
+              <div className="settings-row-main">
+                {t.logout || "Выйти"}
               </div>
-
-              {bio?.trim() && (
-                <div className="settings-row">
-                  <span>i</span>
-
-                  <div>
-                    <div className="settings-row-main">
-                      {bio}
-                    </div>
-
-                    <div className="settings-row-sub">
-                      {t.bio}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="settings-card">
-              <button
-                type="button"
-                className="settings-row button-row"
-                onClick={toggleLanguage}
-              >
-                <span>🌐</span>
-
-                <div className="settings-row-main">
-                  {t.language}
-                </div>
-
-                <div className="settings-row-value">
-                  {language === "en"
-                    ? t.english
-                    : t.russian}
-                </div>
-              </button>
-            </div>
-          </>
+            </button>
+          </div>
         )}
       </aside>
     </div>

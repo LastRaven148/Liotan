@@ -117,6 +117,9 @@ export default function MessengerLayout({
         bio={bio}
         saveBio={saveBio}
         uploadAvatar={uploadAvatar}
+        logout={() =>
+  logout(socketRef)
+}
       />
 
     </div>

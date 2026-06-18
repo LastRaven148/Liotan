@@ -32,6 +32,9 @@ function Message({
   const [viewerOpen, setViewerOpen] =
     useState(false);
 
+  const [mobileMenu, setMobileMenu] =
+    useState(false);
+
   const longPressRef =
     useRef(null);
 
@@ -99,17 +102,13 @@ function Message({
 
       if (e.key === "Escape") {
         setMenuOpen(false);
+        setMobileMenu(false);
       }
 
     }
 
     document.addEventListener(
       "mousedown",
-      handleOutside
-    );
-
-    document.addEventListener(
-      "touchstart",
       handleOutside
     );
 
@@ -124,11 +123,6 @@ function Message({
         handleOutside
       );
 
-      document.removeEventListener(
-        "touchstart",
-        handleOutside
-      );
-
       window.removeEventListener(
         "keydown",
         handleEsc
@@ -136,6 +130,12 @@ function Message({
     };
 
   }, [menuOpen]);
+
+  function isMobile() {
+    return window.matchMedia(
+      "(max-width: 768px)"
+    ).matches;
+  }
 
   function openMenu(e) {
 
@@ -151,12 +151,34 @@ function Message({
     e.preventDefault();
     e.stopPropagation();
 
+    if (isMobile()) {
+      setMobileMenu(true);
+      return;
+    }
+
     setMenuOpen(true);
 
   }
 
   function handleContextMenu(e) {
     openMenu(e);
+  }
+
+  function handleMouseLeave() {
+
+    if (!menuOpen) {
+      return;
+    }
+
+    setTimeout(() => {
+      if (
+        !menuRef.current?.matches(":hover") &&
+        !messageRef.current?.matches(":hover")
+      ) {
+        setMenuOpen(false);
+      }
+    }, 120);
+
   }
 
   function handleTouchStart(e) {
@@ -184,6 +206,11 @@ function Message({
 
   }
 
+  function closeMenus() {
+    setMenuOpen(false);
+    setMobileMenu(false);
+  }
+
   function copyMessage() {
 
     if (message.text) {
@@ -192,12 +219,12 @@ function Message({
       );
     }
 
-    setMenuOpen(false);
+    closeMenus();
 
   }
 
   function fakeAction() {
-    setMenuOpen(false);
+    closeMenus();
   }
 
   function formatFileSize(size) {
@@ -307,6 +334,82 @@ function Message({
 
   }
 
+  function renderActions() {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            closeMenus();
+            onReply(message);
+          }}
+        >
+          <span>↩</span>
+          {t.reply || "Ответить"}
+        </button>
+
+        {message.text && (
+          <button
+            type="button"
+            onClick={copyMessage}
+          >
+            <span>⧉</span>
+            Скопировать
+          </button>
+        )}
+
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => {
+              closeMenus();
+              onEdit(message);
+            }}
+          >
+            <span>✎</span>
+            {t.edit || "Изменить"}
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={fakeAction}
+        >
+          <span>↗</span>
+          Переслать
+        </button>
+
+        <button
+          type="button"
+          onClick={fakeAction}
+        >
+          <span>✓</span>
+          Выбрать
+        </button>
+
+        <button
+          type="button"
+          onClick={fakeAction}
+        >
+          <span>⌖</span>
+          Закрепить
+        </button>
+
+        <button
+          type="button"
+          className="danger"
+          onClick={() => {
+            closeMenus();
+            onDelete(message);
+          }}
+        >
+          <span>×</span>
+          {t.delete || "Удалить"}
+        </button>
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -319,6 +422,7 @@ function Message({
           menuOpen ? "menu-open" : ""
         ].join(" ")}
         onContextMenu={handleContextMenu}
+        onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchEnd={clearLongPress}
         onTouchMove={clearLongPress}
@@ -329,42 +433,9 @@ function Message({
           <div
             ref={menuRef}
             className="message-menu telegram-action-menu"
+            onMouseLeave={handleMouseLeave}
           >
-
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onReply(message);
-              }}
-            >
-              <span>↩</span>
-              {t.reply || "Ответить"}
-            </button>
-
-            {message.text && (
-              <button
-                type="button"
-                onClick={copyMessage}
-              >
-                <span>⧉</span>
-Скопировать
-              </button>
-            )}
-
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onEdit(message);
-                }}
-              >
-                <span>✎</span>
-{t.edit || "Изменить"}
-              </button>
-            )}
-
+            {renderActions()}
           </div>
         )}
 
@@ -409,7 +480,7 @@ function Message({
             className="message-file"
           >
             <div className="message-file-icon">
-              📄
+              □
             </div>
 
             <div className="message-file-info">
@@ -442,8 +513,23 @@ function Message({
             {renderStatus()}
           </div>
         )}
-
       </div>
+
+      {mobileMenu && (
+        <div
+          className="mobile-action-overlay"
+          onClick={closeMenus}
+        >
+          <div
+            className="mobile-action-sheet"
+            onClick={(e) =>
+              e.stopPropagation()
+            }
+          >
+            {renderActions()}
+          </div>
+        </div>
+      )}
 
       {viewerOpen && (
         <div

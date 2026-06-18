@@ -9,8 +9,7 @@ export default function SidebarMenu({
   openSettings,
   openChat,
   showArchive,
-  setShowArchive,
-  logout
+  setShowArchive
 }) {
 
   const { t } =
@@ -21,6 +20,16 @@ export default function SidebarMenu({
       className="telegram-menu compact-menu"
       ref={menuRef}
     >
+      <button
+        className="telegram-menu-item"
+        onClick={() => {
+          openSettings();
+          closeProfileMenu();
+        }}
+      >
+        <span>@</span>
+        Мой профиль
+      </button>
 
       <button
         className="telegram-menu-item"
@@ -30,7 +39,7 @@ export default function SidebarMenu({
           setShowArchive(false);
         }}
       >
-        <span>★</span>
+        <span>☆</span>
         {t.savedMessages}
       </button>
 
@@ -41,7 +50,7 @@ export default function SidebarMenu({
           closeProfileMenu();
         }}
       >
-        <span>▣</span>
+        <span>□</span>
         {showArchive
           ? t.search
           : t.archive}
@@ -54,21 +63,9 @@ export default function SidebarMenu({
           closeProfileMenu();
         }}
       >
-        <span>⚙</span>
+        <span>⚬</span>
         {t.settings}
       </button>
-
-      <button
-        className="telegram-menu-item danger"
-        onClick={() => {
-          closeProfileMenu();
-          logout();
-        }}
-      >
-        <span>⎋</span>
-        {t.logout}
-      </button>
-
     </div>
   );
 

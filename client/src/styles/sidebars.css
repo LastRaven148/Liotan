@@ -197,3 +197,12 @@
     font-size:15px;
   }
 }
+
+.telegram-menu-item span{
+  font-size:15px;
+  opacity:.75;
+}
+
+.telegram-menu-item.danger{
+  display:none;
+}

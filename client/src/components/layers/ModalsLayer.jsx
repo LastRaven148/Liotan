@@ -13,7 +13,8 @@ export default function ModalsLayer({
   avatar,
   bio,
   saveBio,
-  uploadAvatar
+  uploadAvatar,
+  logout
 }) {
 
   return (
@@ -34,6 +35,7 @@ export default function ModalsLayer({
           bio={bio}
           saveBio={saveBio}
           uploadAvatar={uploadAvatar}
+          logout={logout}
           onClose={() =>
             setSettingsOpen(false)
           }

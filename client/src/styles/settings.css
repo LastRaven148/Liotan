@@ -251,3 +251,32 @@
     justify-content:flex-start;
   }
 }
+
+.settings-profile-button{
+  width:calc(100% - 24px);
+  margin:8px 12px 14px;
+  padding:14px;
+  border:none;
+  border-radius:14px;
+  background:#202b36;
+  color:white;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  font-family:inherit;
+  text-align:left;
+}
+
+.settings-profile-button:hover{
+  background:#243342;
+}
+
+.edit-avatar-badge{
+  display:none;
+}
+
+.danger-row .settings-row-main,
+.danger-row span{
+  color:#ff6b6b;
+}
