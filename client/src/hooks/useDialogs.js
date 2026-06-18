@@ -11,7 +11,8 @@ import {
   getPinnedChatsApi,
   togglePinnedChatApi,
   getArchivedChatsApi,
-  toggleArchivedChatApi
+  toggleArchivedChatApi,
+  getGroupsApi
 } from "../services/api";
 
 export default function useDialogs() {
@@ -63,10 +64,10 @@ export default function useDialogs() {
     }, []);
 
   const togglePin =
-    useCallback(async (username) => {
+    useCallback(async (chatKey) => {
       try {
         const data =
-          await togglePinnedChatApi(username);
+          await togglePinnedChatApi(chatKey);
 
         setPinnedChats(
           data.pinnedChats || []
@@ -77,10 +78,10 @@ export default function useDialogs() {
     }, []);
 
   const toggleArchive =
-    useCallback(async (username) => {
+    useCallback(async (chatKey) => {
       try {
         const data =
-          await toggleArchivedChatApi(username);
+          await toggleArchivedChatApi(chatKey);
 
         setArchivedChats(
           data.archivedChats || []
@@ -93,10 +94,47 @@ export default function useDialogs() {
   const loadDialogs =
     useCallback(async () => {
       try {
-        const data =
-          await getDialogs();
+        const [
+          privateDialogs,
+          groups
+        ] =
+          await Promise.all([
+            getDialogs(),
+            getGroupsApi()
+          ]);
 
-        setDialogs(data);
+        const normalizedPrivate =
+          privateDialogs.map(dialog => ({
+            ...dialog,
+            type: "private",
+            chatKey: dialog.username,
+            title: dialog.username
+          }));
+
+        const normalizedGroups =
+          groups.map(group => ({
+            type: "group",
+            groupId: group._id,
+            username: `group:${group._id}`,
+            chatKey: `group:${group._id}`,
+            title: group.name,
+            avatar: group.avatar || "",
+            lastMessage: "Группа создана",
+            createdAt:
+              group.updatedAt ||
+              group.createdAt,
+            members:
+              group.members || [],
+            owner:
+              group.owner,
+            admins:
+              group.admins || []
+          }));
+
+        setDialogs([
+          ...normalizedGroups,
+          ...normalizedPrivate
+        ]);
       } catch (err) {
         console.error(err);
       }
@@ -158,7 +196,40 @@ export default function useDialogs() {
 
       setDialogs(prev => {
 
-        const username =
+        if (msg.chatType === "group") {
+
+          const chatKey =
+            msg.chatId ||
+            `group:${msg.groupId}`;
+
+          const existing =
+            prev.find(
+              dialog =>
+                dialog.chatKey === chatKey ||
+                dialog.username === chatKey
+            );
+
+          if (!existing) {
+            return prev;
+          }
+
+          const updated = {
+            ...existing,
+            lastMessage: getPreview(msg),
+            createdAt: msg.createdAt
+          };
+
+          return [
+            updated,
+            ...prev.filter(
+              dialog =>
+                dialog.chatKey !== chatKey &&
+                dialog.username !== chatKey
+            )
+          ];
+        }
+
+        const targetUsername =
           msg.from === currentUser
             ? msg.to
             : msg.from;
@@ -166,13 +237,16 @@ export default function useDialogs() {
         const existing =
           prev.find(
             dialog =>
-              dialog.username === username
+              dialog.username === targetUsername
           );
 
         if (!existing) {
           return [
             {
-              username,
+              type: "private",
+              chatKey: targetUsername,
+              username: targetUsername,
+              title: targetUsername,
               lastMessage: getPreview(msg),
               createdAt: msg.createdAt,
               lastSeen: null
@@ -191,7 +265,7 @@ export default function useDialogs() {
           updated,
           ...prev.filter(
             dialog =>
-              dialog.username !== username
+              dialog.username !== targetUsername
           )
         ];
 
@@ -230,26 +304,27 @@ export default function useDialogs() {
     }, []);
 
   const removeDialog =
-    useCallback((username) => {
+    useCallback((chatKey) => {
 
       setDialogs(prev =>
         prev.filter(
           dialog =>
-            dialog.username !== username
+            dialog.chatKey !== chatKey &&
+            dialog.username !== chatKey
         )
       );
 
       setPinnedChats(prev =>
         prev.filter(
           item =>
-            item !== username
+            item !== chatKey
         )
       );
 
       setArchivedChats(prev =>
         prev.filter(
           item =>
-            item !== username
+            item !== chatKey
         )
       );
 
@@ -259,46 +334,68 @@ export default function useDialogs() {
     useMemo(() => {
 
       if (search.trim()) {
-        return searchResults.map(user => {
 
-          const existingDialog =
-            dialogs.find(
-              dialog =>
-                dialog.username ===
-                user.username
-            );
+        const privateResults =
+          searchResults.map(user => {
 
-          return {
-            username: user.username,
-            avatar:
-              user.avatar ||
-              existingDialog?.avatar ||
-              "",
-            bio:
-              user.bio ||
-              existingDialog?.bio ||
-              "",
-            lastSeen:
-              user.lastSeen ||
-              existingDialog?.lastSeen ||
-              null,
-            lastMessage:
-              existingDialog?.lastMessage ||
-              "No messages yet",
-            createdAt:
-              existingDialog?.createdAt ||
-              null
-          };
+            const existingDialog =
+              dialogs.find(
+                dialog =>
+                  dialog.username ===
+                  user.username
+              );
 
-        });
+            return {
+              type: "private",
+              chatKey: user.username,
+              username: user.username,
+              title: user.username,
+              avatar:
+                user.avatar ||
+                existingDialog?.avatar ||
+                "",
+              bio:
+                user.bio ||
+                existingDialog?.bio ||
+                "",
+              lastSeen:
+                user.lastSeen ||
+                existingDialog?.lastSeen ||
+                null,
+              lastMessage:
+                existingDialog?.lastMessage ||
+                "No messages yet",
+              createdAt:
+                existingDialog?.createdAt ||
+                null
+            };
+
+          });
+
+        const groupResults =
+          dialogs.filter(dialog =>
+            dialog.type === "group" &&
+            dialog.title
+              ?.toLowerCase()
+              .includes(
+                search.trim().toLowerCase()
+              )
+          );
+
+        return [
+          ...groupResults,
+          ...privateResults
+        ];
       }
 
       return dialogs.filter(dialog => {
 
+        const key =
+          dialog.chatKey ||
+          dialog.username;
+
         const isArchived =
-          archivedChats.includes(
-            dialog.username
-          );
+          archivedChats.includes(key);
 
         return showArchive
           ? isArchived

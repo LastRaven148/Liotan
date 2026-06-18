@@ -29,6 +29,24 @@ function statusRank(status) {
 
 }
 
+function getMessageChatKey(
+  msg,
+  username
+) {
+
+  if (msg.chatType === "group") {
+    return (
+      msg.chatId ||
+      `group:${msg.groupId}`
+    );
+  }
+
+  return msg.from === username
+    ? msg.to
+    : msg.from;
+
+}
+
 function mergeChatHistory(
   prevChats,
   chatId,
@@ -128,12 +146,10 @@ export default function useSocket({
     socket.on(
       "connect_error",
       err => {
-
         console.log(
           "SOCKET ERROR",
           err.message
         );
-
       }
     );
 
@@ -143,7 +159,8 @@ export default function useSocket({
 
       if (
         !user ||
-        user === username
+        user === username ||
+        user.startsWith?.("group:")
       ) {
         return;
       }
@@ -161,6 +178,12 @@ export default function useSocket({
       msg
     ) {
 
+      const chatKey =
+        getMessageChatKey(
+          msg,
+          username
+        );
+
       setChats(prev =>
         addMessageToChat(
           prev,
@@ -170,30 +193,29 @@ export default function useSocket({
 
       if (
         msg.from !== username &&
-        activeChatRef.current !== msg.from
+        activeChatRef.current !== chatKey
       ) {
 
-        setUnread(prev =>
-          incrementUnread(
-            prev,
-            msg
-          )
-        );
+        setUnread(prev => ({
+          ...prev,
+          [chatKey]:
+            (prev[chatKey] || 0) + 1
+        }));
 
       }
 
       if (
         msg.from !== username &&
-        activeChatRef.current === msg.from
+        activeChatRef.current === chatKey
       ) {
 
         markActiveChatRead(
-          msg.from
+          chatKey
         );
 
         setUnread(prev => ({
           ...prev,
-          [msg.from]: 0
+          [chatKey]: 0
         }));
 
       }
@@ -246,10 +268,15 @@ export default function useSocket({
         return;
       }
 
-      const dialogUsername =
-        deleted.from === username
-          ? deleted.to
-          : deleted.from;
+      const chatKey =
+        deleted.chatType === "group"
+          ? (
+              deleted.chatId ||
+              `group:${deleted.groupId}`
+            )
+          : deleted.from === username
+            ? deleted.to
+            : deleted.from;
 
       if (deleted.from !== username) {
 
@@ -258,12 +285,12 @@ export default function useSocket({
           const nextCount =
             Math.max(
               0,
-              (prev[dialogUsername] || 0) - 1
+              (prev[chatKey] || 0) - 1
             );
 
           return {
             ...prev,
-            [dialogUsername]: nextCount
+            [chatKey]: nextCount
           };
 
         });
@@ -280,7 +307,7 @@ export default function useSocket({
       } else {
 
         removeDialog(
-          dialogUsername
+          chatKey
         );
 
       }
@@ -417,6 +444,25 @@ export default function useSocket({
 
     }
 
+    function handleUserLastSeen({
+      username: targetUsername,
+      lastSeen
+    }) {
+
+      if (
+        !targetUsername ||
+        targetUsername === username
+      ) {
+        return;
+      }
+
+      updateUserLastSeen(
+        targetUsername,
+        lastSeen
+      );
+
+    }
+
     socket.on(
       SOCKET_EVENTS.NEW_MESSAGE,
       handleNewMessage
@@ -468,28 +514,9 @@ export default function useSocket({
     );
 
     socket.on(
-  SOCKET_EVENTS.USER_LAST_SEEN,
-  handleUserLastSeen
-);
-
-    function handleUserLastSeen({
-  username: targetUsername,
-  lastSeen
-}) {
-
-  if (
-    !targetUsername ||
-    targetUsername === username
-  ) {
-    return;
-  }
-
-  updateUserLastSeen(
-    targetUsername,
-    lastSeen
-  );
-
-}
+      SOCKET_EVENTS.USER_LAST_SEEN,
+      handleUserLastSeen
+    );
 
     return () => {
 
@@ -544,15 +571,15 @@ export default function useSocket({
       );
 
       socket.off(
-  SOCKET_EVENTS.USER_LAST_SEEN,
-  handleUserLastSeen
-);
+        SOCKET_EVENTS.USER_LAST_SEEN,
+        handleUserLastSeen
+      );
 
       socket.disconnect();
 
     };
 
-    }, [
+  }, [
     token,
     username,
     API,

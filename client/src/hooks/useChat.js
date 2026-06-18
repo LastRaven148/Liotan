@@ -46,13 +46,27 @@ export default function useChat({
     useRef(null);
 
   useEffect(() => {
-
     activeChatRef.current =
       activeChat;
-
   }, [
     activeChat
   ]);
+
+  const activeDialog =
+    useMemo(() => {
+
+      return dialogs?.find(dialog =>
+        dialog.chatKey === activeChat ||
+        dialog.username === activeChat
+      );
+
+    }, [
+      dialogs,
+      activeChat
+    ]);
+
+  const isGroupChat =
+    activeDialog?.type === "group";
 
   useEffect(() => {
 
@@ -86,24 +100,23 @@ export default function useChat({
     );
 
     return () => {
-
       window.removeEventListener(
         "popstate",
         handleBrowserBack
       );
-
     };
 
   }, []);
 
   function stopTyping(
-    user = activeChat
+    chat = activeChat
   ) {
 
     if (
       !socketRef.current ||
-      !user ||
-      user === username
+      !chat ||
+      chat === username ||
+      chat.startsWith?.("group:")
     ) {
       return;
     }
@@ -111,7 +124,7 @@ export default function useChat({
     socketRef.current.emit(
       SOCKET_EVENTS.STOP_TYPING,
       {
-        to: user
+        to: chat
       }
     );
 
@@ -130,27 +143,28 @@ export default function useChat({
   }
 
   function startTyping(
-    user
+    chat
   ) {
 
     if (
       !socketRef.current ||
-      !user ||
-      user === username
+      !chat ||
+      chat === username ||
+      chat.startsWith?.("group:")
     ) {
       return;
     }
 
-    if (typingChatRef.current !== user) {
+    if (typingChatRef.current !== chat) {
       socketRef.current.emit(
         SOCKET_EVENTS.TYPING,
         {
-          to: user
+          to: chat
         }
       );
 
       typingChatRef.current =
-        user;
+        chat;
     }
 
     if (typingTimerRef.current) {
@@ -162,7 +176,7 @@ export default function useChat({
     typingTimerRef.current =
       setTimeout(
         () => {
-          stopTyping(user);
+          stopTyping(chat);
         },
         1200
       );
@@ -184,15 +198,15 @@ export default function useChat({
 
   }
 
-  function openChat(user) {
+  function openChat(chatKey) {
 
-    if (activeChat === user) {
+    if (activeChat === chatKey) {
       return;
     }
 
     stopTyping(activeChat);
 
-    setActiveChat(user);
+    setActiveChat(chatKey);
     setEditingMessage(null);
     setReplyMessage(null);
     setTextState("");
@@ -200,14 +214,14 @@ export default function useChat({
     window.history.pushState(
       {
         liotanScreen: "chat",
-        chat: user
+        chat: chatKey
       },
       ""
     );
 
     setUnread(prev => ({
       ...prev,
-      [user]: 0
+      [chatKey]: 0
     }));
 
     const socket =
@@ -217,10 +231,34 @@ export default function useChat({
       return;
     }
 
+    const dialog =
+      dialogs?.find(item =>
+        item.chatKey === chatKey ||
+        item.username === chatKey
+      );
+
+    if (dialog?.type === "group") {
+      socket.emit(
+        SOCKET_EVENTS.JOIN_GROUP,
+        {
+          groupId: dialog.groupId
+        }
+      );
+
+      socket.emit(
+        SOCKET_EVENTS.GET_GROUP_CHAT,
+        {
+          groupId: dialog.groupId
+        }
+      );
+
+      return;
+    }
+
     const chatId =
       getChatId(
         username,
-        user
+        chatKey
       );
 
     socket.emit(
@@ -231,7 +269,7 @@ export default function useChat({
     socket.emit(
       SOCKET_EVENTS.GET_CHAT,
       {
-        user2: user
+        user2: chatKey
       }
     );
 
@@ -264,6 +302,32 @@ export default function useChat({
       !socketRef.current ||
       !target
     ) {
+      return;
+    }
+
+    const dialog =
+      dialogs?.find(item =>
+        item.chatKey === target ||
+        item.username === target
+      );
+
+    if (dialog?.type === "group") {
+      socketRef.current.emit(
+        SOCKET_EVENTS.SEND_GROUP_MESSAGE,
+        {
+          groupId: dialog.groupId,
+          text: messageText,
+          attachment,
+          replyTo:
+            replyMessage
+              ? {
+                  messageId:
+                    replyMessage._id
+                }
+              : null
+        }
+      );
+
       return;
     }
 
@@ -398,21 +462,31 @@ export default function useChat({
 
   }
 
-  function deleteChat(user = activeChat) {
+  function deleteChat(chat = activeChat) {
 
     if (
       !socketRef.current ||
-      !user
+      !chat
     ) {
       return;
     }
 
-    stopTyping(user);
+    const dialog =
+      dialogs?.find(item =>
+        item.chatKey === chat ||
+        item.username === chat
+      );
+
+    if (dialog?.type === "group") {
+      return;
+    }
+
+    stopTyping(chat);
 
     socketRef.current.emit(
       SOCKET_EVENTS.DELETE_CHAT,
       {
-        user2: user
+        user2: chat
       }
     );
 
@@ -478,9 +552,7 @@ export default function useChat({
   }
 
   function cancelReplyMessage() {
-
     setReplyMessage(null);
-
   }
 
   function cancelEditMessage() {
@@ -552,10 +624,12 @@ export default function useChat({
 
   const chatId =
     activeChat
-      ? getChatId(
-          username,
-          activeChat
-        )
+      ? isGroupChat
+        ? activeChat
+        : getChatId(
+            username,
+            activeChat
+          )
       : null;
 
   const messages =
@@ -568,19 +642,6 @@ export default function useChat({
     }, [
       chats,
       chatId
-    ]);
-
-  const activeDialog =
-    useMemo(() => {
-
-      return dialogs?.find(
-        d =>
-          d.username === activeChat
-      );
-
-    }, [
-      dialogs,
-      activeChat
     ]);
 
   return {
