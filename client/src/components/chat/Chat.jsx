@@ -451,6 +451,24 @@ const Chat = memo(function Chat({
 
   }
 
+  function handleComposerKeyDown(e) {
+  if (e.key !== "Enter") {
+    handleKey(e);
+    return;
+  }
+
+  if (e.shiftKey) {
+    if (!e.currentTarget.value.trim()) {
+      e.preventDefault();
+      return;
+    }
+
+    return;
+  }
+
+  handleKey(e);
+}
+
   return (
     <div className="chat">
 
@@ -632,7 +650,7 @@ const Chat = memo(function Chat({
                     `${newHeight}px`;
 
                 }}
-                onKeyDown={handleKey}
+                onKeyDown={handleComposerKeyDown}
                 placeholder={
                   editingMessage
                     ? t.editMessage
