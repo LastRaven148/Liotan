@@ -15,6 +15,9 @@ const {
 const registerPrivateHandlers =
   require("./handlers/private");
 
+const registerGroupHandlers =
+  require("./handlers/group");
+
 function setupSocket(io) {
 
   io.use((socket, next) => {
@@ -74,10 +77,15 @@ function setupSocket(io) {
       });
 
       registerPrivateHandlers({
-        io,
-        socket,
-        emitStopTyping
-      });
+  io,
+  socket,
+  emitStopTyping
+});
+
+registerGroupHandlers({
+  io,
+  socket
+});
 
       socket.on(
         "disconnect",

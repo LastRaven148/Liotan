@@ -38,6 +38,12 @@ export const SOCKET_EVENTS = {
 
   ONLINE_USERS: "onlineUsers",
 
-  USER_LAST_SEEN: "userLastSeen"
+  USER_LAST_SEEN: "userLastSeen",
+
+  JOIN_GROUP: "joinGroup",
+
+  GET_GROUP_CHAT: "getGroupChat",
+
+  SEND_GROUP_MESSAGE: "sendGroupMessage"
 
 };
