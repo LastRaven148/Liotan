@@ -7,6 +7,15 @@ const jwt =
 const User =
   require("../models/User");
 
+const Message =
+  require("../models/Messages");
+
+const Group =
+  require("../models/Group");
+
+const deleteUploadedFile =
+  require("../utils/deleteUploadedFile");
+
 const {
   isValidUsername,
   isValidPassword
@@ -149,7 +158,95 @@ async function login(
 
 }
 
+async function deleteMe(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const user =
+      await User.findOne({
+        username
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        error: "user not found"
+      });
+    }
+
+    await deleteUploadedFile(
+      user.avatar
+    );
+
+    const messages =
+      await Message.find({
+        $or: [
+          { from: username },
+          { to: username }
+        ]
+      });
+
+    for (const msg of messages) {
+      await deleteUploadedFile(
+        msg.attachment?.url
+      );
+    }
+
+    await Message.deleteMany({
+      $or: [
+        { from: username },
+        { to: username }
+      ]
+    });
+
+    await User.updateMany(
+      {},
+      {
+        $pull: {
+          pinnedChats: username,
+          archivedChats: username
+        }
+      }
+    );
+
+    await Group.updateMany(
+      {},
+      {
+        $pull: {
+          members: username,
+          admins: username
+        }
+      }
+    );
+
+    await Group.deleteMany({
+      members: {
+        $size: 0
+      }
+    });
+
+    await User.deleteOne({
+      username
+    });
+
+    res.json({
+      ok: true
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 module.exports = {
   register,
-  login
+  login,
+  deleteMe
 };

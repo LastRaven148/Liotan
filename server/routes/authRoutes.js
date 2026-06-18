@@ -5,9 +5,13 @@ const {
   authLimiter
 } = require("../middleware/rateLimiters");
 
+const authMiddleware =
+  require("../middleware/authMiddleware");
+
 const {
   register,
-  login
+  login,
+  deleteMe
 } = require("../controllers/authController");
 
 const router =
@@ -23,6 +27,12 @@ router.post(
   "/login",
   authLimiter,
   login
+);
+
+router.delete(
+  "/me",
+  authMiddleware,
+  deleteMe
 );
 
 module.exports = router;
