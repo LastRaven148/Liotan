@@ -39,6 +39,9 @@ export default function DialogItem({
   const itemRef =
     useRef(null);
 
+  const longPressRef =
+    useRef(null);
+
   const unreadCount =
     unread[dialog.username] || 0;
 
@@ -95,6 +98,11 @@ export default function DialogItem({
       handleOutsideClick
     );
 
+    document.addEventListener(
+      "touchstart",
+      handleOutsideClick
+    );
+
     return () => {
 
       window.removeEventListener(
@@ -107,13 +115,18 @@ export default function DialogItem({
         handleOutsideClick
       );
 
+      document.removeEventListener(
+        "touchstart",
+        handleOutsideClick
+      );
+
     };
 
   }, [
     menuOpen
   ]);
 
-  function handleContextMenu(e) {
+  function openMenu(e) {
 
     e.preventDefault();
     e.stopPropagation();
@@ -122,9 +135,34 @@ export default function DialogItem({
 
   }
 
+  function handleContextMenu(e) {
+    openMenu(e);
+  }
+
+  function handleTouchStart(e) {
+
+    longPressRef.current =
+      setTimeout(() => {
+        openMenu(e);
+      }, 420);
+
+  }
+
+  function clearLongPress() {
+
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+
+  }
+
   function handleOpenChat() {
 
-    setMenuOpen(false);
+    if (menuOpen) {
+      return;
+    }
+
     openChat(dialog.username);
 
   }
@@ -174,12 +212,16 @@ export default function DialogItem({
         }
         onClick={handleOpenChat}
         onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={clearLongPress}
+        onTouchMove={clearLongPress}
+        onTouchCancel={clearLongPress}
       >
 
         {menuOpen && (
           <div
             ref={menuRef}
-            className="dialog-context-menu"
+            className="dialog-context-menu telegram-action-menu"
             onClick={(e) =>
               e.stopPropagation()
             }
@@ -190,7 +232,7 @@ export default function DialogItem({
               onClick={handlePin}
             >
               <span>
-                {isPinned ? "📌" : "📍"}
+                {isPinned ? "⌫" : "📌"}
               </span>
 
               {isPinned
@@ -214,7 +256,7 @@ export default function DialogItem({
               className="danger"
               onClick={handleDelete}
             >
-              <span>🗑</span>
+              <span>⌫</span>
               {t.deleteChat}
             </button>
 

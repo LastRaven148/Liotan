@@ -154,3 +154,46 @@
   margin-left:6px;
   font-size:11px;
 }
+
+.user{
+  -webkit-tap-highlight-color:transparent;
+}
+
+.dialog-context-menu.telegram-action-menu{
+  width:210px;
+  padding:6px;
+  border-radius:14px;
+}
+
+.dialog-context-menu.telegram-action-menu button{
+  height:40px;
+  border-radius:9px;
+}
+
+.dialog-context-menu.telegram-action-menu button span{
+  width:22px;
+  min-width:22px;
+}
+
+@media (max-width:768px){
+  .user{
+    -webkit-touch-callout:none;
+    user-select:none;
+  }
+
+  .dialog-context-menu{
+    position:fixed;
+    left:50%;
+    right:auto;
+    top:auto;
+    bottom:24px;
+    transform:translateX(-50%);
+    width:min(260px, calc(100vw - 28px));
+    z-index:9000;
+  }
+
+  .dialog-context-menu button{
+    height:46px;
+    font-size:15px;
+  }
+}

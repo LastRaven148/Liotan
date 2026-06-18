@@ -315,3 +315,86 @@
 
   font-size:12px;
 }
+
+.message.menu-open{
+  filter:brightness(1.08);
+}
+
+.telegram-action-menu{
+  user-select:none;
+  -webkit-user-select:none;
+  touch-action:manipulation;
+}
+
+.message-menu{
+  width:190px;
+  padding:6px;
+  background:#17212b;
+  border:1px solid #243342;
+  border-radius:14px;
+  overflow:hidden;
+  z-index:80;
+  box-shadow:0 12px 38px rgba(0,0,0,.45);
+}
+
+.message-menu button{
+  width:100%;
+  height:38px;
+  border:none;
+  background:transparent;
+  color:#d7dde5;
+  padding:0 10px;
+  text-align:left;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:14px;
+  border-radius:9px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.message-menu button span{
+  width:20px;
+  min-width:20px;
+  color:#9fb0c1;
+  display:flex;
+  justify-content:center;
+}
+
+.message-menu button:hover{
+  background:#243342;
+}
+
+.message-menu button.danger{
+  color:#ff6b6b;
+}
+
+.message-menu button.danger span{
+  color:#ff6b6b;
+}
+
+@media (max-width:768px){
+  .message-menu{
+    position:fixed;
+    left:50% !important;
+    right:auto !important;
+    bottom:92px;
+    transform:translateX(-50%);
+    width:min(260px, calc(100vw - 28px));
+  }
+
+  .message-menu button{
+    height:44px;
+    font-size:15px;
+  }
+
+  .message{
+    -webkit-touch-callout:none;
+  }
+
+  .message-text{
+    -webkit-user-select:text;
+    user-select:text;
+  }
+}

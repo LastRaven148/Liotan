@@ -1,5 +1,7 @@
 import {
   memo,
+  useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -30,6 +32,15 @@ function Message({
   const [viewerOpen, setViewerOpen] =
     useState(false);
 
+  const longPressRef =
+    useRef(null);
+
+  const menuRef =
+    useRef(null);
+
+  const messageRef =
+    useRef(null);
+
   const isMine =
     message.from === username;
 
@@ -58,24 +69,136 @@ function Message({
       ? `${API}${attachment.url}`
       : "";
 
-  function handleContextMenu(e) {
+  useEffect(() => {
 
-  if (
-    e.target.closest("a") ||
-    e.target.closest("textarea") ||
-    e.target.closest("input")
-  ) {
-    return;
+    function handleOutside(e) {
+
+      if (!menuOpen) {
+        return;
+      }
+
+      if (
+        menuRef.current &&
+        menuRef.current.contains(e.target)
+      ) {
+        return;
+      }
+
+      if (
+        messageRef.current &&
+        messageRef.current.contains(e.target)
+      ) {
+        return;
+      }
+
+      setMenuOpen(false);
+
+    }
+
+    function handleEsc(e) {
+
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+      }
+
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutside
+    );
+
+    document.addEventListener(
+      "touchstart",
+      handleOutside
+    );
+
+    window.addEventListener(
+      "keydown",
+      handleEsc
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutside
+      );
+
+      document.removeEventListener(
+        "touchstart",
+        handleOutside
+      );
+
+      window.removeEventListener(
+        "keydown",
+        handleEsc
+      );
+    };
+
+  }, [menuOpen]);
+
+  function openMenu(e) {
+
+    if (
+      e.target.closest("a") ||
+      e.target.closest("textarea") ||
+      e.target.closest("input") ||
+      e.target.closest("button")
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    setMenuOpen(true);
+
   }
 
-  e.preventDefault();
-  e.stopPropagation();
+  function handleContextMenu(e) {
+    openMenu(e);
+  }
 
-  setMenuOpen(
-    prev => !prev
-  );
+  function handleTouchStart(e) {
 
-}
+    if (
+      e.target.closest("a") ||
+      e.target.closest("button")
+    ) {
+      return;
+    }
+
+    longPressRef.current =
+      setTimeout(() => {
+        openMenu(e);
+      }, 420);
+
+  }
+
+  function clearLongPress() {
+
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current);
+      longPressRef.current = null;
+    }
+
+  }
+
+  function copyMessage() {
+
+    if (message.text) {
+      navigator.clipboard?.writeText(
+        message.text
+      );
+    }
+
+    setMenuOpen(false);
+
+  }
+
+  function fakeAction() {
+    setMenuOpen(false);
+  }
 
   function formatFileSize(size) {
 
@@ -148,56 +271,65 @@ function Message({
 
   function renderTextWithLinks(value) {
 
-  const parts =
-    value.split(
-      /(https?:\/\/[^\s]+)/g
-    );
-
-  return parts.map((part, index) => {
-
-    if (
-      part.startsWith("http://") ||
-      part.startsWith("https://")
-    ) {
-      return (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
-          rel="noreferrer"
-          className="message-link"
-          onClick={(e) =>
-            e.stopPropagation()
-          }
-          onContextMenu={(e) =>
-            e.stopPropagation()
-          }
-        >
-          {part}
-        </a>
+    const parts =
+      value.split(
+        /(https?:\/\/[^\s]+)/g
       );
-    }
 
-    return part;
+    return parts.map((part, index) => {
 
-  });
+      if (
+        part.startsWith("http://") ||
+        part.startsWith("https://")
+      ) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noreferrer"
+            className="message-link"
+            onClick={(e) =>
+              e.stopPropagation()
+            }
+            onContextMenu={(e) =>
+              e.stopPropagation()
+            }
+          >
+            {part}
+          </a>
+        );
+      }
 
-}
+      return part;
+
+    });
+
+  }
 
   return (
     <>
       <div
+        ref={messageRef}
         className={[
           "message",
           isMine ? "me" : "",
           isPhoto ? "photo-message" : "",
-          isFile ? "file-message" : ""
+          isFile ? "file-message" : "",
+          menuOpen ? "menu-open" : ""
         ].join(" ")}
         onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={clearLongPress}
+        onTouchMove={clearLongPress}
+        onTouchCancel={clearLongPress}
       >
 
         {menuOpen && (
-          <div className="message-menu">
+          <div
+            ref={menuRef}
+            className="message-menu telegram-action-menu"
+          >
 
             <button
               type="button"
@@ -206,8 +338,19 @@ function Message({
                 onReply(message);
               }}
             >
-              {t.reply}
+              <span>↩</span>
+              {t.reply || "Ответить"}
             </button>
+
+            {message.text && (
+              <button
+                type="button"
+                onClick={copyMessage}
+              >
+                <span>⧉</span>
+                Скопировать
+              </button>
+            )}
 
             {canEdit && (
               <button
@@ -217,9 +360,34 @@ function Message({
                   onEdit(message);
                 }}
               >
-                {t.edit}
+                <span>✎</span>
+                {t.edit || "Изменить"}
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={fakeAction}
+            >
+              <span>⌲</span>
+              Переслать
+            </button>
+
+            <button
+              type="button"
+              onClick={fakeAction}
+            >
+              <span>⌖</span>
+              Выбрать
+            </button>
+
+            <button
+              type="button"
+              onClick={fakeAction}
+            >
+              <span>📌</span>
+              Закрепить
+            </button>
 
             <button
               type="button"
@@ -229,7 +397,8 @@ function Message({
                 onDelete(message);
               }}
             >
-              {t.delete}
+              <span>⌫</span>
+              {t.delete || "Удалить"}
             </button>
 
           </div>
