@@ -348,7 +348,7 @@ function Message({
                 onClick={copyMessage}
               >
                 <span>⧉</span>
-                Скопировать
+Скопировать
               </button>
             )}
 
@@ -361,45 +361,9 @@ function Message({
                 }}
               >
                 <span>✎</span>
-                {t.edit || "Изменить"}
+{t.edit || "Изменить"}
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={fakeAction}
-            >
-              <span>⌲</span>
-              Переслать
-            </button>
-
-            <button
-              type="button"
-              onClick={fakeAction}
-            >
-              <span>⌖</span>
-              Выбрать
-            </button>
-
-            <button
-              type="button"
-              onClick={fakeAction}
-            >
-              <span>📌</span>
-              Закрепить
-            </button>
-
-            <button
-              type="button"
-              className="danger"
-              onClick={() => {
-                setMenuOpen(false);
-                onDelete(message);
-              }}
-            >
-              <span>⌫</span>
-              {t.delete || "Удалить"}
-            </button>
 
           </div>
         )}

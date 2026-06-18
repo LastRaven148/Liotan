@@ -85,18 +85,21 @@ export default function useAppController() {
     });
 
   useGlobalEsc({
-    profileMenu,
-    setProfileMenu,
+  profileMenu,
+  setProfileMenu,
 
-    settingsOpen,
-    setSettingsOpen,
+  showArchive: dialogs.showArchive,
+  setShowArchive: dialogs.setShowArchive,
 
-    profileUser,
-    setProfileUser,
+  settingsOpen,
+  setSettingsOpen,
 
-    activeChat: chat.activeChat,
-    setActiveChat: chat.setActiveChat
-  });
+  profileUser,
+  setProfileUser,
+
+  activeChat: chat.activeChat,
+  setActiveChat: chat.setActiveChat
+});
 
   useSocket({
   token,

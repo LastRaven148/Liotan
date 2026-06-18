@@ -33,6 +33,7 @@
 .messages{
   flex:1;
   overflow-y:auto;
+  overflow-x:visible;
   padding:18px;
   display:flex;
   flex-direction:column;
@@ -62,4 +63,13 @@
   font-weight:600;
 
   box-shadow:0 2px 10px rgba(0,0,0,.18);
+}
+
+.chat{
+  overflow:hidden;
+}
+
+.messages{
+  position:relative;
+  z-index:1;
 }

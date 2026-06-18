@@ -1,8 +1,13 @@
-import { useEffect } from "react";
+import {
+  useEffect
+} from "react";
 
 export default function useGlobalEsc({
   profileMenu,
   setProfileMenu,
+
+  showArchive,
+  setShowArchive,
 
   settingsOpen,
   setSettingsOpen,
@@ -24,6 +29,11 @@ export default function useGlobalEsc({
 
       if (profileMenu) {
         setProfileMenu(false);
+        return;
+      }
+
+      if (showArchive) {
+        setShowArchive(false);
         return;
       }
 
@@ -57,10 +67,12 @@ export default function useGlobalEsc({
 
   }, [
     profileMenu,
+    showArchive,
     settingsOpen,
     profileUser,
     activeChat,
     setProfileMenu,
+    setShowArchive,
     setSettingsOpen,
     setProfileUser,
     setActiveChat
