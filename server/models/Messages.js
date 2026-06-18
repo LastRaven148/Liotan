@@ -4,9 +4,24 @@ const mongoose =
 const messageSchema =
   new mongoose.Schema(
     {
+      chatType: {
+        type: String,
+        enum: [
+          "private",
+          "group"
+        ],
+        default: "private"
+      },
+
+      groupId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Group",
+        default: null
+      },
+
       chatId: {
         type: String,
-        required: true
+        default: ""
       },
 
       from: {
@@ -16,7 +31,7 @@ const messageSchema =
 
       to: {
         type: String,
-        required: true
+        default: ""
       },
 
       text: {
@@ -67,6 +82,16 @@ const messageSchema =
         default: null
       },
 
+      deliveredTo: {
+        type: [String],
+        default: []
+      },
+
+      readBy: {
+        type: [String],
+        default: []
+      },
+
       edited: {
         type: Boolean,
         default: false
@@ -109,6 +134,16 @@ const messageSchema =
       timestamps: true
     }
   );
+
+messageSchema.index({
+  chatType: 1,
+  chatId: 1
+});
+
+messageSchema.index({
+  chatType: 1,
+  groupId: 1
+});
 
 module.exports =
   mongoose.model(
