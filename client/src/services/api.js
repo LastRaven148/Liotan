@@ -205,3 +205,39 @@ export async function toggleArchivedChatApi(
   );
 
 }
+
+export async function createGroupApi(
+  data
+) {
+
+  return apiRequest(
+    `${API}/groups`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+      body: JSON.stringify(data)
+    }
+  );
+
+}
+
+export async function getGroupsApi() {
+
+  return apiRequest(
+    `${API}/groups`
+  );
+
+}
+
+export async function getGroupApi(
+  groupId
+) {
+
+  return apiRequest(
+    `${API}/groups/${groupId}`
+  );
+
+}
