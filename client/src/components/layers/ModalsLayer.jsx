@@ -14,7 +14,8 @@ export default function ModalsLayer({
   bio,
   saveBio,
   uploadAvatar,
-  logout
+  logout,
+  deleteAccount
 }) {
 
   return (
@@ -39,6 +40,7 @@ export default function ModalsLayer({
           onClose={() =>
             setSettingsOpen(false)
           }
+          deleteAccount={deleteAccount}
         />
       )}
     </>

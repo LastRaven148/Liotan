@@ -4,7 +4,8 @@ import {
 
 import {
   loginUser,
-  registerUser
+  registerUser,
+  deleteAccountApi
 } from "../services/api";
 
 export default function useAuth({
@@ -123,7 +124,9 @@ export default function useAuth({
 
   }
 
-  function logout(socketRef) {
+  function clearSession(
+    socketRef
+  ) {
 
     if (socketRef?.current) {
       socketRef.current.disconnect();
@@ -139,6 +142,37 @@ export default function useAuth({
 
   }
 
+  function logout(socketRef) {
+    clearSession(socketRef);
+  }
+
+  async function deleteAccount(
+    socketRef
+  ) {
+
+    try {
+
+      await deleteAccountApi();
+
+      clearSession(
+        socketRef
+      );
+
+      showToast(
+        "Account deleted"
+      );
+
+    } catch (err) {
+
+      showToast(
+        err.message ||
+        "Failed to delete account"
+      );
+
+    }
+
+  }
+
   return {
     username,
     setUsername,
@@ -151,7 +185,8 @@ export default function useAuth({
 
     login,
     register,
-    logout
+    logout,
+    deleteAccount
   };
 
 }

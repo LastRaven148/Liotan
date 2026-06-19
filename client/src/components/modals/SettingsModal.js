@@ -16,6 +16,7 @@ export default function SettingsModal({
   saveBio,
   uploadAvatar,
   logout,
+  deleteAccount,
   onClose
 }) {
 
@@ -35,6 +36,11 @@ export default function SettingsModal({
     setValue
   ] = useState(bio || "");
 
+  const [
+    confirmDelete,
+    setConfirmDelete
+  ] = useState(false);
+
   function handleSave() {
     saveBio(value);
     setEditing(false);
@@ -46,6 +52,17 @@ export default function SettingsModal({
         ? "ru"
         : "en"
     );
+  }
+
+  async function handleDeleteAccount() {
+
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    await deleteAccount?.();
+
   }
 
   if (editing) {
@@ -274,8 +291,8 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {logout && (
-          <div className="settings-card">
+        <div className="settings-card">
+          {logout && (
             <button
               type="button"
               className="settings-row button-row danger-row"
@@ -286,8 +303,23 @@ export default function SettingsModal({
                 {t.logout || "Выйти"}
               </div>
             </button>
-          </div>
-        )}
+          )}
+
+          {deleteAccount && (
+            <button
+              type="button"
+              className="settings-row button-row danger-row"
+              onClick={handleDeleteAccount}
+            >
+              <span>×</span>
+              <div className="settings-row-main">
+                {confirmDelete
+                  ? "Нажми ещё раз для удаления"
+                  : "Удалить аккаунт"}
+              </div>
+            </button>
+          )}
+        </div>
       </aside>
     </div>
   );

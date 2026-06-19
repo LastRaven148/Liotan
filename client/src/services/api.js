@@ -241,3 +241,14 @@ export async function getGroupApi(
   );
 
 }
+
+export async function deleteAccountApi() {
+
+  return apiRequest(
+    `${API}/me`,
+    {
+      method: "DELETE"
+    }
+  );
+
+}

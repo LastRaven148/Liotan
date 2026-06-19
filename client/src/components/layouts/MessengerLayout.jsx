@@ -38,7 +38,8 @@ export default function MessengerLayout({
     profileUser,
     settingsOpen,
     bio,
-    saveBio
+    saveBio,
+    deleteAccount
   } = app;
 
   return (
@@ -118,7 +119,10 @@ export default function MessengerLayout({
         saveBio={saveBio}
         uploadAvatar={uploadAvatar}
         logout={() =>
-  logout(socketRef)
+        logout(socketRef)
+       }
+       deleteAccount={() =>
+  deleteAccount(socketRef)
 }
       />
 
