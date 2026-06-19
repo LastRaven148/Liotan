@@ -42,6 +42,7 @@ export default function MessengerLayout({
     deleteAccount,
     createGroupOpen,
     setCreateGroupOpen,
+    addGroup,
     loadGroups
   } = app;
 
@@ -132,8 +133,8 @@ export default function MessengerLayout({
         }
         createGroupOpen={createGroupOpen}
         setCreateGroupOpen={setCreateGroupOpen}
-        onGroupCreated={() =>
-        loadGroups?.()
+        onGroupCreated={(group) =>
+        addGroup?.(group)
         }
       />
 

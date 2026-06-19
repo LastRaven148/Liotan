@@ -57,7 +57,9 @@ export default function DialogItem({
 
   const displayName =
     isGroup
-      ? dialog.name
+      ? dialog.title ||
+        dialog.name ||
+        "Группа"
       : isSavedMessages
         ? t.savedMessages
         : dialog.username;

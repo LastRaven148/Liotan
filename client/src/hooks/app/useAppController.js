@@ -166,6 +166,9 @@ export default function useAppController() {
     loadPinnedChats: dialogs.loadPinnedChats,
     togglePin: dialogs.togglePin,
 
+    loadGroups: dialogs.loadGroups,
+    addGroup: dialogs.addGroup,
+
     archivedChats: dialogs.archivedChats,
     loadArchivedChats: dialogs.loadArchivedChats,
     toggleArchive: dialogs.toggleArchive,

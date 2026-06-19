@@ -19,11 +19,20 @@ export default function UserProfileModal({
     setProfile
   ] = useState(user);
 
+  const isGroup =
+    user?.type === "group";
+
   useEffect(() => {
 
     let alive = true;
 
     async function load() {
+
+      if (isGroup) {
+        setProfile(user);
+        return;
+      }
+
       try {
         const data =
           await getProfile(user.username);
@@ -36,6 +45,7 @@ export default function UserProfileModal({
           setProfile(user);
         }
       }
+
     }
 
     if (user?.username) {
@@ -46,7 +56,10 @@ export default function UserProfileModal({
       alive = false;
     };
 
-  }, [user]);
+  }, [
+    user,
+    isGroup
+  ]);
 
   useEffect(() => {
 
@@ -72,6 +85,12 @@ export default function UserProfileModal({
   if (!profile) {
     return null;
   }
+
+  const title =
+    isGroup
+      ? profile.title ||
+        profile.name
+      : profile.username;
 
   return (
     <div
@@ -107,50 +126,88 @@ export default function UserProfileModal({
                 className="avatar-image"
               />
             ) : (
-              profile.username
-                .charAt(0)
-                .toUpperCase()
+              title
+                ? title.charAt(0).toUpperCase()
+                : "?"
             )}
           </div>
 
           <div className="profile-drawer-name">
-            {profile.username}
+            {title}
           </div>
         </div>
 
         <div className="profile-info-card">
-          <div className="profile-info-row">
-            <div className="profile-info-icon">
-              @
-            </div>
-
-            <div>
-              <div className="profile-info-main">
-                {profile.username}
-              </div>
-
-              <div className="profile-info-sub">
-                имя пользователя
-              </div>
-            </div>
-          </div>
-
-          {profile.bio?.trim() && (
-            <div className="profile-info-row">
-              <div className="profile-info-icon">
-                i
-              </div>
-
-              <div>
-                <div className="profile-info-main">
-                  {profile.bio}
+          {isGroup ? (
+            <>
+              <div className="profile-info-row">
+                <div className="profile-info-icon">
+                  #
                 </div>
 
-                <div className="profile-info-sub">
-                  о себе
+                <div>
+                  <div className="profile-info-main">
+                    {profile.members?.length || 1}
+                  </div>
+
+                  <div className="profile-info-sub">
+                    участников
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <div className="profile-info-row">
+                <div className="profile-info-icon">
+                  @
+                </div>
+
+                <div>
+                  <div className="profile-info-main">
+                    {profile.owner}
+                  </div>
+
+                  <div className="profile-info-sub">
+                    владелец
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="profile-info-row">
+                <div className="profile-info-icon">
+                  @
+                </div>
+
+                <div>
+                  <div className="profile-info-main">
+                    {profile.username}
+                  </div>
+
+                  <div className="profile-info-sub">
+                    имя пользователя
+                  </div>
+                </div>
+              </div>
+
+              {profile.bio?.trim() && (
+                <div className="profile-info-row">
+                  <div className="profile-info-icon">
+                    i
+                  </div>
+
+                  <div>
+                    <div className="profile-info-main">
+                      {profile.bio}
+                    </div>
+
+                    <div className="profile-info-sub">
+                      о себе
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </aside>

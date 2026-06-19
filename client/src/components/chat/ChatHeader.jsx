@@ -113,6 +113,22 @@ export default function ChatHeader({
   const isSavedMessages =
     activeChat === username;
 
+  const isGroup =
+    activeDialog?.type === "group";
+
+  const title =
+    isSavedMessages
+      ? t.savedMessages
+      : activeDialog?.title ||
+        activeDialog?.name ||
+        activeDialog?.username ||
+        activeChat;
+
+  const subtitle =
+    isGroup
+      ? `${activeDialog?.members?.length || 1} участников`
+      : null;
+
   const isTyping =
     Boolean(
       activeChat &&
@@ -120,68 +136,70 @@ export default function ChatHeader({
     );
 
   const isOnline =
+    !isGroup &&
     onlineUsers?.includes(activeChat);
 
   return (
-  <div
-    className="chat-header"
-    onClick={
-      isSavedMessages
-        ? undefined
-        : openProfile
-    }
-  >
-
-    <button
-      type="button"
-      className="mobile-back-button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onBack?.();
-      }}
+    <div
+      className="chat-header"
+      onClick={
+        isSavedMessages
+          ? undefined
+          : openProfile
+      }
     >
-      ←
-    </button>
 
-    <div className="chat-avatar">
-      {isSavedMessages ? (
-        <div className="saved-icon">
-          ★
-        </div>
-      ) : activeDialog?.avatar ? (
-        <img
-          src={avatarUrl(activeDialog.avatar)}
-          alt=""
-          className="avatar-image"
-        />
-      ) : (
-        activeChat
-          ? activeChat.charAt(0).toUpperCase()
-          : "?"
-      )}
-    </div>
+      <button
+        type="button"
+        className="mobile-back-button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onBack?.();
+        }}
+      >
+        ←
+      </button>
 
-    <div>
-      <div className="chat-name">
-        {isSavedMessages
-          ? t.savedMessages
-          : activeChat}
+      <div className="chat-avatar">
+        {isSavedMessages ? (
+          <div className="saved-icon">
+            ★
+          </div>
+        ) : activeDialog?.avatar ? (
+          <img
+            src={avatarUrl(activeDialog.avatar)}
+            alt=""
+            className="avatar-image"
+          />
+        ) : (
+          title
+            ? title.charAt(0).toUpperCase()
+            : "?"
+        )}
       </div>
 
-      {!isSavedMessages && (
-        <div className="chat-status">
-          {isTyping
-            ? t.typing
-            : isOnline
-              ? t.online
-              : getLastSeenText(
-                  activeDialog?.lastSeen,
-                  t
-                )}
+      <div>
+        <div className="chat-name">
+          {title}
         </div>
-      )}
-    </div>
 
-  </div>
-);
+        {!isSavedMessages && (
+          <div className="chat-status">
+            {isGroup
+              ? subtitle
+              : isTyping
+                ? t.typing
+                : isOnline
+                  ? t.online
+                  : getLastSeenText(
+                      activeDialog?.lastSeen,
+                      t
+                    )}
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+
 }

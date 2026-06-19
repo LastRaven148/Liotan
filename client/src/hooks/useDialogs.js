@@ -15,6 +15,30 @@ import {
   getGroupsApi
 } from "../services/api";
 
+function normalizeGroup(group) {
+
+  return {
+    type: "group",
+    groupId: group._id,
+    username: `group:${group._id}`,
+    chatKey: `group:${group._id}`,
+    title: group.name,
+    name: group.name,
+    avatar: group.avatar || "",
+    lastMessage: group.lastMessage || "Группа создана",
+    createdAt:
+      group.updatedAt ||
+      group.createdAt,
+    members:
+      group.members || [],
+    owner:
+      group.owner,
+    admins:
+      group.admins || []
+  };
+
+}
+
 export default function useDialogs() {
 
   const [dialogs, setDialogs] =
@@ -108,28 +132,12 @@ export default function useDialogs() {
             ...dialog,
             type: "private",
             chatKey: dialog.username,
-            title: dialog.username
+            title: dialog.username,
+            name: dialog.username
           }));
 
         const normalizedGroups =
-          groups.map(group => ({
-            type: "group",
-            groupId: group._id,
-            username: `group:${group._id}`,
-            chatKey: `group:${group._id}`,
-            title: group.name,
-            avatar: group.avatar || "",
-            lastMessage: "Группа создана",
-            createdAt:
-              group.updatedAt ||
-              group.createdAt,
-            members:
-              group.members || [],
-            owner:
-              group.owner,
-            admins:
-              group.admins || []
-          }));
+          groups.map(normalizeGroup);
 
         setDialogs([
           ...normalizedGroups,
@@ -138,6 +146,25 @@ export default function useDialogs() {
       } catch (err) {
         console.error(err);
       }
+    }, []);
+
+  const addGroup =
+    useCallback((group) => {
+
+      setDialogs(prev => {
+
+        const normalized =
+          normalizeGroup(group);
+
+        return [
+          normalized,
+          ...prev.filter(dialog =>
+            dialog.chatKey !== normalized.chatKey
+          )
+        ];
+
+      });
+
     }, []);
 
   useEffect(() => {
@@ -203,10 +230,9 @@ export default function useDialogs() {
             `group:${msg.groupId}`;
 
           const existing =
-            prev.find(
-              dialog =>
-                dialog.chatKey === chatKey ||
-                dialog.username === chatKey
+            prev.find(dialog =>
+              dialog.chatKey === chatKey ||
+              dialog.username === chatKey
             );
 
           if (!existing) {
@@ -215,18 +241,26 @@ export default function useDialogs() {
 
           const updated = {
             ...existing,
-            lastMessage: getPreview(msg),
-            createdAt: msg.createdAt
+            title:
+              existing.title ||
+              existing.name,
+            name:
+              existing.name ||
+              existing.title,
+            lastMessage:
+              getPreview(msg),
+            createdAt:
+              msg.createdAt
           };
 
           return [
             updated,
-            ...prev.filter(
-              dialog =>
-                dialog.chatKey !== chatKey &&
-                dialog.username !== chatKey
+            ...prev.filter(dialog =>
+              dialog.chatKey !== chatKey &&
+              dialog.username !== chatKey
             )
           ];
+
         }
 
         const targetUsername =
@@ -235,9 +269,8 @@ export default function useDialogs() {
             : msg.from;
 
         const existing =
-          prev.find(
-            dialog =>
-              dialog.username === targetUsername
+          prev.find(dialog =>
+            dialog.username === targetUsername
           );
 
         if (!existing) {
@@ -247,6 +280,7 @@ export default function useDialogs() {
               chatKey: targetUsername,
               username: targetUsername,
               title: targetUsername,
+              name: targetUsername,
               lastMessage: getPreview(msg),
               createdAt: msg.createdAt,
               lastSeen: null
@@ -263,9 +297,8 @@ export default function useDialogs() {
 
         return [
           updated,
-          ...prev.filter(
-            dialog =>
-              dialog.username !== targetUsername
+          ...prev.filter(dialog =>
+            dialog.username !== targetUsername
           )
         ];
 
@@ -307,24 +340,21 @@ export default function useDialogs() {
     useCallback((chatKey) => {
 
       setDialogs(prev =>
-        prev.filter(
-          dialog =>
-            dialog.chatKey !== chatKey &&
-            dialog.username !== chatKey
+        prev.filter(dialog =>
+          dialog.chatKey !== chatKey &&
+          dialog.username !== chatKey
         )
       );
 
       setPinnedChats(prev =>
-        prev.filter(
-          item =>
-            item !== chatKey
+        prev.filter(item =>
+          item !== chatKey
         )
       );
 
       setArchivedChats(prev =>
-        prev.filter(
-          item =>
-            item !== chatKey
+        prev.filter(item =>
+          item !== chatKey
         )
       );
 
@@ -339,10 +369,9 @@ export default function useDialogs() {
           searchResults.map(user => {
 
             const existingDialog =
-              dialogs.find(
-                dialog =>
-                  dialog.username ===
-                  user.username
+              dialogs.find(dialog =>
+                dialog.username ===
+                user.username
               );
 
             return {
@@ -350,6 +379,7 @@ export default function useDialogs() {
               chatKey: user.username,
               username: user.username,
               title: user.username,
+              name: user.username,
               avatar:
                 user.avatar ||
                 existingDialog?.avatar ||
@@ -375,8 +405,12 @@ export default function useDialogs() {
         const groupResults =
           dialogs.filter(dialog =>
             dialog.type === "group" &&
-            dialog.title
-              ?.toLowerCase()
+            (
+              dialog.title ||
+              dialog.name ||
+              ""
+            )
+              .toLowerCase()
               .includes(
                 search.trim().toLowerCase()
               )
@@ -429,6 +463,7 @@ export default function useDialogs() {
 
     loadDialogs,
     loadGroups: loadDialogs,
+    addGroup,
     updateDialog,
     updateUserLastSeen,
     removeDialog,
