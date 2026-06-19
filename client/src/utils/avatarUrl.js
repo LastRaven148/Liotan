@@ -1,11 +1,6 @@
-import { API } from "../config/api";
+import { mediaUrl }
+from "./mediaUrl";
 
-export function avatarUrl(path) {
-
-  if (!path) {
-    return null;
-  }
-
-  return `${API}${path}`;
-
+export function avatarUrl(url) {
+  return mediaUrl(url);
 }

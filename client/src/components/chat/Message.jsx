@@ -15,6 +15,9 @@ import {
   useLanguage
 } from "../../context/LanguageContext";
 
+import { mediaUrl }
+from "../../utils/mediaUrl";
+
 function Message({
   message,
   username,
@@ -68,9 +71,9 @@ function Message({
     !hasAttachment;
 
   const fileUrl =
-    hasAttachment
-      ? `${API}${attachment.url}`
-      : "";
+  hasAttachment
+    ? mediaUrl(attachment.url)
+    : "";
 
   useEffect(() => {
 
