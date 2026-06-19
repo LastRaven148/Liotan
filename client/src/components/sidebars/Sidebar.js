@@ -29,6 +29,7 @@ export default function Sidebar({
   activeChat,
   openChat,
   deleteChat,
+  openCreateGroup,
   unread
 }) {
 
@@ -68,6 +69,7 @@ export default function Sidebar({
           openChat={openChat}
           showArchive={showArchive}
           setShowArchive={setShowArchive}
+          openCreateGroup={openCreateGroup}
         />
       )}
 

@@ -8,6 +8,7 @@ export default function SidebarMenu({
   closeProfileMenu,
   openSettings,
   openChat,
+  openCreateGroup,
   showArchive,
   setShowArchive
 }) {
@@ -29,6 +30,17 @@ export default function SidebarMenu({
       >
         <span>@</span>
         Мой профиль
+      </button>
+
+      <button
+        className="telegram-menu-item"
+        onClick={() => {
+          openCreateGroup();
+          closeProfileMenu();
+        }}
+      >
+        <span>+</span>
+        Создать группу
       </button>
 
       <button

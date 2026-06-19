@@ -428,6 +428,7 @@ export default function useDialogs() {
     setSearch,
 
     loadDialogs,
+    loadGroups: loadDialogs,
     updateDialog,
     updateUserLastSeen,
     removeDialog,

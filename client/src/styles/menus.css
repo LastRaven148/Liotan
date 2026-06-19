@@ -131,3 +131,44 @@
     transform:translateY(0) scale(1);
   }
 }
+
+.dialog-delete-confirm{
+  padding:8px;
+}
+
+.dialog-delete-title{
+  color:white;
+  font-size:14px;
+  font-weight:700;
+  margin-bottom:4px;
+}
+
+.dialog-delete-text{
+  color:#9fb0c1;
+  font-size:12px;
+  line-height:1.35;
+  margin-bottom:10px;
+}
+
+.dialog-delete-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+
+.dialog-delete-actions button{
+  width:auto;
+  height:32px;
+  padding:0 12px;
+  border-radius:8px;
+  font-size:12px;
+}
+
+.dialog-delete-actions button.danger{
+  background:#ef4444;
+  color:white;
+}
+
+.dialog-delete-actions button.danger:hover{
+  background:#dc2626;
+}

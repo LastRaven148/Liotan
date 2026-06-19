@@ -30,7 +30,7 @@ export default function DialogItem({
   const [menuOpen, setMenuOpen] =
     useState(false);
 
-  const [deleteModalOpen, setDeleteModalOpen] =
+  const [confirmDelete, setConfirmDelete] =
     useState(false);
 
   const menuRef =
@@ -42,16 +42,25 @@ export default function DialogItem({
   const longPressRef =
     useRef(null);
 
+  const chatKey =
+    dialog.chatKey ||
+    dialog.username;
+
+  const isGroup =
+    dialog.type === "group";
+
   const unreadCount =
-    unread[dialog.username] || 0;
+    unread[chatKey] || 0;
 
   const isSavedMessages =
     dialog.username === username;
 
   const displayName =
-    isSavedMessages
-      ? t.savedMessages
-      : dialog.username;
+    isGroup
+      ? dialog.name
+      : isSavedMessages
+        ? t.savedMessages
+        : dialog.username;
 
   useEffect(() => {
 
@@ -59,7 +68,7 @@ export default function DialogItem({
 
       if (e.key === "Escape") {
         setMenuOpen(false);
-        setDeleteModalOpen(false);
+        setConfirmDelete(false);
       }
 
     }
@@ -85,6 +94,7 @@ export default function DialogItem({
       }
 
       setMenuOpen(false);
+      setConfirmDelete(false);
 
     }
 
@@ -131,6 +141,7 @@ export default function DialogItem({
     e.preventDefault();
     e.stopPropagation();
 
+    setConfirmDelete(false);
     setMenuOpen(true);
 
   }
@@ -163,7 +174,7 @@ export default function DialogItem({
       return;
     }
 
-    openChat(dialog.username);
+    openChat(chatKey);
 
   }
 
@@ -171,15 +182,30 @@ export default function DialogItem({
 
     e.stopPropagation();
 
-    setMenuOpen(false);
-    setDeleteModalOpen(true);
+    if (isGroup) {
+      return;
+    }
+
+    setConfirmDelete(true);
 
   }
 
-  function confirmDelete() {
+  function cancelDelete(e) {
+
+    e.stopPropagation();
+
+    setConfirmDelete(false);
+
+  }
+
+  function confirmDeleteChat(e) {
+
+    e.stopPropagation();
 
     deleteChat(dialog.username);
-    setDeleteModalOpen(false);
+
+    setConfirmDelete(false);
+    setMenuOpen(false);
 
   }
 
@@ -202,170 +228,169 @@ export default function DialogItem({
   }
 
   return (
-    <>
-      <div
-        ref={itemRef}
-        className={
-          activeChat === dialog.username
-            ? "user active"
-            : "user"
-        }
-        onClick={handleOpenChat}
-        onContextMenu={handleContextMenu}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={clearLongPress}
-        onTouchMove={clearLongPress}
-        onTouchCancel={clearLongPress}
-      >
+    <div
+      ref={itemRef}
+      className={
+        activeChat === chatKey
+          ? "user active"
+          : "user"
+      }
+      onClick={handleOpenChat}
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={clearLongPress}
+      onTouchMove={clearLongPress}
+      onTouchCancel={clearLongPress}
+    >
 
-        {menuOpen && (
-          <div
-            ref={menuRef}
-            className="dialog-context-menu telegram-action-menu"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-          >
-
-            <button
-              type="button"
-              onClick={handlePin}
-            >
-              <span>
-                {isPinned ? "⌫" : "📌"}
-              </span>
-
-              {isPinned
-                ? t.unpinChat
-                : t.pinChat}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleArchive}
-            >
-              <span>▣</span>
-
-              {isArchived || showArchive
-                ? t.unarchiveChat
-                : t.archiveChat}
-            </button>
-
-            <button
-              type="button"
-              className="danger"
-              onClick={handleDelete}
-            >
-              <span>⌫</span>
-              {t.deleteChat}
-            </button>
-
-          </div>
-        )}
-
-        <div className="avatar">
-          {isSavedMessages ? (
-            <div className="saved-icon">
-              ★
-            </div>
-          ) : dialog.avatar ? (
-            <img
-              src={avatarUrl(dialog.avatar)}
-              alt=""
-              className="avatar-image"
-            />
-          ) : (
-            dialog.username
-              .charAt(0)
-              .toUpperCase()
-          )}
-        </div>
-
-        <div className="dialog-info">
-          <div className="user-name">
-            {displayName}
-
-            {isPinned && (
-              <span className="dialog-pin">
-                📌
-              </span>
-            )}
-          </div>
-
-          <div className="dialog-preview">
-            {dialog.lastMessage || t.noMessages}
-          </div>
-        </div>
-
-        <div className="dialog-meta">
-          <div className="dialog-time">
-            {dialog.createdAt
-              ? new Date(dialog.createdAt)
-                  .toLocaleTimeString(
-                    [],
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    }
-                  )
-              : ""}
-          </div>
-
-          {unreadCount > 0 && (
-            <div className="unread">
-              {unreadCount}
-            </div>
-          )}
-        </div>
-
-      </div>
-
-      {deleteModalOpen && (
+      {menuOpen && (
         <div
-          className="modal-overlay"
-          onMouseDown={() =>
-            setDeleteModalOpen(false)
+          ref={menuRef}
+          className="dialog-context-menu telegram-action-menu"
+          onClick={(e) =>
+            e.stopPropagation()
           }
         >
-          <div
-            className="confirm-modal"
-            onMouseDown={(e) =>
-              e.stopPropagation()
-            }
-          >
-            <div className="confirm-title">
-              {t.deleteChat}
-            </div>
 
-            <div className="confirm-text">
-              {isSavedMessages
-                ? t.clearSavedMessages
-                : `${t.deleteChatConfirm} ${dialog.username}?`}
-            </div>
+          {confirmDelete ? (
+            <div className="dialog-delete-confirm">
+              <div className="dialog-delete-title">
+                {t.deleteChat || "Удалить чат"}
+              </div>
 
-            <div className="confirm-actions">
-              <button
-                type="button"
-                className="confirm-cancel"
-                onClick={() =>
-                  setDeleteModalOpen(false)
-                }
-              >
-                {t.cancel}
-              </button>
+              <div className="dialog-delete-text">
+                {isSavedMessages
+                  ? t.clearSavedMessages || "Очистить избранное?"
+                  : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
+              </div>
 
-              <button
-                type="button"
-                className="confirm-danger"
-                onClick={confirmDelete}
-              >
-                {t.delete}
-              </button>
+              <div className="dialog-delete-actions">
+                <button
+                  type="button"
+                  onClick={cancelDelete}
+                >
+                  {t.cancel || "Отмена"}
+                </button>
+
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={confirmDeleteChat}
+                >
+                  {t.delete || "Удалить"}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {!isGroup && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePin}
+                  >
+                    <span>{isPinned ? "−" : "⌃"}</span>
+
+                    {isPinned
+                      ? t.unpinChat
+                      : t.pinChat}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleArchive}
+                  >
+                    <span>□</span>
+
+                    {isArchived || showArchive
+                      ? t.unarchiveChat
+                      : t.archiveChat}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={handleDelete}
+                  >
+                    <span>×</span>
+                    {t.deleteChat}
+                  </button>
+                </>
+              )}
+
+              {isGroup && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMenuOpen(false)
+                  }
+                >
+                  <span>i</span>
+                  Информация
+                </button>
+              )}
+            </>
+          )}
+
         </div>
       )}
-    </>
+
+      <div className="avatar">
+        {isSavedMessages ? (
+          <div className="saved-icon">
+            ★
+          </div>
+        ) : dialog.avatar ? (
+          <img
+            src={avatarUrl(dialog.avatar)}
+            alt=""
+            className="avatar-image"
+          />
+        ) : (
+          displayName
+            ? displayName.charAt(0).toUpperCase()
+            : "?"
+        )}
+      </div>
+
+      <div className="dialog-info">
+        <div className="user-name">
+          {displayName}
+
+          {isPinned && !isGroup && (
+            <span className="dialog-pin">
+              ⌃
+            </span>
+          )}
+        </div>
+
+        <div className="dialog-preview">
+          {dialog.lastMessage || t.noMessages}
+        </div>
+      </div>
+
+      <div className="dialog-meta">
+        <div className="dialog-time">
+          {dialog.createdAt
+            ? new Date(dialog.createdAt)
+                .toLocaleTimeString(
+                  [],
+                  {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  }
+                )
+            : ""}
+        </div>
+
+        {unreadCount > 0 && (
+          <div className="unread">
+            {unreadCount}
+          </div>
+        )}
+      </div>
+
+    </div>
   );
 
 }

@@ -17,6 +17,11 @@ export default function useUI() {
     setSettingsOpen
   ] = useState(false);
 
+  const [
+    createGroupOpen,
+    setCreateGroupOpen
+  ] = useState(false);
+
   return {
 
     profileMenu,
@@ -26,7 +31,10 @@ export default function useUI() {
     setProfileUser,
 
     settingsOpen,
-    setSettingsOpen
+    setSettingsOpen,
+
+    createGroupOpen,
+    setCreateGroupOpen
 
   };
 

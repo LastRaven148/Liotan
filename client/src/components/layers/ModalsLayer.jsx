@@ -4,18 +4,24 @@ from "../modals/UserProfileModal";
 import SettingsModal
 from "../modals/SettingsModal";
 
+import CreateGroupModal
+from "../modals/CreateGroupModal";
+
 export default function ModalsLayer({
   profileUser,
   setProfileUser,
   settingsOpen,
   setSettingsOpen,
+  createGroupOpen,
+  setCreateGroupOpen,
   username,
   avatar,
   bio,
   saveBio,
   uploadAvatar,
   logout,
-  deleteAccount
+  deleteAccount,
+  onGroupCreated
 }) {
 
   return (
@@ -41,6 +47,15 @@ export default function ModalsLayer({
             setSettingsOpen(false)
           }
           deleteAccount={deleteAccount}
+        />
+      )}
+
+      {createGroupOpen && (
+        <CreateGroupModal
+          onClose={() =>
+            setCreateGroupOpen(false)
+          }
+          onCreated={onGroupCreated}
         />
       )}
     </>

@@ -39,7 +39,10 @@ export default function MessengerLayout({
     settingsOpen,
     bio,
     saveBio,
-    deleteAccount
+    deleteAccount,
+    createGroupOpen,
+    setCreateGroupOpen,
+    loadGroups
   } = app;
 
   return (
@@ -80,6 +83,9 @@ export default function MessengerLayout({
         openSettings={() =>
           setSettingsOpen(true)
         }
+        openCreateGroup={() =>
+          setCreateGroupOpen(true)
+}
       />
 
       <Chat
@@ -120,10 +126,15 @@ export default function MessengerLayout({
         uploadAvatar={uploadAvatar}
         logout={() =>
         logout(socketRef)
-       }
-       deleteAccount={() =>
-  deleteAccount(socketRef)
-}
+        }
+        deleteAccount={() =>
+        deleteAccount(socketRef)
+        }
+        createGroupOpen={createGroupOpen}
+        setCreateGroupOpen={setCreateGroupOpen}
+        onGroupCreated={() =>
+        loadGroups?.()
+        }
       />
 
     </div>

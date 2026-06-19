@@ -18,13 +18,15 @@ import {
 export default function useAppController() {
 
   const {
-    profileMenu,
-    setProfileMenu,
-    profileUser,
-    setProfileUser,
-    settingsOpen,
-    setSettingsOpen
-  } = useUI();
+  profileMenu,
+  setProfileMenu,
+  profileUser,
+  setProfileUser,
+  settingsOpen,
+  setSettingsOpen,
+  createGroupOpen,
+  setCreateGroupOpen
+} = useUI();
 
   const [avatar, setAvatar] =
     useState("");
@@ -151,6 +153,9 @@ export default function useAppController() {
 
     settingsOpen,
     setSettingsOpen,
+
+    createGroupOpen,
+    setCreateGroupOpen,
 
     uploadAvatar: profile.uploadAvatar,
     saveBio: profile.saveBio,
