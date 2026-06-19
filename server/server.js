@@ -69,6 +69,9 @@ const uploadErrorHandler =
 const attachmentRoutes =
   require("./routes/attachmentRoutes");
 
+const adminRoutes =
+  require("./routes/adminRoutes");
+
 if (!process.env.JWT_SECRET) {
   throw new Error(
     "JWT_SECRET is missing"
@@ -233,6 +236,7 @@ app.use(dialogRoutes);
 app.use(groupRoutes);
 app.use(attachmentRoutes);
 app.use(groupMessageRoutes);
+app.use(adminRoutes);
 
 app.use(uploadErrorHandler);
 app.use(errorHandler);
