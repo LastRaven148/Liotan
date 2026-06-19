@@ -1,19 +1,8 @@
-require("dotenv").config({
-  path: require("path").join(
-    __dirname,
-    "..",
-    ".env"
-  )
-});
-
 const path =
   require("path");
 
 const fs =
   require("fs/promises");
-
-const connectDb =
-  require("../config/db");
 
 const User =
   require("../models/User");
@@ -108,9 +97,7 @@ async function walk(dir) {
 
 }
 
-async function main() {
-
-  await connectDb();
+async function cleanupUploads() {
 
   const usedFiles =
     new Set();
@@ -122,14 +109,12 @@ async function main() {
     );
 
   for (const user of users) {
-
     const filePath =
       urlToPath(user.avatar);
 
     if (filePath) {
       usedFiles.add(filePath);
     }
-
   }
 
   const messages =
@@ -139,7 +124,6 @@ async function main() {
     );
 
   for (const message of messages) {
-
     const filePath =
       urlToPath(
         message.attachment?.url
@@ -148,7 +132,6 @@ async function main() {
     if (filePath) {
       usedFiles.add(filePath);
     }
-
   }
 
   const groups =
@@ -158,14 +141,12 @@ async function main() {
     );
 
   for (const group of groups) {
-
     const filePath =
       urlToPath(group.avatar);
 
     if (filePath) {
       usedFiles.add(filePath);
     }
-
   }
 
   const allFiles =
@@ -193,11 +174,12 @@ async function main() {
     `Cleanup finished. Deleted files: ${deleted}`
   );
 
-  process.exit(0);
+  return {
+    ok: true,
+    deleted
+  };
 
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+module.exports =
+  cleanupUploads;
