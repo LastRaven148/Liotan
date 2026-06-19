@@ -45,3 +45,10 @@ RavensNest_Source.txt
 RavensNest_All_Code.txt
 *_Source.txt
 *_All_Code.txt
+
+server/uploads/*
+!server/uploads/.gitkeep
+!server/uploads/avatars/
+!server/uploads/attachments/
+!server/uploads/avatars/.gitkeep
+!server/uploads/attachments/.gitkeep
