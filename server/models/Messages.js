@@ -127,7 +127,16 @@ const messageSchema =
         size: {
           type: Number,
           default: 0
-        }
+        },
+        publicId: {
+  type: String,
+  default: ""
+},
+
+resourceType: {
+  type: String,
+  default: "auto"
+}
       }
     },
     {

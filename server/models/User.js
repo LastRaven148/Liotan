@@ -17,6 +17,16 @@ module.exports =
         default: ""
       },
 
+      avatarPublicId: {
+        type: String,
+        default: ""
+      },
+
+      avatarResourceType: {
+        type: String,
+        default: "image"
+      },
+
       bio: {
         type: String,
         default: ""

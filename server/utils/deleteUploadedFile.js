@@ -4,6 +4,9 @@ const path =
 const fs =
   require("fs/promises");
 
+const cloudinary =
+  require("../config/cloudinary");
+
 const uploadsDir =
   path.resolve(
     __dirname,
@@ -11,7 +14,7 @@ const uploadsDir =
     "uploads"
   );
 
-async function deleteUploadedFile(
+async function deleteLocalFile(
   fileUrl
 ) {
 
@@ -24,7 +27,7 @@ async function deleteUploadedFile(
       return;
     }
 
-    const cleanUrl =
+    const relative =
       fileUrl.replace(
         "/uploads/",
         ""
@@ -33,7 +36,7 @@ async function deleteUploadedFile(
     const filePath =
       path.resolve(
         uploadsDir,
-        cleanUrl
+        relative
       );
 
     if (
@@ -50,11 +53,69 @@ async function deleteUploadedFile(
 
     if (err.code !== "ENOENT") {
       console.error(
-        "DELETE UPLOADED FILE ERROR:",
+        "DELETE LOCAL FILE ERROR:",
         err.message
       );
     }
 
+  }
+
+}
+
+async function deleteCloudinaryFile({
+  publicId,
+  resourceType = "image"
+}) {
+
+  if (!publicId) {
+    return;
+  }
+
+  try {
+
+    await cloudinary.uploader.destroy(
+      publicId,
+      {
+        resource_type:
+          resourceType || "image"
+      }
+    );
+
+  } catch (err) {
+
+    console.error(
+      "DELETE CLOUDINARY FILE ERROR:",
+      err.message
+    );
+
+  }
+
+}
+
+async function deleteUploadedFile(
+  file
+) {
+
+  if (!file) {
+    return;
+  }
+
+  if (typeof file === "string") {
+    await deleteLocalFile(file);
+    return;
+  }
+
+  if (file.publicId) {
+    await deleteCloudinaryFile({
+      publicId:
+        file.publicId,
+      resourceType:
+        file.resourceType
+    });
+  }
+
+  if (file.url) {
+    await deleteLocalFile(file.url);
   }
 
 }

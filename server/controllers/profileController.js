@@ -1,6 +1,12 @@
 const User =
   require("../models/User");
 
+const uploadToCloudinary =
+  require("../utils/uploadToCloudinary");
+
+const deleteUploadedFile =
+  require("../utils/deleteUploadedFile");
+
 const {
   isValidBio,
   isValidUsername
@@ -25,9 +31,7 @@ async function getProfile(
 
     const user =
       await User.findOne(
-        {
-          username
-        },
+        { username },
         "username avatar bio"
       );
 
@@ -68,12 +72,8 @@ async function updateProfile(
     }
 
     await User.updateOne(
-      {
-        username
-      },
-      {
-        bio
-      }
+      { username },
+      { bio }
     );
 
     res.json({
@@ -103,20 +103,47 @@ async function uploadAvatar(
       });
     }
 
-    const avatar =
-      `/uploads/avatars/${req.file.filename}`;
+    const user =
+      await User.findOne({
+        username
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        error: "not found"
+      });
+    }
+
+    await deleteUploadedFile({
+      url: user.avatar,
+      publicId: user.avatarPublicId,
+      resourceType: user.avatarResourceType
+    });
+
+    const result =
+      await uploadToCloudinary(
+        req.file,
+        {
+          folder: "liotan/avatars",
+          resourceType: "image"
+        }
+      );
 
     await User.updateOne(
+      { username },
       {
-        username
-      },
-      {
-        avatar
+        avatar:
+          result.secure_url,
+        avatarPublicId:
+          result.public_id,
+        avatarResourceType:
+          result.resource_type
       }
     );
 
     res.json({
-      avatar
+      avatar:
+        result.secure_url
     });
 
   } catch (err) {
