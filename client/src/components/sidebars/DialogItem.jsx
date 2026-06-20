@@ -21,7 +21,8 @@ export default function DialogItem({
   isArchived,
   togglePin,
   toggleArchive,
-  showArchive
+  showArchive,
+  deleteGroupDialog
 }) {
 
   const { t } =
@@ -202,14 +203,18 @@ export default function DialogItem({
 
   function confirmDeleteChat(e) {
 
-    e.stopPropagation();
+  e.stopPropagation();
 
+  if (isGroup) {
+    deleteGroupDialog?.(dialog);
+  } else {
     deleteChat(dialog.username);
-
-    setConfirmDelete(false);
-    setMenuOpen(false);
-
   }
+
+  setConfirmDelete(false);
+  setMenuOpen(false);
+
+}
 
   function handlePin(e) {
 
@@ -261,9 +266,13 @@ export default function DialogItem({
               </div>
 
               <div className="dialog-delete-text">
-                {isSavedMessages
-                  ? t.clearSavedMessages || "Очистить избранное?"
-                  : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
+                {isGroup
+  ? dialog.owner === username
+    ? `Удалить группу ${displayName}?`
+    : `Выйти из группы ${displayName}?`
+  : isSavedMessages
+    ? t.clearSavedMessages || "Очистить избранное?"
+    : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
               </div>
 
               <div className="dialog-delete-actions">
@@ -321,16 +330,45 @@ export default function DialogItem({
               )}
 
               {isGroup && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMenuOpen(false)
-                  }
-                >
-                  <span>i</span>
-                  Информация
-                </button>
-              )}
+  <>
+    <button
+      type="button"
+      onClick={handlePin}
+    >
+      <span>{isPinned ? "−" : "⌃"}</span>
+
+      {isPinned
+        ? t.unpinChat
+        : t.pinChat}
+    </button>
+
+    <button
+      type="button"
+      onClick={handleArchive}
+    >
+      <span>□</span>
+
+      {isArchived || showArchive
+        ? t.unarchiveChat
+        : t.archiveChat}
+    </button>
+
+    <button
+      type="button"
+      className="danger"
+      onClick={(e) => {
+        e.stopPropagation();
+        setConfirmDelete(true);
+      }}
+    >
+      <span>×</span>
+
+      {dialog.owner === username
+        ? "Удалить группу"
+        : "Выйти из группы"}
+    </button>
+  </>
+)}
             </>
           )}
 

@@ -12,7 +12,9 @@ import {
   togglePinnedChatApi,
   getArchivedChatsApi,
   toggleArchivedChatApi,
-  getGroupsApi
+  getGroupsApi,
+  leaveGroupApi,
+  deleteGroupApi
 } from "../services/api";
 
 function normalizeGroup(group) {
@@ -39,7 +41,9 @@ function normalizeGroup(group) {
 
 }
 
-export default function useDialogs() {
+export default function useDialogs({
+  username
+} = {}) {
 
   const [dialogs, setDialogs] =
     useState([]);
@@ -203,18 +207,18 @@ export default function useDialogs() {
       currentUser
     ) => {
 
-      function getPreview(msg) {
+      function getPreview(value) {
 
-        if (msg.text) {
-          return msg.text;
+        if (value.text) {
+          return value.text;
         }
 
-        if (msg.attachment?.type === "photo") {
+        if (value.attachment?.type === "photo") {
           return "Photo";
         }
 
-        if (msg.attachment?.type === "file") {
-          return msg.attachment.name || "File";
+        if (value.attachment?.type === "file") {
+          return value.attachment.name || "File";
         }
 
         return "No messages yet";
@@ -360,6 +364,44 @@ export default function useDialogs() {
 
     }, []);
 
+  const deleteGroupDialog =
+    useCallback(async (dialog) => {
+
+      if (
+        !dialog ||
+        dialog.type !== "group" ||
+        !dialog.groupId
+      ) {
+        return;
+      }
+
+      try {
+
+        if (dialog.owner === username) {
+          await deleteGroupApi(
+            dialog.groupId
+          );
+        } else {
+          await leaveGroupApi(
+            dialog.groupId
+          );
+        }
+
+        const key =
+          dialog.chatKey ||
+          `group:${dialog.groupId}`;
+
+        removeDialog(key);
+
+      } catch (err) {
+        console.error(err);
+      }
+
+    }, [
+      username,
+      removeDialog
+    ]);
+
   const filteredDialogs =
     useMemo(() => {
 
@@ -370,8 +412,7 @@ export default function useDialogs() {
 
             const existingDialog =
               dialogs.find(dialog =>
-                dialog.username ===
-                user.username
+                dialog.username === user.username
               );
 
             return {
@@ -467,6 +508,7 @@ export default function useDialogs() {
     updateDialog,
     updateUserLastSeen,
     removeDialog,
+    deleteGroupDialog,
 
     filteredDialogs
   };

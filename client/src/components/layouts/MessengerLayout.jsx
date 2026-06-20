@@ -43,6 +43,7 @@ export default function MessengerLayout({
     createGroupOpen,
     setCreateGroupOpen,
     addGroup,
+    deleteGroupDialog,
     loadGroups
   } = app;
 
@@ -78,6 +79,7 @@ export default function MessengerLayout({
         openChat={chat.openChat}
         deleteChat={chat.deleteChat}
         unread={unread}
+        deleteGroupDialog={deleteGroupDialog}
         closeProfileMenu={() =>
           setProfileMenu(false)
         }

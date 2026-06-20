@@ -4,6 +4,12 @@ const Group =
 const User =
   require("../models/User");
 
+const Message =
+  require("../models/Messages");
+
+const deleteUploadedFile =
+  require("../utils/deleteUploadedFile");
+
 const {
   isValidUsername
 } = require("../utils/validators");
@@ -24,6 +30,23 @@ function normalizeMembers(
       ...list.filter(isValidUsername)
     ])
   ];
+
+}
+
+async function deleteGroupMessageFiles(
+  messages
+) {
+
+  for (const message of messages) {
+    await deleteUploadedFile({
+      url:
+        message.attachment?.url,
+      publicId:
+        message.attachment?.publicId,
+      resourceType:
+        message.attachment?.resourceType
+    });
+  }
 
 }
 
@@ -165,8 +188,151 @@ async function getGroupById(
 
 }
 
+async function leaveGroup(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    if (group.owner === username) {
+      return res.status(400).json({
+        error: "owner must delete group"
+      });
+    }
+
+    await Group.updateOne(
+      {
+        _id: group._id
+      },
+      {
+        $pull: {
+          members: username,
+          admins: username
+        }
+      }
+    );
+
+    const chatKey =
+      `group:${group._id}`;
+
+    await User.updateOne(
+      {
+        username
+      },
+      {
+        $pull: {
+          pinnedChats: chatKey,
+          archivedChats: chatKey
+        }
+      }
+    );
+
+    res.json({
+      ok: true
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function deleteGroup(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    if (group.owner !== username) {
+      return res.status(403).json({
+        error: "only owner can delete group"
+      });
+    }
+
+    const messages =
+      await Message.find({
+        chatType: "group",
+        groupId: group._id
+      });
+
+    await deleteGroupMessageFiles(
+      messages
+    );
+
+    await Message.deleteMany({
+      chatType: "group",
+      groupId: group._id
+    });
+
+    await deleteUploadedFile({
+      url: group.avatar,
+      publicId: group.avatarPublicId,
+      resourceType: group.avatarResourceType
+    });
+
+    const chatKey =
+      `group:${group._id}`;
+
+    await User.updateMany(
+      {},
+      {
+        $pull: {
+          pinnedChats: chatKey,
+          archivedChats: chatKey
+        }
+      }
+    );
+
+    await Group.deleteOne({
+      _id: group._id
+    });
+
+    res.json({
+      ok: true
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 module.exports = {
   createGroup,
   getMyGroups,
-  getGroupById
+  getGroupById,
+  leaveGroup,
+  deleteGroup
 };

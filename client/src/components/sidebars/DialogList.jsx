@@ -15,6 +15,7 @@ export default function DialogList({
   openChat,
   deleteChat,
   unread,
+  deleteGroupDialog,
   username
 }) {
 
@@ -33,9 +34,19 @@ export default function DialogList({
 
       return [...dialogs].sort((a, b) => {
 
-        const aPinned = pinnedChats.includes(a.username);
+        const aKey =
+          a.chatKey ||
+          a.username;
 
-        const bPinned = pinnedChats.includes(b.username);
+        const bKey =
+          b.chatKey ||
+          b.username;
+
+        const aPinned =
+          safePinnedChats.includes(aKey);
+
+        const bPinned =
+          safePinnedChats.includes(bKey);
 
         if (aPinned && !bPinned) {
           return -1;
@@ -51,36 +62,41 @@ export default function DialogList({
 
     }, [
       dialogs,
-      pinnedChats
+      safePinnedChats
     ]);
 
   return (
     <div className="dialogs-list">
 
-      {sortedDialogs.map(dialog => (
-        <DialogItem
-          key={dialog.username}
-          dialog={dialog}
-          activeChat={activeChat}
-          openChat={openChat}
-          deleteChat={deleteChat}
-          unread={unread}
-          username={username}
-          isPinned={
-            safePinnedChats.includes(
-              dialog.username
-            )
-          }
-          isArchived={
-            safeArchivedChats.includes(
-              dialog.username
-            )
-          }
-          togglePin={togglePin}
-          toggleArchive={toggleArchive}
-          showArchive={showArchive}
-        />
-      ))}
+      {sortedDialogs.map(dialog => {
+
+        const dialogKey =
+          dialog.chatKey ||
+          dialog.username;
+
+        return (
+          <DialogItem
+            key={dialogKey}
+            dialog={dialog}
+            activeChat={activeChat}
+            openChat={openChat}
+            deleteChat={deleteChat}
+            unread={unread}
+            username={username}
+            isPinned={
+              safePinnedChats.includes(dialogKey)
+            }
+            isArchived={
+              safeArchivedChats.includes(dialogKey)
+            }
+            togglePin={togglePin}
+            toggleArchive={toggleArchive}
+            showArchive={showArchive}
+            deleteGroupDialog={deleteGroupDialog}
+          />
+        );
+
+      })}
 
     </div>
   );

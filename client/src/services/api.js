@@ -252,3 +252,29 @@ export async function deleteAccountApi() {
   );
 
 }
+
+export async function leaveGroupApi(
+  groupId
+) {
+
+  return apiRequest(
+    `${API}/groups/${groupId}/leave`,
+    {
+      method: "POST"
+    }
+  );
+
+}
+
+export async function deleteGroupApi(
+  groupId
+) {
+
+  return apiRequest(
+    `${API}/groups/${groupId}`,
+    {
+      method: "DELETE"
+    }
+  );
+
+}

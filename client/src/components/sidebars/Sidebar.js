@@ -30,6 +30,7 @@ export default function Sidebar({
   openChat,
   deleteChat,
   openCreateGroup,
+  deleteGroupDialog,
   unread
 }) {
 
@@ -85,6 +86,7 @@ export default function Sidebar({
         deleteChat={deleteChat}
         unread={unread}
         username={username}
+        deleteGroupDialog={deleteGroupDialog}
       />
 
     </aside>

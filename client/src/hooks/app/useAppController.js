@@ -75,7 +75,9 @@ export default function useAppController() {
     });
 
   const dialogs =
-    useDialogs();
+  useDialogs({
+    username
+  });
 
   const chat =
     useChat({
@@ -178,6 +180,7 @@ export default function useAppController() {
     search: dialogs.search,
     setSearch: dialogs.setSearch,
     filteredDialogs: dialogs.filteredDialogs,
+    deleteGroupDialog: dialogs.deleteGroupDialog,
 
     chat
   };

@@ -7,7 +7,9 @@ const authMiddleware =
 const {
   createGroup,
   getMyGroups,
-  getGroupById
+  getGroupById,
+  leaveGroup,
+  deleteGroup
 } = require("../controllers/groupController");
 
 const router =
@@ -31,4 +33,17 @@ router.get(
   getGroupById
 );
 
-module.exports = router;
+router.post(
+  "/groups/:id/leave",
+  authMiddleware,
+  leaveGroup
+);
+
+router.delete(
+  "/groups/:id",
+  authMiddleware,
+  deleteGroup
+);
+
+module.exports =
+  router;
