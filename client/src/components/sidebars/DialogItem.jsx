@@ -205,13 +205,6 @@ export default function DialogItem({
 
   e.stopPropagation();
 
-  console.log("DELETE CONFIRM", {
-    isGroup,
-    dialog,
-    deleteGroupDialogExists:
-      typeof deleteGroupDialog === "function"
-  });
-
   if (isGroup) {
     if (typeof deleteGroupDialog !== "function") {
       console.error("deleteGroupDialog is not passed");

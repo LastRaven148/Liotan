@@ -367,8 +367,6 @@ export default function useDialogs({
   const deleteGroupDialog =
   useCallback(async (dialog) => {
 
-    console.log("DELETE GROUP DIALOG", dialog);
-
     if (
       !dialog ||
       dialog.type !== "group" ||
@@ -381,13 +379,11 @@ export default function useDialogs({
     try {
 
       if (dialog.owner === username) {
-        console.log("DELETE GROUP REQUEST", dialog.groupId);
 
         await deleteGroupApi(
           dialog.groupId
         );
       } else {
-        console.log("LEAVE GROUP REQUEST", dialog.groupId);
 
         await leaveGroupApi(
           dialog.groupId

@@ -180,7 +180,17 @@ export default function useAppController() {
     search: dialogs.search,
     setSearch: dialogs.setSearch,
     filteredDialogs: dialogs.filteredDialogs,
-    deleteGroupDialog: dialogs.deleteGroupDialog,
+    deleteGroupDialog: async (dialog) => {
+  const key =
+    dialog?.chatKey ||
+    `group:${dialog?.groupId}`;
+
+  await dialogs.deleteGroupDialog(dialog);
+
+  if (chat.activeChat === key) {
+    chat.closeChat();
+  }
+},
 
     chat
   };
