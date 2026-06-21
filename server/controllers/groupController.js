@@ -33,6 +33,33 @@ function normalizeMembers(
 
 }
 
+async function serializeGroup(group) {
+
+  const data =
+    group.toObject
+      ? group.toObject()
+      : group;
+
+  const users =
+    await User.find(
+      {
+        username: {
+          $in: data.members || []
+        }
+      },
+      "username avatar bio lastSeen"
+    );
+
+  return {
+    ...data,
+    memberCount:
+      data.members?.length || 0,
+    memberUsers:
+      users
+  };
+
+}
+
 async function deleteGroupMessageFiles(
   messages
 ) {
@@ -101,9 +128,7 @@ async function createGroup(
         user => user.username
       );
 
-    if (
-      !validMembers.includes(owner)
-    ) {
+    if (!validMembers.includes(owner)) {
       validMembers.push(owner);
     }
 
@@ -116,7 +141,9 @@ async function createGroup(
         members: validMembers
       });
 
-    res.status(201).json(group);
+    res.status(201).json(
+      await serializeGroup(group)
+    );
 
   } catch (err) {
     next(err);
@@ -132,17 +159,20 @@ async function getMyGroups(
 
   try {
 
-    const username =
-      req.user.username;
-
     const groups =
       await Group.find({
-        members: username
+        members: req.user.username
       }).sort({
         updatedAt: -1
       });
 
-    res.json(groups);
+    res.json(
+      groups.map(group => ({
+        ...group.toObject(),
+        memberCount:
+          group.members?.length || 0
+      }))
+    );
 
   } catch (err) {
     next(err);
@@ -172,15 +202,82 @@ async function getGroupById(
       });
     }
 
-    if (
-      !group.members.includes(username)
-    ) {
+    if (!group.members.includes(username)) {
       return res.status(403).json({
         error: "access denied"
       });
     }
 
-    res.json(group);
+    res.json(
+      await serializeGroup(group)
+    );
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function addGroupMember(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const member =
+      String(req.body.username || "").trim();
+
+    if (!isValidUsername(member)) {
+      return res.status(400).json({
+        error: "invalid username"
+      });
+    }
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    const canEdit =
+      group.owner === username ||
+      group.admins.includes(username);
+
+    if (!canEdit) {
+      return res.status(403).json({
+        error: "access denied"
+      });
+    }
+
+    const userExists =
+      await User.exists({
+        username: member
+      });
+
+    if (!userExists) {
+      return res.status(404).json({
+        error: "user not found"
+      });
+    }
+
+    if (!group.members.includes(member)) {
+      group.members.push(member);
+      await group.save();
+    }
+
+    res.json(
+      await serializeGroup(group)
+    );
 
   } catch (err) {
     next(err);
@@ -333,6 +430,7 @@ module.exports = {
   createGroup,
   getMyGroups,
   getGroupById,
+  addGroupMember,
   leaveGroup,
   deleteGroup
 };

@@ -24,6 +24,16 @@ const groupSchema =
         default: ""
       },
 
+      avatarPublicId: {
+        type: String,
+        default: ""
+      },
+
+      avatarResourceType: {
+        type: String,
+        default: ""
+      },
+
       owner: {
         type: String,
         required: true

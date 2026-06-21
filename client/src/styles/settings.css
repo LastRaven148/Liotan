@@ -280,3 +280,53 @@
 .danger-row span{
   color:#ff6b6b;
 }
+
+.small-avatar{
+  width:36px;
+  height:36px;
+  font-size:15px;
+}
+
+.group-add-title{
+  color:#d7dde5;
+  font-size:14px;
+  font-weight:700;
+  padding:8px 6px 10px;
+}
+
+.group-add-input{
+  width:100%;
+  height:38px;
+  border:none;
+  outline:none;
+  border-radius:10px;
+  background:#17212b;
+  color:white;
+  padding:0 12px;
+  font-family:inherit;
+  font-size:14px;
+  margin-bottom:8px;
+}
+
+.group-member-row{
+  width:100%;
+  min-height:50px;
+  border:none;
+  background:transparent;
+  color:white;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:6px;
+  border-radius:10px;
+  font-family:inherit;
+  text-align:left;
+}
+
+.group-member-row.button-row{
+  cursor:pointer;
+}
+
+.group-member-row.button-row:hover{
+  background:#243342;
+}

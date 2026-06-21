@@ -6,11 +6,17 @@ import {
 import { avatarUrl }
 from "../../utils/avatarUrl";
 
-import { getProfile }
-from "../../services/api";
+import {
+  getProfile,
+  getGroupApi,
+  searchUsers,
+  addGroupMemberApi
+} from "../../services/api";
 
 export default function UserProfileModal({
   user,
+  username,
+  deleteGroupDialog,
   onClose
 }) {
 
@@ -18,6 +24,21 @@ export default function UserProfileModal({
     profile,
     setProfile
   ] = useState(user);
+
+  const [
+    search,
+    setSearch
+  ] = useState("");
+
+  const [
+    users,
+    setUsers
+  ] = useState([]);
+
+  const [
+    adding,
+    setAdding
+  ] = useState(false);
 
   const isGroup =
     user?.type === "group";
@@ -29,7 +50,35 @@ export default function UserProfileModal({
     async function load() {
 
       if (isGroup) {
-        setProfile(user);
+        try {
+          const data =
+            await getGroupApi(user.groupId);
+
+          if (alive) {
+            setProfile({
+              ...user,
+              ...data,
+              type: "group",
+              groupId:
+                data._id ||
+                user.groupId,
+              chatKey:
+                user.chatKey ||
+                `group:${data._id || user.groupId}`,
+              title:
+                data.name ||
+                user.title,
+              name:
+                data.name ||
+                user.name
+            });
+          }
+        } catch {
+          if (alive) {
+            setProfile(user);
+          }
+        }
+
         return;
       }
 
@@ -63,6 +112,48 @@ export default function UserProfileModal({
 
   useEffect(() => {
 
+    if (!isGroup) {
+      return;
+    }
+
+    const query =
+      search.trim();
+
+    if (!query) {
+      setUsers([]);
+      return;
+    }
+
+    const timer =
+      setTimeout(async () => {
+        try {
+          const data =
+            await searchUsers(query);
+
+          const members =
+            profile?.members || [];
+
+          setUsers(
+            (data || []).filter(item =>
+              !members.includes(item.username)
+            )
+          );
+        } catch {
+          setUsers([]);
+        }
+      }, 250);
+
+    return () =>
+      clearTimeout(timer);
+
+  }, [
+    search,
+    isGroup,
+    profile
+  ]);
+
+  useEffect(() => {
+
     function handleEsc(e) {
       if (e.key === "Escape") {
         onClose();
@@ -89,8 +180,83 @@ export default function UserProfileModal({
   const title =
     isGroup
       ? profile.title ||
-        profile.name
+        profile.name ||
+        "Группа"
       : profile.username;
+
+  const members =
+    profile.memberUsers ||
+    [];
+
+  const memberCount =
+    profile.memberCount ||
+    profile.members?.length ||
+    members.length ||
+    1;
+
+  const canManageGroup =
+    isGroup &&
+    (
+      profile.owner === username ||
+      profile.admins?.includes(username)
+    );
+
+  async function addMember(targetUsername) {
+
+    if (
+      !isGroup ||
+      !profile.groupId ||
+      adding
+    ) {
+      return;
+    }
+
+    setAdding(true);
+
+    try {
+      const updated =
+        await addGroupMemberApi(
+          profile.groupId,
+          targetUsername
+        );
+
+      setProfile({
+        ...profile,
+        ...updated,
+        type: "group",
+        groupId:
+          updated._id ||
+          profile.groupId,
+        chatKey:
+          profile.chatKey,
+        title:
+          updated.name ||
+          profile.title,
+        name:
+          updated.name ||
+          profile.name
+      });
+
+      setSearch("");
+      setUsers([]);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdding(false);
+    }
+
+  }
+
+  async function handleGroupDelete() {
+
+    if (!isGroup) {
+      return;
+    }
+
+    await deleteGroupDialog?.(profile);
+    onClose();
+
+  }
 
   return (
     <div
@@ -135,11 +301,17 @@ export default function UserProfileModal({
           <div className="profile-drawer-name">
             {title}
           </div>
+
+          {isGroup && (
+            <div className="settings-online">
+              {memberCount} участников
+            </div>
+          )}
         </div>
 
-        <div className="profile-info-card">
-          {isGroup ? (
-            <>
+        {isGroup ? (
+          <>
+            <div className="profile-info-card">
               <div className="profile-info-row">
                 <div className="profile-info-icon">
                   #
@@ -147,7 +319,7 @@ export default function UserProfileModal({
 
                 <div>
                   <div className="profile-info-main">
-                    {profile.members?.length || 1}
+                    {memberCount}
                   </div>
 
                   <div className="profile-info-sub">
@@ -171,26 +343,8 @@ export default function UserProfileModal({
                   </div>
                 </div>
               </div>
-            </>
-          ) : (
-            <>
-              <div className="profile-info-row">
-                <div className="profile-info-icon">
-                  @
-                </div>
 
-                <div>
-                  <div className="profile-info-main">
-                    {profile.username}
-                  </div>
-
-                  <div className="profile-info-sub">
-                    имя пользователя
-                  </div>
-                </div>
-              </div>
-
-              {profile.bio?.trim() && (
+              {profile.description?.trim() && (
                 <div className="profile-info-row">
                   <div className="profile-info-icon">
                     i
@@ -198,18 +352,163 @@ export default function UserProfileModal({
 
                   <div>
                     <div className="profile-info-main">
-                      {profile.bio}
+                      {profile.description}
                     </div>
 
                     <div className="profile-info-sub">
-                      о себе
+                      описание
                     </div>
                   </div>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
+
+            {canManageGroup && (
+              <div className="profile-info-card">
+                <div className="group-add-title">
+                  Добавить участника
+                </div>
+
+                <input
+                  className="group-add-input"
+                  value={search}
+                  onChange={(e) =>
+                    setSearch(e.target.value)
+                  }
+                  placeholder="Поиск пользователя"
+                />
+
+                {users.map(item => (
+                  <button
+                    key={item.username}
+                    type="button"
+                    className="group-member-row button-row"
+                    onClick={() =>
+                      addMember(item.username)
+                    }
+                  >
+                    <div className="avatar small-avatar">
+                      {item.avatar ? (
+                        <img
+                          src={avatarUrl(item.avatar)}
+                          alt=""
+                          className="avatar-image"
+                        />
+                      ) : (
+                        item.username
+                          .charAt(0)
+                          .toUpperCase()
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="profile-info-main">
+                        {item.username}
+                      </div>
+
+                      <div className="profile-info-sub">
+                        добавить
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="profile-info-card">
+              <div className="group-add-title">
+                Участники
+              </div>
+
+              {members.map(member => (
+                <div
+                  key={member.username}
+                  className="group-member-row"
+                >
+                  <div className="avatar small-avatar">
+                    {member.avatar ? (
+                      <img
+                        src={avatarUrl(member.avatar)}
+                        alt=""
+                        className="avatar-image"
+                      />
+                    ) : (
+                      member.username
+                        .charAt(0)
+                        .toUpperCase()
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="profile-info-main">
+                      {member.username}
+                    </div>
+
+                    <div className="profile-info-sub">
+                      {member.username === profile.owner
+                        ? "владелец"
+                        : profile.admins?.includes(member.username)
+                          ? "админ"
+                          : "участник"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="profile-info-card">
+              <button
+                type="button"
+                className="settings-row button-row danger-row"
+                onClick={handleGroupDelete}
+              >
+                <span>×</span>
+
+                <div className="settings-row-main">
+                  {profile.owner === username
+                    ? "Удалить группу"
+                    : "Выйти из группы"}
+                </div>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="profile-info-card">
+            <div className="profile-info-row">
+              <div className="profile-info-icon">
+                @
+              </div>
+
+              <div>
+                <div className="profile-info-main">
+                  {profile.username}
+                </div>
+
+                <div className="profile-info-sub">
+                  имя пользователя
+                </div>
+              </div>
+            </div>
+
+            {profile.bio?.trim() && (
+              <div className="profile-info-row">
+                <div className="profile-info-icon">
+                  i
+                </div>
+
+                <div>
+                  <div className="profile-info-main">
+                    {profile.bio}
+                  </div>
+
+                  <div className="profile-info-sub">
+                    о себе
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </div>
   );

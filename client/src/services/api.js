@@ -278,3 +278,24 @@ export async function deleteGroupApi(
   );
 
 }
+
+export async function addGroupMemberApi(
+  groupId,
+  username
+) {
+
+  return apiRequest(
+    `${API}/groups/${groupId}/members`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+      body: JSON.stringify({
+        username
+      })
+    }
+  );
+
+}

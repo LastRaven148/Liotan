@@ -8,6 +8,7 @@ const {
   createGroup,
   getMyGroups,
   getGroupById,
+  addGroupMember,
   leaveGroup,
   deleteGroup
 } = require("../controllers/groupController");
@@ -31,6 +32,12 @@ router.get(
   "/groups/:id",
   authMiddleware,
   getGroupById
+);
+
+router.post(
+  "/groups/:id/members",
+  authMiddleware,
+  addGroupMember
 );
 
 router.post(

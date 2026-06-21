@@ -21,6 +21,7 @@ export default function ModalsLayer({
   uploadAvatar,
   logout,
   deleteAccount,
+  deleteGroupDialog,
   onGroupCreated
 }) {
 
@@ -29,6 +30,8 @@ export default function ModalsLayer({
       {profileUser && (
         <UserProfileModal
           user={profileUser}
+          username={username}
+          deleteGroupDialog={deleteGroupDialog}
           onClose={() =>
             setProfileUser(null)
           }

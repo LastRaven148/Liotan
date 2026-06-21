@@ -118,27 +118,28 @@ export default function MessengerLayout({
 />
 
       <ModalsLayer
-        profileUser={profileUser}
-        setProfileUser={setProfileUser}
-        settingsOpen={settingsOpen}
-        setSettingsOpen={setSettingsOpen}
-        username={username}
-        avatar={avatar}
-        bio={bio}
-        saveBio={saveBio}
-        uploadAvatar={uploadAvatar}
-        logout={() =>
-        logout(socketRef)
-        }
-        deleteAccount={() =>
-        deleteAccount(socketRef)
-        }
-        createGroupOpen={createGroupOpen}
-        setCreateGroupOpen={setCreateGroupOpen}
-        onGroupCreated={(group) =>
-        addGroup?.(group)
-        }
-      />
+  profileUser={profileUser}
+  setProfileUser={setProfileUser}
+  settingsOpen={settingsOpen}
+  setSettingsOpen={setSettingsOpen}
+  username={username}
+  avatar={avatar}
+  bio={bio}
+  saveBio={saveBio}
+  uploadAvatar={uploadAvatar}
+  logout={() =>
+    logout(socketRef)
+  }
+  deleteAccount={() =>
+    deleteAccount(socketRef)
+  }
+  deleteGroupDialog={deleteGroupDialog}
+  createGroupOpen={createGroupOpen}
+  setCreateGroupOpen={setCreateGroupOpen}
+  onGroupCreated={(group) =>
+    addGroup?.(group)
+  }
+/>
 
     </div>
   );
