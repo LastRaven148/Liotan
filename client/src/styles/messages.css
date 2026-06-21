@@ -395,3 +395,62 @@
 .mobile-action-sheet button.danger span{
   color:#ff6b6b;
 }
+
+.composer{
+  align-items:flex-end;
+}
+
+.attach-wrapper{
+  position:relative;
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.attach-button{
+  width:40px;
+  height:40px;
+  flex:0 0 40px;
+  border:none;
+  border-radius:50%;
+  background:transparent;
+  color:#8fa4b8;
+  font-size:26px;
+  line-height:40px;
+  cursor:pointer;
+}
+
+.attach-menu{
+  position:absolute;
+  left:0;
+  bottom:48px;
+  top:auto;
+  width:128px;
+  padding:6px;
+  background:#17212b;
+  border:1px solid #243342;
+  border-radius:12px;
+  box-shadow:0 10px 35px rgba(0,0,0,.45);
+  z-index:100;
+}
+
+.attach-menu button{
+  width:100%;
+  height:36px;
+  border:none;
+  border-radius:8px;
+  background:transparent;
+  color:#d7dde5;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:14px;
+  text-align:left;
+  padding:0 10px;
+}
+
+.attach-menu button:hover{
+  background:#243342;
+}

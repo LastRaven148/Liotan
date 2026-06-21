@@ -12,6 +12,16 @@ function escapeRegex(value) {
   );
 }
 
+function isValidChatKey(value) {
+
+  if (isValidUsername(value)) {
+    return true;
+  }
+
+  return /^group:[a-fA-F0-9]{24}$/.test(value);
+
+}
+
 async function getUsers(req, res, next) {
   try {
     const users =
@@ -115,12 +125,12 @@ async function togglePinnedChat(req, res, next) {
     const username =
       req.user.username;
 
-    const chatUsername =
+    const chatKey =
       String(req.body.username || "").trim();
 
-    if (!isValidUsername(chatUsername)) {
+    if (!isValidChatKey(chatKey)) {
       return res.status(400).json({
-        error: "invalid username"
+        error: "invalid chat"
       });
     }
 
@@ -137,9 +147,9 @@ async function togglePinnedChat(req, res, next) {
       user.pinnedChats || [];
 
     user.pinnedChats =
-      current.includes(chatUsername)
-        ? current.filter(item => item !== chatUsername)
-        : [chatUsername, ...current];
+      current.includes(chatKey)
+        ? current.filter(item => item !== chatKey)
+        : [chatKey, ...current];
 
     await user.save();
 
@@ -172,12 +182,12 @@ async function toggleArchivedChat(req, res, next) {
     const username =
       req.user.username;
 
-    const chatUsername =
+    const chatKey =
       String(req.body.username || "").trim();
 
-    if (!isValidUsername(chatUsername)) {
+    if (!isValidChatKey(chatKey)) {
       return res.status(400).json({
-        error: "invalid username"
+        error: "invalid chat"
       });
     }
 
@@ -194,9 +204,9 @@ async function toggleArchivedChat(req, res, next) {
       user.archivedChats || [];
 
     user.archivedChats =
-      current.includes(chatUsername)
-        ? current.filter(item => item !== chatUsername)
-        : [chatUsername, ...current];
+      current.includes(chatKey)
+        ? current.filter(item => item !== chatKey)
+        : [chatKey, ...current];
 
     await user.save();
 

@@ -365,42 +365,49 @@ export default function useDialogs({
     }, []);
 
   const deleteGroupDialog =
-    useCallback(async (dialog) => {
+  useCallback(async (dialog) => {
 
-      if (
-        !dialog ||
-        dialog.type !== "group" ||
-        !dialog.groupId
-      ) {
-        return;
+    console.log("DELETE GROUP DIALOG", dialog);
+
+    if (
+      !dialog ||
+      dialog.type !== "group" ||
+      !dialog.groupId
+    ) {
+      console.error("BAD GROUP DIALOG", dialog);
+      return;
+    }
+
+    try {
+
+      if (dialog.owner === username) {
+        console.log("DELETE GROUP REQUEST", dialog.groupId);
+
+        await deleteGroupApi(
+          dialog.groupId
+        );
+      } else {
+        console.log("LEAVE GROUP REQUEST", dialog.groupId);
+
+        await leaveGroupApi(
+          dialog.groupId
+        );
       }
 
-      try {
+      const key =
+        dialog.chatKey ||
+        `group:${dialog.groupId}`;
 
-        if (dialog.owner === username) {
-          await deleteGroupApi(
-            dialog.groupId
-          );
-        } else {
-          await leaveGroupApi(
-            dialog.groupId
-          );
-        }
+      removeDialog(key);
 
-        const key =
-          dialog.chatKey ||
-          `group:${dialog.groupId}`;
+    } catch (err) {
+      console.error("DELETE/LEAVE GROUP ERROR", err);
+    }
 
-        removeDialog(key);
-
-      } catch (err) {
-        console.error(err);
-      }
-
-    }, [
-      username,
-      removeDialog
-    ]);
+  }, [
+    username,
+    removeDialog
+  ]);
 
   const filteredDialogs =
     useMemo(() => {

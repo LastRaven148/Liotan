@@ -205,8 +205,20 @@ export default function DialogItem({
 
   e.stopPropagation();
 
+  console.log("DELETE CONFIRM", {
+    isGroup,
+    dialog,
+    deleteGroupDialogExists:
+      typeof deleteGroupDialog === "function"
+  });
+
   if (isGroup) {
-    deleteGroupDialog?.(dialog);
+    if (typeof deleteGroupDialog !== "function") {
+      console.error("deleteGroupDialog is not passed");
+      return;
+    }
+
+    deleteGroupDialog(dialog);
   } else {
     deleteChat(dialog.username);
   }
@@ -218,21 +230,21 @@ export default function DialogItem({
 
   function handlePin(e) {
 
-    e.stopPropagation();
+  e.stopPropagation();
 
-    togglePin(dialog.username);
-    setMenuOpen(false);
+  togglePin(chatKey);
+  setMenuOpen(false);
 
-  }
+}
 
   function handleArchive(e) {
 
-    e.stopPropagation();
+  e.stopPropagation();
 
-    toggleArchive(dialog.username);
-    setMenuOpen(false);
+  toggleArchive(chatKey);
+  setMenuOpen(false);
 
-  }
+}
 
   return (
     <div

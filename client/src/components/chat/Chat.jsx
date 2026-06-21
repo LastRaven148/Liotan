@@ -594,7 +594,7 @@ const Chat = memo(function Chat({
                         photoInputRef.current?.click()
                       }
                     >
-                      📷 {t.photo}
+                      {t.photo}
                     </button>
 
                     <button
@@ -603,7 +603,7 @@ const Chat = memo(function Chat({
                         fileInputRef.current?.click()
                       }
                     >
-                      📄 {t.file}
+                      {t.file}
                     </button>
 
                   </div>
