@@ -43,19 +43,18 @@ export default function MessengerLayout({
     createGroupOpen,
     setCreateGroupOpen,
     addGroup,
-    deleteGroupDialog,
-    loadGroups
+    updateGroup,
+    deleteGroupDialog
   } = app;
 
   return (
-  <div
-    className={
-      chat.activeChat
-        ? "app has-active-chat"
-        : "app"
-    }
-  >
-
+    <div
+      className={
+        chat.activeChat
+          ? "app has-active-chat"
+          : "app"
+      }
+    >
       <Sidebar
         username={username}
         avatar={avatar}
@@ -88,59 +87,59 @@ export default function MessengerLayout({
         }
         openCreateGroup={() =>
           setCreateGroupOpen(true)
-}
+        }
       />
 
       <Chat
-  activeChat={chat.activeChat}
-  activeDialog={chat.activeDialog}
-  onlineUsers={onlineUsers}
-  typingUsers={typingUsers}
-  messages={chat.messages}
-  username={username}
-  text={chat.text}
-  setText={chat.setText}
-  editingMessage={chat.editingMessage}
-  cancelEditMessage={chat.cancelEditMessage}
-  startEditMessage={chat.startEditMessage}
-  replyMessage={chat.replyMessage}
-  startReplyMessage={chat.startReplyMessage}
-  cancelReplyMessage={chat.cancelReplyMessage}
-  deleteMessage={chat.deleteMessage}
-  handleKey={chat.handleKey}
-  sendMessage={chat.sendMessage}
-  sendAttachment={chat.sendAttachment}
-  sendAttachments={chat.sendAttachments}
-  openProfile={() =>
-    setProfileUser(chat.activeDialog)
-  }
-  onBack={chat.closeChat}
-/>
+        activeChat={chat.activeChat}
+        activeDialog={chat.activeDialog}
+        onlineUsers={onlineUsers}
+        typingUsers={typingUsers}
+        messages={chat.messages}
+        username={username}
+        text={chat.text}
+        setText={chat.setText}
+        editingMessage={chat.editingMessage}
+        cancelEditMessage={chat.cancelEditMessage}
+        startEditMessage={chat.startEditMessage}
+        replyMessage={chat.replyMessage}
+        startReplyMessage={chat.startReplyMessage}
+        cancelReplyMessage={chat.cancelReplyMessage}
+        deleteMessage={chat.deleteMessage}
+        handleKey={chat.handleKey}
+        sendMessage={chat.sendMessage}
+        sendAttachment={chat.sendAttachment}
+        sendAttachments={chat.sendAttachments}
+        openProfile={() =>
+          setProfileUser(chat.activeDialog)
+        }
+        onBack={chat.closeChat}
+      />
 
       <ModalsLayer
-  profileUser={profileUser}
-  setProfileUser={setProfileUser}
-  settingsOpen={settingsOpen}
-  setSettingsOpen={setSettingsOpen}
-  username={username}
-  avatar={avatar}
-  bio={bio}
-  saveBio={saveBio}
-  uploadAvatar={uploadAvatar}
-  logout={() =>
-    logout(socketRef)
-  }
-  deleteAccount={() =>
-    deleteAccount(socketRef)
-  }
-  deleteGroupDialog={deleteGroupDialog}
-  createGroupOpen={createGroupOpen}
-  setCreateGroupOpen={setCreateGroupOpen}
-  onGroupCreated={(group) =>
-    addGroup?.(group)
-  }
-/>
-
+        profileUser={profileUser}
+        setProfileUser={setProfileUser}
+        settingsOpen={settingsOpen}
+        setSettingsOpen={setSettingsOpen}
+        username={username}
+        avatar={avatar}
+        bio={bio}
+        saveBio={saveBio}
+        uploadAvatar={uploadAvatar}
+        logout={() =>
+          logout(socketRef)
+        }
+        deleteAccount={() =>
+          deleteAccount(socketRef)
+        }
+        deleteGroupDialog={deleteGroupDialog}
+        updateGroup={updateGroup}
+        createGroupOpen={createGroupOpen}
+        setCreateGroupOpen={setCreateGroupOpen}
+        onGroupCreated={(group) =>
+          addGroup?.(group)
+        }
+      />
     </div>
   );
 

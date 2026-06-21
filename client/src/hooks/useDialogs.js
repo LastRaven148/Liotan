@@ -18,7 +18,6 @@ import {
 } from "../services/api";
 
 function normalizeGroup(group) {
-
   return {
     type: "group",
     groupId: group._id,
@@ -26,25 +25,25 @@ function normalizeGroup(group) {
     chatKey: `group:${group._id}`,
     title: group.name,
     name: group.name,
+    description: group.description || "",
     avatar: group.avatar || "",
     lastMessage: group.lastMessage || "Группа создана",
-    createdAt:
-      group.updatedAt ||
-      group.createdAt,
-    members:
-      group.members || [],
-    owner:
-      group.owner,
-    admins:
-      group.admins || []
+    createdAt: group.updatedAt || group.createdAt,
+    members: group.members || [],
+    memberUsers: group.memberUsers || [],
+    memberCount:
+      group.memberCount ||
+      group.members?.length ||
+      group.memberUsers?.length ||
+      0,
+    owner: group.owner,
+    admins: group.admins || []
   };
-
 }
 
 export default function useDialogs({
   username
 } = {}) {
-
   const [dialogs, setDialogs] =
     useState([]);
 
@@ -69,9 +68,7 @@ export default function useDialogs({
         const data =
           await getPinnedChatsApi();
 
-        setPinnedChats(
-          data.pinnedChats || []
-        );
+        setPinnedChats(data.pinnedChats || []);
       } catch (err) {
         console.error(err);
       }
@@ -83,9 +80,7 @@ export default function useDialogs({
         const data =
           await getArchivedChatsApi();
 
-        setArchivedChats(
-          data.archivedChats || []
-        );
+        setArchivedChats(data.archivedChats || []);
       } catch (err) {
         console.error(err);
       }
@@ -97,9 +92,7 @@ export default function useDialogs({
         const data =
           await togglePinnedChatApi(chatKey);
 
-        setPinnedChats(
-          data.pinnedChats || []
-        );
+        setPinnedChats(data.pinnedChats || []);
       } catch (err) {
         console.error(err);
       }
@@ -111,9 +104,7 @@ export default function useDialogs({
         const data =
           await toggleArchivedChatApi(chatKey);
 
-        setArchivedChats(
-          data.archivedChats || []
-        );
+        setArchivedChats(data.archivedChats || []);
       } catch (err) {
         console.error(err);
       }
@@ -125,11 +116,10 @@ export default function useDialogs({
         const [
           privateDialogs,
           groups
-        ] =
-          await Promise.all([
-            getDialogs(),
-            getGroupsApi()
-          ]);
+        ] = await Promise.all([
+          getDialogs(),
+          getGroupsApi()
+        ]);
 
         const normalizedPrivate =
           privateDialogs.map(dialog => ({
@@ -154,9 +144,7 @@ export default function useDialogs({
 
   const addGroup =
     useCallback((group) => {
-
       setDialogs(prev => {
-
         const normalized =
           normalizeGroup(group);
 
@@ -166,13 +154,27 @@ export default function useDialogs({
             dialog.chatKey !== normalized.chatKey
           )
         ];
-
       });
+    }, []);
 
+  const updateGroup =
+    useCallback((group) => {
+      setDialogs(prev => {
+        const normalized =
+          normalizeGroup(group);
+
+        return prev.map(dialog =>
+          dialog.chatKey === normalized.chatKey
+            ? {
+                ...dialog,
+                ...normalized
+              }
+            : dialog
+        );
+      });
     }, []);
 
   useEffect(() => {
-
     const query =
       search.trim();
 
@@ -196,19 +198,11 @@ export default function useDialogs({
 
     return () =>
       clearTimeout(timer);
-
-  }, [
-    search
-  ]);
+  }, [search]);
 
   const updateDialog =
-    useCallback((
-      msg,
-      currentUser
-    ) => {
-
+    useCallback((msg, currentUser) => {
       function getPreview(value) {
-
         if (value.text) {
           return value.text;
         }
@@ -222,13 +216,10 @@ export default function useDialogs({
         }
 
         return "No messages yet";
-
       }
 
       setDialogs(prev => {
-
         if (msg.chatType === "group") {
-
           const chatKey =
             msg.chatId ||
             `group:${msg.groupId}`;
@@ -245,16 +236,10 @@ export default function useDialogs({
 
           const updated = {
             ...existing,
-            title:
-              existing.title ||
-              existing.name,
-            name:
-              existing.name ||
-              existing.title,
-            lastMessage:
-              getPreview(msg),
-            createdAt:
-              msg.createdAt
+            title: existing.title || existing.name,
+            name: existing.name || existing.title,
+            lastMessage: getPreview(msg),
+            createdAt: msg.createdAt
           };
 
           return [
@@ -264,7 +249,6 @@ export default function useDialogs({
               dialog.username !== chatKey
             )
           ];
-
         }
 
         const targetUsername =
@@ -305,17 +289,11 @@ export default function useDialogs({
             dialog.username !== targetUsername
           )
         ];
-
       });
-
     }, []);
 
   const updateUserLastSeen =
-    useCallback((
-      targetUsername,
-      lastSeen
-    ) => {
-
+    useCallback((targetUsername, lastSeen) => {
       setDialogs(prev =>
         prev.map(dialog =>
           dialog.username === targetUsername
@@ -337,12 +315,10 @@ export default function useDialogs({
             : user
         )
       );
-
     }, []);
 
   const removeDialog =
     useCallback((chatKey) => {
-
       setDialogs(prev =>
         prev.filter(dialog =>
           dialog.chatKey !== chatKey &&
@@ -361,58 +337,43 @@ export default function useDialogs({
           item !== chatKey
         )
       );
-
     }, []);
 
   const deleteGroupDialog =
-  useCallback(async (dialog) => {
-
-    if (
-      !dialog ||
-      dialog.type !== "group" ||
-      !dialog.groupId
-    ) {
-      console.error("BAD GROUP DIALOG", dialog);
-      return;
-    }
-
-    try {
-
-      if (dialog.owner === username) {
-
-        await deleteGroupApi(
-          dialog.groupId
-        );
-      } else {
-
-        await leaveGroupApi(
-          dialog.groupId
-        );
+    useCallback(async (dialog) => {
+      if (
+        !dialog ||
+        dialog.type !== "group" ||
+        !dialog.groupId
+      ) {
+        return;
       }
 
-      const key =
-        dialog.chatKey ||
-        `group:${dialog.groupId}`;
+      try {
+        if (dialog.owner === username) {
+          await deleteGroupApi(dialog.groupId);
+        } else {
+          await leaveGroupApi(dialog.groupId);
+        }
 
-      removeDialog(key);
+        const key =
+          dialog.chatKey ||
+          `group:${dialog.groupId}`;
 
-    } catch (err) {
-      console.error("DELETE/LEAVE GROUP ERROR", err);
-    }
-
-  }, [
-    username,
-    removeDialog
-  ]);
+        removeDialog(key);
+      } catch (err) {
+        console.error(err);
+      }
+    }, [
+      username,
+      removeDialog
+    ]);
 
   const filteredDialogs =
     useMemo(() => {
-
       if (search.trim()) {
-
         const privateResults =
           searchResults.map(user => {
-
             const existingDialog =
               dialogs.find(dialog =>
                 dialog.username === user.username
@@ -443,7 +404,6 @@ export default function useDialogs({
                 existingDialog?.createdAt ||
                 null
             };
-
           });
 
         const groupResults =
@@ -467,7 +427,6 @@ export default function useDialogs({
       }
 
       return dialogs.filter(dialog => {
-
         const key =
           dialog.chatKey ||
           dialog.username;
@@ -478,9 +437,7 @@ export default function useDialogs({
         return showArchive
           ? isArchived
           : !isArchived;
-
       });
-
     }, [
       dialogs,
       search,
@@ -508,6 +465,7 @@ export default function useDialogs({
     loadDialogs,
     loadGroups: loadDialogs,
     addGroup,
+    updateGroup,
     updateDialog,
     updateUserLastSeen,
     removeDialog,
@@ -515,5 +473,4 @@ export default function useDialogs({
 
     filteredDialogs
   };
-
 }

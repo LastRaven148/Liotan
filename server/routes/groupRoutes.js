@@ -4,11 +4,17 @@ const express =
 const authMiddleware =
   require("../middleware/authMiddleware");
 
+const upload =
+  require("../config/upload");
+
 const {
   createGroup,
   getMyGroups,
   getGroupById,
+  updateGroup,
+  uploadGroupAvatar,
   addGroupMember,
+  removeGroupMember,
   leaveGroup,
   deleteGroup
 } = require("../controllers/groupController");
@@ -34,10 +40,29 @@ router.get(
   getGroupById
 );
 
+router.patch(
+  "/groups/:id",
+  authMiddleware,
+  updateGroup
+);
+
+router.post(
+  "/groups/:id/avatar",
+  authMiddleware,
+  upload.single("avatar"),
+  uploadGroupAvatar
+);
+
 router.post(
   "/groups/:id/members",
   authMiddleware,
   addGroupMember
+);
+
+router.delete(
+  "/groups/:id/members/:username",
+  authMiddleware,
+  removeGroupMember
 );
 
 router.post(

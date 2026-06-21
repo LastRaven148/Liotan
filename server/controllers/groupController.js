@@ -7,6 +7,9 @@ const User =
 const Message =
   require("../models/Messages");
 
+const uploadToCloudinary =
+  require("../utils/uploadToCloudinary");
+
 const deleteUploadedFile =
   require("../utils/deleteUploadedFile");
 
@@ -50,13 +53,34 @@ async function serializeGroup(group) {
       "username avatar bio lastSeen"
     );
 
+  const sortedUsers =
+    (data.members || [])
+      .map(username =>
+        users.find(user =>
+          user.username === username
+        )
+      )
+      .filter(Boolean);
+
   return {
     ...data,
     memberCount:
       data.members?.length || 0,
     memberUsers:
-      users
+      sortedUsers
   };
+
+}
+
+function canManageGroup(
+  group,
+  username
+) {
+
+  return (
+    group.owner === username ||
+    group.admins.includes(username)
+  );
 
 }
 
@@ -104,6 +128,12 @@ async function createGroup(
     ) {
       return res.status(400).json({
         error: "invalid group name"
+      });
+    }
+
+    if (description.length > 120) {
+      return res.status(400).json({
+        error: "invalid description"
       });
     }
 
@@ -218,6 +248,147 @@ async function getGroupById(
 
 }
 
+async function updateGroup(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    if (!canManageGroup(group, username)) {
+      return res.status(403).json({
+        error: "access denied"
+      });
+    }
+
+    const name =
+      typeof req.body.name === "string"
+        ? req.body.name.trim()
+        : group.name;
+
+    const description =
+      typeof req.body.description === "string"
+        ? req.body.description.trim()
+        : group.description;
+
+    if (
+      !name ||
+      name.length > 40
+    ) {
+      return res.status(400).json({
+        error: "invalid group name"
+      });
+    }
+
+    if (description.length > 120) {
+      return res.status(400).json({
+        error: "invalid description"
+      });
+    }
+
+    group.name =
+      name;
+
+    group.description =
+      description;
+
+    await group.save();
+
+    res.json(
+      await serializeGroup(group)
+    );
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function uploadGroupAvatar(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    if (!canManageGroup(group, username)) {
+      return res.status(403).json({
+        error: "access denied"
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        error: "no file"
+      });
+    }
+
+    await deleteUploadedFile({
+      url: group.avatar,
+      publicId: group.avatarPublicId,
+      resourceType: group.avatarResourceType
+    });
+
+    const result =
+      await uploadToCloudinary(
+        req.file,
+        {
+          folder: "liotan/groups",
+          resourceType: "image"
+        }
+      );
+
+    group.avatar =
+      result.secure_url;
+
+    group.avatarPublicId =
+      result.public_id;
+
+    group.avatarResourceType =
+      result.resource_type;
+
+    await group.save();
+
+    res.json(
+      await serializeGroup(group)
+    );
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 async function addGroupMember(
   req,
   res,
@@ -249,11 +420,7 @@ async function addGroupMember(
       });
     }
 
-    const canEdit =
-      group.owner === username ||
-      group.admins.includes(username);
-
-    if (!canEdit) {
+    if (!canManageGroup(group, username)) {
       return res.status(403).json({
         error: "access denied"
       });
@@ -274,6 +441,80 @@ async function addGroupMember(
       group.members.push(member);
       await group.save();
     }
+
+    res.json(
+      await serializeGroup(group)
+    );
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function removeGroupMember(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const username =
+      req.user.username;
+
+    const member =
+      String(req.params.username || "").trim();
+
+    const group =
+      await Group.findById(
+        req.params.id
+      );
+
+    if (!group) {
+      return res.status(404).json({
+        error: "group not found"
+      });
+    }
+
+    if (!canManageGroup(group, username)) {
+      return res.status(403).json({
+        error: "access denied"
+      });
+    }
+
+    if (member === group.owner) {
+      return res.status(400).json({
+        error: "cannot remove owner"
+      });
+    }
+
+    group.members =
+      group.members.filter(item =>
+        item !== member
+      );
+
+    group.admins =
+      group.admins.filter(item =>
+        item !== member
+      );
+
+    await group.save();
+
+    const chatKey =
+      `group:${group._id}`;
+
+    await User.updateOne(
+      {
+        username: member
+      },
+      {
+        $pull: {
+          pinnedChats: chatKey,
+          archivedChats: chatKey
+        }
+      }
+    );
 
     res.json(
       await serializeGroup(group)
@@ -313,17 +554,17 @@ async function leaveGroup(
       });
     }
 
-    await Group.updateOne(
-      {
-        _id: group._id
-      },
-      {
-        $pull: {
-          members: username,
-          admins: username
-        }
-      }
-    );
+    group.members =
+      group.members.filter(item =>
+        item !== username
+      );
+
+    group.admins =
+      group.admins.filter(item =>
+        item !== username
+      );
+
+    await group.save();
 
     const chatKey =
       `group:${group._id}`;
@@ -430,7 +671,10 @@ module.exports = {
   createGroup,
   getMyGroups,
   getGroupById,
+  updateGroup,
+  uploadGroupAvatar,
   addGroupMember,
+  removeGroupMember,
   leaveGroup,
   deleteGroup
 };

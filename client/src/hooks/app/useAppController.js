@@ -18,15 +18,15 @@ import {
 export default function useAppController() {
 
   const {
-  profileMenu,
-  setProfileMenu,
-  profileUser,
-  setProfileUser,
-  settingsOpen,
-  setSettingsOpen,
-  createGroupOpen,
-  setCreateGroupOpen
-} = useUI();
+    profileMenu,
+    setProfileMenu,
+    profileUser,
+    setProfileUser,
+    settingsOpen,
+    setSettingsOpen,
+    createGroupOpen,
+    setCreateGroupOpen
+  } = useUI();
 
   const [avatar, setAvatar] =
     useState("");
@@ -75,9 +75,9 @@ export default function useAppController() {
     });
 
   const dialogs =
-  useDialogs({
-    username
-  });
+    useDialogs({
+      username
+    });
 
   const chat =
     useChat({
@@ -89,37 +89,37 @@ export default function useAppController() {
     });
 
   useGlobalEsc({
-  profileMenu,
-  setProfileMenu,
+    profileMenu,
+    setProfileMenu,
 
-  showArchive: dialogs.showArchive,
-  setShowArchive: dialogs.setShowArchive,
+    showArchive: dialogs.showArchive,
+    setShowArchive: dialogs.setShowArchive,
 
-  settingsOpen,
-  setSettingsOpen,
+    settingsOpen,
+    setSettingsOpen,
 
-  profileUser,
-  setProfileUser,
+    profileUser,
+    setProfileUser,
 
-  activeChat: chat.activeChat,
-  setActiveChat: chat.setActiveChat
-});
+    activeChat: chat.activeChat,
+    setActiveChat: chat.setActiveChat
+  });
 
   useSocket({
-  token,
-  username,
-  activeChat: chat.activeChat,
-  setActiveChat: chat.setActiveChat,
-  setChats,
-  setUnread,
-  setOnlineUsers,
-  setTypingUsers,
-  updateDialog: dialogs.updateDialog,
-  updateUserLastSeen: dialogs.updateUserLastSeen,
-  removeDialog: dialogs.removeDialog,
-  socketRef,
-  API
-});
+    token,
+    username,
+    activeChat: chat.activeChat,
+    setActiveChat: chat.setActiveChat,
+    setChats,
+    setUnread,
+    setOnlineUsers,
+    setTypingUsers,
+    updateDialog: dialogs.updateDialog,
+    updateUserLastSeen: dialogs.updateUserLastSeen,
+    removeDialog: dialogs.removeDialog,
+    socketRef,
+    API
+  });
 
   useAppInitialization({
     token,
@@ -129,6 +129,18 @@ export default function useAppController() {
     loadPinnedChats: dialogs.loadPinnedChats,
     loadArchivedChats: dialogs.loadArchivedChats
   });
+
+  async function deleteGroupDialog(dialog) {
+    const key =
+      dialog?.chatKey ||
+      `group:${dialog?.groupId}`;
+
+    await dialogs.deleteGroupDialog(dialog);
+
+    if (chat.activeChat === key) {
+      chat.closeChat();
+    }
+  }
 
   return {
     API,
@@ -170,6 +182,7 @@ export default function useAppController() {
 
     loadGroups: dialogs.loadGroups,
     addGroup: dialogs.addGroup,
+    updateGroup: dialogs.updateGroup,
 
     archivedChats: dialogs.archivedChats,
     loadArchivedChats: dialogs.loadArchivedChats,
@@ -180,19 +193,8 @@ export default function useAppController() {
     search: dialogs.search,
     setSearch: dialogs.setSearch,
     filteredDialogs: dialogs.filteredDialogs,
-    deleteGroupDialog: async (dialog) => {
-  const key =
-    dialog?.chatKey ||
-    `group:${dialog?.groupId}`;
-
-  await dialogs.deleteGroupDialog(dialog);
-
-  if (chat.activeChat === key) {
-    chat.closeChat();
-  }
-},
+    deleteGroupDialog,
 
     chat
   };
-
 }

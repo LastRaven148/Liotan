@@ -22,6 +22,7 @@ export default function ModalsLayer({
   logout,
   deleteAccount,
   deleteGroupDialog,
+  updateGroup,
   onGroupCreated
 }) {
 
@@ -32,6 +33,10 @@ export default function ModalsLayer({
           user={profileUser}
           username={username}
           deleteGroupDialog={deleteGroupDialog}
+          updateGroup={updateGroup}
+          openUserProfile={(user) =>
+            setProfileUser(user)
+          }
           onClose={() =>
             setProfileUser(null)
           }
