@@ -115,7 +115,7 @@ function buildMessagesWithDates(
 
 }
 
-function getReplyPreview(
+function getMessagePreview(
   message,
   t
 ) {
@@ -129,14 +129,14 @@ function getReplyPreview(
   }
 
   if (message.attachment?.type === "photo") {
-    return t.photo;
+    return t.photo || "Фото";
   }
 
   if (message.attachment?.type === "file") {
-    return message.attachment.name || t.file;
+    return message.attachment.name || t.file || "Файл";
   }
 
-  return t.message;
+  return t.message || "Сообщение";
 
 }
 
@@ -206,6 +206,11 @@ const Chat = memo(function Chat({
     setSendingDraft
   ] = useState(false);
 
+  const [
+    activePinnedIndex,
+    setActivePinnedIndex
+  ] = useState(0);
+
   const canSend =
     Boolean(
       text.trim() ||
@@ -224,6 +229,41 @@ const Chat = memo(function Chat({
       messages,
       t
     ]);
+
+  const pinnedMessages =
+    useMemo(() => {
+
+      return [...messages]
+        .filter(message =>
+          message.isPinned
+        )
+        .sort((a, b) =>
+          new Date(b.pinnedAt || b.createdAt) -
+          new Date(a.pinnedAt || a.createdAt)
+        );
+
+    }, [
+      messages
+    ]);
+
+  const activePinnedMessage =
+    pinnedMessages[
+      activePinnedIndex
+    ] || pinnedMessages[0] || null;
+
+  useEffect(() => {
+
+    if (
+      activePinnedIndex >
+      pinnedMessages.length - 1
+    ) {
+      setActivePinnedIndex(0);
+    }
+
+  }, [
+    activePinnedIndex,
+    pinnedMessages.length
+  ]);
 
   useEffect(() => {
 
@@ -285,6 +325,73 @@ const Chat = memo(function Chat({
     editingMessage,
     replyMessage
   ]);
+
+  function scrollToMessage(message) {
+
+    if (
+      !message ||
+      !messagesRef.current
+    ) {
+      return;
+    }
+
+    const el =
+      messagesRef.current.querySelector(
+        `[data-message-id="${message._id}"]`
+      );
+
+    if (!el) {
+      return;
+    }
+
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    el.classList.add(
+      "message-highlight"
+    );
+
+    setTimeout(() => {
+      el.classList.remove(
+        "message-highlight"
+      );
+    }, 1200);
+
+  }
+
+  function showPrevPinned(e) {
+
+    e.stopPropagation();
+
+    if (!pinnedMessages.length) {
+      return;
+    }
+
+    setActivePinnedIndex(prev =>
+      prev <= 0
+        ? pinnedMessages.length - 1
+        : prev - 1
+    );
+
+  }
+
+  function showNextPinned(e) {
+
+    e.stopPropagation();
+
+    if (!pinnedMessages.length) {
+      return;
+    }
+
+    setActivePinnedIndex(prev =>
+      prev >= pinnedMessages.length - 1
+        ? 0
+        : prev + 1
+    );
+
+  }
 
   function createDraftItems(files) {
 
@@ -453,83 +560,24 @@ const Chat = memo(function Chat({
   }
 
   function handleComposerKeyDown(e) {
-  if (e.key !== "Enter") {
-    handleKey(e);
-    return;
-  }
 
-  if (e.shiftKey) {
-    if (!e.currentTarget.value.trim()) {
-      e.preventDefault();
+    if (e.key !== "Enter") {
+      handleKey(e);
       return;
     }
 
-    return;
+    if (e.shiftKey) {
+      if (!e.currentTarget.value.trim()) {
+        e.preventDefault();
+        return;
+      }
+
+      return;
+    }
+
+    handleKey(e);
+
   }
-
-  handleKey(e);
-}
-
-const pinnedMessage =
-  useMemo(() => {
-
-    return [...messages]
-      .filter(message =>
-        message.isPinned
-      )
-      .sort((a, b) =>
-        new Date(b.pinnedAt || b.createdAt) -
-        new Date(a.pinnedAt || a.createdAt)
-      )[0] || null;
-
-  }, [
-    messages
-  ]);
-
-function getPinnedPreview(message) {
-
-  if (!message) {
-    return "";
-  }
-
-  if (message.text) {
-    return message.text;
-  }
-
-  if (message.attachment?.type === "photo") {
-    return t.photo;
-  }
-
-  if (message.attachment?.type === "file") {
-    return message.attachment.name || t.file;
-  }
-
-  return t.message;
-
-}
-
-function scrollToPinnedMessage() {
-
-  if (
-    !pinnedMessage ||
-    !messagesRef.current
-  ) {
-    return;
-  }
-
-  const el =
-    messagesRef.current.querySelector(
-      `[data-message-id="${pinnedMessage._id}"]`
-    );
-
-  if (el) {
-    el.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-  }
-
-}
 
   return (
     <div className="chat">
@@ -546,25 +594,55 @@ function scrollToPinnedMessage() {
             onBack={onBack}
           />
 
-          {pinnedMessage && (
-  <button
-    type="button"
-    className="pinned-bar"
-    onClick={scrollToPinnedMessage}
-  >
-    <div className="pinned-bar-line" />
+          {activePinnedMessage && (
+            <div className="pinned-bar-wrap">
+              <button
+                type="button"
+                className="pinned-bar"
+                onClick={() =>
+                  scrollToMessage(
+                    activePinnedMessage
+                  )
+                }
+              >
+                <div className="pinned-bar-line" />
 
-    <div className="pinned-bar-content">
-      <div className="pinned-bar-title">
-        Закреплённое сообщение
-      </div>
+                <div className="pinned-bar-content">
+                  <div className="pinned-bar-title">
+                    Закреплённое сообщение{" "}
+                    {pinnedMessages.length > 1
+                      ? `${activePinnedIndex + 1}/${pinnedMessages.length}`
+                      : ""}
+                  </div>
 
-      <div className="pinned-bar-text">
-        {getPinnedPreview(pinnedMessage)}
-      </div>
-    </div>
-  </button>
-)}
+                  <div className="pinned-bar-text">
+                    {getMessagePreview(
+                      activePinnedMessage,
+                      t
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              {pinnedMessages.length > 1 && (
+                <div className="pinned-bar-controls">
+                  <button
+                    type="button"
+                    onClick={showPrevPinned}
+                  >
+                    ↑
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={showNextPinned}
+                  >
+                    ↓
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div
             className="messages"
@@ -613,7 +691,7 @@ function scrollToPinnedMessage() {
                   </div>
 
                   <div className="reply-panel-text">
-                    {getReplyPreview(
+                    {getMessagePreview(
                       replyMessage,
                       t
                     )}

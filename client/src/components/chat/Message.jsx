@@ -8,9 +8,6 @@ import {
 import { formatTime }
 from "../../utils/date";
 
-import { API }
-from "../../config/api";
-
 import {
   useLanguage
 } from "../../context/LanguageContext";
@@ -32,6 +29,12 @@ function Message({
 
   const [menuOpen, setMenuOpen] =
     useState(false);
+
+  const [menuPos, setMenuPos] =
+    useState({
+      top: 0,
+      left: 0
+    });
 
   const [viewerOpen, setViewerOpen] =
     useState(false);
@@ -72,9 +75,9 @@ function Message({
     !hasAttachment;
 
   const fileUrl =
-  hasAttachment
-    ? mediaUrl(attachment.url)
-    : "";
+    hasAttachment
+      ? mediaUrl(attachment.url)
+      : "";
 
   useEffect(() => {
 
@@ -121,6 +124,12 @@ function Message({
       handleEsc
     );
 
+    window.addEventListener(
+      "scroll",
+      handleOutside,
+      true
+    );
+
     return () => {
       document.removeEventListener(
         "mousedown",
@@ -131,6 +140,12 @@ function Message({
         "keydown",
         handleEsc
       );
+
+      window.removeEventListener(
+        "scroll",
+        handleOutside,
+        true
+      );
     };
 
   }, [menuOpen]);
@@ -139,6 +154,52 @@ function Message({
     return window.matchMedia(
       "(max-width: 768px)"
     ).matches;
+  }
+
+  function calculateMenuPosition() {
+
+    const rect =
+      messageRef.current?.getBoundingClientRect();
+
+    if (!rect) {
+      return;
+    }
+
+    const menuWidth = 170;
+    const menuHeight = 270;
+    const gap = 8;
+    const padding = 10;
+
+    let left =
+      isMine
+        ? rect.right - menuWidth
+        : rect.left;
+
+    left =
+      Math.max(
+        padding,
+        Math.min(
+          left,
+          window.innerWidth - menuWidth - padding
+        )
+      );
+
+    const spaceBelow =
+      window.innerHeight - rect.bottom;
+
+    const top =
+      spaceBelow > menuHeight + gap
+        ? rect.bottom + gap
+        : Math.max(
+            padding,
+            rect.top - menuHeight - gap
+          );
+
+    setMenuPos({
+      top,
+      left
+    });
+
   }
 
   function openMenu(e) {
@@ -160,29 +221,13 @@ function Message({
       return;
     }
 
+    calculateMenuPosition();
     setMenuOpen(true);
 
   }
 
   function handleContextMenu(e) {
     openMenu(e);
-  }
-
-  function handleMouseLeave() {
-
-    if (!menuOpen) {
-      return;
-    }
-
-    setTimeout(() => {
-      if (
-        !menuRef.current?.matches(":hover") &&
-        !messageRef.current?.matches(":hover")
-      ) {
-        setMenuOpen(false);
-      }
-    }, 120);
-
   }
 
   function handleTouchStart(e) {
@@ -392,18 +437,18 @@ function Message({
         </button>
 
         <button
-  type="button"
-  onClick={() => {
-    closeMenus();
-    onPin?.(message);
-  }}
->
-  <span>⌖</span>
+          type="button"
+          onClick={() => {
+            closeMenus();
+            onPin?.(message);
+          }}
+        >
+          <span>⌖</span>
 
-  {message.isPinned
-    ? "Открепить"
-    : "Закрепить"}
-</button>
+          {message.isPinned
+            ? "Открепить"
+            : "Закрепить"}
+        </button>
 
         <button
           type="button"
@@ -433,7 +478,6 @@ function Message({
           menuOpen ? "menu-open" : ""
         ].join(" ")}
         onContextMenu={handleContextMenu}
-        onMouseLeave={handleMouseLeave}
         onTouchStart={handleTouchStart}
         onTouchEnd={clearLongPress}
         onTouchMove={clearLongPress}
@@ -444,7 +488,10 @@ function Message({
           <div
             ref={menuRef}
             className="message-menu telegram-action-menu"
-            onMouseLeave={handleMouseLeave}
+            style={{
+              top: `${menuPos.top}px`,
+              left: `${menuPos.left}px`
+            }}
           >
             {renderActions()}
           </div>

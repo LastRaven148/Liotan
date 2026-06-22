@@ -6,11 +6,22 @@ export function addMessageToChat(
   const chatId =
     msg.chatId;
 
+  const current =
+    prevChats[chatId] || [];
+
+  const exists =
+    current.some(item =>
+      String(item._id) === String(msg._id)
+    );
+
+  if (exists) {
+    return prevChats;
+  }
+
   return {
     ...prevChats,
-
     [chatId]: [
-      ...(prevChats[chatId] || []),
+      ...current,
       msg
     ]
   };
@@ -27,13 +38,14 @@ export function editMessageInChat(
 
   return {
     ...prevChats,
-
     [chatId]:
-      (prevChats[chatId] || []).map(
-        item =>
-          item._id === msg._id
-            ? msg
-            : item
+      (prevChats[chatId] || []).map(item =>
+        String(item._id) === String(msg._id)
+          ? {
+              ...item,
+              ...msg
+            }
+          : item
       )
   };
 
@@ -49,11 +61,9 @@ export function deleteMessageFromChat(
 
   return {
     ...prevChats,
-
     [chatId]:
-      (prevChats[chatId] || []).filter(
-        item =>
-          item._id !== messageId
+      (prevChats[chatId] || []).filter(item =>
+        String(item._id) !== String(messageId)
       )
   };
 
@@ -95,54 +105,24 @@ export function updateMessagesStatus(
     ...prevChats,
 
     [chatId]:
-      (prevChats[chatId] || []).map(
-        item => {
+      (prevChats[chatId] || []).map(item => {
 
-          if (!ids.has(String(item._id))) {
-            return item;
-          }
-
-          return {
-            ...item,
-            status,
-            deliveredAt:
-              deliveredAt ||
-              item.deliveredAt,
-            readAt:
-              readAt ||
-              item.readAt
-          };
-
+        if (!ids.has(String(item._id))) {
+          return item;
         }
-      )
-  };
 
-}
+        return {
+          ...item,
+          status,
+          deliveredAt:
+            deliveredAt ||
+            item.deliveredAt,
+          readAt:
+            readAt ||
+            item.readAt
+        };
 
-export function incrementUnread(
-  prevUnread,
-  msg
-) {
-
-  return {
-    ...prevUnread,
-
-    [msg.from]:
-      (prevUnread[msg.from] || 0) + 1
-  };
-
-}
-
-export function replaceChatHistory(
-  prevChats,
-  chatId,
-  msgs
-) {
-
-  return {
-    ...prevChats,
-
-    [chatId]: msgs
+      })
   };
 
 }
@@ -159,12 +139,50 @@ export function pinMessageInChat(
     ...prevChats,
 
     [chatId]:
-      (prevChats[chatId] || []).map(
-        item =>
-          item._id === msg._id
-            ? msg
-            : item
+      (prevChats[chatId] || []).map(item =>
+        String(item._id) === String(msg._id)
+          ? {
+              ...item,
+              isPinned:
+                Boolean(msg.isPinned),
+              pinnedAt:
+                msg.pinnedAt || null,
+              pinnedBy:
+                msg.pinnedBy || ""
+            }
+          : item
       )
+  };
+
+}
+
+export function replaceChatHistory(
+  prevChats,
+  chatId,
+  msgs
+) {
+
+  return {
+    ...prevChats,
+    [chatId]: msgs || []
+  };
+
+}
+
+export function incrementUnread(
+  prevUnread,
+  msg
+) {
+
+  const key =
+    msg.chatType === "group"
+      ? msg.chatId
+      : msg.from;
+
+  return {
+    ...prevUnread,
+    [key]:
+      (prevUnread[key] || 0) + 1
   };
 
 }

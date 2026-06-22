@@ -15,6 +15,9 @@ export default function useGlobalEsc({
   profileUser,
   setProfileUser,
 
+  search,
+  setSearch,
+
   activeChat,
   setActiveChat
 }) {
@@ -32,18 +35,23 @@ export default function useGlobalEsc({
         return;
       }
 
+      if (search?.trim()) {
+        setSearch("");
+        return;
+      }
+
       if (showArchive) {
         setShowArchive(false);
         return;
       }
 
-      if (settingsOpen) {
-        setSettingsOpen(false);
+      if (profileUser) {
+        setProfileUser(null);
         return;
       }
 
-      if (profileUser) {
-        setProfileUser(null);
+      if (settingsOpen) {
+        setSettingsOpen(false);
         return;
       }
 
@@ -70,11 +78,13 @@ export default function useGlobalEsc({
     showArchive,
     settingsOpen,
     profileUser,
+    search,
     activeChat,
     setProfileMenu,
     setShowArchive,
     setSettingsOpen,
     setProfileUser,
+    setSearch,
     setActiveChat
   ]);
 
