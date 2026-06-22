@@ -186,6 +186,18 @@ const Chat = memo(function Chat({
   const draftRef =
     useRef([]);
 
+  const previousChatRef =
+    useRef(null);
+
+  const previousMessagesRef =
+    useRef({
+      length: 0,
+      lastId: ""
+    });
+
+  const highlightTimerRef =
+    useRef(null);
+
   const [
     attachMenuOpen,
     setAttachMenuOpen
@@ -249,19 +261,31 @@ const Chat = memo(function Chat({
   const activePinnedMessage =
     pinnedMessages[
       activePinnedIndex
-    ] || pinnedMessages[0] || null;
+    ] || null;
 
   useEffect(() => {
 
-    if (
-      activePinnedIndex >
-      pinnedMessages.length - 1
-    ) {
-      setActivePinnedIndex(0);
-    }
+    setActivePinnedIndex(0);
 
   }, [
-    activePinnedIndex,
+    activeChat
+  ]);
+
+  useEffect(() => {
+
+    if (!pinnedMessages.length) {
+      setActivePinnedIndex(0);
+      return;
+    }
+
+    setActivePinnedIndex(prev =>
+      Math.min(
+        prev,
+        pinnedMessages.length - 1
+      )
+    );
+
+  }, [
     pinnedMessages.length
   ]);
 
@@ -282,23 +306,58 @@ const Chat = memo(function Chat({
         URL.revokeObjectURL(item.url)
       );
 
+      if (highlightTimerRef.current) {
+        clearTimeout(
+          highlightTimerRef.current
+        );
+      }
+
     };
 
   }, []);
 
   useEffect(() => {
 
-    if (
-      !messages.length ||
-      !messagesRef.current
-    ) {
+    if (!messagesRef.current) {
       return;
     }
 
-    messagesRef.current.scrollTop =
-      messagesRef.current.scrollHeight;
+    const lastMessage =
+      messages[messages.length - 1];
 
-  }, [messages]);
+    const lastId =
+      lastMessage?._id || "";
+
+    const previous =
+      previousMessagesRef.current;
+
+    const chatChanged =
+      previousChatRef.current !== activeChat;
+
+    const newMessageAdded =
+      messages.length > previous.length &&
+      lastId !== previous.lastId;
+
+    if (
+      chatChanged ||
+      newMessageAdded
+    ) {
+      messagesRef.current.scrollTop =
+        messagesRef.current.scrollHeight;
+    }
+
+    previousChatRef.current =
+      activeChat;
+
+    previousMessagesRef.current = {
+      length: messages.length,
+      lastId
+    };
+
+  }, [
+    activeChat,
+    messages
+  ]);
 
   useEffect(() => {
 
@@ -335,9 +394,16 @@ const Chat = memo(function Chat({
       return;
     }
 
+    const elements =
+      Array.from(
+        messagesRef.current.querySelectorAll(
+          "[data-message-id]"
+        )
+      );
+
     const el =
-      messagesRef.current.querySelector(
-        `[data-message-id="${message._id}"]`
+      elements.find(item =>
+        item.getAttribute("data-message-id") === message._id
       );
 
     if (!el) {
@@ -353,11 +419,18 @@ const Chat = memo(function Chat({
       "message-highlight"
     );
 
-    setTimeout(() => {
-      el.classList.remove(
-        "message-highlight"
+    if (highlightTimerRef.current) {
+      clearTimeout(
+        highlightTimerRef.current
       );
-    }, 1200);
+    }
+
+    highlightTimerRef.current =
+      setTimeout(() => {
+        el.classList.remove(
+          "message-highlight"
+        );
+      }, 1200);
 
   }
 
