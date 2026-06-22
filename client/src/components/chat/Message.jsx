@@ -5,6 +5,9 @@ import {
   useState
 } from "react";
 
+import { createPortal }
+from "react-dom";
+
 import { formatTime }
 from "../../utils/date";
 
@@ -114,6 +117,10 @@ function Message({
 
     }
 
+    function closeFloatingMenu() {
+      setMenuOpen(false);
+    }
+
     document.addEventListener(
       "mousedown",
       handleOutside
@@ -126,8 +133,13 @@ function Message({
 
     window.addEventListener(
       "scroll",
-      handleOutside,
+      closeFloatingMenu,
       true
+    );
+
+    window.addEventListener(
+      "resize",
+      closeFloatingMenu
     );
 
     return () => {
@@ -143,8 +155,13 @@ function Message({
 
       window.removeEventListener(
         "scroll",
-        handleOutside,
+        closeFloatingMenu,
         true
+      );
+
+      window.removeEventListener(
+        "resize",
+        closeFloatingMenu
       );
     };
 
@@ -165,7 +182,7 @@ function Message({
       return;
     }
 
-    const menuWidth = 170;
+    const menuWidth = 178;
     const menuHeight = 270;
     const gap = 8;
     const padding = 10;
@@ -187,13 +204,22 @@ function Message({
     const spaceBelow =
       window.innerHeight - rect.bottom;
 
-    const top =
-      spaceBelow > menuHeight + gap
-        ? rect.bottom + gap
-        : Math.max(
-            padding,
-            rect.top - menuHeight - gap
-          );
+    const spaceAbove =
+      rect.top;
+
+    let top;
+
+    if (spaceBelow >= menuHeight + gap) {
+      top = rect.bottom + gap;
+    } else if (spaceAbove >= menuHeight + gap) {
+      top = rect.top - menuHeight - gap;
+    } else {
+      top =
+        Math.max(
+          padding,
+          window.innerHeight - menuHeight - padding
+        );
+    }
 
     setMenuPos({
       top,
@@ -234,6 +260,8 @@ function Message({
 
     if (
       e.target.closest("a") ||
+      e.target.closest("textarea") ||
+      e.target.closest("input") ||
       e.target.closest("button")
     ) {
       return;
@@ -465,6 +493,28 @@ function Message({
     );
   }
 
+  function renderDesktopMenu() {
+
+    if (!menuOpen) {
+      return null;
+    }
+
+    return createPortal(
+      <div
+        ref={menuRef}
+        className="message-menu telegram-action-menu"
+        style={{
+          top: `${menuPos.top}px`,
+          left: `${menuPos.left}px`
+        }}
+      >
+        {renderActions()}
+      </div>,
+      document.body
+    );
+
+  }
+
   return (
     <>
       <div
@@ -483,19 +533,6 @@ function Message({
         onTouchMove={clearLongPress}
         onTouchCancel={clearLongPress}
       >
-
-        {menuOpen && (
-          <div
-            ref={menuRef}
-            className="message-menu telegram-action-menu"
-            style={{
-              top: `${menuPos.top}px`,
-              left: `${menuPos.left}px`
-            }}
-          >
-            {renderActions()}
-          </div>
-        )}
 
         {message.replyTo?.messageId && (
           <div className="message-reply">
@@ -572,6 +609,8 @@ function Message({
           </div>
         )}
       </div>
+
+      {renderDesktopMenu()}
 
       {mobileMenu && (
         <div

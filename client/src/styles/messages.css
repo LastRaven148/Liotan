@@ -94,13 +94,13 @@
 
 .message-menu{
   position:fixed;
-  width:170px;
+  width:178px;
   padding:4px;
   background:#17212b;
   border:1px solid #243342;
   border-radius:10px;
   overflow:hidden;
-  z-index:12000;
+  z-index:30000;
   box-shadow:0 10px 28px rgba(0,0,0,.42);
   user-select:none;
   -webkit-user-select:none;
@@ -229,7 +229,7 @@
   position:fixed;
   inset:0;
   background:rgba(0,0,0,.82);
-  z-index:9999;
+  z-index:31000;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -305,39 +305,10 @@
   font-size:12px;
 }
 
-@media (max-width:768px){
-  .message{
-    -webkit-touch-callout:none;
-  }
-
-  .message-text{
-    -webkit-user-select:text;
-    user-select:text;
-  }
-
-  .message-menu{
-    position:absolute;
-    top:100%;
-    bottom:auto;
-    width:154px;
-  }
-
-  .message-menu button{
-    height:34px;
-    font-size:13px;
-  }
-
-  input,
-  textarea,
-  select{
-    font-size:16px !important;
-  }
-}
-
 .mobile-action-overlay{
   position:fixed;
   inset:0;
-  z-index:9999;
+  z-index:30000;
   background:rgba(0,0,0,.28);
   display:flex;
   align-items:flex-end;
@@ -390,4 +361,26 @@
 
 .attach-menu button:hover{
   background:#243342;
+}
+
+@media (max-width:768px){
+  .message{
+    -webkit-touch-callout:none;
+  }
+
+  .message-text{
+    -webkit-user-select:text;
+    user-select:text;
+  }
+
+  .message-menu button{
+    height:34px;
+    font-size:13px;
+  }
+
+  input,
+  textarea,
+  select{
+    font-size:16px !important;
+  }
 }
