@@ -146,4 +146,4 @@ export function usePinnedMessages({
     handlePinnedBarClick
   };
 
-}ы
+}
