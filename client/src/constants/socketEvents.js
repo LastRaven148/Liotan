@@ -44,6 +44,10 @@ export const SOCKET_EVENTS = {
 
   GET_GROUP_CHAT: "getGroupChat",
 
-  SEND_GROUP_MESSAGE: "sendGroupMessage"
+  SEND_GROUP_MESSAGE: "sendGroupMessage",
+
+  PIN_MESSAGE: "pinMessage",
+
+  MESSAGE_PINNED: "messagePinned"
 
 };

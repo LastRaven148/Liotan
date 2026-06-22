@@ -106,6 +106,7 @@ export default function MessengerLayout({
         startReplyMessage={chat.startReplyMessage}
         cancelReplyMessage={chat.cancelReplyMessage}
         deleteMessage={chat.deleteMessage}
+        pinMessage={chat.pinMessage}
         handleKey={chat.handleKey}
         sendMessage={chat.sendMessage}
         sendAttachment={chat.sendAttachment}

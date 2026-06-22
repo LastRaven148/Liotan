@@ -16,6 +16,9 @@ const registerDeleteMessage =
 const registerDeletePrivateChat =
   require("./deletePrivateChat");
 
+const registerPinMessage =
+  require("./pinMessage");
+
 function registerPrivateHandlers({
   io,
   socket,
@@ -46,6 +49,11 @@ function registerPrivateHandlers({
   });
 
   registerDeletePrivateChat({
+    io,
+    socket
+  });
+
+  registerPinMessage({
     io,
     socket
   });

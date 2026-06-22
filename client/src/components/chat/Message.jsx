@@ -23,7 +23,8 @@ function Message({
   username,
   onEdit,
   onDelete,
-  onReply
+  onReply,
+  onPin
 }) {
 
   const { t } =
@@ -391,12 +392,18 @@ function Message({
         </button>
 
         <button
-          type="button"
-          onClick={fakeAction}
-        >
-          <span>⌖</span>
-          Закрепить
-        </button>
+  type="button"
+  onClick={() => {
+    closeMenus();
+    onPin?.(message);
+  }}
+>
+  <span>⌖</span>
+
+  {message.isPinned
+    ? "Открепить"
+    : "Закрепить"}
+</button>
 
         <button
           type="button"
@@ -417,6 +424,7 @@ function Message({
     <>
       <div
         ref={messageRef}
+        data-message-id={message._id}
         className={[
           "message",
           isMine ? "me" : "",

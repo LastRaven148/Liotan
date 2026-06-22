@@ -564,6 +564,27 @@ export default function useChat({
 
   }
 
+  function pinMessage(
+  message
+) {
+
+  if (
+    !socketRef.current ||
+    !message?._id
+  ) {
+    return;
+  }
+
+  socketRef.current.emit(
+    SOCKET_EVENTS.PIN_MESSAGE,
+    {
+      messageId:
+        message._id
+    }
+  );
+
+}
+
   function deleteMessage(
     message
   ) {
@@ -661,8 +682,9 @@ export default function useChat({
     cancelReplyMessage,
 
     deleteMessage,
+    pinMessage,
     deleteChat,
-
+    
     chatId,
     messages,
     activeDialog,

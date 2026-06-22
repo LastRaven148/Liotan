@@ -156,6 +156,7 @@ const Chat = memo(function Chat({
   startReplyMessage,
   cancelReplyMessage,
   deleteMessage,
+  pinMessage,
   handleKey,
   sendMessage,
   sendAttachment,
@@ -469,6 +470,67 @@ const Chat = memo(function Chat({
   handleKey(e);
 }
 
+const pinnedMessage =
+  useMemo(() => {
+
+    return [...messages]
+      .filter(message =>
+        message.isPinned
+      )
+      .sort((a, b) =>
+        new Date(b.pinnedAt || b.createdAt) -
+        new Date(a.pinnedAt || a.createdAt)
+      )[0] || null;
+
+  }, [
+    messages
+  ]);
+
+function getPinnedPreview(message) {
+
+  if (!message) {
+    return "";
+  }
+
+  if (message.text) {
+    return message.text;
+  }
+
+  if (message.attachment?.type === "photo") {
+    return t.photo;
+  }
+
+  if (message.attachment?.type === "file") {
+    return message.attachment.name || t.file;
+  }
+
+  return t.message;
+
+}
+
+function scrollToPinnedMessage() {
+
+  if (
+    !pinnedMessage ||
+    !messagesRef.current
+  ) {
+    return;
+  }
+
+  const el =
+    messagesRef.current.querySelector(
+      `[data-message-id="${pinnedMessage._id}"]`
+    );
+
+  if (el) {
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }
+
+}
+
   return (
     <div className="chat">
 
@@ -483,6 +545,26 @@ const Chat = memo(function Chat({
             username={username}
             onBack={onBack}
           />
+
+          {pinnedMessage && (
+  <button
+    type="button"
+    className="pinned-bar"
+    onClick={scrollToPinnedMessage}
+  >
+    <div className="pinned-bar-line" />
+
+    <div className="pinned-bar-content">
+      <div className="pinned-bar-title">
+        Закреплённое сообщение
+      </div>
+
+      <div className="pinned-bar-text">
+        {getPinnedPreview(pinnedMessage)}
+      </div>
+    </div>
+  </button>
+)}
 
           <div
             className="messages"
@@ -510,6 +592,7 @@ const Chat = memo(function Chat({
                   onEdit={startEditMessage}
                   onReply={startReplyMessage}
                   onDelete={deleteMessage}
+                  onPin={pinMessage}
                 />
               );
 

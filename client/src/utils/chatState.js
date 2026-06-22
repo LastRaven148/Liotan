@@ -146,3 +146,25 @@ export function replaceChatHistory(
   };
 
 }
+
+export function pinMessageInChat(
+  prevChats,
+  msg
+) {
+
+  const chatId =
+    msg.chatId;
+
+  return {
+    ...prevChats,
+
+    [chatId]:
+      (prevChats[chatId] || []).map(
+        item =>
+          item._id === msg._id
+            ? msg
+            : item
+      )
+  };
+
+}

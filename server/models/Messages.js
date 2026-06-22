@@ -102,6 +102,21 @@ const messageSchema =
         default: null
       },
 
+      isPinned: {
+  type: Boolean,
+  default: false
+},
+
+pinnedAt: {
+  type: Date,
+  default: null
+},
+
+pinnedBy: {
+  type: String,
+  default: ""
+},
+
       attachment: {
         url: {
           type: String,

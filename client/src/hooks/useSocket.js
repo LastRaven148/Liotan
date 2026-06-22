@@ -8,7 +8,8 @@ import {
   deleteChatFromState,
   incrementUnread,
   replaceChatHistory,
-  updateMessagesStatus
+  updateMessagesStatus,
+  pinMessageInChat
 } from "../utils/chatState";
 
 import {
@@ -406,6 +407,19 @@ export default function useSocket({
 
     }
 
+    function handleMessagePinned(
+  msg
+) {
+
+  setChats(prev =>
+    pinMessageInChat(
+      prev,
+      msg
+    )
+  );
+
+}
+
     function handleUserTyping({
       from
     }) {
@@ -518,6 +532,11 @@ export default function useSocket({
       handleUserLastSeen
     );
 
+    socket.on(
+  SOCKET_EVENTS.MESSAGE_PINNED,
+  handleMessagePinned
+);
+
     return () => {
 
       socket.off(
@@ -574,6 +593,11 @@ export default function useSocket({
         SOCKET_EVENTS.USER_LAST_SEEN,
         handleUserLastSeen
       );
+
+      socket.off(
+  SOCKET_EVENTS.MESSAGE_PINNED,
+  handleMessagePinned
+);
 
       socket.disconnect();
 
