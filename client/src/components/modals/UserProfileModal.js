@@ -55,6 +55,11 @@ export default function UserProfileModal({
 
   useEffect(() => {
 
+    setProfile(user);
+    setSearch("");
+    setUsers([]);
+    setEditing(false);
+
     let alive = true;
 
     async function load() {
