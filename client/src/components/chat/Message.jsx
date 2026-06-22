@@ -48,6 +48,9 @@ function Message({
   const longPressRef =
     useRef(null);
 
+  const touchPointRef =
+    useRef(null);
+
   const menuRef =
     useRef(null);
 
@@ -173,14 +176,43 @@ function Message({
     ).matches;
   }
 
-  function calculateMenuPosition() {
+  function getEventPoint(e) {
+
+    if (
+      e.clientX !== undefined &&
+      e.clientY !== undefined
+    ) {
+      return {
+        x: e.clientX,
+        y: e.clientY
+      };
+    }
+
+    if (touchPointRef.current) {
+      return touchPointRef.current;
+    }
 
     const rect =
       messageRef.current?.getBoundingClientRect();
 
     if (!rect) {
-      return;
+      return {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2
+      };
     }
+
+    return {
+      x: isMine ? rect.right : rect.left,
+      y: rect.top + rect.height / 2
+    };
+
+  }
+
+  function calculateMenuPosition(e) {
+
+    const point =
+      getEventPoint(e);
 
     const menuWidth = 178;
     const menuHeight = 270;
@@ -189,8 +221,8 @@ function Message({
 
     let left =
       isMine
-        ? rect.right - menuWidth
-        : rect.left;
+        ? point.x - menuWidth
+        : point.x;
 
     left =
       Math.max(
@@ -202,22 +234,25 @@ function Message({
       );
 
     const spaceBelow =
-      window.innerHeight - rect.bottom;
+      window.innerHeight - point.y;
 
     const spaceAbove =
-      rect.top;
+      point.y;
 
     let top;
 
     if (spaceBelow >= menuHeight + gap) {
-      top = rect.bottom + gap;
+      top = point.y + gap;
     } else if (spaceAbove >= menuHeight + gap) {
-      top = rect.top - menuHeight - gap;
+      top = point.y - menuHeight - gap;
     } else {
       top =
         Math.max(
           padding,
-          window.innerHeight - menuHeight - padding
+          Math.min(
+            point.y - menuHeight / 2,
+            window.innerHeight - menuHeight - padding
+          )
         );
     }
 
@@ -247,7 +282,7 @@ function Message({
       return;
     }
 
-    calculateMenuPosition();
+    calculateMenuPosition(e);
     setMenuOpen(true);
 
   }
@@ -265,6 +300,16 @@ function Message({
       e.target.closest("button")
     ) {
       return;
+    }
+
+    const touch =
+      e.touches?.[0];
+
+    if (touch) {
+      touchPointRef.current = {
+        x: touch.clientX,
+        y: touch.clientY
+      };
     }
 
     longPressRef.current =
