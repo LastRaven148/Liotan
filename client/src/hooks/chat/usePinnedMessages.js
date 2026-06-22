@@ -36,7 +36,9 @@ export function usePinnedMessages({
     ]);
 
   const activePinnedMessage =
-    pinnedMessages[0] || null;
+    pinnedMessages[pinnedCycleIndex] ||
+    pinnedMessages[0] ||
+    null;
 
   useEffect(() => {
 
@@ -144,4 +146,4 @@ export function usePinnedMessages({
     handlePinnedBarClick
   };
 
-}
+}ы
