@@ -814,7 +814,7 @@ async function devAdminPage(req, res) {
 
             async function resetPassword(encodedUsername, username) {
               const ok =
-                confirm("Сбросить пароль пользователя " + username + " на 123456?");
+                confirm("Сбросить пароль пользователя " + username + " на 123456789?");
 
               if (!ok) {
                 return;
@@ -832,7 +832,7 @@ async function devAdminPage(req, res) {
                         "Content-Type": "application/json"
                       },
                       body: JSON.stringify({
-                        password: "123456"
+                        password: "123456789"
                       })
                     }
                   );
@@ -938,7 +938,7 @@ async function devResetUserPassword(req, res, next) {
       String(req.params.username || "").trim();
 
     const password =
-      String(req.body.password || "123456");
+      String(req.body.password || "123456789");
 
     if (
       !isValidUsername(username) ||
