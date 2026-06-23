@@ -87,6 +87,7 @@ const PORT =
 const allowedOrigins = [
   "http://localhost:3000",
   "https://liotan.onrender.com",
+  "https://liotan-api.onrender.com",
   process.env.CLIENT_URL
 ].filter(Boolean);
 
@@ -132,7 +133,8 @@ const corsOptions = {
   ],
   allowedHeaders: [
     "Content-Type",
-    "Authorization"
+    "Authorization",
+    "x-dev-admin-key"
   ]
 };
 
