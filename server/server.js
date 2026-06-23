@@ -154,6 +154,7 @@ const io =
 
 app.use(
   helmet({
+    contentSecurityPolicy: false,
     crossOriginResourcePolicy: {
       policy: "cross-origin"
     }
