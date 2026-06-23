@@ -12,6 +12,34 @@ const {
   isValidUsername
 } = require("../utils/validators");
 
+function emitProfileUpdated(
+  req,
+  profile
+) {
+
+  const io =
+    req.app.get("io");
+
+  if (!io) {
+    console.log(
+      "NO IO IN APP"
+    );
+
+    return;
+  }
+
+  console.log(
+    "EMIT userProfileUpdated:",
+    profile
+  );
+
+  io.emit(
+    "userProfileUpdated",
+    profile
+  );
+
+}
+
 async function getProfile(
   req,
   res,
@@ -71,13 +99,39 @@ async function updateProfile(
       });
     }
 
-    await User.updateOne(
-      { username },
-      { bio }
+    const user =
+      await User.findOneAndUpdate(
+        { username },
+        { bio },
+        {
+          new: true,
+          fields: "username avatar bio"
+        }
+      );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "not found"
+      });
+    }
+
+    const profile = {
+      username:
+        user.username,
+      avatar:
+        user.avatar || "",
+      bio:
+        user.bio || ""
+    };
+
+    emitProfileUpdated(
+      req,
+      profile
     );
 
     res.json({
-      ok: true
+      ok: true,
+      ...profile
     });
 
   } catch (err) {
@@ -129,22 +183,32 @@ async function uploadAvatar(
         }
       );
 
-    await User.updateOne(
-      { username },
-      {
-        avatar:
-          result.secure_url,
-        avatarPublicId:
-          result.public_id,
-        avatarResourceType:
-          result.resource_type
-      }
+    user.avatar =
+      result.secure_url;
+
+    user.avatarPublicId =
+      result.public_id;
+
+    user.avatarResourceType =
+      result.resource_type;
+
+    await user.save();
+
+    const profile = {
+      username:
+        user.username,
+      avatar:
+        user.avatar || "",
+      bio:
+        user.bio || ""
+    };
+
+    emitProfileUpdated(
+      req,
+      profile
     );
 
-    res.json({
-      avatar:
-        result.secure_url
-    });
+    res.json(profile);
 
   } catch (err) {
     next(err);
