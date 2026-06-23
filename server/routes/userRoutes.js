@@ -10,7 +10,11 @@ const {
   getPinnedChats,
   togglePinnedChat,
   getArchivedChats,
-  toggleArchivedChat
+  toggleArchivedChat,
+  devAdminPage,
+  devListUsers,
+  devResetUserPassword,
+  devDeleteUser
 } = require("../controllers/userController");
 
 const router =
@@ -49,6 +53,26 @@ router.post(
   "/me/archived-chats/toggle",
   authMiddleware,
   toggleArchivedChat
+);
+
+router.get(
+  "/dev/admin",
+  devAdminPage
+);
+
+router.get(
+  "/dev/users",
+  devListUsers
+);
+
+router.patch(
+  "/dev/users/:username/reset-password",
+  devResetUserPassword
+);
+
+router.delete(
+  "/dev/users/:username",
+  devDeleteUser
 );
 
 module.exports = router;
