@@ -116,7 +116,11 @@ export default function useAppController() {
     setTypingUsers,
     updateDialog: dialogs.updateDialog,
     updateUserLastSeen: dialogs.updateUserLastSeen,
+    updateUserProfile: dialogs.updateUserProfile,
     removeDialog: dialogs.removeDialog,
+    setAvatar,
+    setBio,
+    setProfileUser,
     socketRef,
     API
   });

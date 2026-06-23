@@ -174,6 +174,71 @@ export default function useDialogs({
       });
     }, []);
 
+  const updateUserProfile =
+    useCallback((profile) => {
+
+      if (!profile?.username) {
+        return;
+      }
+
+      const targetUsername =
+        profile.username;
+
+      setDialogs(prev =>
+        prev.map(dialog => {
+
+          if (
+            dialog.type === "private" &&
+            dialog.username === targetUsername
+          ) {
+            return {
+              ...dialog,
+              avatar:
+                profile.avatar || "",
+              bio:
+                profile.bio || ""
+            };
+          }
+
+          if (dialog.type === "group") {
+            return {
+              ...dialog,
+              memberUsers:
+                (dialog.memberUsers || []).map(user =>
+                  user.username === targetUsername
+                    ? {
+                        ...user,
+                        avatar:
+                          profile.avatar || "",
+                        bio:
+                          profile.bio || ""
+                      }
+                    : user
+                )
+            };
+          }
+
+          return dialog;
+
+        })
+      );
+
+      setSearchResults(prev =>
+        prev.map(user =>
+          user.username === targetUsername
+            ? {
+                ...user,
+                avatar:
+                  profile.avatar || "",
+                bio:
+                  profile.bio || ""
+              }
+            : user
+        )
+      );
+
+    }, []);
+
   useEffect(() => {
     const query =
       search.trim();
@@ -466,6 +531,7 @@ export default function useDialogs({
     loadGroups: loadDialogs,
     addGroup,
     updateGroup,
+    updateUserProfile,
     updateDialog,
     updateUserLastSeen,
     removeDialog,

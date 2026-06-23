@@ -154,6 +154,11 @@ const io =
     cors: corsOptions
   });
 
+app.set(
+  "io",
+  io
+);
+
 app.use(
   helmet({
     contentSecurityPolicy: false,

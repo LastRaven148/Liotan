@@ -6,7 +6,6 @@ import {
   editMessageInChat,
   deleteMessageFromChat,
   deleteChatFromState,
-  incrementUnread,
   replaceChatHistory,
   updateMessagesStatus,
   pinMessageInChat
@@ -113,7 +112,11 @@ export default function useSocket({
   setTypingUsers,
   updateDialog,
   updateUserLastSeen,
+  updateUserProfile,
   removeDialog,
+  setAvatar,
+  setBio,
+  setProfileUser,
   socketRef,
   API
 }) {
@@ -408,17 +411,17 @@ export default function useSocket({
     }
 
     function handleMessagePinned(
-  msg
-) {
-
-  setChats(prev =>
-    pinMessageInChat(
-      prev,
       msg
-    )
-  );
+    ) {
 
-}
+      setChats(prev =>
+        pinMessageInChat(
+          prev,
+          msg
+        )
+      );
+
+    }
 
     function handleUserTyping({
       from
@@ -474,6 +477,131 @@ export default function useSocket({
         targetUsername,
         lastSeen
       );
+
+    }
+
+    function handleUserProfileUpdated(
+      profile
+    ) {
+
+      if (!profile?.username) {
+        return;
+      }
+
+      updateUserProfile?.(
+        profile
+      );
+
+      setProfileUser?.(prev => {
+
+        if (
+          !prev ||
+          prev.username !== profile.username
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          avatar:
+            profile.avatar || "",
+          bio:
+            profile.bio || ""
+        };
+
+      });
+
+      if (profile.username === username) {
+        setAvatar?.(
+          profile.avatar || ""
+        );
+
+        setBio?.(
+          profile.bio || ""
+        );
+      }
+
+    }
+
+    function handleUserDeleted(
+      data
+    ) {
+
+      const targetUsername =
+        data?.username ||
+        data?.deletedUsername;
+
+      if (!targetUsername) {
+        return;
+      }
+
+      removeDialog(
+        targetUsername
+      );
+
+      setUnread(prev => {
+
+        const next =
+          {
+            ...prev
+          };
+
+        delete next[targetUsername];
+
+        return next;
+
+      });
+
+      setTypingUsers(prev => {
+
+        const next =
+          {
+            ...prev
+          };
+
+        delete next[targetUsername];
+
+        return next;
+
+      });
+
+      setProfileUser?.(prev =>
+        prev?.username === targetUsername
+          ? null
+          : prev
+      );
+
+      if (
+        activeChatRef.current ===
+        targetUsername
+      ) {
+        setActiveChat(null);
+      }
+
+      setChats(prev => {
+
+        const next =
+          {
+            ...prev
+          };
+
+        if (Array.isArray(data.chatIds)) {
+          data.chatIds.forEach(chatId => {
+            delete next[chatId];
+          });
+        }
+
+        Object.keys(next).forEach(chatId => {
+          if (
+            chatId.includes(targetUsername)
+          ) {
+            delete next[chatId];
+          }
+        });
+
+        return next;
+
+      });
 
     }
 
@@ -533,9 +661,19 @@ export default function useSocket({
     );
 
     socket.on(
-  SOCKET_EVENTS.MESSAGE_PINNED,
-  handleMessagePinned
-);
+      SOCKET_EVENTS.MESSAGE_PINNED,
+      handleMessagePinned
+    );
+
+    socket.on(
+      SOCKET_EVENTS.USER_PROFILE_UPDATED,
+      handleUserProfileUpdated
+    );
+
+    socket.on(
+      SOCKET_EVENTS.USER_DELETED,
+      handleUserDeleted
+    );
 
     return () => {
 
@@ -595,9 +733,19 @@ export default function useSocket({
       );
 
       socket.off(
-  SOCKET_EVENTS.MESSAGE_PINNED,
-  handleMessagePinned
-);
+        SOCKET_EVENTS.MESSAGE_PINNED,
+        handleMessagePinned
+      );
+
+      socket.off(
+        SOCKET_EVENTS.USER_PROFILE_UPDATED,
+        handleUserProfileUpdated
+      );
+
+      socket.off(
+        SOCKET_EVENTS.USER_DELETED,
+        handleUserDeleted
+      );
 
       socket.disconnect();
 
@@ -614,7 +762,11 @@ export default function useSocket({
     setTypingUsers,
     updateDialog,
     updateUserLastSeen,
+    updateUserProfile,
     removeDialog,
+    setAvatar,
+    setBio,
+    setProfileUser,
     socketRef
   ]);
 
