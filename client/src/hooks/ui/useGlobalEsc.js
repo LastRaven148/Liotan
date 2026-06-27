@@ -30,6 +30,14 @@ export default function useGlobalEsc({
         return;
       }
 
+      if (
+        document.querySelector(".media-viewer") ||
+        document.querySelector(".attachment-preview-overlay") ||
+        document.querySelector(".mobile-action-overlay")
+      ) {
+        return;
+      }
+
       if (profileMenu) {
         setProfileMenu(false);
         return;

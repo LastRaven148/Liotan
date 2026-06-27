@@ -18,9 +18,33 @@ export function useChatScroll({
       lastId: ""
     });
 
+  function scrollToBottom() {
+
+    const el =
+      messagesRef.current;
+
+    if (!el) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      el.scrollTop =
+        el.scrollHeight;
+
+      requestAnimationFrame(() => {
+        el.scrollTop =
+          el.scrollHeight;
+      });
+    });
+
+  }
+
   useEffect(() => {
 
-    if (!messagesRef.current) {
+    const el =
+      messagesRef.current;
+
+    if (!el) {
       return;
     }
 
@@ -44,8 +68,7 @@ export function useChatScroll({
       chatChanged ||
       newMessageAdded
     ) {
-      messagesRef.current.scrollTop =
-        messagesRef.current.scrollHeight;
+      scrollToBottom();
     }
 
     previousChatRef.current =

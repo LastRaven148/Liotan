@@ -1,3 +1,7 @@
+import {
+  useState
+} from "react";
+
 function getDraftTitle(items) {
 
   const photos =
@@ -39,28 +43,6 @@ function getDraftTitle(items) {
 
 }
 
-function formatDuration(value) {
-
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-
-  const total =
-    Math.floor(value);
-
-  const minutes =
-    Math.floor(total / 60);
-
-  const seconds =
-    String(total % 60).padStart(
-      2,
-      "0"
-    );
-
-  return `${minutes}:${seconds}`;
-
-}
-
 export default function AttachmentDraftModal({
   attachmentDraft,
   attachmentCaption,
@@ -71,6 +53,11 @@ export default function AttachmentDraftModal({
   onSend,
   onAddMore
 }) {
+
+  const [
+    menuOpen,
+    setMenuOpen
+  ] = useState(false);
 
   if (!attachmentDraft.length) {
     return null;
@@ -95,12 +82,52 @@ export default function AttachmentDraftModal({
             )}
           </div>
 
-          <button
-            type="button"
-            className="attachment-preview-more"
-          >
-            ⋮
-          </button>
+          <div className="attachment-preview-menu-wrap">
+            <button
+              type="button"
+              className="attachment-preview-more"
+              onClick={() =>
+                setMenuOpen(prev => !prev)
+              }
+            >
+              ⋮
+            </button>
+
+            {menuOpen && (
+              <div className="attachment-preview-menu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onAddMore();
+                  }}
+                >
+                  <span className="attachment-preview-menu-icon">
+                    +
+                  </span>
+
+                  <span>
+                    Добавить
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMenuOpen(false)
+                  }
+                >
+                  <span className="attachment-preview-menu-icon">
+                    ✓
+                  </span>
+
+                  <span>
+                    Отправить без сжатия
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="attachment-preview-list">

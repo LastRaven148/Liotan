@@ -297,7 +297,6 @@ function Message({
     attachment.size <= AUTO_CACHE_LIMIT &&
     (
       isPhoto ||
-      isVideo ||
       isAudio
     );
 
@@ -389,6 +388,47 @@ function Message({
 
   useEffect(() => {
 
+    if (!viewerOpen) {
+      return;
+    }
+
+    function handleViewerEsc(e) {
+
+      if (e.key !== "Escape") {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.stopImmediatePropagation) {
+        e.stopImmediatePropagation();
+      }
+
+      setViewerOpen(false);
+
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleViewerEsc,
+      true
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleViewerEsc,
+        true
+      );
+    };
+
+  }, [
+    viewerOpen
+  ]);
+
+  useEffect(() => {
+
     function handleOutside(e) {
 
       if (!menuOpen) {
@@ -418,7 +458,6 @@ function Message({
       if (e.key === "Escape") {
         setMenuOpen(false);
         setMobileMenu(false);
-        setViewerOpen(false);
       }
 
     }
@@ -471,7 +510,9 @@ function Message({
       );
     };
 
-  }, [menuOpen]);
+  }, [
+    menuOpen
+  ]);
 
   function isMobile() {
     return window.matchMedia(
@@ -629,8 +670,12 @@ function Message({
   function clearLongPress() {
 
     if (longPressRef.current) {
-      clearTimeout(longPressRef.current);
-      longPressRef.current = null;
+      clearTimeout(
+        longPressRef.current
+      );
+
+      longPressRef.current =
+        null;
     }
 
   }
@@ -747,6 +792,7 @@ function Message({
 
     } catch (err) {
       console.error(err);
+
       window.open(
         fileUrl || remoteUrl,
         "_blank"
@@ -830,6 +876,28 @@ function Message({
       );
 
     button?.click();
+
+  }
+
+  function handleVideoMetadata(e) {
+
+    const video =
+      e.currentTarget;
+
+    if (
+      video.videoWidth &&
+      video.videoHeight
+    ) {
+      setVideoRatio(
+        `${video.videoWidth} / ${video.videoHeight}`
+      );
+    }
+
+    if (Number.isFinite(video.duration)) {
+      setVideoDuration(
+        video.duration
+      );
+    }
 
   }
 
@@ -1075,25 +1143,8 @@ function Message({
           preload="metadata"
           muted
           playsInline
-          onLoadedMetadata={(e) => {
-
-            const video =
-              e.currentTarget;
-
-            if (
-              video.videoWidth &&
-              video.videoHeight
-            ) {
-              setVideoRatio(
-                `${video.videoWidth} / ${video.videoHeight}`
-              );
-            }
-
-            setVideoDuration(
-              video.duration
-            );
-
-          }}
+          loop
+          onLoadedMetadata={handleVideoMetadata}
         />
 
         <button
@@ -1279,24 +1330,11 @@ function Message({
               controls
               autoPlay
               playsInline
+              loop
               style={{
                 "--video-ratio": videoRatio
               }}
-              onLoadedMetadata={(e) => {
-
-                const video =
-                  e.currentTarget;
-
-                if (
-                  video.videoWidth &&
-                  video.videoHeight
-                ) {
-                  setVideoRatio(
-                    `${video.videoWidth} / ${video.videoHeight}`
-                  );
-                }
-
-              }}
+              onLoadedMetadata={handleVideoMetadata}
             />
           )}
         </div>
