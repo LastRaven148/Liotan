@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState
 } from "react";
 
@@ -11,9 +12,11 @@ import {
 
 export default function SettingsModal({
   username,
+  displayName,
+  setDisplayName,
   avatar,
   bio,
-  saveBio,
+  saveProfile,
   uploadAvatar,
   logout,
   deleteAccount,
@@ -32,18 +35,124 @@ export default function SettingsModal({
   ] = useState(false);
 
   const [
-    value,
-    setValue
+    nameValue,
+    setNameValue
+  ] = useState(displayName || "");
+
+  const [
+    bioValue,
+    setBioValue
   ] = useState(bio || "");
+
+  const [
+    previewAvatar,
+    setPreviewAvatar
+  ] = useState("");
+
+  const [
+    pendingAvatarFile,
+    setPendingAvatarFile
+  ] = useState(null);
+
+  const [
+    saving,
+    setSaving
+  ] = useState(false);
 
   const [
     confirmDelete,
     setConfirmDelete
   ] = useState(false);
 
-  function handleSave() {
-    saveBio(value);
-    setEditing(false);
+  useEffect(() => {
+    setNameValue(displayName || "");
+  }, [
+    displayName
+  ]);
+
+  useEffect(() => {
+    setBioValue(bio || "");
+  }, [
+    bio
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (previewAvatar) {
+        URL.revokeObjectURL(previewAvatar);
+      }
+    };
+  }, [
+    previewAvatar
+  ]);
+
+  const shownName =
+    displayName?.trim() ||
+    username;
+
+  const shownAvatar =
+    previewAvatar ||
+    avatarUrl(avatar);
+
+  function handleAvatarSelect(e) {
+    const file =
+      e.target.files?.[0];
+
+    e.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    if (previewAvatar) {
+      URL.revokeObjectURL(previewAvatar);
+    }
+
+    setPendingAvatarFile(file);
+
+    setPreviewAvatar(
+      URL.createObjectURL(file)
+    );
+  }
+
+  async function handleSave() {
+
+    if (saving) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const saved =
+        await saveProfile?.({
+          bio: bioValue,
+          displayName: nameValue
+        });
+
+      if (saved?.displayName !== undefined) {
+        setDisplayName?.(
+          saved.displayName || ""
+        );
+      }
+
+      if (pendingAvatarFile) {
+        await uploadAvatar?.(
+          pendingAvatarFile
+        );
+      }
+
+      if (previewAvatar) {
+        URL.revokeObjectURL(previewAvatar);
+      }
+
+      setPreviewAvatar("");
+      setPendingAvatarFile(null);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+
   }
 
   function toggleLanguage() {
@@ -96,16 +205,19 @@ export default function SettingsModal({
               type="button"
               className="drawer-save-button"
               onClick={handleSave}
+              disabled={saving}
             >
-              {t.save || "Сохранить"}
+              {saving
+                ? "..."
+                : t.save || "Сохранить"}
             </button>
           </div>
 
           <label className="edit-avatar">
             <div className="settings-avatar large">
-              {avatar ? (
+              {shownAvatar ? (
                 <img
-                  src={avatarUrl(avatar)}
+                  src={shownAvatar}
                   alt=""
                   className="avatar-image"
                 />
@@ -120,17 +232,31 @@ export default function SettingsModal({
               type="file"
               hidden
               accept="image/*"
-              onChange={uploadAvatar}
+              onChange={handleAvatarSelect}
             />
           </label>
 
           <div className="settings-card">
             <div className="settings-field-label">
+              Имя
+            </div>
+
+            <input
+              className="settings-bio-input"
+              value={nameValue}
+              onChange={(e) =>
+                setNameValue(e.target.value)
+              }
+              placeholder="Имя"
+              maxLength={40}
+            />
+
+            <div className="settings-field-label">
               {t.username || "Имя пользователя"}
             </div>
 
             <div className="settings-readonly">
-              {username}
+              @{username}
             </div>
 
             <div className="settings-field-label">
@@ -139,9 +265,9 @@ export default function SettingsModal({
 
             <textarea
               className="settings-bio-input"
-              value={value}
+              value={bioValue}
               onChange={(e) =>
-                setValue(e.target.value)
+                setBioValue(e.target.value)
               }
               placeholder={t.aboutYou || "О себе"}
               maxLength={100}
@@ -200,7 +326,7 @@ export default function SettingsModal({
 
           <div>
             <div className="settings-name">
-              {username}
+              {shownName}
             </div>
 
             <div className="settings-online">
@@ -225,68 +351,6 @@ export default function SettingsModal({
               {language === "en"
                 ? t.english || "English"
                 : t.russian || "Русский"}
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Фон чата
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Цвет сообщений
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Размер текста
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Формат времени
-            </div>
-          </button>
-        </div>
-
-        <div className="settings-card">
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Конфиденциальность
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className="settings-row button-row"
-          >
-            <span>•</span>
-            <div className="settings-row-main">
-              Устройства
             </div>
           </button>
         </div>

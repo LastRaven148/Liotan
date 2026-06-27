@@ -124,6 +124,7 @@ export default function useSocket({
   setProfileUser,
   socketRef,
   updateGroup,
+  setDisplayName,
   API
 }) {
 
@@ -589,6 +590,10 @@ export default function useSocket({
         setBio?.(
           profile.bio || ""
         );
+
+        setDisplayName?.(
+          profile.displayName || ""
+        );
       }
 
     }
@@ -918,6 +923,7 @@ function handleGroupDeleted(data) {
     setBio,
     setProfileUser,
     updateGroup,
+    setDisplayName,
     socketRef
   ]);
 

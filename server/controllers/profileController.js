@@ -102,10 +102,10 @@ async function updateProfile(
     const user =
       await User.findOneAndUpdate(
         { username },
-        { bio },
+        { bio, displayName },
         {
           new: true,
-          fields: "username avatar bio"
+          fields: "username displayName avatar bio"
         }
       );
 
@@ -115,14 +115,21 @@ async function updateProfile(
       });
     }
 
+    const displayName =
+  typeof req.body.displayName === "string"
+    ? req.body.displayName.trim()
+    : "";
+
     const profile = {
-      username:
-        user.username,
-      avatar:
-        user.avatar || "",
-      bio:
-        user.bio || ""
-    };
+  username:
+    user.username,
+  displayName:
+    user.displayName || "",
+  avatar:
+    user.avatar || "",
+  bio:
+    user.bio || ""
+};
 
     emitProfileUpdated(
       req,
@@ -195,13 +202,15 @@ async function uploadAvatar(
     await user.save();
 
     const profile = {
-      username:
-        user.username,
-      avatar:
-        user.avatar || "",
-      bio:
-        user.bio || ""
-    };
+  username:
+    user.username,
+  displayName:
+    user.displayName || "",
+  avatar:
+    user.avatar || "",
+  bio:
+    user.bio || ""
+};
 
     emitProfileUpdated(
       req,

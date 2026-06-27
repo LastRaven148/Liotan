@@ -15,9 +15,12 @@ export default function ModalsLayer({
   createGroupOpen,
   setCreateGroupOpen,
   username,
+  displayName,
+  setDisplayName,
   avatar,
   bio,
   saveBio,
+  saveProfile,
   uploadAvatar,
   logout,
   deleteAccount,
@@ -46,9 +49,12 @@ export default function ModalsLayer({
       {settingsOpen && (
         <SettingsModal
           username={username}
+          displayName={displayName}
+          setDisplayName={setDisplayName}
           avatar={avatar}
           bio={bio}
           saveBio={saveBio}
+          saveProfile={saveProfile}
           uploadAvatar={uploadAvatar}
           logout={logout}
           onClose={() =>

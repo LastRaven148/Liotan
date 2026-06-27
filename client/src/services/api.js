@@ -64,11 +64,24 @@ export async function uploadAttachmentApi(file) {
   });
 }
 
-export async function updateBioApi(username, bio) {
+export async function updateBioApi(
+  username,
+  bio,
+  displayName
+) {
+  const body = {
+    bio
+  };
+
+  if (displayName !== undefined) {
+    body.displayName =
+      displayName;
+  }
+
   return apiRequest(`${API}/profile/update`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ bio })
+    body: JSON.stringify(body)
   });
 }
 

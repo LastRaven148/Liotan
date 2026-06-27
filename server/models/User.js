@@ -10,6 +10,11 @@ module.exports =
         unique: true
       },
 
+      displayName: {
+        type: String,
+        default: ""
+      },
+
       password: String,
 
       avatar: {

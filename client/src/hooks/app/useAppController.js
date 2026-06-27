@@ -52,6 +52,9 @@ export default function useAppController() {
   const socketRef =
     useRef(null);
 
+  const [displayName, setDisplayName] =
+    useState("");
+
   const {
     showToast
   } = useToastContext();
@@ -178,6 +181,7 @@ export default function useAppController() {
 
     uploadAvatar: profile.uploadAvatar,
     saveBio: profile.saveBio,
+    saveProfile: profile.saveProfile,
 
     dialogs: dialogs.dialogs,
 
@@ -199,6 +203,10 @@ export default function useAppController() {
     setSearch: dialogs.setSearch,
     filteredDialogs: dialogs.filteredDialogs,
     deleteGroupDialog,
+
+    displayName,
+    setDisplayName,
+    saveProfile: profile.saveProfile,
 
     chat
   };

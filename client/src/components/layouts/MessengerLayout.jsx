@@ -44,6 +44,9 @@ export default function MessengerLayout({
     setCreateGroupOpen,
     addGroup,
     updateGroup,
+    displayName,
+    setDisplayName,
+    saveProfile,
     deleteGroupDialog
   } = app;
 
@@ -125,7 +128,10 @@ export default function MessengerLayout({
         username={username}
         avatar={avatar}
         bio={bio}
+        displayName={displayName}
+        setDisplayName={setDisplayName}
         saveBio={saveBio}
+        saveProfile={saveProfile}
         uploadAvatar={uploadAvatar}
         logout={() =>
           logout(socketRef)
