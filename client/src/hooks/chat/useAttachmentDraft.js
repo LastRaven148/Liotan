@@ -67,7 +67,10 @@ export function useAttachmentDraft({
         file,
         type: getDraftType(file),
         url: URL.createObjectURL(file),
-        ratio: ""
+        width: 0,
+        height: 0,
+        ratio: "",
+        orientation: ""
       }));
   }
 
@@ -81,25 +84,62 @@ export function useAttachmentDraft({
 
     setAttachmentDraft(prev => {
       const available =
-        Math.max(0, 10 - prev.length);
+        Math.max(
+          0,
+          10 - prev.length
+        );
 
       return [
         ...prev,
-        ...nextItems.slice(0, available)
+        ...nextItems.slice(
+          0,
+          available
+        )
       ];
     });
   }
 
-  function updateDraftRatio(index, ratio) {
+  function updateDraftMediaMeta(
+    index,
+    meta
+  ) {
     setAttachmentDraft(prev =>
-      prev.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              ratio
-            }
-          : item
-      )
+      prev.map((item, currentIndex) => {
+        if (currentIndex !== index) {
+          return item;
+        }
+
+        const width =
+          Number(meta?.width) || 0;
+
+        const height =
+          Number(meta?.height) || 0;
+
+        const ratio =
+          width > 0 && height > 0
+            ? `${width} / ${height}`
+            : "";
+
+        let orientation = "";
+
+        if (width && height) {
+          if (width > height * 1.15) {
+            orientation = "landscape";
+          } else if (height > width * 1.15) {
+            orientation = "portrait";
+          } else {
+            orientation = "square";
+          }
+        }
+
+        return {
+          ...item,
+          width,
+          height,
+          ratio,
+          orientation
+        };
+      })
     );
   }
 
@@ -138,23 +178,18 @@ export function useAttachmentDraft({
 
     setSendingDraft(true);
 
-    try {
-      const ok =
-        await sendAttachments(
-          attachmentDraft.map(item => item.file),
-          attachmentCaption
-        );
+    const ok =
+      await sendAttachments(
+        attachmentDraft.map(item => item.file),
+        attachmentCaption
+      );
 
-      if (ok === false) {
-        setSendingDraft(false);
-        return;
-      }
-
+    if (ok !== false) {
       closeAttachmentDraft();
-    } catch (err) {
-      console.error(err);
-      setSendingDraft(false);
+      return;
     }
+
+    setSendingDraft(false);
   }
 
   function handlePaste(e) {
@@ -171,6 +206,7 @@ export function useAttachmentDraft({
     }
 
     e.preventDefault();
+
     addDraftFiles(mediaFiles);
   }
 
@@ -209,8 +245,8 @@ export function useAttachmentDraft({
     sendingDraft,
     closeAttachmentDraft,
     removeDraftItem,
-    updateDraftRatio,
     sendAttachmentDraft,
+    updateDraftMediaMeta,
     handlePaste,
     handlePhotoChange,
     handleFileChange

@@ -277,7 +277,8 @@ export default function useChat({
   function emitMessage({
     target,
     messageText = "",
-    attachment = null
+    attachment = null,
+    reply = replyMessage
   }) {
 
     if (
@@ -293,6 +294,14 @@ export default function useChat({
         item.username === target
       );
 
+    const replyTo =
+      reply
+        ? {
+            messageId:
+              reply._id
+          }
+        : null;
+
     if (dialog?.type === "group") {
       socketRef.current.emit(
         SOCKET_EVENTS.SEND_GROUP_MESSAGE,
@@ -300,13 +309,7 @@ export default function useChat({
           groupId: dialog.groupId,
           text: messageText,
           attachment,
-          replyTo:
-            replyMessage
-              ? {
-                  messageId:
-                    replyMessage._id
-                }
-              : null
+          replyTo
         }
       );
 
@@ -319,13 +322,7 @@ export default function useChat({
         to: target,
         text: messageText,
         attachment,
-        replyTo:
-          replyMessage
-            ? {
-                messageId:
-                  replyMessage._id
-              }
-            : null
+        replyTo
       }
     );
 
@@ -383,7 +380,7 @@ export default function useChat({
         target: activeChat,
         messageText:
           hasText
-            ? text
+            ? text.trim()
             : "",
         attachment
       });
@@ -416,8 +413,17 @@ export default function useChat({
     const target =
       activeChat;
 
+    const savedReply =
+      replyMessage;
+
+    const cleanCaption =
+      caption.trim();
+
     const safeFiles =
       Array.from(files).slice(0, 10);
+
+    const lastIndex =
+      safeFiles.length - 1;
 
     try {
       for (let i = 0; i < safeFiles.length; i += 1) {
@@ -430,10 +436,14 @@ export default function useChat({
           emitMessage({
             target,
             messageText:
-              i === 0
-                ? caption.trim()
+              i === lastIndex
+                ? cleanCaption
                 : "",
-            attachment
+            attachment,
+            reply:
+              i === lastIndex
+                ? savedReply
+                : null
           });
 
         if (!ok) {
@@ -449,6 +459,7 @@ export default function useChat({
       return true;
     } catch (err) {
       console.error(err);
+
       alert(
         err?.message ||
         "Не удалось отправить файл"
@@ -502,6 +513,7 @@ export default function useChat({
       return sendMessage(attachment);
     } catch (err) {
       console.error(err);
+
       alert(
         err?.message ||
         "Не удалось отправить файл"

@@ -78,7 +78,10 @@ async function uploadAttachment(req, res, next) {
       mimeType: req.file.mimetype,
       size: req.file.size,
       publicId: result.public_id,
-      resourceType: result.resource_type
+      resourceType: result.resource_type,
+      width: result.width || 0,
+      height: result.height || 0,
+      duration: result.duration || 0
     });
   } catch (err) {
     next(err);

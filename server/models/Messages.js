@@ -118,42 +118,54 @@ const messageSchema =
       },
 
       attachment: {
-        url: {
-          type: String,
-          default: ""
-        },
-        name: {
-          type: String,
-          default: ""
-        },
-        type: {
-          type: String,
-          enum: [
-            "",
-            "photo",
-            "video",
-            "audio",
-            "file"
-          ],
-          default: ""
-        },
-        mimeType: {
-          type: String,
-          default: ""
-        },
-        size: {
-          type: Number,
-          default: 0
-        },
-        publicId: {
-          type: String,
-          default: ""
-        },
-        resourceType: {
-          type: String,
-          default: "auto"
-        }
-      }
+  url: {
+    type: String,
+    default: ""
+  },
+  name: {
+    type: String,
+    default: ""
+  },
+  type: {
+    type: String,
+    enum: [
+      "",
+      "photo",
+      "video",
+      "audio",
+      "file"
+    ],
+    default: ""
+  },
+  mimeType: {
+    type: String,
+    default: ""
+  },
+  size: {
+    type: Number,
+    default: 0
+  },
+  width: {
+    type: Number,
+    default: 0
+  },
+  height: {
+    type: Number,
+    default: 0
+  },
+  duration: {
+    type: Number,
+    default: 0
+  },
+  publicId: {
+    type: String,
+    default: ""
+  },
+  resourceType: {
+    type: String,
+    default: "auto"
+  }
+}
     },
     {
       timestamps: true

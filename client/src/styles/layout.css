@@ -28,6 +28,24 @@
   font-weight:700;
 }
 
+html,
+body{
+  background:#09111a;
+}
+
+@media (min-width:1200px){
+
+  .app{
+    width:100%;
+    max-width:1440px;
+    margin:0 auto;
+    border-left:1px solid #17212b;
+    border-right:1px solid #17212b;
+    box-sizing:border-box;
+  }
+
+}
+
 @media (max-width: 768px) {
   html,
   body,

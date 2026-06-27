@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState
 } from "react";
 
@@ -41,6 +42,26 @@ function getDraftTitle(items) {
   return `Отправить ${photos} фото`;
 }
 
+function getItemClass(item) {
+  const base = [
+    "attachment-preview-item"
+  ];
+
+  if (item.type === "video") {
+    base.push(
+      "attachment-preview-video-item"
+    );
+  }
+
+  if (item.orientation) {
+    base.push(
+      `attachment-preview-${item.orientation}`
+    );
+  }
+
+  return base.join(" ");
+}
+
 export default function AttachmentDraftModal({
   attachmentDraft,
   attachmentCaption,
@@ -50,7 +71,7 @@ export default function AttachmentDraftModal({
   onRemove,
   onSend,
   onAddMore,
-  onVideoRatio
+  onMediaMeta
 }) {
 
   const [
@@ -58,12 +79,46 @@ export default function AttachmentDraftModal({
     setMenuOpen
   ] = useState(false);
 
+  useEffect(() => {
+
+    function handleKeyDown(e) {
+      if (e.key !== "Escape") {
+        return;
+      }
+
+      e.preventDefault();
+      onClose?.();
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+
+  }, [
+    onClose
+  ]);
+
   if (!attachmentDraft.length) {
     return null;
   }
 
   return (
-    <div className="attachment-preview-overlay">
+    <div
+      className="attachment-preview-overlay"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose?.();
+        }
+      }}
+    >
       <div className="attachment-preview-modal">
 
         <div className="attachment-preview-header">
@@ -96,13 +151,16 @@ export default function AttachmentDraftModal({
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    onAddMore();
+                    onAddMore?.();
                   }}
                 >
                   <span className="attachment-preview-menu-icon">
                     +
                   </span>
-                  <span>Добавить</span>
+
+                  <span>
+                    Добавить
+                  </span>
                 </button>
 
                 <button
@@ -114,7 +172,10 @@ export default function AttachmentDraftModal({
                   <span className="attachment-preview-menu-icon">
                     ✓
                   </span>
-                  <span>Отправить без сжатия</span>
+
+                  <span>
+                    Отправить без сжатия
+                  </span>
                 </button>
               </div>
             )}
@@ -125,16 +186,11 @@ export default function AttachmentDraftModal({
           {attachmentDraft.map((item, index) => (
             <div
               key={item.url}
-              className={[
-                "attachment-preview-item",
-                item.type === "video"
-                  ? "attachment-preview-video-item"
-                  : ""
-              ].join(" ")}
+              className={getItemClass(item)}
               style={
                 item.ratio
                   ? {
-                      "--draft-video-ratio": item.ratio
+                      "--draft-media-ratio": item.ratio
                     }
                   : undefined
               }
@@ -154,9 +210,14 @@ export default function AttachmentDraftModal({
                       video.videoWidth &&
                       video.videoHeight
                     ) {
-                      onVideoRatio?.(
+                      onMediaMeta?.(
                         index,
-                        `${video.videoWidth} / ${video.videoHeight}`
+                        {
+                          width:
+                            video.videoWidth,
+                          height:
+                            video.videoHeight
+                        }
                       );
                     }
                   }}
@@ -165,6 +226,25 @@ export default function AttachmentDraftModal({
                 <img
                   src={item.url}
                   alt=""
+                  onLoad={(e) => {
+                    const img =
+                      e.currentTarget;
+
+                    if (
+                      img.naturalWidth &&
+                      img.naturalHeight
+                    ) {
+                      onMediaMeta?.(
+                        index,
+                        {
+                          width:
+                            img.naturalWidth,
+                          height:
+                            img.naturalHeight
+                        }
+                      );
+                    }
+                  }}
                 />
               )}
 
@@ -196,7 +276,7 @@ export default function AttachmentDraftModal({
             onClick={onSend}
             disabled={sendingDraft}
           >
-            ➤
+            {sendingDraft ? "…" : "➤"}
           </button>
         </div>
 
