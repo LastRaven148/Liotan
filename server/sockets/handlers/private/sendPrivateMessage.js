@@ -19,6 +19,27 @@ const {
   isUserOnline
 } = require("../../state/onlineUsers");
 
+const ALLOWED_ATTACHMENT_TYPES = [
+  "photo",
+  "video",
+  "audio",
+  "file"
+];
+
+function isValidAttachment(
+  attachment
+) {
+
+  return Boolean(
+    attachment &&
+    attachment.url &&
+    ALLOWED_ATTACHMENT_TYPES.includes(
+      attachment.type
+    )
+  );
+
+}
+
 function registerSendPrivateMessage({
   io,
   socket,
@@ -43,13 +64,8 @@ function registerSendPrivateMessage({
           );
 
         const hasAttachment =
-          data.attachment &&
-          data.attachment.url &&
-          [
-            "photo",
-            "file"
-          ].includes(
-            data.attachment.type
+          isValidAttachment(
+            data.attachment
           );
 
         if (

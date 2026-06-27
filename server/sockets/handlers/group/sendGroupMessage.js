@@ -15,6 +15,27 @@ const {
   getGroupRoom
 } = require("./joinGroup");
 
+const ALLOWED_ATTACHMENT_TYPES = [
+  "photo",
+  "video",
+  "audio",
+  "file"
+];
+
+function isValidAttachment(
+  attachment
+) {
+
+  return Boolean(
+    attachment &&
+    attachment.url &&
+    ALLOWED_ATTACHMENT_TYPES.includes(
+      attachment.type
+    )
+  );
+
+}
+
 function registerSendGroupMessage({
   io,
   socket
@@ -57,13 +78,8 @@ function registerSendGroupMessage({
           );
 
         const hasAttachment =
-          data.attachment &&
-          data.attachment.url &&
-          [
-            "photo",
-            "file"
-          ].includes(
-            data.attachment.type
+          isValidAttachment(
+            data.attachment
           );
 
         if (

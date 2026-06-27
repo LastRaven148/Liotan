@@ -117,6 +117,14 @@ export function getMessagePreview(
     return t.photo || "Фото";
   }
 
+  if (message.attachment?.type === "video") {
+    return "Видео";
+  }
+
+  if (message.attachment?.type === "audio") {
+    return "Аудио";
+  }
+
   if (message.attachment?.type === "file") {
     return message.attachment.name || t.file || "Файл";
   }
