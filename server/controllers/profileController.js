@@ -71,7 +71,7 @@ console.log("PROFILE UPDATE BODY:", req.body);
       typeof req.body.bio === "string"
         ? req.body.bio.trim()
         : "";
-
+console.log("PROFILE UPDATE BODY:", req.body);
     const displayName =
       typeof req.body.displayName === "string"
         ? req.body.displayName.trim()
@@ -130,13 +130,13 @@ async function uploadAvatar(req, res, next) {
   try {
     const username =
       req.user.username;
-
+console.log("PROFILE UPDATE BODY:", req.body);
     if (!req.file) {
       return res.status(400).json({
         error: "no file"
       });
     }
-
+console.log("PROFILE UPDATE BODY:", req.body);
     const user =
       await User.findOne({
         username
