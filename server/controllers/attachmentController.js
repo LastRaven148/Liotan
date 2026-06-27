@@ -1,5 +1,11 @@
+const cloudinary =
+  require("../config/cloudinary");
+
 const uploadToCloudinary =
   require("../utils/uploadToCloudinary");
+
+const MAX_ATTACHMENT_SIZE =
+  500 * 1024 * 1024;
 
 function fixFileName(name) {
   if (!name) {
@@ -22,7 +28,7 @@ function fixFileName(name) {
   }
 }
 
-function getAttachmentType(mimeType) {
+function getAttachmentType(mimeType = "") {
   if (mimeType.startsWith("image/")) {
     return "photo";
   }
@@ -36,6 +42,21 @@ function getAttachmentType(mimeType) {
   }
 
   return "file";
+}
+
+function getResourceType(type) {
+  if (type === "photo") {
+    return "image";
+  }
+
+  if (
+    type === "video" ||
+    type === "audio"
+  ) {
+    return "video";
+  }
+
+  return "raw";
 }
 
 function getFolder(type) {
@@ -54,7 +75,73 @@ function getFolder(type) {
   return "liotan/files";
 }
 
-async function uploadAttachment(req, res, next) {
+async function signAttachmentUpload(
+  req,
+  res,
+  next
+) {
+  try {
+    const mimeType =
+      typeof req.body.mimeType === "string"
+        ? req.body.mimeType
+        : "";
+
+    const size =
+      Number(req.body.size) || 0;
+
+    if (
+      !size ||
+      size > MAX_ATTACHMENT_SIZE
+    ) {
+      return res.status(400).json({
+        error: "file too large"
+      });
+    }
+
+    const type =
+      getAttachmentType(mimeType);
+
+    const folder =
+      getFolder(type);
+
+    const resourceType =
+      getResourceType(type);
+
+    const timestamp =
+      Math.round(
+        Date.now() / 1000
+      );
+
+    const signature =
+      cloudinary.utils.api_sign_request(
+        {
+          timestamp,
+          folder
+        },
+        process.env.CLOUDINARY_API_SECRET
+      );
+
+    res.json({
+      cloudName:
+        process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey:
+        process.env.CLOUDINARY_API_KEY,
+      timestamp,
+      signature,
+      folder,
+      resourceType,
+      type
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function uploadAttachment(
+  req,
+  res,
+  next
+) {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -63,30 +150,41 @@ async function uploadAttachment(req, res, next) {
     }
 
     const type =
-      getAttachmentType(req.file.mimetype);
+      getAttachmentType(
+        req.file.mimetype
+      );
 
     const result =
-      await uploadToCloudinary(req.file, {
-        folder: getFolder(type),
-        resourceType:
-  type === "photo"
-    ? "image"
-    : type === "video" || type === "audio"
-      ? "video"
-      : "raw"
-      });
+      await uploadToCloudinary(
+        req.file,
+        {
+          folder:
+            getFolder(type),
+          resourceType:
+            getResourceType(type)
+        }
+      );
 
     res.json({
-      url: result.secure_url,
-      name: fixFileName(req.file.originalname),
+      url:
+        result.secure_url,
+      name:
+        fixFileName(req.file.originalname),
       type,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
-      publicId: result.public_id,
-      resourceType: result.resource_type,
-      width: result.width || 0,
-      height: result.height || 0,
-      duration: result.duration || 0
+      mimeType:
+        req.file.mimetype,
+      size:
+        req.file.size,
+      publicId:
+        result.public_id,
+      resourceType:
+        result.resource_type,
+      width:
+        result.width || 0,
+      height:
+        result.height || 0,
+      duration:
+        result.duration || 0
     });
   } catch (err) {
     next(err);
@@ -94,5 +192,8 @@ async function uploadAttachment(req, res, next) {
 }
 
 module.exports = {
-  uploadAttachment
+  uploadAttachment,
+  signAttachmentUpload,
+  fixFileName,
+  getAttachmentType
 };

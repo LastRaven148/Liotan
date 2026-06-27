@@ -264,12 +264,11 @@ export default function Composer({
           />
 
           <input
-            ref={fileInputRef}
-            type="file"
-            hidden
-            accept="audio/*,*/*"
-            onChange={onFileChange}
-          />
+  ref={fileInputRef}
+  type="file"
+  hidden
+  onChange={onFileChange}
+/>
 
         </div>
 

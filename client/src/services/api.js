@@ -54,14 +54,101 @@ export async function uploadAvatarApi(username, file) {
   });
 }
 
-export async function uploadAttachmentApi(file) {
-  const form = new FormData();
-  form.append("attachment", file);
+function getAttachmentType(file) {
+  const mimeType =
+    file.type || "";
 
-  return apiRequest(`${API}/attachments/upload`, {
+  if (mimeType.startsWith("image/")) {
+    return "photo";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+}
+
+async function getAttachmentUploadSignature(file) {
+  return apiRequest(`${API}/attachments/sign`, {
     method: "POST",
-    body: form
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: file.name,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size
+    })
   });
+}
+
+export async function uploadAttachmentApi(file) {
+  const sign =
+    await getAttachmentUploadSignature(file);
+
+  const form =
+    new FormData();
+
+  form.append("file", file);
+  form.append("api_key", sign.apiKey);
+  form.append("timestamp", sign.timestamp);
+  form.append("signature", sign.signature);
+  form.append("folder", sign.folder);
+
+  const cloudinaryUrl =
+    `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
+
+  let res;
+
+  try {
+    res =
+      await fetch(cloudinaryUrl, {
+        method: "POST",
+        body: form
+      });
+  } catch {
+    throw new Error(
+      "Не удалось загрузить файл в Cloudinary"
+    );
+  }
+
+  const data =
+    await res.json();
+
+  if (!res.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "Ошибка загрузки файла"
+    );
+  }
+
+  return {
+    url:
+      data.secure_url,
+    name:
+      file.name || "file",
+    type:
+      sign.type || getAttachmentType(file),
+    mimeType:
+      file.type || "application/octet-stream",
+    size:
+      file.size,
+    publicId:
+      data.public_id,
+    resourceType:
+      data.resource_type,
+    width:
+      data.width || 0,
+    height:
+      data.height || 0,
+    duration:
+      data.duration || 0
+  };
 }
 
 export async function updateBioApi(
