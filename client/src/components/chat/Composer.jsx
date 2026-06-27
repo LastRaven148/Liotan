@@ -99,7 +99,7 @@ export default function Composer({
                   photoInputRef.current?.click()
                 }
               >
-                {t.photo}
+                Фото
               </button>
 
               <button
@@ -108,7 +108,7 @@ export default function Composer({
                   fileInputRef.current?.click()
                 }
               >
-                {t.file}
+                Видео / музыка / файл
               </button>
 
             </div>
@@ -127,6 +127,7 @@ export default function Composer({
             ref={fileInputRef}
             type="file"
             hidden
+            accept="video/*,audio/*,*/*"
             onChange={onFileChange}
           />
 

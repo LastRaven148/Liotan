@@ -18,6 +18,163 @@ import {
 import { mediaUrl }
 from "../../utils/mediaUrl";
 
+const DB_NAME =
+  "liotan-offline-media";
+
+const STORE_NAME =
+  "media";
+
+function openMediaDb() {
+
+  return new Promise((resolve, reject) => {
+
+    const request =
+      indexedDB.open(
+        DB_NAME,
+        1
+      );
+
+    request.onupgradeneeded =
+      () => {
+        const db =
+          request.result;
+
+        if (
+          !db.objectStoreNames.contains(
+            STORE_NAME
+          )
+        ) {
+          db.createObjectStore(
+            STORE_NAME
+          );
+        }
+      };
+
+    request.onsuccess =
+      () => resolve(request.result);
+
+    request.onerror =
+      () => reject(request.error);
+
+  });
+
+}
+
+async function getOfflineBlob(key) {
+
+  const db =
+    await openMediaDb();
+
+  return new Promise((resolve, reject) => {
+
+    const tx =
+      db.transaction(
+        STORE_NAME,
+        "readonly"
+      );
+
+    const store =
+      tx.objectStore(
+        STORE_NAME
+      );
+
+    const request =
+      store.get(key);
+
+    request.onsuccess =
+      () => resolve(request.result || null);
+
+    request.onerror =
+      () => reject(request.error);
+
+  });
+
+}
+
+async function saveOfflineBlob(
+  key,
+  blob
+) {
+
+  const db =
+    await openMediaDb();
+
+  return new Promise((resolve, reject) => {
+
+    const tx =
+      db.transaction(
+        STORE_NAME,
+        "readwrite"
+      );
+
+    const store =
+      tx.objectStore(
+        STORE_NAME
+      );
+
+    store.put(
+      blob,
+      key
+    );
+
+    tx.oncomplete =
+      () => resolve();
+
+    tx.onerror =
+      () => reject(tx.error);
+
+  });
+
+}
+
+function getMediaKey(
+  attachment
+) {
+
+  return (
+    attachment?.publicId ||
+    attachment?.url ||
+    ""
+  );
+
+}
+
+function formatFileSize(size) {
+
+  if (!size) {
+    return "";
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.ceil(size / 1024)} KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+
+}
+
+function formatDuration(value) {
+
+  if (!Number.isFinite(value)) {
+    return "0:00";
+  }
+
+  const total =
+    Math.floor(value);
+
+  const minutes =
+    Math.floor(total / 60);
+
+  const seconds =
+    String(total % 60).padStart(
+      2,
+      "0"
+    );
+
+  return `${minutes}:${seconds}`;
+
+}
+
 function Message({
   message,
   username,
@@ -45,6 +202,27 @@ function Message({
   const [mobileMenu, setMobileMenu] =
     useState(false);
 
+  const [localUrl, setLocalUrl] =
+    useState("");
+
+  const [savingOffline, setSavingOffline] =
+    useState(false);
+
+  const [isOfflineSaved, setIsOfflineSaved] =
+    useState(false);
+
+  const [audioPlaying, setAudioPlaying] =
+    useState(false);
+
+  const [audioProgress, setAudioProgress] =
+    useState(0);
+
+  const [audioDuration, setAudioDuration] =
+    useState(0);
+
+  const [videoDuration, setVideoDuration] =
+    useState(0);
+
   const longPressRef =
     useRef(null);
 
@@ -57,6 +235,9 @@ function Message({
   const messageRef =
     useRef(null);
 
+  const audioRef =
+    useRef(null);
+
   const isMine =
     message.from === username;
 
@@ -67,23 +248,108 @@ function Message({
     attachment &&
     attachment.url;
 
+  const attachmentType =
+    attachment?.type || "";
+
   const isPhoto =
     hasAttachment &&
-    attachment.type === "photo";
+    attachmentType === "photo";
+
+  const isVideo =
+    hasAttachment &&
+    attachmentType === "video";
+
+  const isAudio =
+    hasAttachment &&
+    attachmentType === "audio";
 
   const isFile =
     hasAttachment &&
-    attachment.type === "file";
+    attachmentType === "file";
 
   const canEdit =
     isMine &&
     message.text &&
     !hasAttachment;
 
-  const fileUrl =
+  const remoteUrl =
     hasAttachment
       ? mediaUrl(attachment.url)
       : "";
+
+  const fileUrl =
+    localUrl || remoteUrl;
+
+  const mediaKey =
+    getMediaKey(
+      attachment
+    );
+
+  useEffect(() => {
+
+    let alive =
+      true;
+
+    let objectUrl =
+      "";
+
+    async function loadOffline() {
+
+      if (!mediaKey) {
+        return;
+      }
+
+      try {
+
+        const blob =
+          await getOfflineBlob(
+            mediaKey
+          );
+
+        if (
+          !blob ||
+          !alive
+        ) {
+          return;
+        }
+
+        objectUrl =
+          URL.createObjectURL(
+            blob
+          );
+
+        setLocalUrl(
+          objectUrl
+        );
+
+        setIsOfflineSaved(
+          true
+        );
+
+      } catch (err) {
+        console.error(err);
+      }
+
+    }
+
+    loadOffline();
+
+    return () => {
+
+      alive =
+        false;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(
+          objectUrl
+        );
+      }
+
+    };
+
+  }, [
+    mediaKey
+  ]);
 
   useEffect(() => {
 
@@ -116,6 +382,7 @@ function Message({
       if (e.key === "Escape") {
         setMenuOpen(false);
         setMobileMenu(false);
+        setViewerOpen(false);
       }
 
     }
@@ -269,7 +536,9 @@ function Message({
       e.target.closest("a") ||
       e.target.closest("textarea") ||
       e.target.closest("input") ||
-      e.target.closest("button")
+      e.target.closest("button") ||
+      e.target.closest("video") ||
+      e.target.closest("audio")
     ) {
       return;
     }
@@ -297,7 +566,9 @@ function Message({
       e.target.closest("a") ||
       e.target.closest("textarea") ||
       e.target.closest("input") ||
-      e.target.closest("button")
+      e.target.closest("button") ||
+      e.target.closest("video") ||
+      e.target.closest("audio")
     ) {
       return;
     }
@@ -349,17 +620,100 @@ function Message({
     closeMenus();
   }
 
-  function formatFileSize(size) {
+  async function saveOffline() {
 
-    if (!size) {
-      return "";
+    if (
+      !remoteUrl ||
+      !mediaKey ||
+      savingOffline
+    ) {
+      return;
     }
 
-    if (size < 1024 * 1024) {
-      return `${Math.ceil(size / 1024)} KB`;
+    try {
+
+      setSavingOffline(
+        true
+      );
+
+      const response =
+        await fetch(
+          remoteUrl
+        );
+
+      const blob =
+        await response.blob();
+
+      await saveOfflineBlob(
+        mediaKey,
+        blob
+      );
+
+      const objectUrl =
+        URL.createObjectURL(
+          blob
+        );
+
+      setLocalUrl(
+        objectUrl
+      );
+
+      setIsOfflineSaved(
+        true
+      );
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingOffline(
+        false
+      );
     }
 
-    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function downloadFile() {
+
+    if (!fileUrl) {
+      return;
+    }
+
+    const link =
+      document.createElement("a");
+
+    link.href =
+      fileUrl;
+
+    link.download =
+      attachment.name || "download";
+
+    link.target =
+      "_blank";
+
+    document.body.appendChild(
+      link
+    );
+
+    link.click();
+
+    link.remove();
+
+  }
+
+  function toggleAudio() {
+
+    const audio =
+      audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    if (audio.paused) {
+      audio.play();
+    } else {
+      audio.pause();
+    }
 
   }
 
@@ -374,14 +728,22 @@ function Message({
     }
 
     if (replyTo.attachmentType === "photo") {
-      return t.photo;
+      return t.photo || "Фото";
+    }
+
+    if (replyTo.attachmentType === "video") {
+      return "Видео";
+    }
+
+    if (replyTo.attachmentType === "audio") {
+      return "Аудио";
     }
 
     if (replyTo.attachmentType === "file") {
-      return replyTo.attachmentName || t.file;
+      return replyTo.attachmentName || t.file || "Файл";
     }
 
-    return t.message;
+    return t.message || "Сообщение";
 
   }
 
@@ -493,6 +855,34 @@ function Message({
           </button>
         )}
 
+        {hasAttachment && (
+          <button
+            type="button"
+            onClick={() => {
+              closeMenus();
+              downloadFile();
+            }}
+          >
+            <span>↓</span>
+            Скачать
+          </button>
+        )}
+
+        {hasAttachment && (
+          <button
+            type="button"
+            onClick={() => {
+              closeMenus();
+              saveOffline();
+            }}
+          >
+            <span>⬇</span>
+            {isOfflineSaved
+              ? "Сохранено"
+              : "Оффлайн"}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={fakeAction}
@@ -560,6 +950,255 @@ function Message({
 
   }
 
+  function renderVideo() {
+
+    return (
+      <div
+        className="message-video-wrap"
+        onClick={() =>
+          setViewerOpen(true)
+        }
+      >
+        <video
+          src={fileUrl}
+          className="message-video"
+          preload="metadata"
+          muted
+          playsInline
+          onLoadedMetadata={(e) =>
+            setVideoDuration(
+              e.currentTarget.duration
+            )
+          }
+        />
+
+        <button
+          type="button"
+          className="message-video-play"
+        >
+          ▶
+        </button>
+
+        <div className="video-duration-layer">
+          {formatDuration(videoDuration)}
+        </div>
+
+        <div className="photo-time-layer">
+          {formatTime(message.createdAt)}
+          {renderStatus()}
+        </div>
+
+        {isOfflineSaved && (
+          <div className="offline-badge">
+            offline
+          </div>
+        )}
+      </div>
+    );
+
+  }
+
+  function renderAudio() {
+
+    return (
+      <div className="message-audio">
+
+        <button
+          type="button"
+          className="audio-play-button"
+          onClick={toggleAudio}
+        >
+          {audioPlaying ? "❚❚" : "▶"}
+        </button>
+
+        <div className="audio-main">
+          <div className="audio-title">
+            {attachment.name || "Аудио"}
+          </div>
+
+          <div className="audio-progress">
+            <div
+              className="audio-progress-fill"
+              style={{
+                width:
+                  audioDuration
+                    ? `${Math.min(
+                        100,
+                        (audioProgress / audioDuration) * 100
+                      )}%`
+                    : "0%"
+              }}
+            />
+          </div>
+
+          <div className="audio-meta">
+            <span>
+              {formatDuration(audioProgress)}
+            </span>
+
+            <span>
+              {formatDuration(audioDuration)}
+            </span>
+
+            {isOfflineSaved && (
+              <span>
+                offline
+              </span>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="audio-download-button"
+          onClick={downloadFile}
+        >
+          ↓
+        </button>
+
+        <audio
+          ref={audioRef}
+          src={fileUrl}
+          preload="metadata"
+          onPlay={() =>
+            setAudioPlaying(true)
+          }
+          onPause={() =>
+            setAudioPlaying(false)
+          }
+          onEnded={() =>
+            setAudioPlaying(false)
+          }
+          onLoadedMetadata={(e) =>
+            setAudioDuration(
+              e.currentTarget.duration
+            )
+          }
+          onTimeUpdate={(e) =>
+            setAudioProgress(
+              e.currentTarget.currentTime
+            )
+          }
+        />
+      </div>
+    );
+
+  }
+
+  function renderFile() {
+
+    return (
+      <div className="message-file">
+        <div className="message-file-icon">
+          □
+        </div>
+
+        <div className="message-file-info">
+          <div className="message-file-name">
+            {attachment.name || t.file}
+          </div>
+
+          <div className="message-file-size">
+            {formatFileSize(attachment.size)}
+            {isOfflineSaved ? " · offline" : ""}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="file-download-button"
+          onClick={downloadFile}
+        >
+          ↓
+        </button>
+      </div>
+    );
+
+  }
+
+  function renderViewer() {
+
+    if (!viewerOpen) {
+      return null;
+    }
+
+    return createPortal(
+      <div
+        className="media-viewer"
+        onClick={() =>
+          setViewerOpen(false)
+        }
+      >
+        <div className="media-viewer-top">
+          <div className="media-viewer-title">
+            {attachment.name || ""}
+          </div>
+
+          <div className="media-viewer-actions">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                saveOffline();
+              }}
+            >
+              {isOfflineSaved
+                ? "Сохранено"
+                : "Оффлайн"}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadFile();
+              }}
+            >
+              ↓
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewerOpen(false);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="media-viewer-body"
+          onClick={(e) =>
+            e.stopPropagation()
+          }
+        >
+          {isPhoto && (
+            <img
+              src={fileUrl}
+              alt={attachment.name || ""}
+              className="media-viewer-img"
+            />
+          )}
+
+          {isVideo && (
+            <video
+              src={fileUrl}
+              className="media-viewer-video"
+              controls
+              autoPlay
+              playsInline
+            />
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+
+  }
+
   return (
     <>
       <div
@@ -569,6 +1208,8 @@ function Message({
           "message",
           isMine ? "me" : "",
           isPhoto ? "photo-message" : "",
+          isVideo ? "video-message" : "",
+          isAudio ? "audio-message" : "",
           isFile ? "file-message" : "",
           menuOpen ? "menu-open" : ""
         ].join(" ")}
@@ -608,32 +1249,20 @@ function Message({
               {formatTime(message.createdAt)}
               {renderStatus()}
             </div>
+
+            {isOfflineSaved && (
+              <div className="offline-badge">
+                offline
+              </div>
+            )}
           </div>
         )}
 
-        {isFile && (
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noreferrer"
-            download={attachment.name}
-            className="message-file"
-          >
-            <div className="message-file-icon">
-              □
-            </div>
+        {isVideo && renderVideo()}
 
-            <div className="message-file-info">
-              <div className="message-file-name">
-                {attachment.name || t.file}
-              </div>
+        {isAudio && renderAudio()}
 
-              <div className="message-file-size">
-                {formatFileSize(attachment.size)}
-              </div>
-            </div>
-          </a>
-        )}
+        {isFile && renderFile()}
 
         {message.text && (
           <div className="message-text">
@@ -641,7 +1270,7 @@ function Message({
           </div>
         )}
 
-        {!isPhoto && (
+        {!isPhoto && !isVideo && (
           <div className="message-time">
             {message.edited && (
               <span className="message-edited">
@@ -673,27 +1302,7 @@ function Message({
         </div>
       )}
 
-      {viewerOpen && (
-        <div
-          className="photo-viewer"
-          onClick={() =>
-            setViewerOpen(false)
-          }
-        >
-          <button
-            className="photo-viewer-close"
-            type="button"
-          >
-            ×
-          </button>
-
-          <img
-            src={fileUrl}
-            alt={attachment.name || ""}
-            className="photo-viewer-img"
-          />
-        </div>
-      )}
+      {renderViewer()}
     </>
   );
 

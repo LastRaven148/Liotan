@@ -1,42 +1,47 @@
-function uploadAttachment(
-  req,
-  res
-) {
+const uploadToCloudinary =
+  require("../utils/uploadToCloudinary");
 
-  if (!req.file) {
-    return res.status(400).json({
-      error: "no file"
-    });
+function getAttachmentType(mimeType) {
+
+  if (
+    mimeType.startsWith("image/")
+  ) {
+    return "photo";
   }
 
-  const isPhoto =
-    req.file.mimetype.startsWith(
-      "image/"
-    );
+  if (
+    mimeType.startsWith("video/")
+  ) {
+    return "video";
+  }
 
-  res.json({
-    url:
-      `/uploads/attachments/${req.file.filename}`,
-    name:
-      req.file.originalname,
-    type:
-      isPhoto
-        ? "photo"
-        : "file",
-    mimeType:
-      req.file.mimetype,
-    size:
-      req.file.size
-  });
+  if (
+    mimeType.startsWith("audio/")
+  ) {
+    return "audio";
+  }
+
+  return "file";
 
 }
 
-module.exports = {
-  uploadAttachment
-};
+function getFolder(type) {
 
-const uploadToCloudinary =
-  require("../utils/uploadToCloudinary");
+  if (type === "photo") {
+    return "liotan/photos";
+  }
+
+  if (type === "video") {
+    return "liotan/videos";
+  }
+
+  if (type === "audio") {
+    return "liotan/audio";
+  }
+
+  return "liotan/files";
+
+}
 
 async function uploadAttachment(
   req,
@@ -52,9 +57,9 @@ async function uploadAttachment(
       });
     }
 
-    const isPhoto =
-      req.file.mimetype.startsWith(
-        "image/"
+    const type =
+      getAttachmentType(
+        req.file.mimetype
       );
 
     const result =
@@ -62,9 +67,7 @@ async function uploadAttachment(
         req.file,
         {
           folder:
-            isPhoto
-              ? "liotan/photos"
-              : "liotan/files",
+            getFolder(type),
           resourceType: "auto"
         }
       );
@@ -74,10 +77,7 @@ async function uploadAttachment(
         result.secure_url,
       name:
         req.file.originalname,
-      type:
-        isPhoto
-          ? "photo"
-          : "file",
+      type,
       mimeType:
         req.file.mimetype,
       size:

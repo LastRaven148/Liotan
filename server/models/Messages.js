@@ -103,19 +103,19 @@ const messageSchema =
       },
 
       isPinned: {
-  type: Boolean,
-  default: false
-},
+        type: Boolean,
+        default: false
+      },
 
-pinnedAt: {
-  type: Date,
-  default: null
-},
+      pinnedAt: {
+        type: Date,
+        default: null
+      },
 
-pinnedBy: {
-  type: String,
-  default: ""
-},
+      pinnedBy: {
+        type: String,
+        default: ""
+      },
 
       attachment: {
         url: {
@@ -131,6 +131,8 @@ pinnedBy: {
           enum: [
             "",
             "photo",
+            "video",
+            "audio",
             "file"
           ],
           default: ""
@@ -144,14 +146,13 @@ pinnedBy: {
           default: 0
         },
         publicId: {
-  type: String,
-  default: ""
-},
-
-resourceType: {
-  type: String,
-  default: "auto"
-}
+          type: String,
+          default: ""
+        },
+        resourceType: {
+          type: String,
+          default: "auto"
+        }
       }
     },
     {
