@@ -17,6 +17,40 @@ import {
   deleteGroupApi
 } from "../services/api";
 
+function getAttachmentPreview(attachment) {
+  if (!attachment) {
+    return "No messages yet";
+  }
+
+  if (attachment.type === "photo") {
+    return "Фото";
+  }
+
+  if (attachment.type === "video") {
+    return "Видео";
+  }
+
+  if (attachment.type === "audio") {
+    return attachment.name || "Аудио";
+  }
+
+  if (attachment.type === "file") {
+    return attachment.name || "Файл";
+  }
+
+  return attachment.name || "Файл";
+}
+
+function getPreview(value) {
+  if (value?.text?.trim()) {
+    return value.text;
+  }
+
+  return getAttachmentPreview(
+    value?.attachment
+  );
+}
+
 function normalizeGroup(group) {
   return {
     type: "group",
@@ -27,8 +61,12 @@ function normalizeGroup(group) {
     name: group.name,
     description: group.description || "",
     avatar: group.avatar || "",
-    lastMessage: group.lastMessage || "Группа создана",
-    createdAt: group.updatedAt || group.createdAt,
+    lastMessage:
+      group.lastMessage ||
+      "Группа создана",
+    createdAt:
+      group.updatedAt ||
+      group.createdAt,
     members: group.members || [],
     memberUsers: group.memberUsers || [],
     memberCount:
@@ -68,7 +106,9 @@ export default function useDialogs({
         const data =
           await getPinnedChatsApi();
 
-        setPinnedChats(data.pinnedChats || []);
+        setPinnedChats(
+          data.pinnedChats || []
+        );
       } catch (err) {
         console.error(err);
       }
@@ -80,7 +120,9 @@ export default function useDialogs({
         const data =
           await getArchivedChatsApi();
 
-        setArchivedChats(data.archivedChats || []);
+        setArchivedChats(
+          data.archivedChats || []
+        );
       } catch (err) {
         console.error(err);
       }
@@ -92,7 +134,9 @@ export default function useDialogs({
         const data =
           await togglePinnedChatApi(chatKey);
 
-        setPinnedChats(data.pinnedChats || []);
+        setPinnedChats(
+          data.pinnedChats || []
+        );
       } catch (err) {
         console.error(err);
       }
@@ -104,7 +148,9 @@ export default function useDialogs({
         const data =
           await toggleArchivedChatApi(chatKey);
 
-        setArchivedChats(data.archivedChats || []);
+        setArchivedChats(
+          data.archivedChats || []
+        );
       } catch (err) {
         console.error(err);
       }
@@ -127,7 +173,12 @@ export default function useDialogs({
             type: "private",
             chatKey: dialog.username,
             title: dialog.username,
-            name: dialog.username
+            name: dialog.username,
+            lastMessage:
+              dialog.lastMessage ||
+              getAttachmentPreview(
+                dialog.attachment
+              )
           }));
 
         const normalizedGroups =
@@ -176,7 +227,6 @@ export default function useDialogs({
 
   const updateUserProfile =
     useCallback((profile) => {
-
       if (!profile?.username) {
         return;
       }
@@ -186,7 +236,6 @@ export default function useDialogs({
 
       setDialogs(prev =>
         prev.map(dialog => {
-
           if (
             dialog.type === "private" &&
             dialog.username === targetUsername
@@ -196,7 +245,9 @@ export default function useDialogs({
               avatar:
                 profile.avatar || "",
               bio:
-                profile.bio || ""
+                profile.bio || "",
+              displayName:
+                profile.displayName || ""
             };
           }
 
@@ -211,7 +262,9 @@ export default function useDialogs({
                         avatar:
                           profile.avatar || "",
                         bio:
-                          profile.bio || ""
+                          profile.bio || "",
+                        displayName:
+                          profile.displayName || ""
                       }
                     : user
                 )
@@ -219,7 +272,6 @@ export default function useDialogs({
           }
 
           return dialog;
-
         })
       );
 
@@ -231,12 +283,13 @@ export default function useDialogs({
                 avatar:
                   profile.avatar || "",
                 bio:
-                  profile.bio || ""
+                  profile.bio || "",
+                displayName:
+                  profile.displayName || ""
               }
             : user
         )
       );
-
     }, []);
 
   useEffect(() => {
@@ -267,22 +320,6 @@ export default function useDialogs({
 
   const updateDialog =
     useCallback((msg, currentUser) => {
-      function getPreview(value) {
-        if (value.text) {
-          return value.text;
-        }
-
-        if (value.attachment?.type === "photo") {
-          return "Photo";
-        }
-
-        if (value.attachment?.type === "file") {
-          return value.attachment.name || "File";
-        }
-
-        return "No messages yet";
-      }
-
       setDialogs(prev => {
         if (msg.chatType === "group") {
           const chatKey =
@@ -301,10 +338,16 @@ export default function useDialogs({
 
           const updated = {
             ...existing,
-            title: existing.title || existing.name,
-            name: existing.name || existing.title,
-            lastMessage: getPreview(msg),
-            createdAt: msg.createdAt
+            title:
+              existing.title ||
+              existing.name,
+            name:
+              existing.name ||
+              existing.title,
+            lastMessage:
+              getPreview(msg),
+            createdAt:
+              msg.createdAt
           };
 
           return [
@@ -334,8 +377,10 @@ export default function useDialogs({
               username: targetUsername,
               title: targetUsername,
               name: targetUsername,
-              lastMessage: getPreview(msg),
-              createdAt: msg.createdAt,
+              lastMessage:
+                getPreview(msg),
+              createdAt:
+                msg.createdAt,
               lastSeen: null
             },
             ...prev
@@ -344,8 +389,10 @@ export default function useDialogs({
 
         const updated = {
           ...existing,
-          lastMessage: getPreview(msg),
-          createdAt: msg.createdAt
+          lastMessage:
+            getPreview(msg),
+          createdAt:
+            msg.createdAt
         };
 
         return [
@@ -416,9 +463,13 @@ export default function useDialogs({
 
       try {
         if (dialog.owner === username) {
-          await deleteGroupApi(dialog.groupId);
+          await deleteGroupApi(
+            dialog.groupId
+          );
         } else {
-          await leaveGroupApi(dialog.groupId);
+          await leaveGroupApi(
+            dialog.groupId
+          );
         }
 
         const key =
@@ -458,6 +509,10 @@ export default function useDialogs({
                 user.bio ||
                 existingDialog?.bio ||
                 "",
+              displayName:
+                user.displayName ||
+                existingDialog?.displayName ||
+                "",
               lastSeen:
                 user.lastSeen ||
                 existingDialog?.lastSeen ||
@@ -481,7 +536,9 @@ export default function useDialogs({
             )
               .toLowerCase()
               .includes(
-                search.trim().toLowerCase()
+                search
+                  .trim()
+                  .toLowerCase()
               )
           );
 

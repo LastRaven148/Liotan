@@ -68,7 +68,12 @@ async function uploadAttachment(req, res, next) {
     const result =
       await uploadToCloudinary(req.file, {
         folder: getFolder(type),
-        resourceType: "auto"
+        resourceType:
+  type === "photo"
+    ? "image"
+    : type === "video" || type === "audio"
+      ? "video"
+      : "raw"
       });
 
     res.json({
