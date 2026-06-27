@@ -52,7 +52,8 @@ const Chat = memo(function Chat({
   sendAttachment,
   sendAttachments,
   onBack,
-  openProfile
+  openProfile,
+  updateDraftRatio
 }) {
 
   const { t } =
@@ -101,8 +102,7 @@ const Chat = memo(function Chat({
   } = useAttachmentDraft({
     sendAttachment,
     sendAttachments,
-    setAttachMenuOpen,
-    updateDraftRatio
+    setAttachMenuOpen
   });
 
   const {
