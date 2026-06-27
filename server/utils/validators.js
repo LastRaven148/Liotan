@@ -17,6 +17,13 @@ function isValidUsername(username) {
   );
 }
 
+function isValidDisplayName(displayName) {
+  const value =
+    normalizeText(displayName);
+
+  return value.length <= 20;
+}
+
 function isValidPassword(password) {
   return (
     typeof password === "string" &&
@@ -28,7 +35,7 @@ function isValidPassword(password) {
 function isValidBio(bio) {
   return (
     typeof bio === "string" &&
-    bio.trim().length <= 100
+    bio.trim().length <= 50
   );
 }
 
@@ -43,6 +50,7 @@ function isValidMessage(text) {
 module.exports = {
   normalizeText,
   isValidUsername,
+  isValidDisplayName,
   isValidPassword,
   isValidBio,
   isValidMessage

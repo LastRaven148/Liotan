@@ -408,3 +408,17 @@
 .group-member-remove:hover{
   background:rgba(255,107,107,.12);
 }
+
+.settings-name-input{
+  width:50%;
+  min-width:150px;
+  height:42px;
+  border:none;
+  outline:none;
+  border-radius:10px;
+  background:#17212b;
+  color:white;
+  padding:0 12px;
+  font-family:inherit;
+  font-size:14px;
+}

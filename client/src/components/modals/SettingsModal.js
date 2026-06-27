@@ -248,7 +248,7 @@ export default function SettingsModal({
                 setNameValue(e.target.value)
               }
               placeholder="Имя"
-              maxLength={40}
+              maxLength={20}
             />
 
             <div className="settings-field-label">
@@ -270,7 +270,7 @@ export default function SettingsModal({
                 setBioValue(e.target.value)
               }
               placeholder={t.aboutYou || "О себе"}
-              maxLength={100}
+              maxLength={50}
             />
           </div>
         </aside>
@@ -325,7 +325,7 @@ export default function SettingsModal({
           </div>
 
           <div>
-            <div className="settings-name">
+            <div className="settings-name-input">
               {shownName}
             </div>
 

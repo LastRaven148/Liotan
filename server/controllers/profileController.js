@@ -9,45 +9,39 @@ const deleteUploadedFile =
 
 const {
   isValidBio,
-  isValidUsername
+  isValidUsername,
+  isValidDisplayName
 } = require("../utils/validators");
 
-function emitProfileUpdated(
-  req,
-  profile
-) {
-
+function emitProfileUpdated(req, profile) {
   const io =
     req.app.get("io");
 
   if (!io) {
-    console.log(
-      "NO IO IN APP"
-    );
-
     return;
   }
-
-  console.log(
-    "EMIT userProfileUpdated:",
-    profile
-  );
 
   io.emit(
     "userProfileUpdated",
     profile
   );
-
 }
 
-async function getProfile(
-  req,
-  res,
-  next
-) {
+function serializeProfile(user) {
+  return {
+    username:
+      user.username,
+    displayName:
+      user.displayName || "",
+    avatar:
+      user.avatar || "",
+    bio:
+      user.bio || ""
+  };
+}
 
+async function getProfile(req, res, next) {
   try {
-
     const username =
       req.params.username;
 
@@ -60,7 +54,7 @@ async function getProfile(
     const user =
       await User.findOne(
         { username },
-        "username avatar bio"
+        "username displayName avatar bio"
       );
 
     if (!user) {
@@ -69,22 +63,16 @@ async function getProfile(
       });
     }
 
-    res.json(user);
-
+    res.json(
+      serializeProfile(user)
+    );
   } catch (err) {
     next(err);
   }
-
 }
 
-async function updateProfile(
-  req,
-  res,
-  next
-) {
-
+async function updateProfile(req, res, next) {
   try {
-
     const username =
       req.user.username;
 
@@ -93,16 +81,30 @@ async function updateProfile(
         ? req.body.bio.trim()
         : "";
 
+    const displayName =
+      typeof req.body.displayName === "string"
+        ? req.body.displayName.trim()
+        : "";
+
     if (!isValidBio(bio)) {
       return res.status(400).json({
         error: "invalid bio"
       });
     }
 
+    if (!isValidDisplayName(displayName)) {
+      return res.status(400).json({
+        error: "invalid display name"
+      });
+    }
+
     const user =
       await User.findOneAndUpdate(
         { username },
-        { bio, displayName },
+        {
+          bio,
+          displayName
+        },
         {
           new: true,
           fields: "username displayName avatar bio"
@@ -115,21 +117,8 @@ async function updateProfile(
       });
     }
 
-    const displayName =
-  typeof req.body.displayName === "string"
-    ? req.body.displayName.trim()
-    : "";
-
-    const profile = {
-  username:
-    user.username,
-  displayName:
-    user.displayName || "",
-  avatar:
-    user.avatar || "",
-  bio:
-    user.bio || ""
-};
+    const profile =
+      serializeProfile(user);
 
     emitProfileUpdated(
       req,
@@ -140,21 +129,13 @@ async function updateProfile(
       ok: true,
       ...profile
     });
-
   } catch (err) {
     next(err);
   }
-
 }
 
-async function uploadAvatar(
-  req,
-  res,
-  next
-) {
-
+async function uploadAvatar(req, res, next) {
   try {
-
     const username =
       req.user.username;
 
@@ -201,16 +182,8 @@ async function uploadAvatar(
 
     await user.save();
 
-    const profile = {
-  username:
-    user.username,
-  displayName:
-    user.displayName || "",
-  avatar:
-    user.avatar || "",
-  bio:
-    user.bio || ""
-};
+    const profile =
+      serializeProfile(user);
 
     emitProfileUpdated(
       req,
@@ -218,11 +191,9 @@ async function uploadAvatar(
     );
 
     res.json(profile);
-
   } catch (err) {
     next(err);
   }
-
 }
 
 module.exports = {
