@@ -74,6 +74,7 @@ export default function useAppController() {
       username,
       setAvatar,
       setBio,
+      setDisplayName,
       showToast
     });
 
@@ -109,25 +110,26 @@ export default function useAppController() {
   });
 
   useSocket({
-    token,
-    username,
-    activeChat: chat.activeChat,
-    setActiveChat: chat.setActiveChat,
-    setChats,
-    setUnread,
-    setOnlineUsers,
-    setTypingUsers,
-    updateDialog: dialogs.updateDialog,
-    updateUserLastSeen: dialogs.updateUserLastSeen,
-    updateUserProfile: dialogs.updateUserProfile,
-    removeDialog: dialogs.removeDialog,
-    updateGroup: dialogs.updateGroup,
-    setAvatar,
-    setBio,
-    setProfileUser,
-    socketRef,
-    API
-  });
+  token,
+  username,
+  activeChat: chat.activeChat,
+  setActiveChat: chat.setActiveChat,
+  setChats,
+  setUnread,
+  setOnlineUsers,
+  setTypingUsers,
+  updateDialog: dialogs.updateDialog,
+  updateUserLastSeen: dialogs.updateUserLastSeen,
+  updateUserProfile: dialogs.updateUserProfile,
+  removeDialog: dialogs.removeDialog,
+  updateGroup: dialogs.updateGroup,
+  setAvatar,
+  setBio,
+  setDisplayName,
+  setProfileUser,
+  socketRef,
+  API
+});
 
   useAppInitialization({
     token,
@@ -206,7 +208,6 @@ export default function useAppController() {
 
     displayName,
     setDisplayName,
-    saveProfile: profile.saveProfile,
 
     chat
   };

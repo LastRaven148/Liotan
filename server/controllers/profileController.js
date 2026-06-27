@@ -101,21 +101,13 @@ async function updateProfile(req, res, next) {
           fields: "username displayName avatar bio"
         }
       );
-console.log("UPDATED PROFILE:", {
-  username: user.username,
-  displayName: user.displayName,
-  bio: user.bio
-});
+
     if (!user) {
       return res.status(404).json({
         error: "not found"
       });
     }
-console.log("UPDATED PROFILE:", {
-  username: user.username,
-  displayName: user.displayName,
-  bio: user.bio
-});
+
     const profile = {
       username: user.username,
       displayName: user.displayName || "",
