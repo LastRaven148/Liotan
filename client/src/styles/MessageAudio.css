@@ -1,0 +1,298 @@
+/* ===========================
+   AUDIO MESSAGE
+=========================== */
+
+.message.audio-message{
+  min-width:340px;
+  max-width:min(76%, 470px);
+  padding:8px 10px;
+  border-radius:16px 16px 16px 5px;
+  background:#182533;
+}
+
+.message.audio-message.me{
+  background:#2b5278;
+  border-radius:16px 16px 5px 16px;
+}
+
+.message-audio{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:300px;
+}
+
+.audio-play-button{
+  width:46px;
+  height:46px;
+  flex-shrink:0;
+
+  border:none;
+  border-radius:50%;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  background:#3390ec;
+  color:#ffffff;
+
+  font-size:17px;
+  font-weight:800;
+
+  cursor:pointer;
+  transition:.16s;
+}
+
+.me .audio-play-button{
+  background:#ffffff;
+  color:#2b5278;
+}
+
+.audio-play-button:hover{
+  transform:scale(1.04);
+  filter:brightness(1.05);
+}
+
+.audio-main{
+  min-width:0;
+  flex:1;
+}
+
+.audio-title{
+  color:#ffffff;
+  font-size:14px;
+  line-height:1.25;
+  font-weight:600;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  margin-bottom:5px;
+}
+
+.audio-meta{
+  margin-top:4px;
+
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:8px;
+
+  color:#8da2b5;
+
+  font-size:12px;
+  line-height:1.2;
+}
+
+.me .audio-meta{
+  color:#adc4d8;
+}
+
+/* ===========================
+   AUDIO PROGRESS IN MESSAGE
+=========================== */
+
+.audio-progress-wrap{
+  width:100%;
+}
+
+.audio-range{
+  width:100%;
+  height:4px;
+
+  margin:2px 0 0;
+
+  appearance:none;
+  -webkit-appearance:none;
+
+  background:rgba(255,255,255,.22);
+
+  border-radius:6px;
+
+  cursor:pointer;
+}
+
+.audio-range::-webkit-slider-runnable-track{
+  height:4px;
+  background:rgba(255,255,255,.22);
+  border-radius:6px;
+}
+
+.audio-range::-webkit-slider-thumb{
+  -webkit-appearance:none;
+
+  width:12px;
+  height:12px;
+
+  margin-top:-4px;
+
+  border-radius:50%;
+
+  background:#ffffff;
+}
+
+.audio-range::-moz-range-track{
+  height:4px;
+  background:rgba(255,255,255,.22);
+  border-radius:6px;
+}
+
+.audio-range::-moz-range-thumb{
+  width:12px;
+  height:12px;
+
+  border:none;
+  border-radius:50%;
+
+  background:#ffffff;
+}
+
+.audio-progress-meta{
+  margin-top:5px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  color:#8da2b5;
+
+  font-size:12px;
+  line-height:1.2;
+}
+
+.me .audio-progress-meta{
+  color:#adc4d8;
+}
+
+/* ===========================
+   TOP AUDIO PLAYER
+=========================== */
+
+.audio-topbar{
+  position:fixed;
+  left:50%;
+  top:56px;
+  transform:translateX(-50%);
+
+  z-index:29000;
+
+  width:min(720px, calc(100vw - 380px));
+  min-height:54px;
+
+  padding:7px 10px;
+
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  background:#17212b;
+
+  border:1px solid #263645;
+  border-radius:14px;
+
+  box-shadow:0 10px 28px rgba(0,0,0,.32);
+
+  color:#ffffff;
+
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+.audio-topbar-button{
+  width:34px;
+  height:34px;
+  flex-shrink:0;
+
+  border:none;
+  border-radius:50%;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  background:transparent;
+  color:#d7dde5;
+
+  font-size:14px;
+  font-weight:700;
+
+  cursor:pointer;
+
+  transition:.16s;
+}
+
+.audio-topbar-button:hover{
+  background:#243342;
+  color:#ffffff;
+}
+
+.audio-topbar-main{
+  min-width:0;
+  flex:1;
+
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.audio-topbar-title{
+  max-width:100%;
+
+  color:#ffffff;
+
+  font-size:13px;
+  font-weight:600;
+  line-height:1.2;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.audio-topbar-meta{
+  color:#8da2b5;
+
+  font-size:11px;
+  line-height:1.2;
+}
+
+/* ===========================
+   MOBILE
+=========================== */
+
+@media (max-width:768px){
+
+  .message.audio-message{
+    min-width:280px;
+    max-width:88%;
+  }
+
+  .message-audio{
+    min-width:250px;
+  }
+
+  .audio-title{
+    font-size:14px;
+  }
+
+  .audio-meta,
+  .audio-progress-meta{
+    font-size:12px;
+  }
+
+  .audio-topbar{
+    left:8px;
+    right:8px;
+    top:56px;
+
+    transform:none;
+
+    width:auto;
+    min-height:52px;
+
+    border-radius:13px;
+  }
+
+}

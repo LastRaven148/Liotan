@@ -29,32 +29,25 @@ const AUTO_CACHE_LIMIT =
 
 function FileIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M7 3.5H14.5L19 8V20.5H7C5.9 20.5 5 19.6 5 18.5V5.5C5 4.4 5.9 3.5 7 3.5Z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinejoin="round"
       />
-
       <path
         d="M14 3.8V8.5H18.7"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinejoin="round"
       />
-
       <path
         d="M8.5 13H15.5"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
       />
-
       <path
         d="M8.5 16.5H13"
         stroke="currentColor"
@@ -75,9 +68,7 @@ function openMediaDb() {
         const db =
           request.result;
 
-        if (
-          !db.objectStoreNames.contains(STORE_NAME)
-        ) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME);
         }
       };
@@ -96,10 +87,7 @@ async function getOfflineBlob(key) {
 
   return new Promise((resolve, reject) => {
     const tx =
-      db.transaction(
-        STORE_NAME,
-        "readonly"
-      );
+      db.transaction(STORE_NAME, "readonly");
 
     const store =
       tx.objectStore(STORE_NAME);
@@ -115,19 +103,13 @@ async function getOfflineBlob(key) {
   });
 }
 
-async function saveOfflineBlob(
-  key,
-  blob
-) {
+async function saveOfflineBlob(key, blob) {
   const db =
     await openMediaDb();
 
   return new Promise((resolve, reject) => {
     const tx =
-      db.transaction(
-        STORE_NAME,
-        "readwrite"
-      );
+      db.transaction(STORE_NAME, "readwrite");
 
     const store =
       tx.objectStore(STORE_NAME);
@@ -187,7 +169,6 @@ function Message({
   onReply,
   onPin
 }) {
-
   const { t } =
     useLanguage();
 
@@ -216,6 +197,9 @@ function Message({
     useState(false);
 
   const [audioPlaying, setAudioPlaying] =
+    useState(false);
+
+  const [audioStarted, setAudioStarted] =
     useState(false);
 
   const [audioProgress, setAudioProgress] =
@@ -338,10 +322,7 @@ function Message({
         const blob =
           await getOfflineBlob(mediaKey);
 
-        if (
-          !blob ||
-          !alive
-        ) {
+        if (!blob || !alive) {
           return;
         }
 
@@ -785,7 +766,7 @@ function Message({
     setAudioProgress(nextTime);
   }
 
-  function playNextAudio() {
+  function resetAudio() {
     const audio =
       audioRef.current;
 
@@ -794,30 +775,8 @@ function Message({
     }
 
     setAudioPlaying(false);
+    setAudioStarted(false);
     setAudioProgress(0);
-
-    const current =
-      messageRef.current;
-
-    const audioMessages =
-      Array.from(
-        document.querySelectorAll(
-          "[data-audio-message-id]"
-        )
-      );
-
-    const index =
-      audioMessages.indexOf(current);
-
-    const next =
-      audioMessages[index + 1];
-
-    const button =
-      next?.querySelector(
-        ".audio-play-button"
-      );
-
-    button?.click();
   }
 
   function handleVideoMetadata(e) {
@@ -1152,71 +1111,154 @@ function Message({
     );
   }
 
-  function renderAudio() {
-    return (
-      <div className="message-audio">
+  function renderAudioTopbar() {
+    if (!audioStarted) {
+      return null;
+    }
 
+    return createPortal(
+      <div className="audio-topbar">
         <button
           type="button"
-          className="audio-play-button"
+          className="audio-topbar-button"
           onClick={toggleAudio}
         >
           {audioPlaying ? "❚❚" : "▶"}
         </button>
 
-        <div className="audio-main">
-          <div className="audio-title">
+        <div className="audio-topbar-main">
+          <div className="audio-topbar-title">
             {attachment.name || "Аудио"}
           </div>
 
-          <div className="audio-meta">
-            <span>
-              {formatDuration(audioDuration)}
-            </span>
+          <div className="audio-topbar-meta">
+            {formatDuration(audioProgress)}
+            {" / "}
+            {formatDuration(audioDuration)}
+          </div>
+        </div>
 
-            {attachmentSizeText && (
-              <span>
-                {attachmentSizeText}
-              </span>
+        <button
+          type="button"
+          className="audio-topbar-button"
+          onClick={() => {
+            const audio =
+              audioRef.current;
+
+            if (audio) {
+              audio.muted = !audio.muted;
+            }
+          }}
+        >
+          ◉
+        </button>
+
+        <button
+          type="button"
+          className="audio-topbar-button"
+          onClick={resetAudio}
+        >
+          ×
+        </button>
+      </div>,
+      document.body
+    );
+  }
+
+  function renderAudio() {
+    return (
+      <>
+        <div className="message-audio">
+          <button
+            type="button"
+            className="audio-play-button"
+            onClick={toggleAudio}
+          >
+            {audioPlaying ? "❚❚" : "▶"}
+          </button>
+
+          <div className="audio-main">
+            <div className="audio-title">
+              {attachment.name || "Аудио"}
+            </div>
+
+            {!audioStarted && (
+              <div className="audio-meta">
+                <span>
+                  {formatDuration(audioDuration)}
+                </span>
+
+                {attachmentSizeText && (
+                  <span>
+                    {attachmentSizeText}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {audioStarted && (
+              <div className="audio-progress-wrap">
+                <input
+                  className="audio-range"
+                  type="range"
+                  min="0"
+                  max={audioDuration || 0}
+                  step="0.01"
+                  value={audioProgress}
+                  onChange={seekAudio}
+                />
+
+                <div className="audio-progress-meta">
+                  <span>
+                    {formatDuration(audioProgress)}
+                  </span>
+
+                  <span>
+                    {formatDuration(audioDuration)}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
 
-          <input
-            className="audio-range"
-            type="range"
-            min="0"
-            max={audioDuration || 0}
-            step="0.01"
-            value={audioProgress}
-            onChange={seekAudio}
+          <audio
+            ref={audioRef}
+            src={fileUrl}
+            preload="metadata"
+            onPlay={() => {
+              setAudioStarted(true);
+              setAudioPlaying(true);
+            }}
+            onPause={() =>
+              setAudioPlaying(false)
+            }
+            onEnded={resetAudio}
+            onLoadedMetadata={handleAudioMetadata}
+            onTimeUpdate={(e) =>
+              setAudioProgress(
+                e.currentTarget.currentTime
+              )
+            }
           />
         </div>
 
-        <audio
-          ref={audioRef}
-          src={fileUrl}
-          preload="metadata"
-          onPlay={() =>
-            setAudioPlaying(true)
-          }
-          onPause={() =>
-            setAudioPlaying(false)
-          }
-          onEnded={playNextAudio}
-          onLoadedMetadata={handleAudioMetadata}
-          onTimeUpdate={(e) =>
-            setAudioProgress(
-              e.currentTarget.currentTime
-            )
-          }
-        />
-      </div>
+        {renderAudioTopbar()}
+      </>
     );
   }
 
   function renderFile() {
     return (
-      <div className="message-file">
+      <a
+        className="message-file"
+        href={fileUrl}
+        target="_blank"
+        rel="noreferrer"
+        download={attachment.name || "file"}
+        onClick={(e) =>
+          e.stopPropagation()
+        }
+      >
         <div className="message-file-icon">
           <FileIcon />
         </div>
@@ -1230,7 +1272,7 @@ function Message({
             {formatFileSize(attachment.size)}
           </div>
         </div>
-      </div>
+      </a>
     );
   }
 
@@ -1331,7 +1373,6 @@ function Message({
         onTouchMove={clearLongPress}
         onTouchCancel={clearLongPress}
       >
-
         {message.replyTo?.messageId && (
           <div className="message-reply">
             <div className="message-reply-author">
@@ -1393,7 +1434,6 @@ function Message({
       {renderViewer()}
     </>
   );
-
 }
 
 export default memo(Message);

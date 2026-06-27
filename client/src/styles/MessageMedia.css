@@ -1,0 +1,367 @@
+/* ===========================
+   PHOTO / VIDEO MESSAGES
+=========================== */
+
+.message.photo-message,
+.message.video-message{
+  padding:0;
+  background:transparent;
+  border-radius:16px;
+  overflow:visible;
+  max-width:min(72%, 560px);
+  margin-bottom:4px;
+  box-shadow:none;
+}
+
+.message.photo-message.me,
+.message.video-message.me{
+  background:transparent;
+}
+
+.photo-message .message-photo-wrap,
+.video-message .message-video-wrap{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border-radius:16px;
+  cursor:pointer;
+  background:#111820;
+}
+
+.photo-message .message-photo,
+.video-message .message-video{
+  display:block;
+  width:auto;
+  height:auto;
+  max-width:min(560px,48vw);
+  max-height:640px;
+  object-fit:contain;
+  background:#05080d;
+}
+
+.video-message .message-video{
+  aspect-ratio:var(--video-ratio);
+  min-width:220px;
+  min-height:140px;
+}
+
+/* ===========================
+   PLAY BUTTON
+=========================== */
+
+.message-video-play{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+
+  width:58px;
+  height:58px;
+
+  border:none;
+  border-radius:50%;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  background:rgba(0,0,0,.46);
+  backdrop-filter:blur(8px);
+
+  color:#fff;
+  font-size:22px;
+
+  cursor:pointer;
+
+  transition:.18s;
+}
+
+.message-video-play:hover{
+  transform:translate(-50%,-50%) scale(1.06);
+  background:rgba(0,0,0,.58);
+}
+
+/* ===========================
+   DURATION
+=========================== */
+
+.video-duration-layer{
+  position:absolute;
+
+  left:8px;
+  top:8px;
+
+  padding:3px 7px;
+
+  border-radius:10px;
+
+  background:rgba(0,0,0,.58);
+
+  color:#fff;
+
+  font-size:11px;
+  font-weight:600;
+
+  user-select:none;
+}
+
+/* ===========================
+   DOWNLOAD
+=========================== */
+
+.video-download-layer{
+  position:absolute;
+
+  left:8px;
+  top:34px;
+
+  height:25px;
+
+  padding:0 9px;
+
+  border:none;
+  border-radius:13px;
+
+  background:rgba(0,0,0,.62);
+
+  color:white;
+
+  font-size:11px;
+  font-weight:600;
+
+  cursor:pointer;
+
+  transition:.18s;
+}
+
+.video-download-layer:hover{
+  background:rgba(0,0,0,.78);
+}
+
+/* ===========================
+   CAPTION
+=========================== */
+
+.message-media-caption{
+  padding:8px 10px 7px;
+
+  background:#182533;
+
+  color:#fff;
+
+  font-size:14px;
+  line-height:1.36;
+
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+.me .message-media-caption{
+  background:#2b5278;
+}
+
+.message-media-caption::after{
+  content:"";
+  display:inline-block;
+  width:54px;
+}
+
+/* ===========================
+   TIME
+=========================== */
+
+.photo-time-layer{
+  position:absolute;
+
+  right:7px;
+  bottom:7px;
+
+  display:flex;
+  align-items:center;
+  gap:4px;
+
+  padding:3px 7px;
+
+  border-radius:10px;
+
+  background:rgba(0,0,0,.48);
+
+  color:white;
+
+  font-size:11px;
+
+  user-select:none;
+}
+
+.photo-time-layer .message-status{
+  margin-left:2px;
+}
+
+.photo-time-layer .message-status.sent,
+.photo-time-layer .message-status.delivered{
+  color:#d7dde5;
+}
+
+.photo-time-layer .message-status.read{
+  color:#3aaeff;
+}
+
+/* ===========================
+   MEDIA VIEWER
+=========================== */
+
+.media-viewer{
+  position:fixed;
+  inset:0;
+
+  z-index:31000;
+
+  display:flex;
+  flex-direction:column;
+
+  background:rgba(0,0,0,.92);
+
+  animation:mediaViewerFade .18s ease;
+}
+
+@keyframes mediaViewerFade{
+
+  from{
+    opacity:0;
+  }
+
+  to{
+    opacity:1;
+  }
+
+}
+
+.media-viewer-top{
+
+  height:56px;
+
+  flex-shrink:0;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:0 16px;
+
+  background:rgba(17,24,32,.82);
+
+  backdrop-filter:blur(12px);
+}
+
+.media-viewer-title{
+
+  color:#fff;
+
+  font-size:14px;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.media-viewer-actions{
+
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.media-viewer-actions button{
+
+  width:36px;
+  height:36px;
+
+  border:none;
+  border-radius:9px;
+
+  background:rgba(255,255,255,.08);
+
+  color:#fff;
+
+  cursor:pointer;
+
+  transition:.18s;
+}
+
+.media-viewer-actions button:hover{
+
+  background:rgba(255,255,255,.15);
+
+}
+
+.media-viewer-body{
+
+  flex:1;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  padding:22px;
+}
+
+.media-viewer-img,
+.media-viewer-video{
+
+  width:auto;
+
+  max-width:min(96vw,1200px);
+  max-height:calc(100dvh - 96px);
+
+  object-fit:contain;
+
+  background:#05080d;
+
+  border-radius:10px;
+}
+
+/* ===========================
+   MOBILE
+=========================== */
+
+@media (max-width:768px){
+
+.message.photo-message,
+.message.video-message{
+
+max-width:88%;
+
+}
+
+.photo-message .message-photo,
+.video-message .message-video{
+
+max-width:88vw;
+max-height:520px;
+
+}
+
+.media-viewer-top{
+
+height:50px;
+
+}
+
+.media-viewer-body{
+
+padding:0;
+
+}
+
+.media-viewer-img,
+.media-viewer-video{
+
+max-width:100vw;
+max-height:calc(100dvh - 50px);
+
+border-radius:0;
+
+}
+
+}
