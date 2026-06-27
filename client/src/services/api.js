@@ -19,8 +19,12 @@ export async function getPinnedChatsApi() {
 export async function togglePinnedChatApi(username) {
   return apiRequest(`${API}/me/pinned-chats/toggle`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username
+    })
   });
 }
 
@@ -28,25 +32,49 @@ export async function getProfile(username) {
   return apiRequest(`${API}/profile/${username}`);
 }
 
-export async function loginUser(username, password) {
+export async function loginUser(
+  username,
+  password
+) {
   return apiRequest(`${API}/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username,
+      password
+    })
   });
 }
 
-export async function registerUser(username, password) {
+export async function registerUser(
+  username,
+  password
+) {
   return apiRequest(`${API}/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username,
+      password
+    })
   });
 }
 
-export async function uploadAvatarApi(username, file) {
-  const form = new FormData();
-  form.append("avatar", file);
+export async function uploadAvatarApi(
+  username,
+  file
+) {
+  const form =
+    new FormData();
+
+  form.append(
+    "avatar",
+    file
+  );
 
   return apiRequest(`${API}/upload-avatar`, {
     method: "POST",
@@ -80,73 +108,92 @@ async function getAttachmentUploadSignature(file) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.size
+      name:
+        file.name || "file",
+      mimeType:
+        file.type || "application/octet-stream",
+      size:
+        file.size
     })
   });
 }
 
-export async function uploadAttachmentApi(file) {
-  const sign =
-    await getAttachmentUploadSignature(file);
+async function uploadSmallAttachmentToCloudinary(
+  file,
+  sign
+) {
+  const form =
+    new FormData();
+
+  form.append(
+    "file",
+    file
+  );
+
+  form.append(
+    "api_key",
+    sign.apiKey
+  );
+
+  form.append(
+    "timestamp",
+    sign.timestamp
+  );
+
+  form.append(
+    "signature",
+    sign.signature
+  );
+
+  form.append(
+    "folder",
+    sign.folder
+  );
 
   const cloudinaryUrl =
     `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
 
-  const chunkSize =
-    20 * 1024 * 1024;
+  const res =
+    await fetch(cloudinaryUrl, {
+      method: "POST",
+      body: form
+    });
 
-  const uploadId =
-    `${Date.now()}-${Math.random()}`;
+  const data =
+    await res.json();
 
-  let result = null;
+  if (!res.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "Ошибка загрузки файла"
+    );
+  }
 
-  for (
-    let start = 0;
-    start < file.size;
-    start += chunkSize
-  ) {
-    const end =
-      Math.min(
-        start + chunkSize,
-        file.size
-      );
+  return data;
+}
 
-    const chunk =
-      file.slice(start, end);
+export async function uploadAttachmentApi(file) {
+  if (!file) {
+    throw new Error("Файл не выбран");
+  }
 
-    const form =
-      new FormData();
+  if (file.size <= 0) {
+    throw new Error("Файл пустой");
+  }
 
-    form.append("file", chunk, file.name);
-    form.append("api_key", sign.apiKey);
-    form.append("timestamp", sign.timestamp);
-    form.append("signature", sign.signature);
-    form.append("folder", sign.folder);
+  const sign =
+    await getAttachmentUploadSignature(file);
 
-    const res =
-      await fetch(cloudinaryUrl, {
-        method: "POST",
-        headers: {
-          "X-Unique-Upload-Id": uploadId,
-          "Content-Range":
-            `bytes ${start}-${end - 1}/${file.size}`
-        },
-        body: form
-      });
+  const result =
+    await uploadSmallAttachmentToCloudinary(
+      file,
+      sign
+    );
 
-    const data =
-      await res.json();
-
-    if (!res.ok) {
-      throw new Error(
-        data?.error?.message ||
-        "Ошибка загрузки файла"
-      );
-    }
-
-    result = data;
+  if (!result?.secure_url) {
+    throw new Error(
+      "Cloudinary не вернул ссылку на файл"
+    );
   }
 
   return {
@@ -189,7 +236,9 @@ export async function updateBioApi(
 
   return apiRequest(`${API}/profile/update`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify(body)
   });
 }
@@ -207,15 +256,21 @@ export async function getArchivedChatsApi() {
 export async function toggleArchivedChatApi(username) {
   return apiRequest(`${API}/me/archived-chats/toggle`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username
+    })
   });
 }
 
 export async function createGroupApi(data) {
   return apiRequest(`${API}/groups`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify(data)
   });
 }
@@ -228,17 +283,30 @@ export async function getGroupApi(groupId) {
   return apiRequest(`${API}/groups/${groupId}`);
 }
 
-export async function updateGroupApi(groupId, data) {
+export async function updateGroupApi(
+  groupId,
+  data
+) {
   return apiRequest(`${API}/groups/${groupId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify(data)
   });
 }
 
-export async function uploadGroupAvatarApi(groupId, file) {
-  const form = new FormData();
-  form.append("avatar", file);
+export async function uploadGroupAvatarApi(
+  groupId,
+  file
+) {
+  const form =
+    new FormData();
+
+  form.append(
+    "avatar",
+    file
+  );
 
   return apiRequest(`${API}/groups/${groupId}/avatar`, {
     method: "POST",
@@ -246,15 +314,25 @@ export async function uploadGroupAvatarApi(groupId, file) {
   });
 }
 
-export async function addGroupMemberApi(groupId, username) {
+export async function addGroupMemberApi(
+  groupId,
+  username
+) {
   return apiRequest(`${API}/groups/${groupId}/members`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username })
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username
+    })
   });
 }
 
-export async function removeGroupMemberApi(groupId, username) {
+export async function removeGroupMemberApi(
+  groupId,
+  username
+) {
   return apiRequest(
     `${API}/groups/${groupId}/members/${encodeURIComponent(username)}`,
     {
