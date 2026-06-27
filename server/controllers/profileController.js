@@ -66,12 +66,12 @@ async function updateProfile(req, res, next) {
   try {
     const username =
       req.user.username;
-console.log("PROFILE UPDATE BODY:", req.body);
+
     const bio =
       typeof req.body.bio === "string"
         ? req.body.bio.trim()
         : "";
-console.log("PROFILE UPDATE BODY:", req.body);
+
     const displayName =
       typeof req.body.displayName === "string"
         ? req.body.displayName.trim()
@@ -101,13 +101,21 @@ console.log("PROFILE UPDATE BODY:", req.body);
           fields: "username displayName avatar bio"
         }
       );
-
+console.log("UPDATED PROFILE:", {
+  username: user.username,
+  displayName: user.displayName,
+  bio: user.bio
+});
     if (!user) {
       return res.status(404).json({
         error: "not found"
       });
     }
-
+console.log("UPDATED PROFILE:", {
+  username: user.username,
+  displayName: user.displayName,
+  bio: user.bio
+});
     const profile = {
       username: user.username,
       displayName: user.displayName || "",
@@ -130,13 +138,13 @@ async function uploadAvatar(req, res, next) {
   try {
     const username =
       req.user.username;
-console.log("PROFILE UPDATE BODY:", req.body);
+
     if (!req.file) {
       return res.status(400).json({
         error: "no file"
       });
     }
-console.log("PROFILE UPDATE BODY:", req.body);
+
     const user =
       await User.findOne({
         username
