@@ -24,6 +24,9 @@ const DB_NAME =
 const STORE_NAME =
   "media";
 
+const AUTO_CACHE_LIMIT =
+  50 * 1024 * 1024;
+
 function openMediaDb() {
 
   return new Promise((resolve, reject) => {
@@ -223,6 +226,9 @@ function Message({
   const [videoDuration, setVideoDuration] =
     useState(0);
 
+  const [videoRatio, setVideoRatio] =
+    useState("16 / 9");
+
   const longPressRef =
     useRef(null);
 
@@ -283,6 +289,16 @@ function Message({
   const mediaKey =
     getMediaKey(
       attachment
+    );
+
+  const shouldAutoCache =
+    hasAttachment &&
+    attachment.size > 0 &&
+    attachment.size <= AUTO_CACHE_LIMIT &&
+    (
+      isPhoto ||
+      isVideo ||
+      isAudio
     );
 
   useEffect(() => {
@@ -349,6 +365,26 @@ function Message({
 
   }, [
     mediaKey
+  ]);
+
+  useEffect(() => {
+
+    if (
+      !shouldAutoCache ||
+      isOfflineSaved ||
+      savingOffline
+    ) {
+      return;
+    }
+
+    saveOffline({
+      silent: true
+    });
+
+  }, [
+    shouldAutoCache,
+    isOfflineSaved,
+    savingOffline
   ]);
 
   useEffect(() => {
@@ -620,7 +656,9 @@ function Message({
     closeMenus();
   }
 
-  async function saveOffline() {
+  async function saveOffline(
+    options = {}
+  ) {
 
     if (
       !remoteUrl ||
@@ -663,7 +701,9 @@ function Message({
       );
 
     } catch (err) {
-      console.error(err);
+      if (!options.silent) {
+        console.error(err);
+      }
     } finally {
       setSavingOffline(
         false
@@ -674,56 +714,46 @@ function Message({
 
   async function downloadFile() {
 
-  if (!remoteUrl || !fileUrl) {
-    return;
-  }
-
-  try {
-
-    let downloadUrl =
-      fileUrl;
-
-    if (
-      mediaKey &&
-      !isOfflineSaved
-    ) {
-      const response =
-        await fetch(remoteUrl);
-
-      const blob =
-        await response.blob();
-
-      await saveOfflineBlob(
-        mediaKey,
-        blob
-      );
-
-      downloadUrl =
-        URL.createObjectURL(blob);
-
-      setLocalUrl(downloadUrl);
-      setIsOfflineSaved(true);
+    if (!remoteUrl && !fileUrl) {
+      return;
     }
 
-    const link =
-      document.createElement("a");
+    try {
 
-    link.href =
-      downloadUrl;
+      if (
+        mediaKey &&
+        !isOfflineSaved &&
+        remoteUrl
+      ) {
+        await saveOffline();
+      }
 
-    link.download =
-      attachment.name || "download";
+      const link =
+        document.createElement("a");
 
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+      link.href =
+        localUrl || fileUrl || remoteUrl;
 
-  } catch (err) {
-    console.error(err);
-    window.open(fileUrl, "_blank");
+      link.download =
+        attachment.name || "download";
+
+      document.body.appendChild(
+        link
+      );
+
+      link.click();
+
+      link.remove();
+
+    } catch (err) {
+      console.error(err);
+      window.open(
+        fileUrl || remoteUrl,
+        "_blank"
+      );
+    }
+
   }
-
-}
 
   function toggleAudio() {
 
@@ -739,6 +769,67 @@ function Message({
     } else {
       audio.pause();
     }
+
+  }
+
+  function seekAudio(e) {
+
+    const audio =
+      audioRef.current;
+
+    if (
+      !audio ||
+      !audioDuration
+    ) {
+      return;
+    }
+
+    const nextTime =
+      Number(e.target.value);
+
+    audio.currentTime =
+      nextTime;
+
+    setAudioProgress(
+      nextTime
+    );
+
+  }
+
+  function playNextAudio() {
+
+    const audio =
+      audioRef.current;
+
+    if (audio) {
+      audio.currentTime = 0;
+    }
+
+    setAudioPlaying(false);
+    setAudioProgress(0);
+
+    const current =
+      messageRef.current;
+
+    const audioMessages =
+      Array.from(
+        document.querySelectorAll(
+          "[data-audio-message-id]"
+        )
+      );
+
+    const index =
+      audioMessages.indexOf(current);
+
+    const next =
+      audioMessages[index + 1];
+
+    const button =
+      next?.querySelector(
+        ".audio-play-button"
+      );
+
+    button?.click();
 
   }
 
@@ -962,12 +1053,21 @@ function Message({
 
   function renderVideo() {
 
+    const needsManualDownload =
+      attachment.size > AUTO_CACHE_LIMIT &&
+      !isOfflineSaved;
+
     return (
       <div
         className="message-video-wrap"
         onClick={() =>
-          setViewerOpen(true)
+          isOfflineSaved || !needsManualDownload
+            ? setViewerOpen(true)
+            : downloadFile()
         }
+        style={{
+          "--video-ratio": videoRatio
+        }}
       >
         <video
           src={fileUrl}
@@ -975,11 +1075,25 @@ function Message({
           preload="metadata"
           muted
           playsInline
-          onLoadedMetadata={(e) =>
+          onLoadedMetadata={(e) => {
+
+            const video =
+              e.currentTarget;
+
+            if (
+              video.videoWidth &&
+              video.videoHeight
+            ) {
+              setVideoRatio(
+                `${video.videoWidth} / ${video.videoHeight}`
+              );
+            }
+
             setVideoDuration(
-              e.currentTarget.duration
-            )
-          }
+              video.duration
+            );
+
+          }}
         />
 
         <button
@@ -993,16 +1107,23 @@ function Message({
           {formatDuration(videoDuration)}
         </div>
 
+        {needsManualDownload && (
+          <button
+            type="button"
+            className="video-download-layer"
+            onClick={(e) => {
+              e.stopPropagation();
+              downloadFile();
+            }}
+          >
+            ↓ {formatFileSize(attachment.size)}
+          </button>
+        )}
+
         <div className="photo-time-layer">
           {formatTime(message.createdAt)}
           {renderStatus()}
         </div>
-
-        {isOfflineSaved && (
-          <div className="offline-badge">
-            offline
-          </div>
-        )}
       </div>
     );
 
@@ -1026,20 +1147,15 @@ function Message({
             {attachment.name || "Аудио"}
           </div>
 
-          <div className="audio-progress">
-            <div
-              className="audio-progress-fill"
-              style={{
-                width:
-                  audioDuration
-                    ? `${Math.min(
-                        100,
-                        (audioProgress / audioDuration) * 100
-                      )}%`
-                    : "0%"
-              }}
-            />
-          </div>
+          <input
+            className="audio-range"
+            type="range"
+            min="0"
+            max={audioDuration || 0}
+            step="0.01"
+            value={audioProgress}
+            onChange={seekAudio}
+          />
 
           <div className="audio-meta">
             <span>
@@ -1049,22 +1165,8 @@ function Message({
             <span>
               {formatDuration(audioDuration)}
             </span>
-
-            {isOfflineSaved && (
-              <span>
-                offline
-              </span>
-            )}
           </div>
         </div>
-
-        <button
-          type="button"
-          className="audio-download-button"
-          onClick={downloadFile}
-        >
-          ↓
-        </button>
 
         <audio
           ref={audioRef}
@@ -1076,42 +1178,7 @@ function Message({
           onPause={() =>
             setAudioPlaying(false)
           }
-          onEnded={() => {
-
-  const audio =
-    audioRef.current;
-
-  if (audio) {
-    audio.currentTime = 0;
-  }
-
-  setAudioPlaying(false);
-  setAudioProgress(0);
-
-  const current =
-    messageRef.current;
-
-  const audioMessages =
-    Array.from(
-      document.querySelectorAll(
-        "[data-audio-message-id]"
-      )
-    );
-
-  const index =
-    audioMessages.indexOf(current);
-
-  const next =
-    audioMessages[index + 1];
-
-  const button =
-    next?.querySelector(
-      ".audio-play-button"
-    );
-
-  button?.click();
-
-}}
+          onEnded={playNextAudio}
           onLoadedMetadata={(e) =>
             setAudioDuration(
               e.currentTarget.duration
@@ -1143,17 +1210,8 @@ function Message({
 
           <div className="message-file-size">
             {formatFileSize(attachment.size)}
-            {isOfflineSaved ? " · offline" : ""}
           </div>
         </div>
-
-        <button
-          type="button"
-          className="file-download-button"
-          onClick={downloadFile}
-        >
-          ↓
-        </button>
       </div>
     );
 
@@ -1178,18 +1236,6 @@ function Message({
           </div>
 
           <div className="media-viewer-actions">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                saveOffline();
-              }}
-            >
-              {isOfflineSaved
-                ? "Сохранено"
-                : "Оффлайн"}
-            </button>
-
             <button
               type="button"
               onClick={(e) => {
@@ -1233,6 +1279,24 @@ function Message({
               controls
               autoPlay
               playsInline
+              style={{
+                "--video-ratio": videoRatio
+              }}
+              onLoadedMetadata={(e) => {
+
+                const video =
+                  e.currentTarget;
+
+                if (
+                  video.videoWidth &&
+                  video.videoHeight
+                ) {
+                  setVideoRatio(
+                    `${video.videoWidth} / ${video.videoHeight}`
+                  );
+                }
+
+              }}
             />
           )}
         </div>
@@ -1247,9 +1311,9 @@ function Message({
       <div
         ref={messageRef}
         data-message-id={message._id}
-data-audio-message-id={
-  isAudio ? message._id : undefined
-}
+        data-audio-message-id={
+          isAudio ? message._id : undefined
+        }
         className={[
           "message",
           isMine ? "me" : "",
@@ -1295,12 +1359,6 @@ data-audio-message-id={
               {formatTime(message.createdAt)}
               {renderStatus()}
             </div>
-
-            {isOfflineSaved && (
-              <div className="offline-badge">
-                offline
-              </div>
-            )}
           </div>
         )}
 

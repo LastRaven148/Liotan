@@ -58,6 +58,16 @@ export function useAttachmentDraft({
 
   }
 
+  function getDraftType(file) {
+
+    if (file.type.startsWith("video/")) {
+      return "video";
+    }
+
+    return "photo";
+
+  }
+
   function createDraftItems(files) {
 
     return Array
@@ -67,9 +77,7 @@ export function useAttachmentDraft({
       .map(file => ({
         file,
         type:
-          file.type.startsWith("video/")
-            ? "video"
-            : "photo",
+          getDraftType(file),
         url:
           URL.createObjectURL(file)
       }));
