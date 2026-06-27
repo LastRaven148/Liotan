@@ -72,6 +72,37 @@ async function serializeGroup(group) {
 
 }
 
+function emitGroupUpdated(req, group) {
+  const io =
+    req.app.get("io");
+
+  if (!io) {
+    return;
+  }
+
+  io.emit(
+    "groupUpdated",
+    group
+  );
+}
+
+function emitGroupDeleted(req, groupId) {
+  const io =
+    req.app.get("io");
+
+  if (!io) {
+    return;
+  }
+
+  io.emit(
+    "groupDeleted",
+    {
+      groupId:
+        String(groupId)
+    }
+  );
+}
+
 function canManageGroup(
   group,
   username
@@ -171,9 +202,17 @@ async function createGroup(
         members: validMembers
       });
 
-    res.status(201).json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.status(201).json(
+  serialized
+);
 
   } catch (err) {
     next(err);
@@ -238,9 +277,17 @@ async function getGroupById(
       });
     }
 
-    res.json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.json(
+  await serializeGroup(group)
+);
 
   } catch (err) {
     next(err);
@@ -309,9 +356,17 @@ async function updateGroup(
 
     await group.save();
 
-    res.json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.json(
+  serialized
+);
 
   } catch (err) {
     next(err);
@@ -379,9 +434,17 @@ async function uploadGroupAvatar(
 
     await group.save();
 
-    res.json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.json(
+  serialized
+);
 
   } catch (err) {
     next(err);
@@ -442,9 +505,17 @@ async function addGroupMember(
       await group.save();
     }
 
-    res.json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.json(
+  serialized
+);
 
   } catch (err) {
     next(err);
@@ -516,9 +587,17 @@ async function removeGroupMember(
       }
     );
 
-    res.json(
-      await serializeGroup(group)
-    );
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
+
+res.json(
+  serialized
+);
 
   } catch (err) {
     next(err);
@@ -580,6 +659,14 @@ async function leaveGroup(
         }
       }
     );
+
+    const serialized =
+  await serializeGroup(group);
+
+emitGroupUpdated(
+  req,
+  serialized
+);
 
     res.json({
       ok: true
@@ -656,6 +743,11 @@ async function deleteGroup(
     await Group.deleteOne({
       _id: group._id
     });
+    
+    emitGroupDeleted(
+  req,
+  group._id
+);
 
     res.json({
       ok: true

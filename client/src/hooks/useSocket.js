@@ -123,6 +123,7 @@ export default function useSocket({
   setBio,
   setProfileUser,
   socketRef,
+  updateGroup,
   API
 }) {
 
@@ -674,6 +675,61 @@ export default function useSocket({
 
     }
 
+    function handleGroupUpdated(group) {
+  if (!group?._id) {
+    return;
+  }
+
+  const chatKey =
+    `group:${group._id}`;
+
+  const isMember =
+    (group.members || []).includes(username);
+
+  if (!isMember) {
+    removeDialog(chatKey);
+
+    if (activeChatRef.current === chatKey) {
+      setActiveChat(null);
+    }
+
+    return;
+  }
+
+  updateGroup?.(group);
+}
+
+function handleGroupDeleted(data) {
+  const groupId =
+    data?.groupId ||
+    data?._id;
+
+  if (!groupId) {
+    return;
+  }
+
+  const chatKey =
+    `group:${groupId}`;
+
+  removeDialog(chatKey);
+
+  setUnread(prev => {
+    const next = { ...prev };
+    delete next[chatKey];
+    return next;
+  });
+
+  setChats(prev => {
+    const next = { ...prev };
+    delete next[chatKey];
+    return next;
+  });
+
+  if (activeChatRef.current === chatKey) {
+    setActiveChat(null);
+  }
+}
+
     socket.on(
       SOCKET_EVENTS.NEW_MESSAGE,
       handleNewMessage
@@ -742,6 +798,16 @@ export default function useSocket({
     socket.on(
       SOCKET_EVENTS.USER_DELETED,
       handleUserDeleted
+    );
+
+    socket.on(
+      SOCKET_EVENTS.GROUP_UPDATED,
+      handleGroupUpdated
+    );
+
+    socket.on(
+      SOCKET_EVENTS.GROUP_DELETED,
+      handleGroupDeleted
     );
 
     return () => {
@@ -816,6 +882,16 @@ export default function useSocket({
         handleUserDeleted
       );
 
+      socket.off(
+        SOCKET_EVENTS.GROUP_UPDATED,
+        handleGroupUpdated
+      );
+
+      socket.off(
+        SOCKET_EVENTS.GROUP_DELETED,
+        handleGroupDeleted
+      );
+
       window.removeEventListener(
         "click",
         requestNotifications
@@ -841,6 +917,7 @@ export default function useSocket({
     setAvatar,
     setBio,
     setProfileUser,
+    updateGroup,
     socketRef
   ]);
 

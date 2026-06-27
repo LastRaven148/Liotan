@@ -118,6 +118,7 @@ export default function useAppController() {
     updateUserLastSeen: dialogs.updateUserLastSeen,
     updateUserProfile: dialogs.updateUserProfile,
     removeDialog: dialogs.removeDialog,
+    updateGroup: dialogs.updateGroup,
     setAvatar,
     setBio,
     setProfileUser,

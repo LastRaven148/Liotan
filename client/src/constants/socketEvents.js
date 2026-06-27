@@ -38,6 +38,10 @@ export const SOCKET_EVENTS = {
   SEND_GROUP_MESSAGE: "sendGroupMessage",
 
   USER_PROFILE_UPDATED: "userProfileUpdated",
-  USER_DELETED: "userDeleted"
+  USER_DELETED: "userDeleted",
+
+  GROUP_UPDATED: "groupUpdated",
+  GROUP_DELETED: "groupDeleted",
+  GROUP_MEMBER_REMOVED: "groupMemberRemoved"
 
 };
