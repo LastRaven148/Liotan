@@ -15,6 +15,11 @@ import {
   SOCKET_EVENTS
 } from "../constants/socketEvents";
 
+import {
+  unlockNotificationSound,
+  playNotificationSound
+} from "../utils/notificationSound";
+
 function statusRank(status) {
 
   if (status === "read") {
@@ -137,6 +142,27 @@ export default function useSocket({
       return;
     }
 
+        function requestNotifications() {
+      unlockNotificationSound();
+
+      if (
+        "Notification" in window &&
+        Notification.permission === "default"
+      ) {
+        Notification.requestPermission();
+      }
+
+      window.removeEventListener(
+        "click",
+        requestNotifications
+      );
+    }
+
+    window.addEventListener(
+      "click",
+      requestNotifications
+    );
+
     const socket =
       io(API, {
         auth: {
@@ -178,6 +204,44 @@ export default function useSocket({
 
     }
 
+        function notifyIncomingMessage(msg, chatKey) {
+      if (
+        !msg ||
+        msg.from === username ||
+        activeChatRef.current === chatKey
+      ) {
+        return;
+      }
+
+      playNotificationSound();
+
+      const oldTitle =
+        document.title;
+
+      document.title =
+        `Новое сообщение от ${msg.from}`;
+
+      setTimeout(() => {
+        document.title = oldTitle;
+      }, 2500);
+
+      if (
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        new Notification(
+          msg.from || "Liotan",
+          {
+            body:
+              msg.text ||
+              msg.attachment?.name ||
+              "Новое сообщение",
+            icon: "/android-chrome-192x192.png?v=5"
+          }
+        );
+      }
+    }
+
     function handleNewMessage(
       msg
     ) {
@@ -187,6 +251,11 @@ export default function useSocket({
           msg,
           username
         );
+
+              notifyIncomingMessage(
+        msg,
+        chatKey
+      );
 
       setChats(prev =>
         addMessageToChat(
@@ -745,6 +814,11 @@ export default function useSocket({
       socket.off(
         SOCKET_EVENTS.USER_DELETED,
         handleUserDeleted
+      );
+
+      window.removeEventListener(
+        "click",
+        requestNotifications
       );
 
       socket.disconnect();
