@@ -94,6 +94,18 @@ export default function SettingsModal({
     previewAvatar ||
     avatarUrl(avatar);
 
+  function closeEdit() {
+    if (previewAvatar) {
+      URL.revokeObjectURL(previewAvatar);
+    }
+
+    setPreviewAvatar("");
+    setPendingAvatarFile(null);
+    setNameValue(displayName || "");
+    setBioValue(bio || "");
+    setEditing(false);
+  }
+
   function handleAvatarSelect(e) {
     const file =
       e.target.files?.[0];
@@ -116,7 +128,6 @@ export default function SettingsModal({
   }
 
   async function handleSave() {
-
     if (saving) {
       return;
     }
@@ -130,7 +141,11 @@ export default function SettingsModal({
           displayName: nameValue
         });
 
-      if (saved?.displayName !== undefined) {
+      if (!saved) {
+        return;
+      }
+
+      if (saved.displayName !== undefined) {
         setDisplayName?.(
           saved.displayName || ""
         );
@@ -152,7 +167,6 @@ export default function SettingsModal({
     } finally {
       setSaving(false);
     }
-
   }
 
   function toggleLanguage() {
@@ -164,14 +178,12 @@ export default function SettingsModal({
   }
 
   async function handleDeleteAccount() {
-
     if (!confirmDelete) {
       setConfirmDelete(true);
       return;
     }
 
     await deleteAccount?.();
-
   }
 
   if (editing) {
@@ -190,9 +202,7 @@ export default function SettingsModal({
             <button
               type="button"
               className="drawer-icon-button"
-              onClick={() =>
-                setEditing(false)
-              }
+              onClick={closeEdit}
             >
               ←
             </button>
@@ -242,7 +252,7 @@ export default function SettingsModal({
             </div>
 
             <input
-              className="settings-bio-input"
+              className="settings-name-input"
               value={nameValue}
               onChange={(e) =>
                 setNameValue(e.target.value)
@@ -325,7 +335,7 @@ export default function SettingsModal({
           </div>
 
           <div>
-            <div className="settings-name-input">
+            <div className="settings-name">
               {shownName}
             </div>
 
@@ -363,6 +373,7 @@ export default function SettingsModal({
               onClick={logout}
             >
               <span>×</span>
+
               <div className="settings-row-main">
                 {t.logout || "Выйти"}
               </div>
@@ -376,6 +387,7 @@ export default function SettingsModal({
               onClick={handleDeleteAccount}
             >
               <span>×</span>
+
               <div className="settings-row-main">
                 {confirmDelete
                   ? "Нажми ещё раз для удаления"

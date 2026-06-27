@@ -1,4 +1,4 @@
-const User =
+\const User =
   require("../models/User");
 
 const uploadToCloudinary =
@@ -9,9 +9,15 @@ const deleteUploadedFile =
 
 const {
   isValidBio,
-  isValidUsername,
-  isValidDisplayName
+  isValidUsername
 } = require("../utils/validators");
+
+function isValidDisplayName(value) {
+  return (
+    typeof value === "string" &&
+    value.trim().length <= 20
+  );
+}
 
 function emitProfileUpdated(req, profile) {
   const io =
@@ -25,19 +31,6 @@ function emitProfileUpdated(req, profile) {
     "userProfileUpdated",
     profile
   );
-}
-
-function serializeProfile(user) {
-  return {
-    username:
-      user.username,
-    displayName:
-      user.displayName || "",
-    avatar:
-      user.avatar || "",
-    bio:
-      user.bio || ""
-  };
 }
 
 async function getProfile(req, res, next) {
@@ -63,9 +56,7 @@ async function getProfile(req, res, next) {
       });
     }
 
-    res.json(
-      serializeProfile(user)
-    );
+    res.json(user);
   } catch (err) {
     next(err);
   }
@@ -117,13 +108,14 @@ async function updateProfile(req, res, next) {
       });
     }
 
-    const profile =
-      serializeProfile(user);
+    const profile = {
+      username: user.username,
+      displayName: user.displayName || "",
+      avatar: user.avatar || "",
+      bio: user.bio || ""
+    };
 
-    emitProfileUpdated(
-      req,
-      profile
-    );
+    emitProfileUpdated(req, profile);
 
     res.json({
       ok: true,
@@ -182,13 +174,14 @@ async function uploadAvatar(req, res, next) {
 
     await user.save();
 
-    const profile =
-      serializeProfile(user);
+    const profile = {
+      username: user.username,
+      displayName: user.displayName || "",
+      avatar: user.avatar || "",
+      bio: user.bio || ""
+    };
 
-    emitProfileUpdated(
-      req,
-      profile
-    );
+    emitProfileUpdated(req, profile);
 
     res.json(profile);
   } catch (err) {
