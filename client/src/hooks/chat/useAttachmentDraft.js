@@ -49,16 +49,27 @@ export function useAttachmentDraft({
 
   }, []);
 
+  function isPreviewMedia(file) {
+
+    return (
+      file.type.startsWith("image/") ||
+      file.type.startsWith("video/")
+    );
+
+  }
+
   function createDraftItems(files) {
 
     return Array
       .from(files)
-      .filter(file =>
-        file.type.startsWith("image/")
-      )
+      .filter(isPreviewMedia)
       .slice(0, 10)
       .map(file => ({
         file,
+        type:
+          file.type.startsWith("video/")
+            ? "video"
+            : "photo",
         url:
           URL.createObjectURL(file)
       }));
@@ -153,18 +164,16 @@ export function useAttachmentDraft({
         e.clipboardData?.files || []
       );
 
-    const imageFiles =
-      files.filter(file =>
-        file.type.startsWith("image/")
-      );
+    const mediaFiles =
+      files.filter(isPreviewMedia);
 
-    if (!imageFiles.length) {
+    if (!mediaFiles.length) {
       return;
     }
 
     e.preventDefault();
 
-    addDraftFiles(imageFiles);
+    addDraftFiles(mediaFiles);
 
   }
 

@@ -672,33 +672,58 @@ function Message({
 
   }
 
-  function downloadFile() {
+  async function downloadFile() {
 
-    if (!fileUrl) {
-      return;
+  if (!remoteUrl || !fileUrl) {
+    return;
+  }
+
+  try {
+
+    let downloadUrl =
+      fileUrl;
+
+    if (
+      mediaKey &&
+      !isOfflineSaved
+    ) {
+      const response =
+        await fetch(remoteUrl);
+
+      const blob =
+        await response.blob();
+
+      await saveOfflineBlob(
+        mediaKey,
+        blob
+      );
+
+      downloadUrl =
+        URL.createObjectURL(blob);
+
+      setLocalUrl(downloadUrl);
+      setIsOfflineSaved(true);
     }
 
     const link =
       document.createElement("a");
 
     link.href =
-      fileUrl;
+      downloadUrl;
 
     link.download =
       attachment.name || "download";
 
-    link.target =
-      "_blank";
-
-    document.body.appendChild(
-      link
-    );
-
+    document.body.appendChild(link);
     link.click();
-
     link.remove();
 
+  } catch (err) {
+    console.error(err);
+    window.open(fileUrl, "_blank");
   }
+
+}
 
   function toggleAudio() {
 
@@ -865,21 +890,6 @@ function Message({
           >
             <span>↓</span>
             Скачать
-          </button>
-        )}
-
-        {hasAttachment && (
-          <button
-            type="button"
-            onClick={() => {
-              closeMenus();
-              saveOffline();
-            }}
-          >
-            <span>⬇</span>
-            {isOfflineSaved
-              ? "Сохранено"
-              : "Оффлайн"}
           </button>
         )}
 
@@ -1066,9 +1076,42 @@ function Message({
           onPause={() =>
             setAudioPlaying(false)
           }
-          onEnded={() =>
-            setAudioPlaying(false)
-          }
+          onEnded={() => {
+
+  const audio =
+    audioRef.current;
+
+  if (audio) {
+    audio.currentTime = 0;
+  }
+
+  setAudioPlaying(false);
+  setAudioProgress(0);
+
+  const current =
+    messageRef.current;
+
+  const audioMessages =
+    Array.from(
+      document.querySelectorAll(
+        "[data-audio-message-id]"
+      )
+    );
+
+  const index =
+    audioMessages.indexOf(current);
+
+  const next =
+    audioMessages[index + 1];
+
+  const button =
+    next?.querySelector(
+      ".audio-play-button"
+    );
+
+  button?.click();
+
+}}
           onLoadedMetadata={(e) =>
             setAudioDuration(
               e.currentTarget.duration
@@ -1204,6 +1247,9 @@ function Message({
       <div
         ref={messageRef}
         data-message-id={message._id}
+data-audio-message-id={
+  isAudio ? message._id : undefined
+}
         className={[
           "message",
           isMine ? "me" : "",

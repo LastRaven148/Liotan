@@ -359,11 +359,11 @@
   max-width:min(72%, 430px);
   padding:8px 10px;
   border-radius:16px;
-  background:#7b61d1;
+  background:#2b5278;
 }
 
 .message.audio-message.me{
-  background:#7b61d1;
+  background:#2b5278;
 }
 
 .message-audio{
@@ -379,7 +379,7 @@
   border:none;
   border-radius:50%;
   background:white;
-  color:#7b61d1;
+  color:#2b5278;
   font-size:17px;
   font-weight:800;
   cursor:pointer;
