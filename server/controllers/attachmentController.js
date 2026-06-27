@@ -90,9 +90,9 @@ async function signAttachmentUpload(
       Number(req.body.size) || 0;
 
     if (
-      !size ||
-      size > MAX_ATTACHMENT_SIZE
-    ) {
+  size < 0 ||
+  size > MAX_ATTACHMENT_SIZE
+) {
       return res.status(400).json({
         error: "file too large"
       });

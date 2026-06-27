@@ -91,45 +91,67 @@ export async function uploadAttachmentApi(file) {
   const sign =
     await getAttachmentUploadSignature(file);
 
-  const form =
-    new FormData();
-
-  form.append("file", file);
-  form.append("api_key", sign.apiKey);
-  form.append("timestamp", sign.timestamp);
-  form.append("signature", sign.signature);
-  form.append("folder", sign.folder);
-
   const cloudinaryUrl =
     `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
 
-  let res;
+  const chunkSize =
+    20 * 1024 * 1024;
 
-  try {
-    res =
+  const uploadId =
+    `${Date.now()}-${Math.random()}`;
+
+  let result = null;
+
+  for (
+    let start = 0;
+    start < file.size;
+    start += chunkSize
+  ) {
+    const end =
+      Math.min(
+        start + chunkSize,
+        file.size
+      );
+
+    const chunk =
+      file.slice(start, end);
+
+    const form =
+      new FormData();
+
+    form.append("file", chunk, file.name);
+    form.append("api_key", sign.apiKey);
+    form.append("timestamp", sign.timestamp);
+    form.append("signature", sign.signature);
+    form.append("folder", sign.folder);
+
+    const res =
       await fetch(cloudinaryUrl, {
         method: "POST",
+        headers: {
+          "X-Unique-Upload-Id": uploadId,
+          "Content-Range":
+            `bytes ${start}-${end - 1}/${file.size}`
+        },
         body: form
       });
-  } catch {
-    throw new Error(
-      "Не удалось загрузить файл в Cloudinary"
-    );
-  }
 
-  const data =
-    await res.json();
+    const data =
+      await res.json();
 
-  if (!res.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "Ошибка загрузки файла"
-    );
+    if (!res.ok) {
+      throw new Error(
+        data?.error?.message ||
+        "Ошибка загрузки файла"
+      );
+    }
+
+    result = data;
   }
 
   return {
     url:
-      data.secure_url,
+      result.secure_url,
     name:
       file.name || "file",
     type:
@@ -139,15 +161,15 @@ export async function uploadAttachmentApi(file) {
     size:
       file.size,
     publicId:
-      data.public_id,
+      result.public_id,
     resourceType:
-      data.resource_type,
+      result.resource_type,
     width:
-      data.width || 0,
+      result.width || 0,
     height:
-      data.height || 0,
+      result.height || 0,
     duration:
-      data.duration || 0
+      result.duration || 0
   };
 }
 
