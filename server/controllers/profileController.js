@@ -37,7 +37,7 @@ async function getProfile(req, res, next) {
   try {
     const username =
       req.params.username;
-
+console.log("PROFILE UPDATE BODY:", req.body);
     if (!isValidUsername(username)) {
       return res.status(400).json({
         error: "invalid username"
@@ -97,7 +97,7 @@ async function updateProfile(req, res, next) {
           displayName
         },
         {
-          new: true,
+          returnDocument: "after",
           fields: "username displayName avatar bio"
         }
       );
