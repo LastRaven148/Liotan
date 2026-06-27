@@ -29,63 +29,49 @@ export function useAttachmentDraft({
   ] = useState(false);
 
   useEffect(() => {
-
     draftRef.current =
       attachmentDraft;
-
   }, [
     attachmentDraft
   ]);
 
   useEffect(() => {
-
     return () => {
-
       draftRef.current.forEach(item =>
         URL.revokeObjectURL(item.url)
       );
-
     };
-
   }, []);
 
   function isPreviewMedia(file) {
-
     return (
       file.type.startsWith("image/") ||
       file.type.startsWith("video/")
     );
-
   }
 
   function getDraftType(file) {
-
     if (file.type.startsWith("video/")) {
       return "video";
     }
 
     return "photo";
-
   }
 
   function createDraftItems(files) {
-
     return Array
       .from(files)
       .filter(isPreviewMedia)
       .slice(0, 10)
       .map(file => ({
         file,
-        type:
-          getDraftType(file),
-        url:
-          URL.createObjectURL(file)
+        type: getDraftType(file),
+        url: URL.createObjectURL(file),
+        ratio: ""
       }));
-
   }
 
   function addDraftFiles(files) {
-
     const nextItems =
       createDraftItems(files);
 
@@ -94,27 +80,30 @@ export function useAttachmentDraft({
     }
 
     setAttachmentDraft(prev => {
-
       const available =
-        Math.max(
-          0,
-          10 - prev.length
-        );
+        Math.max(0, 10 - prev.length);
 
       return [
         ...prev,
-        ...nextItems.slice(
-          0,
-          available
-        )
+        ...nextItems.slice(0, available)
       ];
-
     });
+  }
 
+  function updateDraftRatio(index, ratio) {
+    setAttachmentDraft(prev =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              ratio
+            }
+          : item
+      )
+    );
   }
 
   function closeAttachmentDraft() {
-
     attachmentDraft.forEach(item =>
       URL.revokeObjectURL(item.url)
     );
@@ -122,13 +111,10 @@ export function useAttachmentDraft({
     setAttachmentDraft([]);
     setAttachmentCaption("");
     setSendingDraft(false);
-
   }
 
   function removeDraftItem(index) {
-
     setAttachmentDraft(prev => {
-
       const item =
         prev[index];
 
@@ -137,16 +123,12 @@ export function useAttachmentDraft({
       }
 
       return prev.filter(
-        (_, i) =>
-          i !== index
+        (_, i) => i !== index
       );
-
     });
-
   }
 
   async function sendAttachmentDraft() {
-
     if (
       sendingDraft ||
       !attachmentDraft.length
@@ -156,17 +138,26 @@ export function useAttachmentDraft({
 
     setSendingDraft(true);
 
-    await sendAttachments(
-      attachmentDraft.map(item => item.file),
-      attachmentCaption
-    );
+    try {
+      const ok =
+        await sendAttachments(
+          attachmentDraft.map(item => item.file),
+          attachmentCaption
+        );
 
-    closeAttachmentDraft();
+      if (ok === false) {
+        setSendingDraft(false);
+        return;
+      }
 
+      closeAttachmentDraft();
+    } catch (err) {
+      console.error(err);
+      setSendingDraft(false);
+    }
   }
 
   function handlePaste(e) {
-
     const files =
       Array.from(
         e.clipboardData?.files || []
@@ -180,13 +171,10 @@ export function useAttachmentDraft({
     }
 
     e.preventDefault();
-
     addDraftFiles(mediaFiles);
-
   }
 
   function handlePhotoChange(e) {
-
     const files =
       e.target.files;
 
@@ -198,11 +186,9 @@ export function useAttachmentDraft({
 
     e.target.value = "";
     setAttachMenuOpen(false);
-
   }
 
   function handleFileChange(e) {
-
     const file =
       e.target.files?.[0];
 
@@ -214,7 +200,6 @@ export function useAttachmentDraft({
 
     e.target.value = "";
     setAttachMenuOpen(false);
-
   }
 
   return {
@@ -224,6 +209,7 @@ export function useAttachmentDraft({
     sendingDraft,
     closeAttachmentDraft,
     removeDraftItem,
+    updateDraftRatio,
     sendAttachmentDraft,
     handlePaste,
     handlePhotoChange,

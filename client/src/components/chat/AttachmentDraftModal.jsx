@@ -3,7 +3,6 @@ import {
 } from "react";
 
 function getDraftTitle(items) {
-
   const photos =
     items.filter(item =>
       item.type === "photo"
@@ -40,7 +39,6 @@ function getDraftTitle(items) {
   }
 
   return `Отправить ${photos} фото`;
-
 }
 
 export default function AttachmentDraftModal({
@@ -51,7 +49,8 @@ export default function AttachmentDraftModal({
   onClose,
   onRemove,
   onSend,
-  onAddMore
+  onAddMore,
+  onVideoRatio
 }) {
 
   const [
@@ -77,9 +76,7 @@ export default function AttachmentDraftModal({
           </button>
 
           <div className="attachment-preview-title">
-            {getDraftTitle(
-              attachmentDraft
-            )}
+            {getDraftTitle(attachmentDraft)}
           </div>
 
           <div className="attachment-preview-menu-wrap">
@@ -105,10 +102,7 @@ export default function AttachmentDraftModal({
                   <span className="attachment-preview-menu-icon">
                     +
                   </span>
-
-                  <span>
-                    Добавить
-                  </span>
+                  <span>Добавить</span>
                 </button>
 
                 <button
@@ -120,10 +114,7 @@ export default function AttachmentDraftModal({
                   <span className="attachment-preview-menu-icon">
                     ✓
                   </span>
-
-                  <span>
-                    Отправить без сжатия
-                  </span>
+                  <span>Отправить без сжатия</span>
                 </button>
               </div>
             )}
@@ -140,6 +131,13 @@ export default function AttachmentDraftModal({
                   ? "attachment-preview-video-item"
                   : ""
               ].join(" ")}
+              style={
+                item.ratio
+                  ? {
+                      "--draft-video-ratio": item.ratio
+                    }
+                  : undefined
+              }
             >
               {item.type === "video" ? (
                 <video
@@ -148,6 +146,20 @@ export default function AttachmentDraftModal({
                   playsInline
                   preload="metadata"
                   className="attachment-preview-video"
+                  onLoadedMetadata={(e) => {
+                    const video =
+                      e.currentTarget;
+
+                    if (
+                      video.videoWidth &&
+                      video.videoHeight
+                    ) {
+                      onVideoRatio?.(
+                        index,
+                        `${video.videoWidth} / ${video.videoHeight}`
+                      );
+                    }
+                  }}
                 />
               ) : (
                 <img
@@ -169,24 +181,11 @@ export default function AttachmentDraftModal({
           ))}
         </div>
 
-        <div className="attachment-preview-footer">
-          <button
-            type="button"
-            className="attachment-preview-add"
-            onClick={onAddMore}
-            disabled={
-              attachmentDraft.length >= 10
-            }
-          >
-            +
-          </button>
-
+        <div className="attachment-preview-caption">
           <input
             value={attachmentCaption}
             onChange={(e) =>
-              setAttachmentCaption(
-                e.target.value
-              )
+              setAttachmentCaption(e.target.value)
             }
             placeholder="Добавить подпись..."
           />

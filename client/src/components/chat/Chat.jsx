@@ -101,7 +101,8 @@ const Chat = memo(function Chat({
   } = useAttachmentDraft({
     sendAttachment,
     sendAttachments,
-    setAttachMenuOpen
+    setAttachMenuOpen,
+    updateDraftRatio
   });
 
   const {
@@ -194,6 +195,7 @@ const Chat = memo(function Chat({
         onAddMore={() =>
           photoInputRef.current?.click()
         }
+        onVideoRatio={updateDraftRatio}
       />
 
     </div>

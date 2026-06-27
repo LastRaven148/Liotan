@@ -54,12 +54,10 @@ export default function useChat({
 
   const activeDialog =
     useMemo(() => {
-
       return dialogs?.find(dialog =>
         dialog.chatKey === activeChat ||
         dialog.username === activeChat
       );
-
     }, [
       dialogs,
       activeChat
@@ -78,20 +76,16 @@ export default function useChat({
     );
 
     function handleBrowserBack() {
-
       if (!activeChatRef.current) {
         return;
       }
 
-      stopTyping(
-        activeChatRef.current
-      );
+      stopTyping(activeChatRef.current);
 
       setActiveChat(null);
       setEditingMessage(null);
       setReplyMessage(null);
       setTextState("");
-
     }
 
     window.addEventListener(
@@ -142,9 +136,7 @@ export default function useChat({
 
   }
 
-  function startTyping(
-    chat
-  ) {
+  function startTyping(chat) {
 
     if (
       !socketRef.current ||
@@ -184,22 +176,17 @@ export default function useChat({
   }
 
   function setText(value) {
-
     setTextState(value);
 
-    if (
-      value.trim().length > 0
-    ) {
+    if (value.trim().length > 0) {
       startTyping(activeChat);
       return;
     }
 
     stopTyping(activeChat);
-
   }
 
   function openChat(chatKey) {
-
     if (activeChat === chatKey) {
       return;
     }
@@ -272,24 +259,19 @@ export default function useChat({
         user2: chatKey
       }
     );
-
   }
 
   function closeChat() {
-
     if (!activeChatRef.current) {
       return;
     }
 
-    stopTyping(
-      activeChatRef.current
-    );
+    stopTyping(activeChatRef.current);
 
     setActiveChat(null);
     setEditingMessage(null);
     setReplyMessage(null);
     setTextState("");
-
   }
 
   function emitMessage({
@@ -302,7 +284,7 @@ export default function useChat({
       !socketRef.current ||
       !target
     ) {
-      return;
+      return false;
     }
 
     const dialog =
@@ -328,7 +310,7 @@ export default function useChat({
         }
       );
 
-      return;
+      return true;
     }
 
     socketRef.current.emit(
@@ -347,6 +329,7 @@ export default function useChat({
       }
     );
 
+    return true;
   }
 
   function sendMessage(
@@ -357,7 +340,7 @@ export default function useChat({
       !socketRef.current ||
       !activeChat
     ) {
-      return;
+      return false;
     }
 
     const hasText =
@@ -370,7 +353,6 @@ export default function useChat({
       editingMessage &&
       hasText
     ) {
-
       socketRef.current.emit(
         SOCKET_EVENTS.EDIT_MESSAGE,
         {
@@ -386,30 +368,36 @@ export default function useChat({
       setReplyMessage(null);
       setTextState("");
 
-      return;
+      return true;
     }
 
     if (
       !hasText &&
       !hasAttachment
     ) {
-      return;
+      return false;
     }
 
-    emitMessage({
-      target: activeChat,
-      messageText:
-        hasText
-          ? text
-          : "",
-      attachment
-    });
+    const ok =
+      emitMessage({
+        target: activeChat,
+        messageText:
+          hasText
+            ? text
+            : "",
+        attachment
+      });
+
+    if (!ok) {
+      return false;
+    }
 
     stopTyping(activeChat);
 
     setReplyMessage(null);
     setTextState("");
 
+    return true;
   }
 
   async function sendAttachments(
@@ -422,7 +410,7 @@ export default function useChat({
       !activeChat ||
       !files?.length
     ) {
-      return;
+      return false;
     }
 
     const target =
@@ -432,23 +420,25 @@ export default function useChat({
       Array.from(files).slice(0, 10);
 
     try {
-
       for (let i = 0; i < safeFiles.length; i += 1) {
-
         const attachment =
           await uploadAttachmentApi(
             safeFiles[i]
           );
 
-        emitMessage({
-          target,
-          messageText:
-            i === 0
-              ? caption.trim()
-              : "",
-          attachment
-        });
+        const ok =
+          emitMessage({
+            target,
+            messageText:
+              i === 0
+                ? caption.trim()
+                : "",
+            attachment
+          });
 
+        if (!ok) {
+          return false;
+        }
       }
 
       stopTyping(target);
@@ -456,14 +446,19 @@ export default function useChat({
       setReplyMessage(null);
       setTextState("");
 
+      return true;
     } catch (err) {
       console.error(err);
-    }
+      alert(
+        err?.message ||
+        "Не удалось отправить файл"
+      );
 
+      return false;
+    }
   }
 
   function deleteChat(chat = activeChat) {
-
     if (
       !socketRef.current ||
       !chat
@@ -489,40 +484,34 @@ export default function useChat({
         user2: chat
       }
     );
-
   }
 
   async function sendAttachment(file) {
-
     if (
       !file ||
       !socketRef.current ||
       !activeChat
     ) {
-      return;
+      return false;
     }
 
     try {
-
       const attachment =
-        await uploadAttachmentApi(
-          file
-        );
+        await uploadAttachmentApi(file);
 
-      sendMessage(
-        attachment
-      );
-
+      return sendMessage(attachment);
     } catch (err) {
       console.error(err);
-    }
+      alert(
+        err?.message ||
+        "Не удалось отправить файл"
+      );
 
+      return false;
+    }
   }
 
-  function startEditMessage(
-    message
-  ) {
-
+  function startEditMessage(message) {
     if (
       !message ||
       message.from !== username
@@ -535,20 +524,15 @@ export default function useChat({
     setReplyMessage(null);
     setEditingMessage(message);
     setTextState(message.text || "");
-
   }
 
-  function startReplyMessage(
-    message
-  ) {
-
+  function startReplyMessage(message) {
     if (!message) {
       return;
     }
 
     setEditingMessage(null);
     setReplyMessage(message);
-
   }
 
   function cancelReplyMessage() {
@@ -556,39 +540,30 @@ export default function useChat({
   }
 
   function cancelEditMessage() {
-
     stopTyping(activeChat);
 
     setEditingMessage(null);
     setTextState("");
-
   }
 
-  function pinMessage(
-  message
-) {
-
-  if (
-    !socketRef.current ||
-    !message?._id
-  ) {
-    return;
-  }
-
-  socketRef.current.emit(
-    SOCKET_EVENTS.PIN_MESSAGE,
-    {
-      messageId:
-        message._id
+  function pinMessage(message) {
+    if (
+      !socketRef.current ||
+      !message?._id
+    ) {
+      return;
     }
-  );
 
-}
+    socketRef.current.emit(
+      SOCKET_EVENTS.PIN_MESSAGE,
+      {
+        messageId:
+          message._id
+      }
+    );
+  }
 
-  function deleteMessage(
-    message
-  ) {
-
+  function deleteMessage(message) {
     if (
       !socketRef.current ||
       !message
@@ -603,44 +578,32 @@ export default function useChat({
           message._id
       }
     );
-
   }
 
   function handleKey(e) {
-
     if (
       e.key === "Enter" &&
       !e.shiftKey
     ) {
-
       e.preventDefault();
-
       sendMessage();
-
     }
 
     if (
       e.key === "Escape" &&
       editingMessage
     ) {
-
       e.preventDefault();
-
       cancelEditMessage();
-
     }
 
     if (
       e.key === "Escape" &&
       replyMessage
     ) {
-
       e.preventDefault();
-
       cancelReplyMessage();
-
     }
-
   }
 
   const chatId =
@@ -655,11 +618,9 @@ export default function useChat({
 
   const messages =
     useMemo(() => {
-
       return (
         chats[chatId] || []
       );
-
     }, [
       chats,
       chatId
@@ -684,7 +645,7 @@ export default function useChat({
     deleteMessage,
     pinMessage,
     deleteChat,
-    
+
     chatId,
     messages,
     activeDialog,

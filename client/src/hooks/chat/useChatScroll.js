@@ -1,5 +1,5 @@
 import {
-  useEffect,
+  useLayoutEffect,
   useRef
 } from "react";
 
@@ -18,8 +18,7 @@ export function useChatScroll({
       lastId: ""
     });
 
-  function scrollToBottom() {
-
+  function forceBottom() {
     const el =
       messagesRef.current;
 
@@ -27,20 +26,30 @@ export function useChatScroll({
       return;
     }
 
+    el.scrollTop =
+      el.scrollHeight;
+
     requestAnimationFrame(() => {
       el.scrollTop =
         el.scrollHeight;
 
-      requestAnimationFrame(() => {
-        el.scrollTop =
-          el.scrollHeight;
-      });
-    });
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop =
+            messagesRef.current.scrollHeight;
+        }
+      }, 80);
 
+      setTimeout(() => {
+        if (messagesRef.current) {
+          messagesRef.current.scrollTop =
+            messagesRef.current.scrollHeight;
+        }
+      }, 250);
+    });
   }
 
-  useEffect(() => {
-
+  useLayoutEffect(() => {
     const el =
       messagesRef.current;
 
@@ -68,7 +77,7 @@ export function useChatScroll({
       chatChanged ||
       newMessageAdded
     ) {
-      scrollToBottom();
+      forceBottom();
     }
 
     previousChatRef.current =
@@ -78,7 +87,6 @@ export function useChatScroll({
       length: messages.length,
       lastId
     };
-
   }, [
     activeChat,
     messages,
