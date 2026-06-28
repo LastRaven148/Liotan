@@ -46,21 +46,27 @@ export default function MessageAudio({
         </div>
 
         <div className="audio-meta">
-          <span>
-            {formatDuration(
-              audioStarted
-                ? audioProgress
-                : audioDuration
+          <span className="audio-meta-left">
+            <span>
+              {formatDuration(
+                audioStarted
+                  ? audioProgress
+                  : audioDuration
+              )}
+            </span>
+
+            {!audioStarted && attachmentSizeText && (
+              <span>
+                {attachmentSizeText}
+              </span>
             )}
           </span>
 
-          {!audioStarted && attachmentSizeText && (
-            <span>
-              {attachmentSizeText}
+          {footer && (
+            <span className="audio-footer-slot">
+              {footer}
             </span>
           )}
-
-          {footer}
         </div>
       </div>
     </div>
