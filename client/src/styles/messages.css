@@ -54,6 +54,15 @@
   -webkit-user-select:none;
 }
 
+.message-time-audio,
+.message-time-file{
+  position:absolute;
+  right:9px;
+  bottom:5px;
+  float:none;
+  margin:0;
+}
+
 .me .message-time{
   color:#adc4d8;
 }

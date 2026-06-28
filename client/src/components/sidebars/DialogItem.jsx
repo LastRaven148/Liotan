@@ -305,76 +305,72 @@ export default function DialogItem({
   }
 
   function renderPreview() {
-    if (lastAttachmentType === "photo") {
-      return (
-        <div className="dialog-preview dialog-preview-media">
-          {lastAttachmentUrl && (
-            <img
-              src={mediaUrl(lastAttachmentUrl)}
-              alt=""
-              className="dialog-preview-thumb"
-            />
-          )}
-
-          <span>Фото</span>
-        </div>
-      );
-    }
-
-    if (lastAttachmentType === "video") {
-      return (
-        <div className="dialog-preview dialog-preview-media">
-          {lastAttachmentUrl && (
-            <span className="dialog-preview-video-thumb">
-              <video
-                src={mediaUrl(lastAttachmentUrl)}
-                className="dialog-preview-thumb"
-                muted
-                playsInline
-                preload="metadata"
-              />
-
-              <span className="dialog-preview-play" />
-            </span>
-          )}
-
-          <span>Видео</span>
-        </div>
-      );
-    }
-
-    if (lastAttachmentType === "audio") {
-      return (
-        <div className="dialog-preview dialog-preview-attachment">
-          <MusicIcon />
-
-          <span>
-            {lastAttachmentName || "Аудио"}
-          </span>
-        </div>
-      );
-    }
-
-    if (lastAttachmentType === "file") {
-      return (
-        <div className="dialog-preview dialog-preview-attachment">
-          <span className="dialog-file-icon">
-            <DialogFileIcon />
-          </span>
-
-          <span>
-            {lastAttachmentName || t.file || "Файл"}
-          </span>
-        </div>
-      );
-    }
-
+  if (lastAttachmentType === "photo") {
     return (
-      <div className="dialog-preview">
-        {dialog.lastMessage || t.noMessages || "No messages yet"}
+      <div className="dialog-preview dialog-preview-media">
+        {lastAttachmentUrl && (
+          <img
+            src={mediaUrl(lastAttachmentUrl)}
+            alt=""
+            className="dialog-preview-thumb"
+          />
+        )}
+
+        <span>Фото</span>
       </div>
     );
   }
+
+  if (lastAttachmentType === "video") {
+    return (
+      <div className="dialog-preview dialog-preview-media">
+        {lastAttachmentUrl && (
+          <span className="dialog-preview-video-thumb">
+            <video
+              src={mediaUrl(lastAttachmentUrl)}
+              className="dialog-preview-thumb"
+              muted
+              playsInline
+              preload="metadata"
+            />
+
+            <span className="dialog-preview-play" />
+          </span>
+        )}
+
+        <span>Видео</span>
+      </div>
+    );
+  }
+
+  if (lastAttachmentType === "audio") {
+    return (
+      <div className="dialog-preview dialog-preview-attachment">
+        <MusicIcon />
+
+        <span>
+          {lastAttachmentName || "Аудио"}
+        </span>
+      </div>
+    );
+  }
+
+  if (lastAttachmentType === "file") {
+    return (
+      <div className="dialog-preview dialog-preview-attachment">
+        <span>
+          {lastAttachmentName || t.file || "Файл"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="dialog-preview">
+      {dialog.lastMessage || ""}
+    </div>
+  );
+}
 
   return (
     <div
