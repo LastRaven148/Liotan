@@ -3,6 +3,7 @@ import PinnedBar from "./PinnedBar";
 import AttachmentDraftModal from "./AttachmentDraftModal";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
+import AudioPlayer from "./AudioPlayer";
 
 import {
   memo,
@@ -126,6 +127,8 @@ const Chat = memo(function Chat({
 
   return (
     <div className="chat">
+
+      <AudioPlayer />
 
       {activeChat ? (
         <>

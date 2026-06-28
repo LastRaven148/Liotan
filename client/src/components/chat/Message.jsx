@@ -208,6 +208,7 @@ function formatDuration(value) {
 function Message({
   message,
   username,
+  audioMessages = [],
   onEdit,
   onDelete,
   onReply,
@@ -477,6 +478,50 @@ function Message({
     };
   }, [
     viewerOpen
+  ]);
+
+    useEffect(() => {
+    function handleGlobalAudioState(e) {
+      const state =
+        e.detail;
+
+      if (!state?.messageId) {
+        return;
+      }
+
+      if (state.messageId !== message._id) {
+        if (audioStarted) {
+          setAudioPlaying(false);
+          setAudioStarted(false);
+          setAudioProgress(0);
+        }
+
+        return;
+      }
+
+      setAudioStarted(true);
+      setAudioPlaying(Boolean(state.playing));
+      setAudioProgress(Number(state.progress) || 0);
+
+      if (Number.isFinite(state.duration)) {
+        setAudioDuration(state.duration);
+      }
+    }
+
+    window.addEventListener(
+      "liotan:audio-state",
+      handleGlobalAudioState
+    );
+
+    return () => {
+      window.removeEventListener(
+        "liotan:audio-state",
+        handleGlobalAudioState
+      );
+    };
+  }, [
+    message._id,
+    audioStarted
   ]);
 
   useEffect(() => {
@@ -820,19 +865,35 @@ function Message({
     }
   }
 
-  function toggleAudio() {
-    const audio =
-      audioRef.current;
-
-    if (!audio) {
+    function toggleAudio() {
+    if (!isAudio || !attachment?.url) {
       return;
     }
 
-    if (audio.paused) {
-      audio.play();
-    } else {
-      audio.pause();
-    }
+    const playlist =
+      audioMessages.map(item => ({
+        messageId: item._id,
+        url: item.attachment.url,
+        name: item.attachment.name || "Аудио",
+        duration: Number(item.attachment.duration) || 0,
+        size: item.attachment.size || 0
+      }));
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "liotan:play-audio",
+        {
+          detail: {
+            messageId: message._id,
+            url: attachment.url,
+            name: attachment.name || "Аудио",
+            duration: audioDuration || attachmentDuration,
+            size: attachment.size || 0,
+            playlist
+          }
+        }
+      )
+    );
   }
 
   function seekAudio(e) {
@@ -1462,32 +1523,8 @@ function Message({
             )}
           </div>
 
-          <audio
-            ref={audioRef}
-            src={fileUrl}
-            preload="metadata"
-            onPlay={() => {
-              setAudioStarted(true);
-              setAudioPlaying(true);
-            }}
-            onPause={() =>
-              setAudioPlaying(false)
-            }
-            onEnded={() => {
-              if (!audioRepeat) {
-                resetAudio();
-              }
-            }}
-            onLoadedMetadata={handleAudioMetadata}
-            onTimeUpdate={(e) =>
-              setAudioProgress(
-                e.currentTarget.currentTime
-              )
-            }
-          />
         </div>
 
-        {renderAudioTopbar()}
       </>
     );
   }

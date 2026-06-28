@@ -20,6 +20,18 @@ export default function MessageList({
   onPin
 }) {
 
+  const audioMessages =
+    useMemo(() => {
+
+      return messages.filter(item =>
+        item?.attachment?.type === "audio" &&
+        item?.attachment?.url
+      );
+
+    }, [
+      messages
+    ]);
+
   const items =
     useMemo(() => {
 
@@ -57,6 +69,7 @@ export default function MessageList({
             key={item.message._id}
             message={item.message}
             username={username}
+            audioMessages={audioMessages}
             onEdit={onEdit}
             onReply={onReply}
             onDelete={onDelete}
