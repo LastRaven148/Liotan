@@ -17,56 +17,39 @@ import {
   deleteGroupApi
 } from "../services/api";
 
-function inferAttachmentFromDialog(dialog) {
-  const name =
-    dialog.lastAttachmentName ||
-    dialog.attachmentName ||
-    dialog.lastMessage ||
-    "";
-
-  const lower =
-    name.toLowerCase();
-
-  if (
-    lower.endsWith(".mp3") ||
-    lower.endsWith(".wav") ||
-    lower.endsWith(".ogg") ||
-    lower.endsWith(".m4a") ||
-    lower.endsWith(".flac")
-  ) {
-    return {
-      type: "audio",
-      name,
-      url:
-        dialog.lastAttachmentUrl ||
-        dialog.attachmentUrl ||
-        ""
-    };
+function normalizeAttachment(attachment) {
+  if (!attachment?.url) {
+    return null;
   }
 
-  if (
-    lower.endsWith(".zip") ||
-    lower.endsWith(".rar") ||
-    lower.endsWith(".7z") ||
-    lower.endsWith(".txt") ||
-    lower.endsWith(".pdf") ||
-    lower.endsWith(".doc") ||
-    lower.endsWith(".docx") ||
-    lower.endsWith(".xls") ||
-    lower.endsWith(".xlsx") ||
-    lower.endsWith(".exe")
-  ) {
-    return {
-      type: "file",
-      name,
-      url:
-        dialog.lastAttachmentUrl ||
-        dialog.attachmentUrl ||
-        ""
-    };
-  }
+  return {
+    url: attachment.url || "",
+    name: attachment.name || "",
+    type: attachment.type || "",
+    mimeType: attachment.mimeType || "",
+    size: attachment.size || 0,
+    width: attachment.width || 0,
+    height: attachment.height || 0,
+    duration: attachment.duration || 0,
+    publicId: attachment.publicId || "",
+    resourceType: attachment.resourceType || "auto"
+  };
+}
 
-  return null;
+function getDialogAttachment(dialog) {
+  return normalizeAttachment(
+    dialog.lastMessageAttachment ||
+    dialog.lastAttachment ||
+    dialog.attachment ||
+    null
+  );
+}
+
+function getMessageAttachment(msg) {
+  return normalizeAttachment(
+    msg?.attachment ||
+    null
+  );
 }
 
 function getAttachmentPreview(attachment) {
@@ -99,36 +82,89 @@ function getPreview(value) {
   }
 
   return getAttachmentPreview(
-    value?.attachment
+    getMessageAttachment(value)
   );
 }
 
-function normalizeGroup(group) {
+function applyAttachmentFields(base, attachment) {
   return {
-    type: "group",
-    groupId: group._id,
-    username: `group:${group._id}`,
-    chatKey: `group:${group._id}`,
-    title: group.name,
-    name: group.name,
-    description: group.description || "",
-    avatar: group.avatar || "",
-    lastMessage:
-      group.lastMessage ||
-      "Группа создана",
-    createdAt:
-      group.updatedAt ||
-      group.createdAt,
-    members: group.members || [],
-    memberUsers: group.memberUsers || [],
-    memberCount:
-      group.memberCount ||
-      group.members?.length ||
-      group.memberUsers?.length ||
-      0,
-    owner: group.owner,
-    admins: group.admins || []
+    ...base,
+    attachment,
+    lastMessageAttachment: attachment,
+    lastAttachment: attachment,
+    lastMessageType: attachment?.type || "",
+    lastAttachmentName: attachment?.name || "",
+    lastAttachmentUrl: attachment?.url || ""
   };
+}
+
+function normalizeGroup(group) {
+  const attachment =
+    getDialogAttachment(group);
+
+  return applyAttachmentFields(
+    {
+      type: "group",
+      groupId: group._id,
+      username: `group:${group._id}`,
+      chatKey: `group:${group._id}`,
+      title: group.name,
+      name: group.name,
+      description: group.description || "",
+      avatar: group.avatar || "",
+      lastMessage:
+        group.lastMessage ||
+        getAttachmentPreview(attachment) ||
+        "Группа создана",
+      createdAt:
+        group.updatedAt ||
+        group.createdAt,
+      members: group.members || [],
+      memberUsers: group.memberUsers || [],
+      memberCount:
+        group.memberCount ||
+        group.members?.length ||
+        group.memberUsers?.length ||
+        0,
+      owner: group.owner,
+      admins: group.admins || []
+    },
+    attachment
+  );
+}
+
+function normalizePrivateDialog(dialog) {
+  const attachment =
+    getDialogAttachment(dialog);
+
+  return applyAttachmentFields(
+    {
+      ...dialog,
+      type: "private",
+      chatKey: dialog.username,
+      title: dialog.username,
+      name: dialog.username,
+      lastMessage:
+        dialog.lastMessage ||
+        getAttachmentPreview(attachment)
+    },
+    attachment
+  );
+}
+
+function makeMessageDialogPayload(msg) {
+  const attachment =
+    getMessageAttachment(msg);
+
+  return applyAttachmentFields(
+    {
+      lastMessage:
+        getPreview(msg),
+      createdAt:
+        msg.createdAt
+    },
+    attachment
+  );
 }
 
 export default function useDialogs({
@@ -219,47 +255,9 @@ export default function useDialogs({
           getGroupsApi()
         ]);
 
-        const normalizedPrivate =
-  privateDialogs.map(dialog => {
-    const attachment =
-  dialog.lastMessageAttachment ||
-  dialog.lastAttachment ||
-  dialog.attachment ||
-  inferAttachmentFromDialog(dialog);
-
-    return {
-      ...dialog,
-      type: "private",
-      chatKey: dialog.username,
-      title: dialog.username,
-      name: dialog.username,
-      attachment,
-      lastMessageAttachment: attachment,
-      lastAttachment: attachment,
-      lastMessageType:
-        attachment?.type ||
-        dialog.lastMessageType ||
-        "",
-      lastAttachmentName:
-        attachment?.name ||
-        dialog.lastAttachmentName ||
-        "",
-      lastAttachmentUrl:
-        attachment?.url ||
-        dialog.lastAttachmentUrl ||
-        "",
-      lastMessage:
-        dialog.lastMessage ||
-        getAttachmentPreview(attachment)
-    };
-  });
-
-        const normalizedGroups =
-          groups.map(normalizeGroup);
-
         setDialogs([
-          ...normalizedGroups,
-          ...normalizedPrivate
+          ...groups.map(normalizeGroup),
+          ...privateDialogs.map(normalizePrivateDialog)
         ]);
       } catch (err) {
         console.error(err);
@@ -394,6 +392,9 @@ export default function useDialogs({
   const updateDialog =
     useCallback((msg, currentUser) => {
       setDialogs(prev => {
+        const payload =
+          makeMessageDialogPayload(msg);
+
         if (msg.chatType === "group") {
           const chatKey =
             msg.chatId ||
@@ -417,22 +418,7 @@ export default function useDialogs({
             name:
               existing.name ||
               existing.title,
-            lastMessage:
-              getPreview(msg),
-              attachment:
-  msg.attachment || null,
-lastMessageAttachment:
-  msg.attachment || null,
-lastAttachment:
-  msg.attachment || null,
-lastMessageType:
-  msg.attachment?.type || "",
-lastAttachmentName:
-  msg.attachment?.name || "",
-lastAttachmentUrl:
-  msg.attachment?.url || "",
-            createdAt:
-              msg.createdAt
+            ...payload
           };
 
           return [
@@ -462,11 +448,8 @@ lastAttachmentUrl:
               username: targetUsername,
               title: targetUsername,
               name: targetUsername,
-              lastMessage:
-                getPreview(msg),
-              createdAt:
-                msg.createdAt,
-              lastSeen: null
+              lastSeen: null,
+              ...payload
             },
             ...prev
           ];
@@ -474,22 +457,7 @@ lastAttachmentUrl:
 
         const updated = {
           ...existing,
-          lastMessage:
-            getPreview(msg),
-            attachment:
-  msg.attachment || null,
-lastMessageAttachment:
-  msg.attachment || null,
-lastAttachment:
-  msg.attachment || null,
-lastMessageType:
-  msg.attachment?.type || "",
-lastAttachmentName:
-  msg.attachment?.name || "",
-lastAttachmentUrl:
-  msg.attachment?.url || "",
-          createdAt:
-            msg.createdAt
+          ...payload
         };
 
         return [
@@ -616,6 +584,18 @@ lastAttachmentUrl:
                 null,
               lastMessage:
                 existingDialog?.lastMessage || "",
+              attachment:
+                existingDialog?.attachment || null,
+              lastMessageAttachment:
+                existingDialog?.lastMessageAttachment || null,
+              lastAttachment:
+                existingDialog?.lastAttachment || null,
+              lastMessageType:
+                existingDialog?.lastMessageType || "",
+              lastAttachmentName:
+                existingDialog?.lastAttachmentName || "",
+              lastAttachmentUrl:
+                existingDialog?.lastAttachmentUrl || "",
               createdAt:
                 existingDialog?.createdAt ||
                 null

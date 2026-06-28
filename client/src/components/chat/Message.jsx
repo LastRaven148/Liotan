@@ -244,22 +244,20 @@ function Message({
 
   function renderMessageTime() {
     if (
-  isPhoto ||
-  isVideo ||
-  isAudio ||
-  isFile
-) {
-  return null;
-}
+      isPhoto ||
+      isVideo
+    ) {
+      return null;
+    }
 
     return (
-  <div
-    className={[
-      "message-time",
-      isAudio ? "message-time-audio" : "",
-      isFile ? "message-time-file" : ""
-    ].join(" ")}
-  >
+      <div
+        className={[
+          "message-time",
+          isAudio ? "message-time-audio" : "",
+          isFile ? "message-time-file" : ""
+        ].join(" ")}
+      >
         {message.edited && (
           <span className="message-edited">
             {t.edited}
@@ -578,8 +576,6 @@ function requestDownloadFile() {
   audioProgress={audioProgress}
   audioDuration={audioDuration}
   attachmentSizeText={attachmentSizeText}
-  createdAt={message.createdAt}
-  renderStatus={renderStatus}
   onToggle={toggleAudio}
   onSeek={seekAudio}
 />
@@ -589,8 +585,6 @@ function requestDownloadFile() {
   <MessageFile
   attachment={attachment}
   t={t}
-  createdAt={message.createdAt}
-  renderStatus={renderStatus}
   onDownloadRequest={requestDownloadFile}
 />
 )}
@@ -624,6 +618,7 @@ function requestDownloadFile() {
               canEdit={canEdit}
               closeMenus={closeMenus}
               copyMessage={copyMessage}
+              downloadFile={requestDownloadFile}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}
