@@ -176,7 +176,7 @@
   left:calc(320px + max(18px, ((100vw - 320px - 820px) / 2)));
   z-index:29000;
 
-  width:min(520px, calc(100vw - 320px - 36px));
+  width:min(760px, calc(100vw - 320px - 36px));
   min-height:42px;
 
   padding:5px 8px;
@@ -198,7 +198,7 @@
 
 .app.has-profile-drawer .audio-topbar{
   left:calc(320px + max(18px, ((100vw - 320px - 360px - 820px) / 2)));
-  width:min(520px, calc(100vw - 320px - 360px - 36px));
+  width:min(760px, calc(100vw - 320px - 360px - 36px));
 }
 
 .audio-topbar-controls,
@@ -479,12 +479,12 @@
 @media (max-width:1180px) and (min-width:769px){
   .audio-topbar{
     left:calc(320px + max(18px, ((100vw - 320px - 820px) / 2)));
-    width:min(520px, calc(100vw - 320px - 36px));
+    width:min(760px, calc(100vw - 320px - 36px));
   }
 
   .app.has-profile-drawer .audio-topbar{
     left:calc(320px + max(18px, ((100vw - 320px - 820px) / 2)));
-    width:min(520px, calc(100vw - 320px - 36px));
+    width:min(760px, calc(100vw - 320px - 36px));
   }
 }
 
