@@ -17,6 +17,58 @@ import {
   deleteGroupApi
 } from "../services/api";
 
+function inferAttachmentFromDialog(dialog) {
+  const name =
+    dialog.lastAttachmentName ||
+    dialog.attachmentName ||
+    dialog.lastMessage ||
+    "";
+
+  const lower =
+    name.toLowerCase();
+
+  if (
+    lower.endsWith(".mp3") ||
+    lower.endsWith(".wav") ||
+    lower.endsWith(".ogg") ||
+    lower.endsWith(".m4a") ||
+    lower.endsWith(".flac")
+  ) {
+    return {
+      type: "audio",
+      name,
+      url:
+        dialog.lastAttachmentUrl ||
+        dialog.attachmentUrl ||
+        ""
+    };
+  }
+
+  if (
+    lower.endsWith(".zip") ||
+    lower.endsWith(".rar") ||
+    lower.endsWith(".7z") ||
+    lower.endsWith(".txt") ||
+    lower.endsWith(".pdf") ||
+    lower.endsWith(".doc") ||
+    lower.endsWith(".docx") ||
+    lower.endsWith(".xls") ||
+    lower.endsWith(".xlsx") ||
+    lower.endsWith(".exe")
+  ) {
+    return {
+      type: "file",
+      name,
+      url:
+        dialog.lastAttachmentUrl ||
+        dialog.attachmentUrl ||
+        ""
+    };
+  }
+
+  return null;
+}
+
 function getAttachmentPreview(attachment) {
   if (!attachment) {
     return "";
@@ -170,10 +222,10 @@ export default function useDialogs({
         const normalizedPrivate =
   privateDialogs.map(dialog => {
     const attachment =
-      dialog.lastMessageAttachment ||
-      dialog.lastAttachment ||
-      dialog.attachment ||
-      null;
+  dialog.lastMessageAttachment ||
+  dialog.lastAttachment ||
+  dialog.attachment ||
+  inferAttachmentFromDialog(dialog);
 
     return {
       ...dialog,

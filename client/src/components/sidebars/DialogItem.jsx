@@ -346,12 +346,10 @@ export default function DialogItem({
   if (lastAttachmentType === "audio") {
     return (
       <div className="dialog-preview dialog-preview-attachment">
-        <MusicIcon />
-
-        <span>
-          {lastAttachmentName || "Аудио"}
-        </span>
-      </div>
+  <span>
+    {lastAttachmentName || dialog.lastMessage || "Аудио"}
+  </span>
+</div>
     );
   }
 
