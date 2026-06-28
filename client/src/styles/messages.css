@@ -6,7 +6,7 @@
   color:#ffffff;
   max-width:min(60%, 560px);
   width:fit-content;
-  padding:7px 9px 6px;
+  padding:7px 9px 20px;
   border-radius:14px 14px 14px 4px;
   background:#182533;
   align-self:flex-start;
@@ -37,14 +37,15 @@
 .message-text::after{
   content:"";
   display:inline-block;
-  width:54px;
+  width:58px;
 }
 
 .message-time{
-  float:right;
+  position:absolute;
+  right:8px;
+  bottom:5px;
   height:16px;
-  margin-top:-16px;
-  margin-left:8px;
+  margin:0;
   font-size:12px;
   line-height:16px;
   color:#7f91a4;
@@ -52,18 +53,6 @@
   pointer-events:none;
   user-select:none;
   -webkit-user-select:none;
-}
-
-.message-time-audio,
-.message-time-file{
-  position:absolute;
-  right:10px;
-  bottom:6px;
-  float:none;
-  margin:0;
-  height:16px;
-  line-height:16px;
-  color:#adc4d8;
 }
 
 .me .message-time{
@@ -388,9 +377,11 @@
     font-size:13px;
   }
 
+  .message.audio-message,
   .message.file-message{
     min-width:240px;
     max-width:88%;
+    padding-bottom:22px;
   }
 
   .message-file-name{
