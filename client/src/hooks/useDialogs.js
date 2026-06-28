@@ -168,18 +168,39 @@ export default function useDialogs({
         ]);
 
         const normalizedPrivate =
-          privateDialogs.map(dialog => ({
-            ...dialog,
-            type: "private",
-            chatKey: dialog.username,
-            title: dialog.username,
-            name: dialog.username,
-            lastMessage:
-              dialog.lastMessage ||
-              getAttachmentPreview(
-                dialog.attachment
-              )
-          }));
+  privateDialogs.map(dialog => {
+    const attachment =
+      dialog.lastMessageAttachment ||
+      dialog.lastAttachment ||
+      dialog.attachment ||
+      null;
+
+    return {
+      ...dialog,
+      type: "private",
+      chatKey: dialog.username,
+      title: dialog.username,
+      name: dialog.username,
+      attachment,
+      lastMessageAttachment: attachment,
+      lastAttachment: attachment,
+      lastMessageType:
+        attachment?.type ||
+        dialog.lastMessageType ||
+        "",
+      lastAttachmentName:
+        attachment?.name ||
+        dialog.lastAttachmentName ||
+        "",
+      lastAttachmentUrl:
+        attachment?.url ||
+        dialog.lastAttachmentUrl ||
+        "",
+      lastMessage:
+        dialog.lastMessage ||
+        getAttachmentPreview(attachment)
+    };
+  });
 
         const normalizedGroups =
           groups.map(normalizeGroup);
@@ -346,6 +367,18 @@ export default function useDialogs({
               existing.title,
             lastMessage:
               getPreview(msg),
+              attachment:
+  msg.attachment || null,
+lastMessageAttachment:
+  msg.attachment || null,
+lastAttachment:
+  msg.attachment || null,
+lastMessageType:
+  msg.attachment?.type || "",
+lastAttachmentName:
+  msg.attachment?.name || "",
+lastAttachmentUrl:
+  msg.attachment?.url || "",
             createdAt:
               msg.createdAt
           };
@@ -391,6 +424,18 @@ export default function useDialogs({
           ...existing,
           lastMessage:
             getPreview(msg),
+            attachment:
+  msg.attachment || null,
+lastMessageAttachment:
+  msg.attachment || null,
+lastAttachment:
+  msg.attachment || null,
+lastMessageType:
+  msg.attachment?.type || "",
+lastAttachmentName:
+  msg.attachment?.name || "",
+lastAttachmentUrl:
+  msg.attachment?.url || "",
           createdAt:
             msg.createdAt
         };
