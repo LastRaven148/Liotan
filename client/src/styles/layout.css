@@ -101,6 +101,21 @@ body{
     z-index:3;
   }
 
+  .app > .chat{
+  grid-column:2;
+  grid-row:1;
+}
+
+.app > .sidebar{
+  grid-column:1;
+  grid-row:1;
+}
+
+.app > .profile-drawer{
+  grid-column:3;
+  grid-row:1;
+}
+
   .app.has-active-chat .sidebar{
     transform:translateX(-25%);
   }

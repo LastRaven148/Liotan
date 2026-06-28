@@ -1,11 +1,13 @@
 .chat{
-  flex:1;
+  min-width:0;
+  width:100%;
+  height:100vh;
   display:flex;
   flex-direction:column;
   background:#0e1621;
   overflow:hidden;
+  grid-column:auto;
 }
-
 .chat-header{
   height:60px;
   background:#17212b;
