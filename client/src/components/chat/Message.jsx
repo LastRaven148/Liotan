@@ -270,21 +270,6 @@ function Message({
     );
   }
 
-  function renderInlineTime() {
-  return (
-    <span className="message-inline-time">
-      {message.edited && (
-        <span className="message-edited">
-          {t.edited}
-        </span>
-      )}
-
-      {formatTime(message.createdAt)}
-      {renderStatus()}
-    </span>
-  );
-}
-
   function renderMediaCaption() {
     if (!message.text) {
       return null;
@@ -605,12 +590,12 @@ function requestDownloadFile() {
 )}
 
         {message.text && !isPhoto && !isVideo && (
-  <MessageText value={message.text}>
-    {renderInlineTime()}
-  </MessageText>
-)}
+          <MessageText
+            value={message.text}
+          />
+        )}
 
-{!message.text && renderMessageTime()}
+        {renderMessageTime()}
       </div>
 
       {renderDesktopMenu()}

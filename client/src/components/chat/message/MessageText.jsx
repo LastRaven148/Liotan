@@ -19,13 +19,11 @@ export function renderTextWithLinks(text = "") {
 }
 
 export default function MessageText({
-  value,
-  children
+  value
 }) {
   return (
     <div className="message-text">
       {renderTextWithLinks(value)}
-      {children}
     </div>
   );
 }
