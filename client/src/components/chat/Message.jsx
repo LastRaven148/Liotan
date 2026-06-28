@@ -86,6 +86,12 @@ function Message({
   const [downloadConfirmOpen, setDownloadConfirmOpen] =
     useState(false);
 
+  const [deleteConfirmOpen, setDeleteConfirmOpen] =
+    useState(false);
+
+  const [deleteForEveryone, setDeleteForEveryone] =
+    useState(false);
+
   const isMine =
     message.from === username;
 
@@ -423,6 +429,89 @@ function requestDownloadFile() {
     }
   }
 
+  const otherDeleteUser =
+    isMine
+      ? message.to
+      : message.from;
+
+  const canDeleteForEveryone =
+    message.chatType === "group"
+      ? isMine
+      : Boolean(
+          otherDeleteUser &&
+          otherDeleteUser !== username
+        );
+
+  const deleteForEveryoneLabel =
+    message.chatType === "group"
+      ? "Также удалить для всех"
+      : `Также удалить для ${otherDeleteUser}`;
+
+  function renderDeleteConfirmModal() {
+    if (!deleteConfirmOpen) {
+      return null;
+    }
+
+    return createPortal(
+      <div
+        className="dialog-delete-modal-overlay message-delete-modal-overlay"
+        onClick={cancelDeleteMessage}
+      >
+        <div
+          className="dialog-delete-modal message-delete-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="dialog-delete-modal-title">
+            Удалить сообщение
+          </div>
+
+          <div className="dialog-delete-modal-text">
+            Вы точно хотите удалить это сообщение?
+          </div>
+
+          {canDeleteForEveryone && (
+            <label className="dialog-delete-checkbox-row">
+              <span className="dialog-delete-checkbox">
+                <input
+                  type="checkbox"
+                  checked={deleteForEveryone}
+                  onChange={(e) =>
+                    setDeleteForEveryone(e.target.checked)
+                  }
+                />
+
+                <span className="dialog-delete-checkbox-box" />
+              </span>
+
+              <span>
+                {deleteForEveryoneLabel}
+              </span>
+            </label>
+          )}
+
+          <div className="dialog-delete-modal-actions">
+            <button
+              type="button"
+              className="dialog-delete-modal-cancel"
+              onClick={cancelDeleteMessage}
+            >
+              {t.cancel || "Отмена"}
+            </button>
+
+            <button
+              type="button"
+              className="dialog-delete-modal-danger"
+              onClick={confirmDeleteMessage}
+            >
+              {t.delete || "Удалить"}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   function renderDesktopMenu() {
     if (!menuOpen) {
       return null;
@@ -447,7 +536,7 @@ function requestDownloadFile() {
           downloadFile={requestDownloadFile}
           onReply={onReply}
           onEdit={onEdit}
-          onDelete={onDelete}
+          onDelete={requestDeleteMessage}
           onPin={onPin}
         />
       </div>,
@@ -603,6 +692,8 @@ function requestDownloadFile() {
 
       {renderDesktopMenu()}
 
+      {renderDeleteConfirmModal()}
+
       {mobileMenu && (
         <div
           className="mobile-action-overlay"
@@ -624,7 +715,7 @@ function requestDownloadFile() {
               downloadFile={requestDownloadFile}
               onReply={onReply}
               onEdit={onEdit}
-              onDelete={onDelete}
+              onDelete={requestDeleteMessage}
               onPin={onPin}
             />
           </div>

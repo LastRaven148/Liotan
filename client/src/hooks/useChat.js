@@ -417,14 +417,17 @@ export default function useChat({
     );
   }
 
-  function deleteMessage(message) {
+  function deleteMessage(message, options = {}) {
     if (!socketRef.current || !message) {
       return;
     }
 
     socketRef.current.emit(
       SOCKET_EVENTS.DELETE_MESSAGE,
-      { messageId: message._id }
+      {
+        messageId: message._id,
+        forEveryone: Boolean(options.forEveryone)
+      }
     );
   }
 

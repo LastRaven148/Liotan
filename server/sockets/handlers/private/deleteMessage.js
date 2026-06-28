@@ -24,6 +24,9 @@ function registerDeleteMessage({
         const messageId =
           data.messageId;
 
+        const forEveryone =
+          Boolean(data.forEveryone);
+
         if (!messageId) {
           return;
         }
@@ -38,6 +41,50 @@ function registerDeleteMessage({
         }
 
         if (msg.chatType === "group") {
+
+          const groupChatId =
+            msg.chatId ||
+            `group:${msg.groupId}`;
+
+          if (!forEveryone) {
+            await Message.updateOne(
+              {
+                _id: messageId
+              },
+              {
+                $addToSet: {
+                  deletedFor: requester
+                }
+              }
+            );
+
+            const latestMessage =
+              await Message.findOne({
+                chatType: "group",
+                groupId: msg.groupId,
+                deletedFor: {
+                  $ne: requester
+                }
+              }).sort({
+                createdAt: -1
+              });
+
+            socket.emit(
+              "messageDeleted",
+              {
+                chatId: groupChatId,
+                groupId:
+                  msg.groupId,
+                messageId:
+                  messageId.toString(),
+                deletedMessage: msg,
+                latestMessage,
+                forUserOnly: true
+              }
+            );
+
+            return;
+          }
 
           await deleteAttachmentFile(
             msg.attachment
@@ -58,13 +105,14 @@ function registerDeleteMessage({
           io.to(`group:${msg.groupId}`).emit(
             "messageDeleted",
             {
-              chatId: `group:${msg.groupId}`,
+              chatId: groupChatId,
               groupId:
                 msg.groupId,
               messageId:
                 messageId.toString(),
               deletedMessage: msg,
-              latestMessage
+              latestMessage,
+              forEveryone: true
             }
           );
 
@@ -76,6 +124,46 @@ function registerDeleteMessage({
           msg.to === requester;
 
         if (!isParticipant) {
+          return;
+        }
+
+        if (!forEveryone) {
+          await Message.updateOne(
+            {
+              _id: messageId
+            },
+            {
+              $addToSet: {
+                deletedFor: requester
+              }
+            }
+          );
+
+          const latestMessage =
+            await Message.findOne({
+              chatType: {
+                $ne: "group"
+              },
+              chatId: msg.chatId,
+              deletedFor: {
+                $ne: requester
+              }
+            }).sort({
+              createdAt: -1
+            });
+
+          socket.emit(
+            "messageDeleted",
+            {
+              chatId: msg.chatId,
+              messageId:
+                messageId.toString(),
+              deletedMessage: msg,
+              latestMessage,
+              forUserOnly: true
+            }
+          );
+
           return;
         }
 
@@ -107,7 +195,8 @@ function registerDeleteMessage({
             messageId:
               messageId.toString(),
             deletedMessage: msg,
-            latestMessage
+            latestMessage,
+            forEveryone: true
           }
         });
 
