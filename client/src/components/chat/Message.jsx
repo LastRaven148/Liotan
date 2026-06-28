@@ -220,6 +220,7 @@ function Message({
   }
 
   function cancelDeleteMessage() {
+    window.__liotanModalEscHandledAt = Date.now();
     setDeleteConfirmOpen(false);
     setDeleteForEveryone(false);
   }
@@ -234,6 +235,19 @@ function Message({
 
   useEffect(() => {
     if (!deleteConfirmOpen) {
+      document.body.classList.remove("liotan-delete-modal-open");
+      return undefined;
+    }
+
+    document.body.classList.add("liotan-delete-modal-open");
+
+    return () => {
+      document.body.classList.remove("liotan-delete-modal-open");
+    };
+  }, [deleteConfirmOpen]);
+
+  useEffect(() => {
+    if (!deleteConfirmOpen) {
       return undefined;
     }
 
@@ -245,6 +259,7 @@ function Message({
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation?.();
+      window.__liotanModalEscHandledAt = Date.now();
       setDeleteConfirmOpen(false);
       setDeleteForEveryone(false);
     }

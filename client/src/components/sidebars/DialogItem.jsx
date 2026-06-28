@@ -125,6 +125,9 @@ export default function DialogItem({
   const dialogsScrollTopRef =
     useRef(null);
 
+  const chatScrollSnapshotRef =
+    useRef(null);
+
   const chatKey =
     dialog.chatKey ||
     dialog.username;
@@ -204,12 +207,76 @@ export default function DialogItem({
       });
     }, []);
 
+  const rememberChatScroll =
+    useCallback(() => {
+      const messages =
+        document.querySelector(".messages");
+
+      if (!messages) {
+        chatScrollSnapshotRef.current = null;
+        return;
+      }
+
+      chatScrollSnapshotRef.current = {
+        top: messages.scrollTop,
+        height: messages.scrollHeight
+      };
+    }, []);
+
+  const restoreChatScroll =
+    useCallback(() => {
+      const snapshot =
+        chatScrollSnapshotRef.current;
+
+      if (!snapshot) {
+        return;
+      }
+
+      const apply = () => {
+        const messages =
+          document.querySelector(".messages");
+
+        if (!messages) {
+          return;
+        }
+
+        const heightDiff =
+          messages.scrollHeight - snapshot.height;
+
+        messages.scrollTop =
+          snapshot.top + heightDiff;
+      };
+
+      apply();
+      requestAnimationFrame(apply);
+      setTimeout(apply, 80);
+      setTimeout(apply, 250);
+    }, []);
+
   const closeDeleteConfirm =
     useCallback(() => {
+      window.__liotanModalEscHandledAt = Date.now();
       setConfirmDelete(false);
       setDeleteForEveryone(false);
       restoreDialogsScroll();
-    }, [restoreDialogsScroll]);
+      restoreChatScroll();
+    }, [
+      restoreDialogsScroll,
+      restoreChatScroll
+    ]);
+
+  useEffect(() => {
+    if (!confirmDelete) {
+      document.body.classList.remove("liotan-delete-modal-open");
+      return undefined;
+    }
+
+    document.body.classList.add("liotan-delete-modal-open");
+
+    return () => {
+      document.body.classList.remove("liotan-delete-modal-open");
+    };
+  }, [confirmDelete]);
 
   useEffect(() => {
 
@@ -223,6 +290,8 @@ export default function DialogItem({
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
+        window.__liotanModalEscHandledAt = Date.now();
+        rememberChatScroll();
         closeDeleteConfirm();
         return;
       }
@@ -300,7 +369,8 @@ export default function DialogItem({
   }, [
     menuOpen,
     confirmDelete,
-    closeDeleteConfirm
+    closeDeleteConfirm,
+    rememberChatScroll
   ]);
 
   function openMenu(e) {
@@ -350,6 +420,7 @@ export default function DialogItem({
     e.stopPropagation();
 
     rememberDialogsScroll();
+    rememberChatScroll();
     setDeleteForEveryone(false);
     setConfirmDelete(true);
     setMenuOpen(false);
@@ -368,6 +439,7 @@ export default function DialogItem({
   function confirmDeleteChat(e) {
 
     e.stopPropagation();
+    rememberChatScroll();
 
     if (isGroup) {
       if (typeof deleteGroupDialog !== "function") {
@@ -389,6 +461,7 @@ export default function DialogItem({
     setDeleteForEveryone(false);
     setMenuOpen(false);
     restoreDialogsScroll();
+    restoreChatScroll();
 
   }
 
@@ -567,6 +640,7 @@ export default function DialogItem({
                     onClick={(e) => {
                       e.stopPropagation();
                       rememberDialogsScroll();
+                      rememberChatScroll();
                       setDeleteForEveryone(false);
                       setConfirmDelete(true);
                       setMenuOpen(false);

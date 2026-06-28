@@ -30,13 +30,20 @@ export default function useGlobalEsc({
         return;
       }
 
+      const modalEscHandledAt =
+        window.__liotanModalEscHandledAt || 0;
+
       if (
+        Date.now() - modalEscHandledAt < 250 ||
+        document.body.classList.contains("liotan-delete-modal-open") ||
         document.querySelector(".dialog-delete-modal-overlay") ||
         document.querySelector(".message-delete-modal-overlay") ||
         document.querySelector(".media-viewer") ||
         document.querySelector(".attachment-preview-overlay") ||
         document.querySelector(".mobile-action-overlay")
       ) {
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
 
