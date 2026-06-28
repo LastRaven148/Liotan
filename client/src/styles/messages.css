@@ -10,7 +10,8 @@
   border-radius:14px 14px 14px 4px;
   background:#182533;
   align-self:flex-start;
-  overflow-wrap:anywhere;
+  overflow-wrap:break-word;
+  word-break:break-word;
   margin-bottom:4px;
   user-select:text;
   -webkit-user-select:text;
@@ -34,17 +35,20 @@
   font-size:14px;
 }
 
-.message-text::after{
-  content:"";
-  display:inline-block;
-  width:54px;
+.message-content{
+  display:block;
+  min-width:0;
 }
 
-.message-time{
-  float:right;
+.message-text{
+  display:inline;
+}
+
+.message-footer{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
   height:16px;
-  margin-top:-16px;
-  margin-left:8px;
   font-size:11px;
   line-height:16px;
   color:#7f91a4;
@@ -52,27 +56,27 @@
   pointer-events:none;
   user-select:none;
   -webkit-user-select:none;
+  vertical-align:baseline;
 }
 
-.me .message-time{
+.message-footer-inline{
+  margin-left:8px;
+}
+
+.message-footer-block{
+  display:flex;
+  justify-content:flex-end;
+  width:100%;
+  margin-top:4px;
+}
+
+.me .message-footer{
   color:#adc4d8;
 }
 
 .message.audio-message,
 .message.file-message{
-  padding-bottom:24px;
-}
-
-.message-time-audio,
-.message-time-file{
-  position:absolute;
-  right:9px;
-  bottom:5px;
-  float:none;
-  height:16px;
-  margin:0;
-  font-size:11px;
-  line-height:16px;
+  padding-bottom:6px;
 }
 
 .message-edited,
@@ -82,7 +86,10 @@
 }
 
 .message-edited{
-  margin-right:5px;
+  color:inherit;
+}
+
+.message-time-value{
   color:inherit;
 }
 
@@ -98,7 +105,7 @@
 .message-status{
   display:inline-flex;
   align-items:center;
-  margin-left:4px;
+  margin-left:0;
   font-size:12px;
   line-height:1;
   font-weight:700;

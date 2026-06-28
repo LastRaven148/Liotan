@@ -56,6 +56,9 @@ from "./message/MessageActions";
 import MessageViewer
 from "./message/MessageViewer";
 
+import MessageTime
+from "./message/MessageTime";
+
 import DownloadConfirmModal
 from "./message/DownloadConfirmModal";
 
@@ -242,7 +245,7 @@ function Message({
     );
   }
 
-  function renderMessageTime() {
+  function renderMessageTime(className = "") {
     if (
       isPhoto ||
       isVideo
@@ -251,22 +254,12 @@ function Message({
     }
 
     return (
-      <div
-        className={[
-          "message-time",
-          isAudio ? "message-time-audio" : "",
-          isFile ? "message-time-file" : ""
-        ].join(" ")}
-      >
-        {message.edited && (
-          <span className="message-edited">
-            {t.edited}
-          </span>
-        )}
-
-        {formatTime(message.createdAt)}
-        {renderStatus()}
-      </div>
+      <MessageTime
+        time={formatTime(message.createdAt)}
+        edited={message.edited}
+        status={renderStatus()}
+        className={className}
+      />
     );
   }
 
@@ -568,34 +561,38 @@ function requestDownloadFile() {
 
         {isVideo && renderVideo()}
 
-        {isAudio && (
-          <MessageAudio
-  attachment={attachment}
-  audioPlaying={audioPlaying}
-  audioStarted={audioStarted}
-  audioProgress={audioProgress}
-  audioDuration={audioDuration}
-  attachmentSizeText={attachmentSizeText}
-  onToggle={toggleAudio}
-  onSeek={seekAudio}
-/>
-        )}
+        <div className="message-content">
+          {isAudio && (
+            <MessageAudio
+              attachment={attachment}
+              audioPlaying={audioPlaying}
+              audioStarted={audioStarted}
+              audioProgress={audioProgress}
+              audioDuration={audioDuration}
+              attachmentSizeText={attachmentSizeText}
+              onToggle={toggleAudio}
+              onSeek={seekAudio}
+            />
+          )}
 
-        {isFile && (
-  <MessageFile
-  attachment={attachment}
-  t={t}
-  onDownloadRequest={requestDownloadFile}
-/>
-)}
+          {isFile && (
+            <MessageFile
+              attachment={attachment}
+              t={t}
+              onDownloadRequest={requestDownloadFile}
+            />
+          )}
 
-        {message.text && !isPhoto && !isVideo && (
-          <MessageText
-            value={message.text}
-          />
-        )}
+          {message.text && !isPhoto && !isVideo && (
+            <MessageText
+              value={message.text}
+            />
+          )}
 
-        {renderMessageTime()}
+          {!hasAttachment && renderMessageTime("message-footer-inline")}
+        </div>
+
+        {hasAttachment && !isPhoto && !isVideo && renderMessageTime("message-footer-block")}
       </div>
 
       {renderDesktopMenu()}
