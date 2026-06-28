@@ -52,11 +52,11 @@ export default function MessengerLayout({
 
   return (
     <div
-      className={
-        chat.activeChat
-          ? "app has-active-chat"
-          : "app"
-      }
+      className={[
+        "app",
+        chat.activeChat ? "has-active-chat" : "",
+        profileUser ? "has-profile-drawer" : ""
+      ].join(" ")}
     >
       <Sidebar
         username={username}

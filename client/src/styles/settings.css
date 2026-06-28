@@ -15,22 +15,25 @@
   justify-content:flex-end;
 }
 
-.settings-drawer,
-.profile-drawer{
+.settings-drawer{
   width:360px;
   height:100dvh;
   background:#17212b;
   color:white;
   box-shadow:0 10px 40px rgba(0,0,0,.45);
   overflow-y:auto;
-}
-
-.settings-drawer{
   border-right:1px solid #0f1923;
 }
 
 .profile-drawer{
+  width:100%;
+  min-width:0;
+  height:100vh;
+  background:#17212b;
+  color:white;
+  overflow-y:auto;
   border-left:1px solid #0f1923;
+  box-shadow:none;
 }
 
 .drawer-topbar{
@@ -244,6 +247,16 @@
   .profile-drawer{
     width:100vw;
     height:100dvh;
+  }
+
+  .profile-drawer{
+    position:absolute;
+    inset:0;
+    z-index:4;
+    transform:translateX(100%);
+    transition:transform .22s ease;
+    border-left:none;
+    box-shadow:0 10px 40px rgba(0,0,0,.45);
   }
 
   .drawer-overlay-right,
