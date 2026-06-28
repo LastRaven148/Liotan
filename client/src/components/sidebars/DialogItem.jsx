@@ -10,6 +10,45 @@ import {
   useLanguage
 } from "../../context/LanguageContext";
 
+import { mediaUrl } from "../../utils/mediaUrl";
+
+function DialogFileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7 3.5H14.5L19 8V20.5H7C5.9 20.5 5 19.6 5 18.5V5.5C5 4.4 5.9 3.5 7 3.5Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 3.8V8.5H18.7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.5 13H15.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M8.5 16.5H13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MusicIcon() {
+  return (
+    <span className="dialog-audio-icon" aria-hidden="true" />
+  );
+}
+
 export default function DialogItem({
   dialog,
   activeChat,
@@ -64,6 +103,32 @@ export default function DialogItem({
       : isSavedMessages
         ? t.savedMessages
         : dialog.username;
+
+  const lastAttachment =
+    dialog.lastMessageAttachment ||
+    dialog.lastAttachment ||
+    dialog.attachment ||
+    null;
+
+  const lastAttachmentType =
+    lastAttachment?.type ||
+    dialog.lastMessageType ||
+    dialog.attachmentType ||
+    "";
+
+  const lastAttachmentName =
+    lastAttachment?.name ||
+    dialog.lastAttachmentName ||
+    dialog.attachmentName ||
+    "";
+
+  const lastAttachmentUrl =
+    lastAttachment?.thumbnailUrl ||
+    lastAttachment?.previewUrl ||
+    lastAttachment?.url ||
+    dialog.lastAttachmentThumbnail ||
+    dialog.lastAttachmentUrl ||
+    "";
 
   useEffect(() => {
 
@@ -203,41 +268,113 @@ export default function DialogItem({
 
   function confirmDeleteChat(e) {
 
-  e.stopPropagation();
+    e.stopPropagation();
 
-  if (isGroup) {
-    if (typeof deleteGroupDialog !== "function") {
-      console.error("deleteGroupDialog is not passed");
-      return;
+    if (isGroup) {
+      if (typeof deleteGroupDialog !== "function") {
+        console.error("deleteGroupDialog is not passed");
+        return;
+      }
+
+      deleteGroupDialog(dialog);
+    } else {
+      deleteChat(dialog.username);
     }
 
-    deleteGroupDialog(dialog);
-  } else {
-    deleteChat(dialog.username);
+    setConfirmDelete(false);
+    setMenuOpen(false);
+
   }
-
-  setConfirmDelete(false);
-  setMenuOpen(false);
-
-}
 
   function handlePin(e) {
 
-  e.stopPropagation();
+    e.stopPropagation();
 
-  togglePin(chatKey);
-  setMenuOpen(false);
+    togglePin(chatKey);
+    setMenuOpen(false);
 
-}
+  }
 
   function handleArchive(e) {
 
-  e.stopPropagation();
+    e.stopPropagation();
 
-  toggleArchive(chatKey);
-  setMenuOpen(false);
+    toggleArchive(chatKey);
+    setMenuOpen(false);
 
-}
+  }
+
+  function renderPreview() {
+    if (lastAttachmentType === "photo") {
+      return (
+        <div className="dialog-preview dialog-preview-media">
+          {lastAttachmentUrl && (
+            <img
+              src={mediaUrl(lastAttachmentUrl)}
+              alt=""
+              className="dialog-preview-thumb"
+            />
+          )}
+
+          <span>Фото</span>
+        </div>
+      );
+    }
+
+    if (lastAttachmentType === "video") {
+      return (
+        <div className="dialog-preview dialog-preview-media">
+          {lastAttachmentUrl && (
+            <span className="dialog-preview-video-thumb">
+              <video
+                src={mediaUrl(lastAttachmentUrl)}
+                className="dialog-preview-thumb"
+                muted
+                playsInline
+                preload="metadata"
+              />
+
+              <span className="dialog-preview-play" />
+            </span>
+          )}
+
+          <span>Видео</span>
+        </div>
+      );
+    }
+
+    if (lastAttachmentType === "audio") {
+      return (
+        <div className="dialog-preview dialog-preview-attachment">
+          <MusicIcon />
+
+          <span>
+            {lastAttachmentName || "Аудио"}
+          </span>
+        </div>
+      );
+    }
+
+    if (lastAttachmentType === "file") {
+      return (
+        <div className="dialog-preview dialog-preview-attachment">
+          <span className="dialog-file-icon">
+            <DialogFileIcon />
+          </span>
+
+          <span>
+            {lastAttachmentName || t.file || "Файл"}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="dialog-preview">
+        {dialog.lastMessage || ""}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -272,12 +409,12 @@ export default function DialogItem({
 
               <div className="dialog-delete-text">
                 {isGroup
-  ? dialog.owner === username
-    ? `Удалить группу ${displayName}?`
-    : `Выйти из группы ${displayName}?`
-  : isSavedMessages
-    ? t.clearSavedMessages || "Очистить избранное?"
-    : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
+                  ? dialog.owner === username
+                    ? `Удалить группу ${displayName}?`
+                    : `Выйти из группы ${displayName}?`
+                  : isSavedMessages
+                    ? t.clearSavedMessages || "Очистить избранное?"
+                    : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
               </div>
 
               <div className="dialog-delete-actions">
@@ -335,45 +472,45 @@ export default function DialogItem({
               )}
 
               {isGroup && (
-  <>
-    <button
-      type="button"
-      onClick={handlePin}
-    >
-      <span>{isPinned ? "−" : "⌃"}</span>
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePin}
+                  >
+                    <span>{isPinned ? "−" : "⌃"}</span>
 
-      {isPinned
-        ? t.unpinChat
-        : t.pinChat}
-    </button>
+                    {isPinned
+                      ? t.unpinChat
+                      : t.pinChat}
+                  </button>
 
-    <button
-      type="button"
-      onClick={handleArchive}
-    >
-      <span>□</span>
+                  <button
+                    type="button"
+                    onClick={handleArchive}
+                  >
+                    <span>□</span>
 
-      {isArchived || showArchive
-        ? t.unarchiveChat
-        : t.archiveChat}
-    </button>
+                    {isArchived || showArchive
+                      ? t.unarchiveChat
+                      : t.archiveChat}
+                  </button>
 
-    <button
-      type="button"
-      className="danger"
-      onClick={(e) => {
-        e.stopPropagation();
-        setConfirmDelete(true);
-      }}
-    >
-      <span>×</span>
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete(true);
+                    }}
+                  >
+                    <span>×</span>
 
-      {dialog.owner === username
-        ? "Удалить группу"
-        : "Выйти из группы"}
-    </button>
-  </>
-)}
+                    {dialog.owner === username
+                      ? "Удалить группу"
+                      : "Выйти из группы"}
+                  </button>
+                </>
+              )}
             </>
           )}
 
@@ -409,9 +546,7 @@ export default function DialogItem({
           )}
         </div>
 
-        <div className="dialog-preview">
-          {dialog.lastMessage || t.noMessages}
-        </div>
+        {renderPreview()}
       </div>
 
       <div className="dialog-meta">
