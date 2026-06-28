@@ -605,14 +605,21 @@ function Message({
     });
   }
 
-  function openMenu(e) {
+   function openMenu(e) {
+    const isMediaMessage =
+      e.target.closest(".message-photo-wrap") ||
+      e.target.closest(".message-video-wrap");
+
     if (
-      e.target.closest("a") ||
-      e.target.closest("textarea") ||
-      e.target.closest("input") ||
-      e.target.closest("button") ||
-      e.target.closest("video") ||
-      e.target.closest("audio")
+      !isMediaMessage &&
+      (
+        e.target.closest("a") ||
+        e.target.closest("textarea") ||
+        e.target.closest("input") ||
+        e.target.closest("button") ||
+        e.target.closest("video") ||
+        e.target.closest("audio")
+      )
     ) {
       return;
     }
@@ -633,14 +640,21 @@ function Message({
     openMenu(e);
   }
 
-  function handleTouchStart(e) {
+    function handleTouchStart(e) {
+    const isMediaMessage =
+      e.target.closest(".message-photo-wrap") ||
+      e.target.closest(".message-video-wrap");
+
     if (
-      e.target.closest("a") ||
-      e.target.closest("textarea") ||
-      e.target.closest("input") ||
-      e.target.closest("button") ||
-      e.target.closest("video") ||
-      e.target.closest("audio")
+      !isMediaMessage &&
+      (
+        e.target.closest("a") ||
+        e.target.closest("textarea") ||
+        e.target.closest("input") ||
+        e.target.closest("button") ||
+        e.target.closest("video") ||
+        e.target.closest("audio")
+      )
     ) {
       return;
     }
