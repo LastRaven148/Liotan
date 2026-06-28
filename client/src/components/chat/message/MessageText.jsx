@@ -19,11 +19,13 @@ export function renderTextWithLinks(text = "") {
 }
 
 export default function MessageText({
-  value
+  value,
+  footer = null
 }) {
   return (
     <div className="message-text">
       {renderTextWithLinks(value)}
+      {footer}
     </div>
   );
 }

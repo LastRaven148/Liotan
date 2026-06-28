@@ -589,10 +589,13 @@ function requestDownloadFile() {
           {message.text && !isPhoto && !isVideo && (
             <MessageText
               value={message.text}
+              footer={
+                !hasAttachment
+                  ? renderMessageTime("message-footer-inline")
+                  : null
+              }
             />
           )}
-
-          {!hasAttachment && renderMessageTime("message-footer-inline")}
         </div>
 
         {hasAttachment && !isPhoto && !isVideo && !isAudio && !isFile && renderMessageTime("message-footer-block")}
