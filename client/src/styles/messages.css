@@ -377,9 +377,10 @@
   }
 
   .message.file-message{
-    min-width:240px;
-    max-width:88%;
-  }
+  min-width:280px;
+  max-width:min(70%, 440px);
+  padding:7px 8px 6px;
+}
 
   .message-file-name{
     max-width:190px;
@@ -390,22 +391,6 @@
   select{
     font-size:16px !important;
   }
-}
-
-.message.audio-message,
-.message.file-message{
-  padding-bottom:24px;
-}
-
-.message-time-audio,
-.message-time-file{
-  position:absolute;
-  right:9px;
-  bottom:6px;
-  float:none;
-  margin:0;
-  height:16px;
-  line-height:16px;
 }
 
 .message-file{
@@ -429,4 +414,24 @@
 .me .message-file,
 .me .message-file:hover{
   background:transparent;
+}
+
+.message-file-bottom{
+  margin-top:4px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.file-message-time-inline,
+.audio-message-time-inline{
+  margin-left:auto;
+  color:#adc4d8;
+  font-size:11px;
+  line-height:1;
+  white-space:nowrap;
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
 }

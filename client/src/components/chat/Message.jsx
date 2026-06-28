@@ -244,11 +244,13 @@ function Message({
 
   function renderMessageTime() {
     if (
-      isPhoto ||
-      isVideo
-    ) {
-      return null;
-    }
+  isPhoto ||
+  isVideo ||
+  isAudio ||
+  isFile
+) {
+  return null;
+}
 
     return (
   <div
@@ -570,23 +572,27 @@ function requestDownloadFile() {
 
         {isAudio && (
           <MessageAudio
-            attachment={attachment}
-            audioPlaying={audioPlaying}
-            audioStarted={audioStarted}
-            audioProgress={audioProgress}
-            audioDuration={audioDuration}
-            attachmentSizeText={attachmentSizeText}
-            onToggle={toggleAudio}
-            onSeek={seekAudio}
-          />
+  attachment={attachment}
+  audioPlaying={audioPlaying}
+  audioStarted={audioStarted}
+  audioProgress={audioProgress}
+  audioDuration={audioDuration}
+  attachmentSizeText={attachmentSizeText}
+  createdAt={message.createdAt}
+  renderStatus={renderStatus}
+  onToggle={toggleAudio}
+  onSeek={seekAudio}
+/>
         )}
 
         {isFile && (
   <MessageFile
-    attachment={attachment}
-    t={t}
-    onDownloadRequest={requestDownloadFile}
-  />
+  attachment={attachment}
+  t={t}
+  createdAt={message.createdAt}
+  renderStatus={renderStatus}
+  onDownloadRequest={requestDownloadFile}
+/>
 )}
 
         {message.text && !isPhoto && !isVideo && (

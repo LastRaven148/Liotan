@@ -1,4 +1,8 @@
 import {
+  formatTime
+} from "../../../utils/date";
+
+import {
   formatDuration
 } from "./messageFormatters";
 
@@ -9,6 +13,8 @@ export default function MessageAudio({
   audioProgress,
   audioDuration,
   attachmentSizeText,
+  createdAt,
+  renderStatus,
   onToggle,
   onSeek
 }) {
@@ -58,6 +64,11 @@ export default function MessageAudio({
               {attachmentSizeText}
             </span>
           )}
+
+          <span className="audio-message-time-inline">
+            {formatTime(createdAt)}
+            {renderStatus?.()}
+          </span>
         </div>
       </div>
     </div>

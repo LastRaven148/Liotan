@@ -1,3 +1,7 @@
+import {
+  formatTime
+} from "../../../utils/date";
+
 import FileIcon
 from "./FileIcon";
 
@@ -13,6 +17,8 @@ import {
 export default function MessageFile({
   attachment,
   t,
+  createdAt,
+  renderStatus,
   onDownloadRequest
 }) {
   const fileName =
@@ -51,8 +57,15 @@ export default function MessageFile({
           {fileName}
         </div>
 
-        <div className="message-file-size">
-          {formatFileSize(attachment.size)}
+        <div className="message-file-bottom">
+          <span className="message-file-size">
+            {formatFileSize(attachment.size)}
+          </span>
+
+          <span className="file-message-time-inline">
+            {formatTime(createdAt)}
+            {renderStatus?.()}
+          </span>
         </div>
       </div>
     </button>
