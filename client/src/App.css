@@ -1,5 +1,4 @@
 @import "./styles/reset.css";
-@import "./styles/layout.css";
 @import "./styles/auth.css";
 @import "./styles/sidebars.css";
 @import "./styles/chat.css";
@@ -10,3 +9,4 @@
 @import "./styles/attachments.css";
 @import "./styles/toast.css";
 @import "./styles/composer.css";
+@import "./styles/layout.css";
