@@ -251,12 +251,7 @@ function Message({
     }
 
     return (
-      <div
-  className={[
-    "message-time",
-    isAudio ? "audio-message-time" : ""
-  ].join(" ")}
->
+      <div className="message-time">
         {message.edited && (
           <span className="message-edited">
             {t.edited}

@@ -21,11 +21,6 @@ export default function MessageAudio({
           audioPlaying ? "is-playing" : ""
         ].join(" ")}
         onClick={onToggle}
-        aria-label={
-          audioPlaying
-            ? "Пауза"
-            : "Воспроизвести"
-        }
       />
 
       <div className="audio-main">
@@ -33,18 +28,8 @@ export default function MessageAudio({
           {attachment.name || "Аудио"}
         </div>
 
-        <div className="audio-meta">
-          <span className="audio-duration-static">
-            {formatDuration(audioDuration)}
-          </span>
-
-          {!audioStarted && attachmentSizeText && (
-            <span className="audio-size-static">
-              {attachmentSizeText}
-            </span>
-          )}
-
-          {audioStarted && (
+        <div className="audio-progress-line">
+          {audioStarted ? (
             <input
               className="audio-range"
               type="range"
@@ -54,6 +39,24 @@ export default function MessageAudio({
               value={audioProgress}
               onChange={onSeek}
             />
+          ) : (
+            <div className="audio-range-placeholder" />
+          )}
+        </div>
+
+        <div className="audio-meta">
+          <span>
+            {formatDuration(
+              audioStarted
+                ? audioProgress
+                : audioDuration
+            )}
+          </span>
+
+          {!audioStarted && attachmentSizeText && (
+            <span>
+              {attachmentSizeText}
+            </span>
           )}
         </div>
       </div>

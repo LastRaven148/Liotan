@@ -81,6 +81,7 @@
 .audio-main{
   min-width:0;
   flex:1;
+  padding-bottom:15px;
 }
 
 .audio-title{
@@ -91,11 +92,25 @@
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
-  margin-bottom:5px;
+  margin-bottom:7px;
+}
+
+.audio-progress-line{
+  width:100%;
+  height:10px;
+  display:flex;
+  align-items:center;
+}
+
+.audio-range-placeholder{
+  width:100%;
+  height:3px;
+  border-radius:6px;
+  background:rgba(255,255,255,.18);
 }
 
 .audio-meta{
-  margin-top:4px;
+  margin-top:3px;
   display:flex;
   align-items:center;
   gap:8px;
@@ -105,17 +120,8 @@
   min-height:14px;
 }
 
-.me .audio-meta{
-  color:#adc4d8;
-}
-
-.audio-progress-wrap{
-  width:100%;
-}
-
 .audio-range{
-  flex:1;
-  min-width:90px;
+  width:100%;
   height:3px;
   margin:0;
   appearance:none;
@@ -123,6 +129,11 @@
   background:rgba(255,255,255,.25);
   border-radius:6px;
   cursor:pointer;
+}
+
+.audio-message-time{
+  margin-top:2px;
+  transform:translateY(10px);
 }
 
 .audio-range::-webkit-slider-runnable-track{

@@ -1,10 +1,14 @@
-import {
-  createPortal
-} from "react-dom";
+import FileIcon
+from "./FileIcon";
 
 import {
   formatFileSize
 } from "./messageFormatters";
+
+import {
+  getFileKind,
+  getFileLabel
+} from "./messageFileUtils";
 
 export default function DownloadConfirmModal({
   open,
@@ -17,15 +21,14 @@ export default function DownloadConfirmModal({
     return null;
   }
 
-  return createPortal(
-    <div
-      className="download-confirm-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) {
-          onCancel?.();
-        }
-      }}
-    >
+  const kind =
+    getFileKind(fileName || "");
+
+  const label =
+    getFileLabel(fileName || "");
+
+  return (
+    <div className="download-confirm-overlay">
       <div className="download-confirm-modal">
         <div className="download-confirm-title">
           Скачать файл?
@@ -36,8 +39,17 @@ export default function DownloadConfirmModal({
         </div>
 
         <div className="download-confirm-file">
-          <div className="download-confirm-file-icon">
-            ↓
+          <div
+            className={[
+              "message-file-icon",
+              `file-kind-${kind}`
+            ].join(" ")}
+          >
+            <FileIcon />
+
+            <span className="message-file-label">
+              {label}
+            </span>
           </div>
 
           <div className="download-confirm-file-info">
@@ -69,7 +81,6 @@ export default function DownloadConfirmModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }
