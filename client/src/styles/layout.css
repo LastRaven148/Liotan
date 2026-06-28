@@ -2,36 +2,31 @@
   width:100vw;
   height:100vh;
   display:grid;
-  grid-template-columns:300px minmax(0, 1fr);
+  grid-template-columns:clamp(240px, 18vw, 320px) minmax(0, 1fr) 0;
   background:#0e1621;
   overflow:hidden;
 }
 
 .app.has-profile-drawer{
-  grid-template-columns:300px minmax(0, 1fr) 360px;
+  grid-template-columns:clamp(240px, 18vw, 320px) minmax(0, 1fr) clamp(300px, 22vw, 360px);
 }
 
 .sidebar{
-  width:300px;
-  min-width:300px;
-  max-width:300px;
+  width:100%;
+  min-width:0;
+  max-width:none;
 }
 
 .chat{
   min-width:0;
-  max-width:760px;
   width:100%;
-  justify-self:center;
-}
-
-.app.has-profile-drawer .chat{
-  max-width:720px;
+  max-width:none;
 }
 
 .profile-drawer{
-  width:360px;
-  min-width:360px;
-  max-width:360px;
+  width:100%;
+  min-width:0;
+  max-width:none;
 }
 
 .empty{
@@ -60,36 +55,6 @@
 html,
 body{
   background:#09111a;
-}
-
-@media (max-width:1180px) and (min-width:769px){
-  .app{
-    grid-template-columns:280px minmax(0, 1fr);
-  }
-
-  .app.has-profile-drawer{
-    grid-template-columns:280px minmax(0, 1fr) 320px;
-  }
-
-  .sidebar{
-    width:280px;
-    min-width:280px;
-    max-width:280px;
-  }
-
-  .profile-drawer{
-    width:320px;
-    min-width:320px;
-    max-width:320px;
-  }
-
-  .chat{
-    max-width:700px;
-  }
-
-  .app.has-profile-drawer .chat{
-    max-width:660px;
-  }
 }
 
 @media (max-width:768px){
@@ -126,7 +91,6 @@ body{
     position:absolute;
     inset:0;
     display:flex;
-    max-width:none;
     width:100vw;
     height:100dvh;
     transform:translateX(100%);

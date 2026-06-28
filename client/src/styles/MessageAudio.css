@@ -1,7 +1,3 @@
-/* ===========================
-   AUDIO MESSAGE
-=========================== */
-
 .message.audio-message{
   min-width:320px;
   max-width:min(76%, 440px);
@@ -166,38 +162,18 @@
   color:#adc4d8;
 }
 
-/* ===========================
-   TOP AUDIO PLAYER
-=========================== */
-
 .audio-topbar{
-  position:fixed;
-  left:300px;
-  top:72px;
-  z-index:29000;
-
-  width:520px;
-  min-height:42px;
-
-  padding:5px 8px;
-
+  width:100%;
+  min-height:48px;
+  padding:6px max(18px, calc((100% - 760px) / 2));
   display:flex;
   align-items:center;
-  gap:8px;
-
+  gap:10px;
   background:#17212b;
-  border:1px solid #263645;
-  border-radius:10px;
-
-  box-shadow:0 8px 22px rgba(0,0,0,.28);
-
+  border-bottom:1px solid #0f1923;
   color:#ffffff;
   user-select:none;
   -webkit-user-select:none;
-}
-
-.app.has-profile-drawer .audio-topbar{
-  left:300px;
 }
 
 .audio-topbar-controls,
@@ -210,8 +186,8 @@
 
 .audio-topbar-button{
   position:relative;
-  width:28px;
-  height:28px;
+  width:30px;
+  height:30px;
   flex-shrink:0;
   border:none;
   border-radius:50%;
@@ -229,7 +205,7 @@
 .audio-topbar-next::before{
   content:"";
   position:absolute;
-  top:8px;
+  top:9px;
   width:0;
   height:0;
   border-top:6px solid transparent;
@@ -245,7 +221,7 @@
   content:"";
   position:absolute;
   left:17px;
-  top:8px;
+  top:9px;
   width:2px;
   height:12px;
   border-radius:2px;
@@ -261,7 +237,7 @@
   content:"";
   position:absolute;
   right:17px;
-  top:8px;
+  top:9px;
   width:2px;
   height:12px;
   border-radius:2px;
@@ -272,7 +248,7 @@
   content:"";
   position:absolute;
   left:11px;
-  top:8px;
+  top:9px;
   width:0;
   height:0;
   border-top:6px solid transparent;
@@ -284,7 +260,7 @@
 .audio-topbar-play.is-playing::after{
   content:"";
   position:absolute;
-  top:7px;
+  top:8px;
   width:4px;
   height:14px;
   border:none;
@@ -413,7 +389,7 @@
 }
 
 .audio-topbar-speed{
-  height:28px;
+  height:30px;
   min-width:34px;
   border:none;
   border-radius:14px;
@@ -435,7 +411,7 @@
   content:"";
   position:absolute;
   left:7px;
-  top:8px;
+  top:9px;
   width:14px;
   height:9px;
   border:2px solid currentColor;
@@ -447,7 +423,7 @@
   content:"";
   position:absolute;
   left:5px;
-  top:12px;
+  top:13px;
   width:0;
   height:0;
   border-top:4px solid transparent;
@@ -460,7 +436,7 @@
   content:"";
   position:absolute;
   left:9px;
-  top:13px;
+  top:14px;
   width:11px;
   height:2px;
   border-radius:2px;
@@ -475,13 +451,6 @@
   transform:rotate(-45deg);
 }
 
-@media (max-width:1180px) and (min-width:769px){
-  .audio-topbar{
-    left:280px;
-    width:480px;
-  }
-}
-
 @media (max-width:768px){
   .message.audio-message{
     min-width:280px;
@@ -493,11 +462,6 @@
   }
 
   .audio-topbar{
-    left:8px;
-    right:8px;
-    top:56px;
-    width:auto;
-    min-height:42px;
-    border-radius:10px;
+    padding:6px 8px;
   }
 }
