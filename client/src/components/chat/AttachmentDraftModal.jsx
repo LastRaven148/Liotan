@@ -96,16 +96,25 @@ export default function AttachmentDraftModal({
         return;
       }
 
-      if (
-        e.key === "Enter" &&
-        !e.shiftKey
-      ) {
-        e.preventDefault();
+                <input
+            value={attachmentCaption}
+            onChange={(e) =>
+              setAttachmentCaption(e.target.value)
+            }
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey
+              ) {
+                e.preventDefault();
 
-        if (!sendingDraft) {
-          onSend?.();
-        }
-      }
+                if (!sendingDraft) {
+                  onSend?.();
+                }
+              }
+            }}
+            placeholder="Добавить подпись..."
+          />
     }
 
     window.addEventListener(
