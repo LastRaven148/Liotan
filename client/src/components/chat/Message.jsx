@@ -1199,13 +1199,6 @@ function Message({
       return null;
     }
 
-    const target =
-      document.querySelector(".chat-audio-slot");
-
-    if (!target) {
-      return null;
-    }
-
     return createPortal(
       <div className="audio-topbar">
         <div className="audio-topbar-controls">
@@ -1313,7 +1306,7 @@ function Message({
           />
         </div>
       </div>,
-      target
+      document.body
     );
   }
 

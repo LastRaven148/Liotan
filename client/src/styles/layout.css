@@ -2,31 +2,34 @@
   width:100vw;
   height:100vh;
   display:grid;
-  grid-template-columns:clamp(240px, 18vw, 320px) minmax(0, 1fr) 0;
+  grid-template-columns:clamp(240px, 20vw, 320px) minmax(0, 1fr);
   background:#0e1621;
   overflow:hidden;
 }
 
 .app.has-profile-drawer{
-  grid-template-columns:clamp(240px, 18vw, 320px) minmax(0, 1fr) clamp(300px, 22vw, 360px);
+  grid-template-columns:clamp(240px, 20vw, 320px) minmax(0, 1fr) clamp(300px, 24vw, 360px);
+}
+
+.sidebar,
+.chat,
+.profile-drawer{
+  min-width:0;
+  height:100vh;
 }
 
 .sidebar{
   width:100%;
-  min-width:0;
-  max-width:none;
 }
 
 .chat{
-  min-width:0;
   width:100%;
   max-width:none;
+  justify-self:stretch;
 }
 
 .profile-drawer{
   width:100%;
-  min-width:0;
-  max-width:none;
 }
 
 .empty{
@@ -104,6 +107,19 @@ body{
 
   .app.has-active-chat .chat{
     transform:translateX(0);
+  }
+
+  .profile-drawer{
+    position:absolute;
+    inset:0;
+    z-index:4;
+    width:100vw;
+    min-width:100vw;
+    max-width:100vw;
+    height:100dvh;
+    transform:translateX(100%);
+    transition:transform .22s ease;
+    border-left:none;
   }
 
   .app.has-profile-drawer .profile-drawer{
@@ -195,19 +211,6 @@ body{
   .mobile-back-button:hover{
     background:#243342;
     color:white;
-  }
-
-  .profile-drawer{
-    position:absolute;
-    inset:0;
-    z-index:4;
-    width:100vw;
-    min-width:100vw;
-    max-width:100vw;
-    height:100dvh;
-    transform:translateX(100%);
-    transition:transform .22s ease;
-    border-left:none;
   }
 }
 

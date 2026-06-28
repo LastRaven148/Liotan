@@ -139,8 +139,6 @@ const Chat = memo(function Chat({
             onBack={onBack}
           />
 
-          <div className="chat-audio-slot" />
-
           <PinnedBar
             message={activePinnedMessage}
             t={t}
