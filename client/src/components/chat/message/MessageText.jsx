@@ -24,8 +24,9 @@ export default function MessageText({
 }) {
   return (
     <div className="message-text">
-      {renderTextWithLinks(value)}
-      {children}
-    </div>
+  {renderTextWithLinks(value)}
+  <span className="message-time-spacer" />
+  {children}
+</div>
   );
 }
