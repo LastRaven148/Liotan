@@ -131,11 +131,6 @@
   cursor:pointer;
 }
 
-.audio-message-time{
-  margin-top:2px;
-  transform:translateY(10px);
-}
-
 .audio-range::-webkit-slider-runnable-track{
   height:3px;
   background:rgba(255,255,255,.25);

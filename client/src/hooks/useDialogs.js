@@ -19,7 +19,7 @@ import {
 
 function getAttachmentPreview(attachment) {
   if (!attachment) {
-    return "No messages yet";
+    return "";
   }
 
   if (attachment.type === "photo") {
@@ -518,8 +518,7 @@ export default function useDialogs({
                 existingDialog?.lastSeen ||
                 null,
               lastMessage:
-                existingDialog?.lastMessage ||
-                "No messages yet",
+                existingDialog?.lastMessage || "",
               createdAt:
                 existingDialog?.createdAt ||
                 null

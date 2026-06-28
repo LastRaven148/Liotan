@@ -618,8 +618,6 @@ function requestDownloadFile() {
               canEdit={canEdit}
               closeMenus={closeMenus}
               copyMessage={copyMessage}
-              downloadFile={downloadFile}
-              downloadFile={requestDownloadFile}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}

@@ -54,15 +54,6 @@
   -webkit-user-select:none;
 }
 
-.message-time-audio,
-.message-time-file{
-  position:absolute;
-  right:9px;
-  bottom:5px;
-  float:none;
-  margin:0;
-}
-
 .me .message-time{
   color:#adc4d8;
 }
@@ -214,32 +205,6 @@
   min-width:280px;
   max-width:min(70%, 440px);
   padding:7px 8px 6px;
-}
-
-.message-file{
-  width:100%;
-  border:none;
-  display:flex;
-  align-items:center;
-  gap:12px;
-  color:white;
-  text-decoration:none;
-  background:transparent;
-  padding:4px 2px 18px;
-  border-radius:13px;
-  margin-bottom:0;
-  cursor:pointer;
-  font-family:inherit;
-  text-align:left;
-}
-
-.message-file:hover{
-  background:transparent;
-}
-
-.me .message-file,
-.me .message-file:hover{
-  background:transparent;
 }
 
 .message-file-icon{
