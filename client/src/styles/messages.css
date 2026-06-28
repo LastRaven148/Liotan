@@ -202,20 +202,20 @@
 }
 
 .message.file-message{
-  min-width:260px;
-  max-width:min(70%, 430px);
+  min-width:280px;
+  max-width:min(70%, 440px);
   padding:7px 8px 6px;
 }
 
 .message-file{
   display:flex;
   align-items:center;
-  gap:11px;
+  gap:12px;
   color:white;
   text-decoration:none;
   background:rgba(0,0,0,.16);
   padding:9px 10px;
-  border-radius:12px;
+  border-radius:13px;
   margin-bottom:4px;
 }
 
@@ -232,9 +232,10 @@
 }
 
 .message-file-icon{
-  width:42px;
-  height:42px;
-  border-radius:50%;
+  position:relative;
+  width:46px;
+  height:46px;
+  border-radius:14px;
   background:#3390ec;
   color:white;
   display:flex;
@@ -242,12 +243,61 @@
   justify-content:center;
   font-size:0;
   flex-shrink:0;
+  overflow:hidden;
 }
 
 .message-file-icon svg{
-  width:23px;
-  height:23px;
+  width:25px;
+  height:25px;
   display:block;
+  opacity:.9;
+}
+
+.message-file-label{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:14px;
+  background:rgba(0,0,0,.24);
+  color:white;
+  font-size:8px;
+  line-height:14px;
+  font-weight:800;
+  text-align:center;
+  letter-spacing:.3px;
+}
+
+.file-kind-pdf{
+  background:#e74c3c;
+}
+
+.file-kind-doc{
+  background:#3498db;
+}
+
+.file-kind-xls{
+  background:#27ae60;
+}
+
+.file-kind-ppt{
+  background:#e67e22;
+}
+
+.file-kind-zip{
+  background:#8e44ad;
+}
+
+.file-kind-text{
+  background:#607d8b;
+}
+
+.file-kind-app{
+  background:#455a64;
+}
+
+.file-kind-file{
+  background:#3390ec;
 }
 
 .message-file-info{
@@ -256,7 +306,7 @@
 }
 
 .message-file-name{
-  max-width:260px;
+  max-width:280px;
   color:white;
   font-size:14px;
   font-weight:600;
@@ -266,7 +316,7 @@
 }
 
 .message-file-size{
-  margin-top:3px;
+  margin-top:4px;
   color:#8da2b5;
   font-size:12px;
 }
