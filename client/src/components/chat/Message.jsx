@@ -208,6 +208,15 @@ function Message({
   const [audioDuration, setAudioDuration] =
     useState(0);
 
+  const [audioMuted, setAudioMuted] =
+    useState(false);
+
+  const [audioRepeat, setAudioRepeat] =
+    useState(false);
+
+  const [audioSpeed, setAudioSpeed] =
+    useState(1);
+
   const [videoDuration, setVideoDuration] =
     useState(0);
 
@@ -307,6 +316,28 @@ function Message({
     attachment?.width,
     attachment?.height,
     attachmentDuration
+  ]);
+
+  useEffect(() => {
+    const audio =
+      audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.muted =
+      audioMuted;
+
+    audio.loop =
+      audioRepeat;
+
+    audio.playbackRate =
+      audioSpeed;
+  }, [
+    audioMuted,
+    audioRepeat,
+    audioSpeed
   ]);
 
   useEffect(() => {
@@ -771,12 +802,56 @@ function Message({
       audioRef.current;
 
     if (audio) {
+      audio.pause();
       audio.currentTime = 0;
     }
 
     setAudioPlaying(false);
     setAudioStarted(false);
     setAudioProgress(0);
+  }
+
+  function skipAudio(value) {
+    const audio =
+      audioRef.current;
+
+    if (
+      !audio ||
+      !audioDuration
+    ) {
+      return;
+    }
+
+    const nextTime =
+      Math.max(
+        0,
+        Math.min(
+          audio.currentTime + value,
+          audioDuration
+        )
+      );
+
+    audio.currentTime =
+      nextTime;
+
+    setAudioProgress(nextTime);
+  }
+
+  function toggleAudioSpeed() {
+    const speeds =
+      [1, 1.5, 2];
+
+    const currentIndex =
+      speeds.indexOf(audioSpeed);
+
+    const nextSpeed =
+      speeds[
+        currentIndex === speeds.length - 1
+          ? 0
+          : currentIndex + 1
+      ];
+
+    setAudioSpeed(nextSpeed);
   }
 
   function handleVideoMetadata(e) {
@@ -798,12 +873,21 @@ function Message({
   }
 
   function handleAudioMetadata(e) {
-    const duration =
-      e.currentTarget.duration;
+    const audio =
+      e.currentTarget;
 
-    if (Number.isFinite(duration)) {
-      setAudioDuration(duration);
+    if (Number.isFinite(audio.duration)) {
+      setAudioDuration(audio.duration);
     }
+
+    audio.muted =
+      audioMuted;
+
+    audio.loop =
+      audioRepeat;
+
+    audio.playbackRate =
+      audioSpeed;
   }
 
   function getReplyPreview(replyTo) {
@@ -1080,9 +1164,8 @@ function Message({
         <button
           type="button"
           className="message-video-play"
-        >
-          ▶
-        </button>
+          aria-label="Открыть видео"
+        />
 
         <div className="video-duration-layer">
           {formatDuration(videoDuration)}
@@ -1118,48 +1201,110 @@ function Message({
 
     return createPortal(
       <div className="audio-topbar">
-        <button
-          type="button"
-          className="audio-topbar-button"
-          onClick={toggleAudio}
-        >
-          {audioPlaying ? "❚❚" : "▶"}
-        </button>
+        <div className="audio-topbar-controls">
+          <button
+            type="button"
+            className="audio-topbar-button audio-topbar-prev"
+            onClick={() => skipAudio(-10)}
+            aria-label="Назад"
+          />
+
+          <button
+            type="button"
+            className={[
+              "audio-topbar-button",
+              "audio-topbar-play",
+              audioPlaying ? "is-playing" : ""
+            ].join(" ")}
+            onClick={toggleAudio}
+            aria-label={
+              audioPlaying
+                ? "Пауза"
+                : "Воспроизвести"
+            }
+          />
+
+          <button
+            type="button"
+            className="audio-topbar-button audio-topbar-next"
+            onClick={() => skipAudio(10)}
+            aria-label="Вперед"
+          />
+        </div>
 
         <div className="audio-topbar-main">
           <div className="audio-topbar-title">
             {attachment.name || "Аудио"}
           </div>
 
-          <div className="audio-topbar-meta">
-            {formatDuration(audioProgress)}
-            {" / "}
-            {formatDuration(audioDuration)}
+          <div className="audio-topbar-progress-row">
+            <span className="audio-topbar-time">
+              {formatDuration(audioProgress)}
+            </span>
+
+            <input
+              className="audio-topbar-range"
+              type="range"
+              min="0"
+              max={audioDuration || 0}
+              step="0.01"
+              value={audioProgress}
+              onChange={seekAudio}
+            />
+
+            <span className="audio-topbar-time">
+              {formatDuration(audioDuration)}
+            </span>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="audio-topbar-button"
-          onClick={() => {
-            const audio =
-              audioRef.current;
-
-            if (audio) {
-              audio.muted = !audio.muted;
+        <div className="audio-topbar-actions">
+          <button
+            type="button"
+            className={[
+              "audio-topbar-button",
+              "audio-topbar-mute",
+              audioMuted ? "is-active" : ""
+            ].join(" ")}
+            onClick={() =>
+              setAudioMuted((value) => !value)
             }
-          }}
-        >
-          ◉
-        </button>
+            aria-label={
+              audioMuted
+                ? "Включить звук"
+                : "Выключить звук"
+            }
+          />
 
-        <button
-          type="button"
-          className="audio-topbar-button"
-          onClick={resetAudio}
-        >
-          ×
-        </button>
+          <button
+            type="button"
+            className="audio-topbar-speed"
+            onClick={toggleAudioSpeed}
+            aria-label="Скорость"
+          >
+            {audioSpeed}x
+          </button>
+
+          <button
+            type="button"
+            className={[
+              "audio-topbar-button",
+              "audio-topbar-repeat",
+              audioRepeat ? "is-active" : ""
+            ].join(" ")}
+            onClick={() =>
+              setAudioRepeat((value) => !value)
+            }
+            aria-label="Повтор"
+          />
+
+          <button
+            type="button"
+            className="audio-topbar-button audio-topbar-close"
+            onClick={resetAudio}
+            aria-label="Закрыть"
+          />
+        </div>
       </div>,
       document.body
     );
@@ -1171,11 +1316,17 @@ function Message({
         <div className="message-audio">
           <button
             type="button"
-            className="audio-play-button"
+            className={[
+              "audio-play-button",
+              audioPlaying ? "is-playing" : ""
+            ].join(" ")}
             onClick={toggleAudio}
-          >
-            {audioPlaying ? "❚❚" : "▶"}
-          </button>
+            aria-label={
+              audioPlaying
+                ? "Пауза"
+                : "Воспроизвести"
+            }
+          />
 
           <div className="audio-main">
             <div className="audio-title">
@@ -1232,7 +1383,11 @@ function Message({
             onPause={() =>
               setAudioPlaying(false)
             }
-            onEnded={resetAudio}
+            onEnded={() => {
+              if (!audioRepeat) {
+                resetAudio();
+              }
+            }}
             onLoadedMetadata={handleAudioMetadata}
             onTimeUpdate={(e) =>
               setAudioProgress(
