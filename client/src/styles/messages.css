@@ -396,21 +396,17 @@
   padding:7px 9px 6px;
 }
 
-.message-time-spacer{
-  display:inline-block;
-  width:42px;
-}
-
 .message-inline-time{
+  float:right;
   display:inline-flex;
   align-items:center;
   gap:3px;
-  margin-left:-42px;
+  margin-left:8px;
+  margin-top:3px;
   font-size:12px;
   line-height:14px;
   color:#7f91a4;
   white-space:nowrap;
-  vertical-align:-1px;
   user-select:none;
   -webkit-user-select:none;
 }
