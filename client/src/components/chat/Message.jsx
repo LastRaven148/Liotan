@@ -544,6 +544,7 @@ function requestDownloadFile() {
           isVideo ? "video-message" : "",
           isAudio ? "audio-message" : "",
           isFile ? "file-message" : "",
+          !hasAttachment ? "text-message" : "",
           menuOpen ? "menu-open" : ""
         ].join(" ")}
         onContextMenu={handleContextMenu}

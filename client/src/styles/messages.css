@@ -44,6 +44,20 @@
   display:inline;
 }
 
+.message.text-message .message-content{
+  position:relative;
+  padding-right:54px;
+  min-height:18px;
+}
+
+.message.text-message.me .message-content{
+  padding-right:72px;
+}
+
+.message.text-message .message-text{
+  display:block;
+}
+
 .message-footer{
   display:inline-flex;
   align-items:center;
@@ -61,6 +75,14 @@
 
 .message-footer-inline{
   margin-left:8px;
+}
+
+.message.text-message .message-footer-inline{
+  position:absolute;
+  right:0;
+  bottom:-2px;
+  margin-left:0;
+  align-items:flex-end;
 }
 
 .message-footer-block{
@@ -340,6 +362,8 @@
 .message-footer-compact{
   margin-left:auto;
   flex-shrink:0;
+  align-self:flex-end;
+  transform:translateY(2px);
 }
 
 .mobile-action-overlay{
