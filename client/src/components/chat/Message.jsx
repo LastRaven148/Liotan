@@ -932,6 +932,38 @@ function Message({
     return t.message || "Сообщение";
   }
 
+    function scrollToReplyMessage(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetId =
+      message.replyTo?.messageId;
+
+    if (!targetId) {
+      return;
+    }
+
+    const target =
+      document.querySelector(
+        `[data-message-id="${targetId}"]`
+      );
+
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    target.classList.add("message-highlight");
+
+    setTimeout(() => {
+      target.classList.remove("message-highlight");
+    }, 1200);
+  }
+
   function renderStatus() {
     if (!isMine) {
       return null;
@@ -1542,8 +1574,12 @@ function Message({
         onTouchMove={clearLongPress}
         onTouchCancel={clearLongPress}
       >
-        {message.replyTo?.messageId && (
-          <div className="message-reply">
+                {message.replyTo?.messageId && (
+          <button
+            type="button"
+            className="message-reply"
+            onClick={scrollToReplyMessage}
+          >
             <div className="message-reply-author">
               {message.replyTo.from}
             </div>
@@ -1551,7 +1587,7 @@ function Message({
             <div className="message-reply-text">
               {getReplyPreview(message.replyTo)}
             </div>
-          </div>
+          </button>
         )}
 
         {isPhoto && renderPhoto()}
