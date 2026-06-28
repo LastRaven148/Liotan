@@ -29,6 +29,9 @@ export default function AudioPlayer() {
   const audioRef =
     useRef(null);
 
+  const trackRef =
+    useRef(null);
+
   const [track, setTrack] =
     useState(null);
 
@@ -51,6 +54,55 @@ export default function AudioPlayer() {
     useState(1);
 
   useEffect(() => {
+    trackRef.current =
+      track;
+  }, [
+    track
+  ]);
+
+  function emitAudioState(next = {}) {
+    const currentTrack =
+      next.track ||
+      trackRef.current;
+
+    if (!currentTrack?.messageId) {
+      window.dispatchEvent(
+        new CustomEvent(
+          "liotan:audio-state",
+          {
+            detail: {
+              messageId: null,
+              playing: false,
+              progress: 0,
+              duration: 0
+            }
+          }
+        )
+      );
+
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "liotan:audio-state",
+        {
+          detail: {
+            messageId:
+              currentTrack.messageId,
+            playing:
+              next.playing ?? playing,
+            progress:
+              next.progress ?? progress,
+            duration:
+              next.duration ?? duration
+          }
+        }
+      )
+    );
+  }
+
+  useEffect(() => {
     function handlePlayAudio(e) {
       const nextTrack =
         e.detail;
@@ -66,8 +118,12 @@ export default function AudioPlayer() {
         return;
       }
 
+      const currentTrack =
+        trackRef.current;
+
       if (
-        track?.messageId === nextTrack.messageId
+        currentTrack?.messageId ===
+        nextTrack.messageId
       ) {
         if (audio.paused) {
           audio.play();
@@ -79,10 +135,15 @@ export default function AudioPlayer() {
       }
 
       setTrack(nextTrack);
+      trackRef.current =
+        nextTrack;
+
       setProgress(0);
-      setDuration(
-        Number(nextTrack.duration) || 0
-      );
+
+      const nextDuration =
+        Number(nextTrack.duration) || 0;
+
+      setDuration(nextDuration);
 
       audio.src =
         mediaUrl(nextTrack.url);
@@ -97,6 +158,13 @@ export default function AudioPlayer() {
         repeat;
 
       audio.play();
+
+      emitAudioState({
+        track: nextTrack,
+        playing: true,
+        progress: 0,
+        duration: nextDuration
+      });
     }
 
     window.addEventListener(
@@ -111,11 +179,59 @@ export default function AudioPlayer() {
       );
     };
   }, [
-    track,
     speed,
     muted,
     repeat
   ]);
+
+  useEffect(() => {
+    function handleSeekAudio(e) {
+      const data =
+        e.detail;
+
+      const currentTrack =
+        trackRef.current;
+
+      if (
+        !data ||
+        data.messageId !== currentTrack?.messageId
+      ) {
+        return;
+      }
+
+      const audio =
+        audioRef.current;
+
+      if (!audio) {
+        return;
+      }
+
+      const nextTime =
+        Number(data.time) || 0;
+
+      audio.currentTime =
+        nextTime;
+
+      setProgress(nextTime);
+
+      emitAudioState({
+        track: currentTrack,
+        progress: nextTime
+      });
+    }
+
+    window.addEventListener(
+      "liotan:seek-audio",
+      handleSeekAudio
+    );
+
+    return () => {
+      window.removeEventListener(
+        "liotan:seek-audio",
+        handleSeekAudio
+      );
+    };
+  }, []);
 
   useEffect(() => {
     const audio =
@@ -143,7 +259,7 @@ export default function AudioPlayer() {
     const audio =
       audioRef.current;
 
-    if (!audio || !track) {
+    if (!audio || !trackRef.current) {
       return;
     }
 
@@ -165,9 +281,19 @@ export default function AudioPlayer() {
     }
 
     setTrack(null);
+    trackRef.current =
+      null;
+
     setPlaying(false);
     setProgress(0);
     setDuration(0);
+
+    emitAudioState({
+      track: null,
+      playing: false,
+      progress: 0,
+      duration: 0
+    });
   }
 
   function seekAudio(e) {
@@ -185,6 +311,10 @@ export default function AudioPlayer() {
       nextTime;
 
     setProgress(nextTime);
+
+    emitAudioState({
+      progress: nextTime
+    });
   }
 
   function skipAudio(value) {
@@ -195,7 +325,7 @@ export default function AudioPlayer() {
       return;
     }
 
-    audio.currentTime =
+    const nextTime =
       Math.max(
         0,
         Math.min(
@@ -203,6 +333,15 @@ export default function AudioPlayer() {
           duration
         )
       );
+
+    audio.currentTime =
+      nextTime;
+
+    setProgress(nextTime);
+
+    emitAudioState({
+      progress: nextTime
+    });
   }
 
   function toggleSpeed() {
@@ -218,6 +357,46 @@ export default function AudioPlayer() {
           ? 0
           : currentIndex + 1
       ]
+    );
+  }
+
+  function playNextTrack() {
+    const currentTrack =
+      trackRef.current;
+
+    const playlist =
+      currentTrack?.playlist || [];
+
+    const currentIndex =
+      playlist.findIndex(item =>
+        item.messageId === currentTrack?.messageId
+      );
+
+    const nextTrack =
+      playlist[currentIndex + 1];
+
+    if (!nextTrack?.url) {
+      setPlaying(false);
+      setProgress(0);
+
+      emitAudioState({
+        playing: false,
+        progress: 0
+      });
+
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "liotan:play-audio",
+        {
+          detail: {
+            ...nextTrack,
+            playlist
+          }
+        }
+      )
     );
   }
 
@@ -332,88 +511,53 @@ export default function AudioPlayer() {
     );
   }
 
-    useEffect(() => {
-    if (!track?.messageId) {
-      return;
-    }
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "liotan:audio-state",
-        {
-          detail: {
-            messageId: track.messageId,
-            playing,
-            progress,
-            duration
-          }
-        }
-      )
-    );
-  }, [
-    track,
-    playing,
-    progress,
-    duration
-  ]);
-
   return (
     <>
       <audio
         ref={audioRef}
         preload="metadata"
-        onPlay={() =>
-          setPlaying(true)
-        }
-        onPause={() =>
-          setPlaying(false)
-        }
-        onLoadedMetadata={(e) =>
-          setDuration(
+        onPlay={() => {
+          setPlaying(true);
+
+          emitAudioState({
+            playing: true
+          });
+        }}
+        onPause={() => {
+          setPlaying(false);
+
+          emitAudioState({
+            playing: false
+          });
+        }}
+        onLoadedMetadata={(e) => {
+          const nextDuration =
             Number.isFinite(e.currentTarget.duration)
               ? e.currentTarget.duration
-              : 0
-          )
-        }
-        onTimeUpdate={(e) =>
-          setProgress(
-            e.currentTarget.currentTime
-          )
-        }
-         onEnded={() => {
+              : 0;
+
+          setDuration(nextDuration);
+
+          emitAudioState({
+            duration: nextDuration
+          });
+        }}
+        onTimeUpdate={(e) => {
+          const nextProgress =
+            e.currentTarget.currentTime;
+
+          setProgress(nextProgress);
+
+          emitAudioState({
+            progress: nextProgress
+          });
+        }}
+        onEnded={() => {
           if (repeat) {
             return;
           }
 
-          const playlist =
-            track?.playlist || [];
-
-          const currentIndex =
-            playlist.findIndex(item =>
-              item.messageId === track?.messageId
-            );
-
-          const nextTrack =
-            playlist[currentIndex + 1];
-
-          if (nextTrack?.url) {
-            window.dispatchEvent(
-              new CustomEvent(
-                "liotan:play-audio",
-                {
-                  detail: {
-                    ...nextTrack,
-                    playlist
-                  }
-                }
-              )
-            );
-
-            return;
-          }
-
-          setPlaying(false);
-          setProgress(0);
+          playNextTrack();
         }}
       />
 

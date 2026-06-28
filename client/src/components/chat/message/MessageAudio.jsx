@@ -1,0 +1,62 @@
+import {
+  formatDuration
+} from "./messageFormatters";
+
+export default function MessageAudio({
+  attachment,
+  audioPlaying,
+  audioStarted,
+  audioProgress,
+  audioDuration,
+  attachmentSizeText,
+  onToggle,
+  onSeek
+}) {
+  return (
+    <div className="message-audio">
+      <button
+        type="button"
+        className={[
+          "audio-play-button",
+          audioPlaying ? "is-playing" : ""
+        ].join(" ")}
+        onClick={onToggle}
+        aria-label={
+          audioPlaying
+            ? "Пауза"
+            : "Воспроизвести"
+        }
+      />
+
+      <div className="audio-main">
+        <div className="audio-title">
+          {attachment.name || "Аудио"}
+        </div>
+
+        <div className="audio-meta">
+          <span className="audio-duration-static">
+            {formatDuration(audioDuration)}
+          </span>
+
+          {!audioStarted && attachmentSizeText && (
+            <span className="audio-size-static">
+              {attachmentSizeText}
+            </span>
+          )}
+
+          {audioStarted && (
+            <input
+              className="audio-range"
+              type="range"
+              min="0"
+              max={audioDuration || 0}
+              step="0.01"
+              value={audioProgress}
+              onChange={onSeek}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

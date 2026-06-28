@@ -1,7 +1,6 @@
 import {
   memo,
   useEffect,
-  useRef,
   useState
 } from "react";
 
@@ -18,192 +17,47 @@ import {
 import { mediaUrl }
 from "../../utils/mediaUrl";
 
-const DB_NAME =
-  "liotan-offline-media";
+import {
+  formatDuration,
+  formatFileSize
+} from "./message/messageFormatters";
 
-const STORE_NAME =
-  "media";
+import {
+  renderTextWithLinks
+} from "./message/MessageText";
+
+import useOfflineMedia
+from "./message/useOfflineMedia";
+
+import useMessageMenu
+from "./message/useMessageMenu";
+
+import useMessageAudioState
+from "./message/useMessageAudioState";
+
+import useMediaViewer
+from "./message/useMediaViewer";
+
+import MessageReply
+from "./message/MessageReply";
+
+import MessageText
+from "./message/MessageText";
+
+import MessageFile
+from "./message/MessageFile";
+
+import MessageAudio
+from "./message/MessageAudio";
+
+import MessageActions
+from "./message/MessageActions";
+
+import MessageViewer
+from "./message/MessageViewer";
 
 const AUTO_CACHE_LIMIT =
   50 * 1024 * 1024;
-
-function FileIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M7 3.5H14.5L19 8V20.5H7C5.9 20.5 5 19.6 5 18.5V5.5C5 4.4 5.9 3.5 7 3.5Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M14 3.8V8.5H18.7"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.5 13H15.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8.5 16.5H13"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function openMediaDb() {
-  return new Promise((resolve, reject) => {
-    const request =
-      indexedDB.open(DB_NAME, 1);
-
-    request.onupgradeneeded =
-      () => {
-        const db =
-          request.result;
-
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-      };
-
-    request.onsuccess =
-      () => resolve(request.result);
-
-    request.onerror =
-      () => reject(request.error);
-  });
-}
-
-async function getOfflineBlob(key) {
-  const db =
-    await openMediaDb();
-
-  return new Promise((resolve, reject) => {
-    const tx =
-      db.transaction(STORE_NAME, "readonly");
-
-    const store =
-      tx.objectStore(STORE_NAME);
-
-    const request =
-      store.get(key);
-
-    request.onsuccess =
-      () => resolve(request.result || null);
-
-    request.onerror =
-      () => reject(request.error);
-  });
-}
-
-async function saveOfflineBlob(key, blob) {
-  const db =
-    await openMediaDb();
-
-  return new Promise((resolve, reject) => {
-    const tx =
-      db.transaction(STORE_NAME, "readwrite");
-
-    const store =
-      tx.objectStore(STORE_NAME);
-
-    store.put(blob, key);
-
-    tx.oncomplete =
-      () => resolve();
-
-    tx.onerror =
-      () => reject(tx.error);
-  });
-}
-
-function getMediaKey(attachment) {
-  return (
-    attachment?.publicId ||
-    attachment?.url ||
-    ""
-  );
-}
-
-function formatFileSize(size) {
-  if (!size) {
-    return "";
-  }
-
-  if (size < 1024 * 1024) {
-    return `${Math.ceil(size / 1024)} KB`;
-  }
-
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function getFileExtension(name = "") {
-  const parts =
-    name.split(".");
-
-  if (parts.length < 2) {
-    return "";
-  }
-
-  return parts.pop().toLowerCase();
-}
-
-function getFileKind(name = "") {
-  const ext =
-    getFileExtension(name);
-
-  if (["pdf"].includes(ext)) return "pdf";
-  if (["doc", "docx"].includes(ext)) return "doc";
-  if (["xls", "xlsx"].includes(ext)) return "xls";
-  if (["ppt", "pptx"].includes(ext)) return "ppt";
-  if (["zip", "rar", "7z"].includes(ext)) return "zip";
-  if (["txt", "md", "json", "js", "jsx", "css", "html"].includes(ext)) return "text";
-  if (["exe", "msi", "apk"].includes(ext)) return "app";
-
-  return "file";
-}
-
-function getFileLabel(name = "") {
-  const kind =
-    getFileKind(name);
-
-  if (kind === "pdf") return "PDF";
-  if (kind === "doc") return "DOC";
-  if (kind === "xls") return "XLS";
-  if (kind === "ppt") return "PPT";
-  if (kind === "zip") return "ZIP";
-  if (kind === "text") return "TXT";
-  if (kind === "app") return "APP";
-
-  const ext =
-    getFileExtension(name);
-
-  return ext ? ext.toUpperCase().slice(0, 4) : "FILE";
-}
-
-function formatDuration(value) {
-  if (!Number.isFinite(value)) {
-    return "0:00";
-  }
-
-  const total =
-    Math.floor(value);
-
-  const minutes =
-    Math.floor(total / 60);
-
-  const seconds =
-    String(total % 60).padStart(2, "0");
-
-  return `${minutes}:${seconds}`;
-}
 
 function Message({
   message,
@@ -217,71 +71,11 @@ function Message({
   const { t } =
     useLanguage();
 
-  const [menuOpen, setMenuOpen] =
-    useState(false);
-
-  const [menuPos, setMenuPos] =
-    useState({
-      top: 0,
-      left: 0
-    });
-
-  const [viewerOpen, setViewerOpen] =
-    useState(false);
-
-  const [mobileMenu, setMobileMenu] =
-    useState(false);
-
-  const [localUrl, setLocalUrl] =
-    useState("");
-
-  const [savingOffline, setSavingOffline] =
-    useState(false);
-
-  const [isOfflineSaved, setIsOfflineSaved] =
-    useState(false);
-
-  const [audioPlaying, setAudioPlaying] =
-    useState(false);
-
-  const [audioStarted, setAudioStarted] =
-    useState(false);
-
-  const [audioProgress, setAudioProgress] =
-    useState(0);
-
-  const [audioDuration, setAudioDuration] =
-    useState(0);
-
-  const [audioMuted, setAudioMuted] =
-    useState(false);
-
-  const [audioRepeat, setAudioRepeat] =
-    useState(false);
-
-  const [audioSpeed, setAudioSpeed] =
-    useState(1);
-
   const [videoDuration, setVideoDuration] =
     useState(0);
 
   const [videoRatio, setVideoRatio] =
     useState("16 / 9");
-
-  const longPressRef =
-    useRef(null);
-
-  const touchPointRef =
-    useRef(null);
-
-  const menuRef =
-    useRef(null);
-
-  const messageRef =
-    useRef(null);
-
-  const audioRef =
-    useRef(null);
 
   const isMine =
     message.from === username;
@@ -322,12 +116,6 @@ function Message({
       ? mediaUrl(attachment.url)
       : "";
 
-  const fileUrl =
-    localUrl || remoteUrl;
-
-  const mediaKey =
-    getMediaKey(attachment);
-
   const attachmentDuration =
     Number(attachment?.duration) || 0;
 
@@ -342,6 +130,50 @@ function Message({
       isPhoto ||
       isAudio
     );
+
+  const {
+    localUrl,
+    isOfflineSaved,
+    saveOffline
+  } = useOfflineMedia({
+    attachment,
+    remoteUrl,
+    shouldAutoCache
+  });
+
+  const fileUrl =
+    localUrl || remoteUrl;
+
+  const {
+    menuOpen,
+    menuPos,
+    mobileMenu,
+    menuRef,
+    messageRef,
+    handleContextMenu,
+    handleTouchStart,
+    clearLongPress,
+    closeMenus
+  } = useMessageMenu({
+    isMine
+  });
+
+  const {
+    audioPlaying,
+    audioStarted,
+    audioProgress,
+    audioDuration,
+    setAudioProgress,
+    setAudioDuration
+  } = useMessageAudioState({
+    messageId: message._id
+  });
+
+  const {
+    viewerOpen,
+    openViewer,
+    closeViewer
+  } = useMediaViewer();
 
   useEffect(() => {
     if (
@@ -360,714 +192,9 @@ function Message({
   }, [
     attachment?.width,
     attachment?.height,
-    attachmentDuration
+    attachmentDuration,
+    setAudioDuration
   ]);
-
-  useEffect(() => {
-    const audio =
-      audioRef.current;
-
-    if (!audio) {
-      return;
-    }
-
-    audio.muted =
-      audioMuted;
-
-    audio.loop =
-      audioRepeat;
-
-    audio.playbackRate =
-      audioSpeed;
-  }, [
-    audioMuted,
-    audioRepeat,
-    audioSpeed
-  ]);
-
-  useEffect(() => {
-    let alive = true;
-    let objectUrl = "";
-
-    async function loadOffline() {
-      if (!mediaKey) {
-        return;
-      }
-
-      try {
-        const blob =
-          await getOfflineBlob(mediaKey);
-
-        if (!blob || !alive) {
-          return;
-        }
-
-        objectUrl =
-          URL.createObjectURL(blob);
-
-        setLocalUrl(objectUrl);
-        setIsOfflineSaved(true);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    loadOffline();
-
-    return () => {
-      alive = false;
-
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [
-    mediaKey
-  ]);
-
-  useEffect(() => {
-    if (
-      !shouldAutoCache ||
-      isOfflineSaved ||
-      savingOffline
-    ) {
-      return;
-    }
-
-    saveOffline({
-      silent: true
-    });
-  }, [
-    shouldAutoCache,
-    isOfflineSaved,
-    savingOffline
-  ]);
-
-  useEffect(() => {
-    if (!viewerOpen) {
-      return;
-    }
-
-    function handleViewerEsc(e) {
-      if (e.key !== "Escape") {
-        return;
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (e.stopImmediatePropagation) {
-        e.stopImmediatePropagation();
-      }
-
-      setViewerOpen(false);
-    }
-
-    window.addEventListener(
-      "keydown",
-      handleViewerEsc,
-      true
-    );
-
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleViewerEsc,
-        true
-      );
-    };
-  }, [
-    viewerOpen
-  ]);
-
-    useEffect(() => {
-    function handleGlobalAudioState(e) {
-      const state =
-        e.detail;
-
-      if (!state?.messageId) {
-        return;
-      }
-
-      if (state.messageId !== message._id) {
-        if (audioStarted) {
-          setAudioPlaying(false);
-          setAudioStarted(false);
-          setAudioProgress(0);
-        }
-
-        return;
-      }
-
-      setAudioStarted(true);
-      setAudioPlaying(Boolean(state.playing));
-      setAudioProgress(Number(state.progress) || 0);
-
-      if (Number.isFinite(state.duration)) {
-        setAudioDuration(state.duration);
-      }
-    }
-
-    window.addEventListener(
-      "liotan:audio-state",
-      handleGlobalAudioState
-    );
-
-    return () => {
-      window.removeEventListener(
-        "liotan:audio-state",
-        handleGlobalAudioState
-      );
-    };
-  }, [
-    message._id,
-    audioStarted
-  ]);
-
-  useEffect(() => {
-    function handleOutside(e) {
-      if (!menuOpen) {
-        return;
-      }
-
-      if (
-        menuRef.current &&
-        menuRef.current.contains(e.target)
-      ) {
-        return;
-      }
-
-      if (
-        messageRef.current &&
-        messageRef.current.contains(e.target)
-      ) {
-        return;
-      }
-
-      setMenuOpen(false);
-    }
-
-    function handleEsc(e) {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        setMobileMenu(false);
-      }
-    }
-
-    function closeFloatingMenu() {
-      setMenuOpen(false);
-    }
-
-    document.addEventListener(
-      "mousedown",
-      handleOutside
-    );
-
-    window.addEventListener(
-      "keydown",
-      handleEsc
-    );
-
-    window.addEventListener(
-      "scroll",
-      closeFloatingMenu,
-      true
-    );
-
-    window.addEventListener(
-      "resize",
-      closeFloatingMenu
-    );
-
-    return () => {
-      document.removeEventListener(
-        "mousedown",
-        handleOutside
-      );
-
-      window.removeEventListener(
-        "keydown",
-        handleEsc
-      );
-
-      window.removeEventListener(
-        "scroll",
-        closeFloatingMenu,
-        true
-      );
-
-      window.removeEventListener(
-        "resize",
-        closeFloatingMenu
-      );
-    };
-  }, [
-    menuOpen
-  ]);
-
-  function isMobile() {
-    return window.matchMedia(
-      "(max-width: 768px)"
-    ).matches;
-  }
-
-  function getEventPoint(e) {
-    if (
-      e.clientX !== undefined &&
-      e.clientY !== undefined
-    ) {
-      return {
-        x: e.clientX,
-        y: e.clientY
-      };
-    }
-
-    if (touchPointRef.current) {
-      return touchPointRef.current;
-    }
-
-    const rect =
-      messageRef.current?.getBoundingClientRect();
-
-    if (!rect) {
-      return {
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2
-      };
-    }
-
-    return {
-      x: isMine ? rect.right : rect.left,
-      y: rect.top + rect.height / 2
-    };
-  }
-
-  function calculateMenuPosition(e) {
-    const point =
-      getEventPoint(e);
-
-    const menuWidth = 178;
-    const menuHeight = 270;
-    const gap = 8;
-    const padding = 10;
-
-    let left =
-      isMine
-        ? point.x - menuWidth
-        : point.x;
-
-    left =
-      Math.max(
-        padding,
-        Math.min(
-          left,
-          window.innerWidth - menuWidth - padding
-        )
-      );
-
-    const spaceBelow =
-      window.innerHeight - point.y;
-
-    const spaceAbove =
-      point.y;
-
-    let top;
-
-    if (spaceBelow >= menuHeight + gap) {
-      top = point.y + gap;
-    } else if (spaceAbove >= menuHeight + gap) {
-      top = point.y - menuHeight - gap;
-    } else {
-      top =
-        Math.max(
-          padding,
-          Math.min(
-            point.y - menuHeight / 2,
-            window.innerHeight - menuHeight - padding
-          )
-        );
-    }
-
-    setMenuPos({
-      top,
-      left
-    });
-  }
-
-   function openMenu(e) {
-    const isMediaMessage =
-      e.target.closest(".message-photo-wrap") ||
-      e.target.closest(".message-video-wrap");
-
-    if (
-      !isMediaMessage &&
-      (
-        e.target.closest("a") ||
-        e.target.closest("textarea") ||
-        e.target.closest("input") ||
-        e.target.closest("button") ||
-        e.target.closest("video") ||
-        e.target.closest("audio")
-      )
-    ) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isMobile()) {
-      setMobileMenu(true);
-      return;
-    }
-
-    calculateMenuPosition(e);
-    setMenuOpen(true);
-  }
-
-  function handleContextMenu(e) {
-    openMenu(e);
-  }
-
-    function handleTouchStart(e) {
-    const isMediaMessage =
-      e.target.closest(".message-photo-wrap") ||
-      e.target.closest(".message-video-wrap");
-
-    if (
-      !isMediaMessage &&
-      (
-        e.target.closest("a") ||
-        e.target.closest("textarea") ||
-        e.target.closest("input") ||
-        e.target.closest("button") ||
-        e.target.closest("video") ||
-        e.target.closest("audio")
-      )
-    ) {
-      return;
-    }
-
-    const touch =
-      e.touches?.[0];
-
-    if (touch) {
-      touchPointRef.current = {
-        x: touch.clientX,
-        y: touch.clientY
-      };
-    }
-
-    longPressRef.current =
-      setTimeout(() => {
-        openMenu(e);
-      }, 420);
-  }
-
-  function clearLongPress() {
-    if (longPressRef.current) {
-      clearTimeout(longPressRef.current);
-      longPressRef.current = null;
-    }
-  }
-
-  function closeMenus() {
-    setMenuOpen(false);
-    setMobileMenu(false);
-  }
-
-  function copyMessage() {
-    if (message.text) {
-      navigator.clipboard?.writeText(
-        message.text
-      );
-    }
-
-    closeMenus();
-  }
-
-  function fakeAction() {
-    closeMenus();
-  }
-
-  async function saveOffline(
-    options = {}
-  ) {
-    if (
-      !remoteUrl ||
-      !mediaKey ||
-      savingOffline
-    ) {
-      return;
-    }
-
-    try {
-      setSavingOffline(true);
-
-      const response =
-        await fetch(remoteUrl);
-
-      const blob =
-        await response.blob();
-
-      await saveOfflineBlob(
-        mediaKey,
-        blob
-      );
-
-      const objectUrl =
-        URL.createObjectURL(blob);
-
-      setLocalUrl(objectUrl);
-      setIsOfflineSaved(true);
-    } catch (err) {
-      if (!options.silent) {
-        console.error(err);
-      }
-    } finally {
-      setSavingOffline(false);
-    }
-  }
-
-  async function downloadFile() {
-    if (!remoteUrl && !fileUrl) {
-      return;
-    }
-
-    try {
-      if (
-        mediaKey &&
-        !isOfflineSaved &&
-        remoteUrl
-      ) {
-        await saveOffline();
-      }
-
-      const link =
-        document.createElement("a");
-
-      link.href =
-        localUrl || fileUrl || remoteUrl;
-
-      link.download =
-        attachment.name || "download";
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      console.error(err);
-
-      window.open(
-        fileUrl || remoteUrl,
-        "_blank"
-      );
-    }
-  }
-
-    function toggleAudio() {
-    if (!isAudio || !attachment?.url) {
-      return;
-    }
-
-    const playlist =
-      audioMessages.map(item => ({
-        messageId: item._id,
-        url: item.attachment.url,
-        name: item.attachment.name || "Аудио",
-        duration: Number(item.attachment.duration) || 0,
-        size: item.attachment.size || 0
-      }));
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "liotan:play-audio",
-        {
-          detail: {
-            messageId: message._id,
-            url: attachment.url,
-            name: attachment.name || "Аудио",
-            duration: audioDuration || attachmentDuration,
-            size: attachment.size || 0,
-            playlist
-          }
-        }
-      )
-    );
-  }
-
-  function seekAudio(e) {
-    const audio =
-      audioRef.current;
-
-    if (
-      !audio ||
-      !audioDuration
-    ) {
-      return;
-    }
-
-    const nextTime =
-      Number(e.target.value);
-
-    audio.currentTime =
-      nextTime;
-
-    setAudioProgress(nextTime);
-  }
-
-  function resetAudio() {
-    const audio =
-      audioRef.current;
-
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
-
-    setAudioPlaying(false);
-    setAudioStarted(false);
-    setAudioProgress(0);
-  }
-
-  function skipAudio(value) {
-    const audio =
-      audioRef.current;
-
-    if (
-      !audio ||
-      !audioDuration
-    ) {
-      return;
-    }
-
-    const nextTime =
-      Math.max(
-        0,
-        Math.min(
-          audio.currentTime + value,
-          audioDuration
-        )
-      );
-
-    audio.currentTime =
-      nextTime;
-
-    setAudioProgress(nextTime);
-  }
-
-  function toggleAudioSpeed() {
-    const speeds =
-      [1, 1.5, 2];
-
-    const currentIndex =
-      speeds.indexOf(audioSpeed);
-
-    const nextSpeed =
-      speeds[
-        currentIndex === speeds.length - 1
-          ? 0
-          : currentIndex + 1
-      ];
-
-    setAudioSpeed(nextSpeed);
-  }
-
-  function handleVideoMetadata(e) {
-    const video =
-      e.currentTarget;
-
-    if (
-      video.videoWidth &&
-      video.videoHeight
-    ) {
-      setVideoRatio(
-        `${video.videoWidth} / ${video.videoHeight}`
-      );
-    }
-
-    if (Number.isFinite(video.duration)) {
-      setVideoDuration(video.duration);
-    }
-  }
-
-  function handleAudioMetadata(e) {
-    const audio =
-      e.currentTarget;
-
-    if (Number.isFinite(audio.duration)) {
-      setAudioDuration(audio.duration);
-    }
-
-    audio.muted =
-      audioMuted;
-
-    audio.loop =
-      audioRepeat;
-
-    audio.playbackRate =
-      audioSpeed;
-  }
-
-  function getReplyPreview(replyTo) {
-    if (!replyTo) {
-      return "";
-    }
-
-    if (replyTo.text) {
-      return replyTo.text;
-    }
-
-    if (replyTo.attachmentType === "photo") {
-      return t.photo || "Фото";
-    }
-
-    if (replyTo.attachmentType === "video") {
-      return "Видео";
-    }
-
-    if (replyTo.attachmentType === "audio") {
-      return "Аудио";
-    }
-
-    if (replyTo.attachmentType === "file") {
-      return replyTo.attachmentName || t.file || "Файл";
-    }
-
-    return t.message || "Сообщение";
-  }
-
-    function scrollToReplyMessage(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const targetId =
-      message.replyTo?.messageId;
-
-    if (!targetId) {
-      return;
-    }
-
-    const target =
-      document.querySelector(
-        `[data-message-id="${targetId}"]`
-      );
-
-    if (!target) {
-      return;
-    }
-
-    target.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-
-    target.classList.add("message-highlight");
-
-    setTimeout(() => {
-      target.classList.remove("message-highlight");
-    }, 1200);
-  }
 
   function renderStatus() {
     if (!isMine) {
@@ -1100,133 +227,181 @@ function Message({
     );
   }
 
-  function renderTextWithLinks(value) {
-    const parts =
-      value.split(
-        /(https?:\/\/[^\s]+)/g
-      );
-
-    return parts.map((part, index) => {
-      if (
-        part.startsWith("http://") ||
-        part.startsWith("https://")
-      ) {
-        return (
-          <a
-            key={index}
-            href={part}
-            target="_blank"
-            rel="noreferrer"
-            className="message-link"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-            onContextMenu={(e) =>
-              e.stopPropagation()
-            }
-          >
-            {part}
-          </a>
-        );
-      }
-
-      return part;
-    });
+  function renderTimeLayer() {
+    return (
+      <div className="photo-time-layer">
+        {formatTime(message.createdAt)}
+        {renderStatus()}
+      </div>
+    );
   }
 
-  function renderActions() {
+  function renderMessageTime() {
+    if (
+      isPhoto ||
+      isVideo
+    ) {
+      return null;
+    }
+
     return (
-      <>
-        <button
-          type="button"
-          onClick={() => {
-            closeMenus();
-            onReply(message);
-          }}
-        >
-          <span>↩</span>
-          {t.reply || "Ответить"}
-        </button>
-
-        {message.text && (
-          <button
-            type="button"
-            onClick={copyMessage}
-          >
-            <span>⧉</span>
-            Скопировать
-          </button>
+      <div className="message-time">
+        {message.edited && (
+          <span className="message-edited">
+            {t.edited}
+          </span>
         )}
 
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => {
-              closeMenus();
-              onEdit(message);
-            }}
-          >
-            <span>✎</span>
-            {t.edit || "Изменить"}
-          </button>
-        )}
-
-        {hasAttachment && (
-          <button
-            type="button"
-            onClick={() => {
-              closeMenus();
-              downloadFile();
-            }}
-          >
-            <span>↓</span>
-            Скачать
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={fakeAction}
-        >
-          <span>↗</span>
-          Переслать
-        </button>
-
-        <button
-          type="button"
-          onClick={fakeAction}
-        >
-          <span>✓</span>
-          Выбрать
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            closeMenus();
-            onPin?.(message);
-          }}
-        >
-          <span>⌖</span>
-
-          {message.isPinned
-            ? "Открепить"
-            : "Закрепить"}
-        </button>
-
-        <button
-          type="button"
-          className="danger"
-          onClick={() => {
-            closeMenus();
-            onDelete(message);
-          }}
-        >
-          <span>×</span>
-          {t.delete || "Удалить"}
-        </button>
-      </>
+        {formatTime(message.createdAt)}
+        {renderStatus()}
+      </div>
     );
+  }
+
+  function renderMediaCaption() {
+    if (!message.text) {
+      return null;
+    }
+
+    return (
+      <div className="message-media-caption">
+        {renderTextWithLinks(message.text)}
+      </div>
+    );
+  }
+
+  async function downloadFile() {
+    if (
+      !remoteUrl &&
+      !fileUrl
+    ) {
+      return;
+    }
+
+    try {
+      if (
+        hasAttachment &&
+        !isOfflineSaved &&
+        remoteUrl
+      ) {
+        await saveOffline();
+      }
+
+      const link =
+        document.createElement("a");
+
+      link.href =
+        localUrl ||
+        fileUrl ||
+        remoteUrl;
+
+      link.download =
+        attachment.name || "download";
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error(err);
+
+      window.open(
+        fileUrl || remoteUrl,
+        "_blank"
+      );
+    }
+  }
+
+  function copyMessage() {
+    if (message.text) {
+      navigator.clipboard?.writeText(
+        message.text
+      );
+    }
+
+    closeMenus();
+  }
+
+  function toggleAudio() {
+    if (
+      !isAudio ||
+      !attachment?.url
+    ) {
+      return;
+    }
+
+    const playlist =
+      audioMessages.map(item => ({
+        messageId: item._id,
+        url: item.attachment.url,
+        name:
+          item.attachment.name ||
+          "Аудио",
+        duration:
+          Number(item.attachment.duration) ||
+          0,
+        size:
+          item.attachment.size ||
+          0
+      }));
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "liotan:play-audio",
+        {
+          detail: {
+            messageId: message._id,
+            url: attachment.url,
+            name:
+              attachment.name ||
+              "Аудио",
+            duration:
+              audioDuration ||
+              attachmentDuration,
+            size:
+              attachment.size ||
+              0,
+            playlist
+          }
+        }
+      )
+    );
+  }
+
+  function seekAudio(e) {
+    const nextTime =
+      Number(e.target.value);
+
+    setAudioProgress(nextTime);
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "liotan:seek-audio",
+        {
+          detail: {
+            messageId: message._id,
+            time: nextTime
+          }
+        }
+      )
+    );
+  }
+
+  function handleVideoMetadata(e) {
+    const video =
+      e.currentTarget;
+
+    if (
+      video.videoWidth &&
+      video.videoHeight
+    ) {
+      setVideoRatio(
+        `${video.videoWidth} / ${video.videoHeight}`
+      );
+    }
+
+    if (Number.isFinite(video.duration)) {
+      setVideoDuration(video.duration);
+    }
   }
 
   function renderDesktopMenu() {
@@ -1243,21 +418,21 @@ function Message({
           left: `${menuPos.left}px`
         }}
       >
-        {renderActions()}
+        <MessageActions
+          t={t}
+          message={message}
+          hasAttachment={hasAttachment}
+          canEdit={canEdit}
+          closeMenus={closeMenus}
+          copyMessage={copyMessage}
+          downloadFile={downloadFile}
+          onReply={onReply}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onPin={onPin}
+        />
       </div>,
       document.body
-    );
-  }
-
-  function renderMediaCaption() {
-    if (!message.text) {
-      return null;
-    }
-
-    return (
-      <div className="message-media-caption">
-        {renderTextWithLinks(message.text)}
-      </div>
     );
   }
 
@@ -1265,9 +440,7 @@ function Message({
     return (
       <div
         className="message-photo-wrap"
-        onClick={() =>
-          setViewerOpen(true)
-        }
+        onClick={openViewer}
       >
         <img
           src={fileUrl}
@@ -1276,11 +449,7 @@ function Message({
         />
 
         {renderMediaCaption()}
-
-        <div className="photo-time-layer">
-          {formatTime(message.createdAt)}
-          {renderStatus()}
-        </div>
+        {renderTimeLayer()}
       </div>
     );
   }
@@ -1295,7 +464,7 @@ function Message({
         className="message-video-wrap"
         onClick={() =>
           isOfflineSaved || !needsManualDownload
-            ? setViewerOpen(true)
+            ? openViewer()
             : downloadFile()
         }
         style={{
@@ -1336,317 +505,8 @@ function Message({
         )}
 
         {renderMediaCaption()}
-
-        <div className="photo-time-layer">
-          {formatTime(message.createdAt)}
-          {renderStatus()}
-        </div>
+        {renderTimeLayer()}
       </div>
-    );
-  }
-
-  function renderAudioTopbar() {
-    if (!audioStarted) {
-      return null;
-    }
-
-    return createPortal(
-      <div className="audio-topbar">
-        <div className="audio-topbar-controls">
-          <button
-            type="button"
-            className="audio-topbar-button audio-topbar-prev"
-            onClick={() => skipAudio(-10)}
-            aria-label="Назад"
-          />
-
-          <button
-            type="button"
-            className={[
-              "audio-topbar-button",
-              "audio-topbar-play",
-              audioPlaying ? "is-playing" : ""
-            ].join(" ")}
-            onClick={toggleAudio}
-            aria-label={
-              audioPlaying
-                ? "Пауза"
-                : "Воспроизвести"
-            }
-          />
-
-          <button
-            type="button"
-            className="audio-topbar-button audio-topbar-next"
-            onClick={() => skipAudio(10)}
-            aria-label="Вперед"
-          />
-        </div>
-
-        <div className="audio-topbar-main">
-          <div className="audio-topbar-title">
-            {attachment.name || "Аудио"}
-          </div>
-
-          <div className="audio-topbar-progress-row">
-            <span className="audio-topbar-time">
-              {formatDuration(audioProgress)}
-            </span>
-
-            <input
-              className="audio-topbar-range"
-              type="range"
-              min="0"
-              max={audioDuration || 0}
-              step="0.01"
-              value={audioProgress}
-              onChange={seekAudio}
-            />
-
-            <span className="audio-topbar-time">
-              {formatDuration(audioDuration)}
-            </span>
-          </div>
-        </div>
-
-        <div className="audio-topbar-actions">
-          <button
-            type="button"
-            className={[
-              "audio-topbar-button",
-              "audio-topbar-mute",
-              audioMuted ? "is-active" : ""
-            ].join(" ")}
-            onClick={() =>
-              setAudioMuted((value) => !value)
-            }
-            aria-label={
-              audioMuted
-                ? "Включить звук"
-                : "Выключить звук"
-            }
-          />
-
-          <button
-            type="button"
-            className="audio-topbar-speed"
-            onClick={toggleAudioSpeed}
-            aria-label="Скорость"
-          >
-            {audioSpeed}x
-          </button>
-
-          <button
-            type="button"
-            className={[
-              "audio-topbar-button",
-              "audio-topbar-repeat",
-              audioRepeat ? "is-active" : ""
-            ].join(" ")}
-            onClick={() =>
-              setAudioRepeat((value) => !value)
-            }
-            aria-label="Повтор"
-          />
-
-          <button
-            type="button"
-            className="audio-topbar-button audio-topbar-close"
-            onClick={resetAudio}
-            aria-label="Закрыть"
-          />
-        </div>
-      </div>,
-      document.body
-    );
-  }
-
-  function renderAudio() {
-    return (
-      <>
-        <div className="message-audio">
-          <button
-            type="button"
-            className={[
-              "audio-play-button",
-              audioPlaying ? "is-playing" : ""
-            ].join(" ")}
-            onClick={toggleAudio}
-            aria-label={
-              audioPlaying
-                ? "Пауза"
-                : "Воспроизвести"
-            }
-          />
-
-          <div className="audio-main">
-            <div className="audio-title">
-              {attachment.name || "Аудио"}
-            </div>
-
-            {!audioStarted && (
-              <div className="audio-meta">
-                <span>
-                  {formatDuration(audioDuration)}
-                </span>
-
-                {attachmentSizeText && (
-                  <span>
-                    {attachmentSizeText}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {audioStarted && (
-              <div className="audio-progress-wrap">
-                <input
-                  className="audio-range"
-                  type="range"
-                  min="0"
-                  max={audioDuration || 0}
-                  step="0.01"
-                  value={audioProgress}
-                  onChange={seekAudio}
-                />
-
-                <div className="audio-progress-meta">
-                  <span>
-                    {formatDuration(audioProgress)}
-                  </span>
-
-                  <span>
-                    {formatDuration(audioDuration)}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-      </>
-    );
-  }
-
-    function renderFile() {
-    const fileName =
-      attachment.name || t.file || "Файл";
-
-    const fileKind =
-      getFileKind(fileName);
-
-    const fileLabel =
-      getFileLabel(fileName);
-
-    return (
-      <a
-        className="message-file"
-        href={fileUrl}
-        target="_blank"
-        rel="noreferrer"
-        download={fileName}
-        onClick={(e) =>
-          e.stopPropagation()
-        }
-      >
-        <div
-          className={[
-            "message-file-icon",
-            `file-kind-${fileKind}`
-          ].join(" ")}
-        >
-          <FileIcon />
-
-          <span className="message-file-label">
-            {fileLabel}
-          </span>
-        </div>
-
-        <div className="message-file-info">
-          <div className="message-file-name">
-            {fileName}
-          </div>
-
-          <div className="message-file-size">
-            {formatFileSize(attachment.size)}
-          </div>
-        </div>
-      </a>
-    );
-  }
-
-  function renderViewer() {
-    if (!viewerOpen) {
-      return null;
-    }
-
-    return createPortal(
-      <div
-        className="media-viewer"
-        onClick={() =>
-          setViewerOpen(false)
-        }
-      >
-        <div className="media-viewer-top">
-          <div className="media-viewer-title">
-            {attachment.name || ""}
-          </div>
-
-          <div className="media-viewer-actions">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadFile();
-              }}
-            >
-              ↓
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewerOpen(false);
-              }}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="media-viewer-body"
-          onClick={(e) =>
-            e.stopPropagation()
-          }
-        >
-          {isPhoto && (
-            <img
-              src={fileUrl}
-              alt={attachment.name || ""}
-              className="media-viewer-img"
-            />
-          )}
-
-          {isVideo && (
-            <video
-              src={fileUrl}
-              className="media-viewer-video"
-              controls
-              autoPlay
-              playsInline
-              loop
-              style={{
-                "--video-ratio": videoRatio
-              }}
-              onLoadedMetadata={handleVideoMetadata}
-            />
-          )}
-        </div>
-      </div>,
-      document.body
     );
   }
 
@@ -1673,48 +533,43 @@ function Message({
         onTouchMove={clearLongPress}
         onTouchCancel={clearLongPress}
       >
-                {message.replyTo?.messageId && (
-          <button
-            type="button"
-            className="message-reply"
-            onClick={scrollToReplyMessage}
-          >
-            <div className="message-reply-author">
-              {message.replyTo.from}
-            </div>
-
-            <div className="message-reply-text">
-              {getReplyPreview(message.replyTo)}
-            </div>
-          </button>
-        )}
+        <MessageReply
+          message={message}
+          t={t}
+        />
 
         {isPhoto && renderPhoto()}
 
         {isVideo && renderVideo()}
 
-        {isAudio && renderAudio()}
+        {isAudio && (
+          <MessageAudio
+            attachment={attachment}
+            audioPlaying={audioPlaying}
+            audioStarted={audioStarted}
+            audioProgress={audioProgress}
+            audioDuration={audioDuration}
+            attachmentSizeText={attachmentSizeText}
+            onToggle={toggleAudio}
+            onSeek={seekAudio}
+          />
+        )}
 
-        {isFile && renderFile()}
+        {isFile && (
+          <MessageFile
+            attachment={attachment}
+            fileUrl={fileUrl}
+            t={t}
+          />
+        )}
 
         {message.text && !isPhoto && !isVideo && (
-          <div className="message-text">
-            {renderTextWithLinks(message.text)}
-          </div>
+          <MessageText
+            value={message.text}
+          />
         )}
 
-        {!isPhoto && !isVideo && (
-          <div className="message-time">
-            {message.edited && (
-              <span className="message-edited">
-                {t.edited}
-              </span>
-            )}
-
-            {formatTime(message.createdAt)}
-            {renderStatus()}
-          </div>
-        )}
+        {renderMessageTime()}
       </div>
 
       {renderDesktopMenu()}
@@ -1730,12 +585,34 @@ function Message({
               e.stopPropagation()
             }
           >
-            {renderActions()}
+            <MessageActions
+              t={t}
+              message={message}
+              hasAttachment={hasAttachment}
+              canEdit={canEdit}
+              closeMenus={closeMenus}
+              copyMessage={copyMessage}
+              downloadFile={downloadFile}
+              onReply={onReply}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onPin={onPin}
+            />
           </div>
         </div>
       )}
 
-      {renderViewer()}
+      <MessageViewer
+        open={viewerOpen}
+        attachment={attachment || {}}
+        fileUrl={fileUrl}
+        isPhoto={isPhoto}
+        isVideo={isVideo}
+        videoRatio={videoRatio}
+        onClose={closeViewer}
+        onDownload={downloadFile}
+        onVideoMetadata={handleVideoMetadata}
+      />
     </>
   );
 }

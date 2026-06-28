@@ -7,6 +7,9 @@ from "../chat/Chat";
 import ModalsLayer
 from "../layers/ModalsLayer";
 
+import AudioPlayer
+from "../chat/AudioPlayer";
+
 export default function MessengerLayout({
   app
 }) {
@@ -58,6 +61,7 @@ export default function MessengerLayout({
         profileUser ? "has-profile-drawer" : ""
       ].join(" ")}
     >
+      <AudioPlayer />
       <Sidebar
         username={username}
         avatar={avatar}
