@@ -577,7 +577,9 @@ export default function useSocket({
           avatar:
             profile.avatar || "",
           bio:
-            profile.bio || ""
+            profile.bio || "",
+          displayName:
+            profile.displayName || ""
         };
 
       });

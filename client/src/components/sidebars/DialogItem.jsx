@@ -148,7 +148,10 @@ export default function DialogItem({
         "Группа"
       : isSavedMessages
         ? t.savedMessages
-        : dialog.username;
+        : dialog.displayName?.trim() ||
+          dialog.name?.trim() ||
+          dialog.title?.trim() ||
+          dialog.username;
 
   const lastAttachment =
     dialog.lastMessageAttachment ||

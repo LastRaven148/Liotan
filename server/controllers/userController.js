@@ -262,7 +262,7 @@ async function searchUsers(req, res, next) {
             }
           ]
         },
-        "username avatar bio"
+        "username displayName avatar bio"
       );
 
     if (exact) {
@@ -286,7 +286,7 @@ async function searchUsers(req, res, next) {
             }
           ]
         },
-        "username avatar bio"
+        "username displayName avatar bio"
       ).limit(20);
 
     res.json(users);

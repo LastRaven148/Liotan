@@ -119,10 +119,15 @@ export default function ChatHeader({
   const title =
     isSavedMessages
       ? t.savedMessages
-      : activeDialog?.title ||
-        activeDialog?.name ||
-        activeDialog?.username ||
-        activeChat;
+      : isGroup
+        ? activeDialog?.title ||
+          activeDialog?.name ||
+          "Группа"
+        : activeDialog?.displayName?.trim() ||
+          activeDialog?.name?.trim() ||
+          activeDialog?.title?.trim() ||
+          activeDialog?.username ||
+          activeChat;
 
   const subtitle =
     isGroup

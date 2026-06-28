@@ -72,10 +72,17 @@ async function updateProfile(req, res, next) {
         ? req.body.bio.trim()
         : "";
 
+    const hasDisplayName =
+      Object.prototype.hasOwnProperty.call(
+        req.body,
+        "displayName"
+      );
+
     const displayName =
+      hasDisplayName &&
       typeof req.body.displayName === "string"
         ? req.body.displayName.trim()
-        : "";
+        : undefined;
 
     if (!isValidBio(bio)) {
       return res.status(400).json({
@@ -83,19 +90,28 @@ async function updateProfile(req, res, next) {
       });
     }
 
-    if (!isValidDisplayName(displayName)) {
+    if (
+      hasDisplayName &&
+      !isValidDisplayName(displayName)
+    ) {
       return res.status(400).json({
         error: "invalid display name"
       });
     }
 
+    const update = {
+      bio
+    };
+
+    if (hasDisplayName) {
+      update.displayName =
+        displayName || "";
+    }
+
     const user =
       await User.findOneAndUpdate(
         { username },
-        {
-          bio,
-          displayName
-        },
+        update,
         {
           returnDocument: "after",
           fields: "username displayName avatar bio"

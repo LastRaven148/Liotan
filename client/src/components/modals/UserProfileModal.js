@@ -203,7 +203,8 @@ export default function UserProfileModal({
       ? profile.title ||
         profile.name ||
         "Группа"
-      : profile.username;
+      : profile.displayName?.trim() ||
+        profile.username;
 
   const members =
     profile.memberUsers || [];
@@ -567,7 +568,7 @@ export default function UserProfileModal({
                         className="avatar-image"
                       />
                     ) : (
-                      item.username
+                      (item.displayName?.trim() || item.username)
                         .charAt(0)
                         .toUpperCase()
                     )}
@@ -575,7 +576,7 @@ export default function UserProfileModal({
 
                   <div>
                     <div className="profile-info-main">
-                      {item.username}
+                      {item.displayName?.trim() || item.username}
                     </div>
 
                     <div className="profile-info-sub">
@@ -612,7 +613,7 @@ export default function UserProfileModal({
                         className="avatar-image"
                       />
                     ) : (
-                      member.username
+                      (member.displayName?.trim() || member.username)
                         .charAt(0)
                         .toUpperCase()
                     )}
@@ -620,7 +621,7 @@ export default function UserProfileModal({
 
                   <div>
                     <div className="profile-info-main">
-                      {member.username}
+                      {member.displayName?.trim() || member.username}
                     </div>
 
                     <div className="profile-info-sub">

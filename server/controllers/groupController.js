@@ -50,7 +50,7 @@ async function serializeGroup(group) {
           $in: data.members || []
         }
       },
-      "username avatar bio lastSeen"
+      "username displayName avatar bio lastSeen"
     );
 
   const sortedUsers =
