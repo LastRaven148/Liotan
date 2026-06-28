@@ -191,9 +191,10 @@ export default function MessageActions({
       <button
         type="button"
         className="danger"
-        onClick={() => {
-          closeMenus();
-          onDelete(message);
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete?.();
         }}
       >
         <IconSlot name="delete" />

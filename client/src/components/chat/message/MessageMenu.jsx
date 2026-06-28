@@ -54,9 +54,10 @@ export default function MessageMenu({
       {canDelete && (
         <button
           className="danger"
-          onClick={() => {
-            onDelete();
-            onClose();
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete?.();
           }}
         >
           <span>🗑</span>

@@ -211,7 +211,9 @@ function Message({
     setAudioDuration
   ]);
 
-  function requestDeleteMessage() {
+  function requestDeleteMessage(e) {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
     closeMenus();
     setDeleteForEveryone(false);
     setDeleteConfirmOpen(true);
