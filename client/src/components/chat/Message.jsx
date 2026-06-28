@@ -211,6 +211,25 @@ function Message({
     setAudioDuration
   ]);
 
+  function requestDeleteMessage() {
+    closeMenus();
+    setDeleteForEveryone(false);
+    setDeleteConfirmOpen(true);
+  }
+
+  function cancelDeleteMessage() {
+    setDeleteConfirmOpen(false);
+    setDeleteForEveryone(false);
+  }
+
+  function confirmDeleteMessage() {
+    setDeleteConfirmOpen(false);
+    onDelete?.(message, {
+      forEveryone: deleteForEveryone
+    });
+    setDeleteForEveryone(false);
+  }
+
   function renderStatus() {
     if (!isMine) {
       return null;
