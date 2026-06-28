@@ -2,21 +2,21 @@
   width:100vw !important;
   height:100vh !important;
   display:grid !important;
-  grid-template-columns:clamp(240px, 20vw, 320px) minmax(0, 1fr) 0 !important;
+  grid-template-columns:320px minmax(0, 1fr) 0 !important;
   background:#0e1621;
   overflow:hidden;
 }
 
 .app.has-profile-drawer{
-  grid-template-columns:clamp(240px, 20vw, 320px) minmax(0, 1fr) clamp(300px, 24vw, 360px) !important;
+  grid-template-columns:320px minmax(0, 1fr) 360px !important;
 }
 
 .app > .sidebar{
   grid-column:1 !important;
   grid-row:1 !important;
-  width:100% !important;
-  min-width:0 !important;
-  max-width:none !important;
+  width:320px !important;
+  min-width:320px !important;
+  max-width:320px !important;
   height:100vh !important;
   position:relative !important;
   inset:auto !important;
@@ -41,9 +41,9 @@
 .app > .profile-drawer{
   grid-column:3 !important;
   grid-row:1 !important;
-  width:100% !important;
-  min-width:0 !important;
-  max-width:none !important;
+  width:360px !important;
+  min-width:360px !important;
+  max-width:360px !important;
   height:100vh !important;
   position:relative !important;
   inset:auto !important;
@@ -52,6 +52,37 @@
 
 .app:not(.has-profile-drawer) > .profile-drawer{
   display:none !important;
+}
+
+@media (max-width:1180px) and (min-width:769px){
+  .app{
+    grid-template-columns:320px minmax(0, 1fr) 0 !important;
+  }
+
+  .app.has-profile-drawer{
+    grid-template-columns:320px minmax(0, 1fr) !important;
+  }
+
+  .app > .profile-drawer{
+    position:fixed !important;
+    top:0 !important;
+    right:0 !important;
+    bottom:0 !important;
+    left:auto !important;
+    width:360px !important;
+    min-width:360px !important;
+    max-width:360px !important;
+    height:100vh !important;
+    z-index:20 !important;
+    transform:translateX(100%) !important;
+    transition:transform .22s ease !important;
+    box-shadow:-18px 0 45px rgba(0,0,0,.35) !important;
+  }
+
+  .app.has-profile-drawer > .profile-drawer{
+    display:block !important;
+    transform:translateX(0) !important;
+  }
 }
 
 .empty{
