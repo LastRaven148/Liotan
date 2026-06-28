@@ -6,6 +6,7 @@ import Composer from "./Composer";
 
 import {
   memo,
+  useEffect,
   useRef,
   useState
 } from "react";
@@ -118,20 +119,61 @@ const Chat = memo(function Chat({
     sendMessage
   });
 
-  useChatScroll({
+  const [cachedChat, setCachedChat] =
+    useState(null);
+
+  useEffect(() => {
+    if (!activeChat) {
+      return;
+    }
+
+    setCachedChat({
+      activeChat,
+      activeDialog,
+      messages
+    });
+  }, [
     activeChat,
-    messages,
+    activeDialog,
+    messages
+  ]);
+
+  const renderedActiveChat =
+    activeChat || cachedChat?.activeChat || null;
+
+  const renderedActiveDialog =
+    activeChat
+      ? activeDialog
+      : cachedChat?.activeDialog || null;
+
+  const renderedMessages =
+    activeChat
+      ? messages
+      : cachedChat?.messages || [];
+
+  const chatVisible =
+    Boolean(activeChat);
+
+  useChatScroll({
+    activeChat: renderedActiveChat,
+    messages: renderedMessages,
     messagesRef
   });
 
   return (
     <div className="chat">
 
-      {activeChat ? (
-        <>
+      {renderedActiveChat ? (
+        <div
+          className={[
+            "chat-content",
+            chatVisible ? "is-active" : "is-hidden"
+          ].join(" ")}
+          aria-hidden={chatVisible ? undefined : "true"}
+        >
           <ChatHeader
-            activeChat={activeChat}
-            activeDialog={activeDialog}
+            activeChat={renderedActiveChat}
+            activeDialog={renderedActiveDialog}
             onlineUsers={onlineUsers}
             typingUsers={typingUsers}
             openProfile={openProfile}
@@ -146,7 +188,7 @@ const Chat = memo(function Chat({
           />
 
           <MessageList
-            messages={messages}
+            messages={renderedMessages}
             t={t}
             username={username}
             messagesRef={messagesRef}
@@ -177,12 +219,14 @@ const Chat = memo(function Chat({
             onSendClick={handleSendClick}
             onKeyDown={handleComposerKeyDown}
           />
-        </>
-      ) : (
+        </div>
+      ) : null}
+
+      {!chatVisible ? (
         <div className="empty">
           {t.selectChat}
         </div>
-      )}
+      ) : null}
 
       <AttachmentDraftModal
         attachmentDraft={attachmentDraft}
