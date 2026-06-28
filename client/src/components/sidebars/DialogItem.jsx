@@ -12,6 +12,77 @@ import {
 
 import { mediaUrl } from "../../utils/mediaUrl";
 
+function DialogMenuIcon({ name }) {
+  const common = {
+    width: "18",
+    height: "18",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg",
+    "aria-hidden": "true"
+  };
+
+  switch (name) {
+    case "pin":
+      return (
+        <svg {...common}>
+          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "unpin":
+      return (
+        <svg {...common}>
+          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M4 4L20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "archive":
+      return (
+        <svg {...common}>
+          <path d="M5 8H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M7 8L8 20H16L17 8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M6 4H18L19 8H5L6 4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M12 11V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M9.5 13.5L12 16L14.5 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "unarchive":
+      return (
+        <svg {...common}>
+          <path d="M5 8H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M7 8L8 20H16L17 8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M6 4H18L19 8H5L6 4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M12 17V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M9.5 14.5L12 12L14.5 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "delete":
+      return (
+        <svg {...common}>
+          <path d="M5 7H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M10 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M14 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M8 7L8.7 19C8.8 20.1 9.7 21 10.8 21H13.2C14.3 21 15.2 20.1 15.3 19L16 7" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M9.5 7V5.5C9.5 4.7 10.2 4 11 4H13C13.8 4 14.5 4.7 14.5 5.5V7" stroke="currentColor" strokeWidth="2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function DialogIconSlot({ name }) {
+  return (
+    <span className="menu-icon" aria-hidden="true">
+      <DialogMenuIcon name={name} />
+    </span>
+  );
+}
+
 export default function DialogItem({
   dialog,
   activeChat,
@@ -399,7 +470,7 @@ export default function DialogItem({
                     type="button"
                     onClick={handlePin}
                   >
-                    <span>{isPinned ? "−" : "⌃"}</span>
+                    <DialogIconSlot name={isPinned ? "unpin" : "pin"} />
 
                     {isPinned
                       ? t.unpinChat
@@ -410,7 +481,7 @@ export default function DialogItem({
                     type="button"
                     onClick={handleArchive}
                   >
-                    <span>□</span>
+                    <DialogIconSlot name={isArchived || showArchive ? "unarchive" : "archive"} />
 
                     {isArchived || showArchive
                       ? t.unarchiveChat
@@ -422,7 +493,7 @@ export default function DialogItem({
                     className="danger"
                     onClick={handleDelete}
                   >
-                    <span>×</span>
+                    <DialogIconSlot name="delete" />
                     {t.deleteChat}
                   </button>
                 </>
@@ -434,7 +505,7 @@ export default function DialogItem({
                     type="button"
                     onClick={handlePin}
                   >
-                    <span>{isPinned ? "−" : "⌃"}</span>
+                    <DialogIconSlot name={isPinned ? "unpin" : "pin"} />
 
                     {isPinned
                       ? t.unpinChat
@@ -445,7 +516,7 @@ export default function DialogItem({
                     type="button"
                     onClick={handleArchive}
                   >
-                    <span>□</span>
+                    <DialogIconSlot name={isArchived || showArchive ? "unarchive" : "archive"} />
 
                     {isArchived || showArchive
                       ? t.unarchiveChat
@@ -460,7 +531,7 @@ export default function DialogItem({
                       setConfirmDelete(true);
                     }}
                   >
-                    <span>×</span>
+                    <DialogIconSlot name="delete" />
 
                     {dialog.owner === username
                       ? "Удалить группу"

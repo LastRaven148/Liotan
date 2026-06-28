@@ -316,3 +316,22 @@
 .user.active .dialog-preview{
   color:#d7dde5;
 }
+.dialog-context-menu.telegram-action-menu button .menu-icon{
+  width:22px;
+  min-width:22px;
+  height:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#8fa4b8;
+}
+
+.dialog-context-menu.telegram-action-menu button .menu-icon svg{
+  width:18px;
+  height:18px;
+  display:block;
+}
+
+.dialog-context-menu.telegram-action-menu button.danger .menu-icon{
+  color:#ff6b6b;
+}
