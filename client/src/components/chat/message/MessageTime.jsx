@@ -5,7 +5,7 @@ export default function MessageTime({
   className = ""
 }) {
   return (
-    <div
+    <span
       className={[
         "message-footer",
         className
@@ -22,6 +22,6 @@ export default function MessageTime({
       </span>
 
       {status}
-    </div>
+    </span>
   );
 }

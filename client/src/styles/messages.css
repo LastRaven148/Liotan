@@ -30,10 +30,43 @@
 
 .message-text{
   display:block;
+  position:relative;
   white-space:pre-wrap;
+  overflow-wrap:anywhere;
   word-break:break-word;
   line-height:1.36;
   font-size:14px;
+}
+
+.message-text-content{
+  white-space:inherit;
+}
+
+.message-text-with-footer{
+  padding-right:0;
+}
+
+.message-text-footer-slot{
+  display:inline-flex;
+  white-space:nowrap;
+  vertical-align:baseline;
+}
+
+.message-text-footer-inline .message-text-footer-slot{
+  margin-left:8px;
+}
+
+.message-text-footer-right .message-text-footer-slot{
+  position:absolute;
+  right:0;
+  bottom:-2px;
+}
+
+.message-text-footer-line .message-text-footer-slot{
+  display:flex;
+  justify-content:flex-end;
+  width:100%;
+  margin-top:1px;
 }
 
 .message-content{
@@ -61,10 +94,6 @@
 }
 
 .message-footer-inline{
-  float:right;
-  clear:right;
-  margin-left:8px;
-  margin-top:2px;
   transform:translateY(2px);
 }
 
