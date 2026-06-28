@@ -24,28 +24,28 @@ export default function useGlobalEsc({
 
   useEffect(() => {
 
-    function handleKeyDown(e) {
-
-      if (e.key !== "Escape") {
-        return;
-      }
-
-      const modalEscHandledAt =
-        window.__liotanModalEscHandledAt || 0;
-
-      if (
-        Date.now() - modalEscHandledAt < 250 ||
+    function hasBlockingModal() {
+      return (
         document.body.classList.contains("liotan-delete-modal-open") ||
         document.querySelector(".dialog-delete-modal-overlay") ||
         document.querySelector(".message-delete-modal-overlay") ||
         document.querySelector(".media-viewer") ||
         document.querySelector(".attachment-preview-overlay") ||
         document.querySelector(".mobile-action-overlay")
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
+      );
+    }
+
+    function handleKeyDown(e) {
+
+      if (e.key !== "Escape") {
         return;
       }
+
+      if (hasBlockingModal()) {
+        return;
+      }
+
+      e.preventDefault();
 
       if (profileMenu) {
         setProfileMenu(false);
@@ -80,13 +80,15 @@ export default function useGlobalEsc({
 
     window.addEventListener(
       "keydown",
-      handleKeyDown
+      handleKeyDown,
+      true
     );
 
     return () => {
       window.removeEventListener(
         "keydown",
-        handleKeyDown
+        handleKeyDown,
+        true
       );
     };
 
