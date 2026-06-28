@@ -1,8 +1,11 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState
 } from "react";
+
+import { createPortal } from "react-dom";
 
 import { avatarUrl } from "../../utils/avatarUrl";
 
@@ -119,6 +122,9 @@ export default function DialogItem({
   const longPressRef =
     useRef(null);
 
+  const dialogsScrollTopRef =
+    useRef(null);
+
   const chatKey =
     dialog.chatKey ||
     dialog.username;
@@ -167,6 +173,44 @@ export default function DialogItem({
     dialog.lastAttachmentUrl ||
     "";
 
+  const rememberDialogsScroll =
+    useCallback(() => {
+      const dialogsList =
+        itemRef.current?.closest?.(".dialogs-list");
+
+      if (dialogsList) {
+        dialogsScrollTopRef.current =
+          dialogsList.scrollTop;
+      }
+    }, []);
+
+  const restoreDialogsScroll =
+    useCallback(() => {
+      const scrollTop =
+        dialogsScrollTopRef.current;
+
+      if (typeof scrollTop !== "number") {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        const dialogsList =
+          itemRef.current?.closest?.(".dialogs-list") ||
+          document.querySelector(".dialogs-list");
+
+        if (dialogsList) {
+          dialogsList.scrollTop = scrollTop;
+        }
+      });
+    }, []);
+
+  const closeDeleteConfirm =
+    useCallback(() => {
+      setConfirmDelete(false);
+      setDeleteForEveryone(false);
+      restoreDialogsScroll();
+    }, [restoreDialogsScroll]);
+
   useEffect(() => {
 
     function handleEsc(e) {
@@ -179,8 +223,7 @@ export default function DialogItem({
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
-        setConfirmDelete(false);
-        setDeleteForEveryone(false);
+        closeDeleteConfirm();
         return;
       }
 
@@ -214,13 +257,14 @@ export default function DialogItem({
       }
 
       setMenuOpen(false);
-      setConfirmDelete(false);
+      closeDeleteConfirm();
 
     }
 
     window.addEventListener(
       "keydown",
-      handleEsc
+      handleEsc,
+      true
     );
 
     document.addEventListener(
@@ -237,7 +281,8 @@ export default function DialogItem({
 
       window.removeEventListener(
         "keydown",
-        handleEsc
+        handleEsc,
+        true
       );
 
       document.removeEventListener(
@@ -254,7 +299,8 @@ export default function DialogItem({
 
   }, [
     menuOpen,
-    confirmDelete
+    confirmDelete,
+    closeDeleteConfirm
   ]);
 
   function openMenu(e) {
@@ -303,6 +349,7 @@ export default function DialogItem({
 
     e.stopPropagation();
 
+    rememberDialogsScroll();
     setDeleteForEveryone(false);
     setConfirmDelete(true);
     setMenuOpen(false);
@@ -311,9 +358,10 @@ export default function DialogItem({
 
   function cancelDelete(e) {
 
-    e.stopPropagation();
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
 
-    setConfirmDelete(false);
+    closeDeleteConfirm();
 
   }
 
@@ -340,6 +388,7 @@ export default function DialogItem({
     setConfirmDelete(false);
     setDeleteForEveryone(false);
     setMenuOpen(false);
+    restoreDialogsScroll();
 
   }
 
@@ -517,6 +566,7 @@ export default function DialogItem({
                     className="danger"
                     onClick={(e) => {
                       e.stopPropagation();
+                      rememberDialogsScroll();
                       setDeleteForEveryone(false);
                       setConfirmDelete(true);
                       setMenuOpen(false);
@@ -535,7 +585,7 @@ export default function DialogItem({
         </div>
       )}
 
-      {confirmDelete && (
+      {confirmDelete && createPortal((
         <div
           className="dialog-delete-modal-overlay"
           onClick={cancelDelete}
@@ -594,12 +644,16 @@ export default function DialogItem({
                 className="dialog-delete-modal-danger"
                 onClick={confirmDeleteChat}
               >
-                {t.deleteChat || "Удалить чат"}
+                {isGroup
+                  ? dialog.owner === username
+                    ? "Удалить"
+                    : "Выйти"
+                  : t.deleteChat || "Удалить чат"}
               </button>
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       <div className="avatar">
         {isSavedMessages ? (
