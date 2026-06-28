@@ -31,6 +31,8 @@ export default function useGlobalEsc({
       }
 
       if (
+        document.querySelector(".dialog-delete-modal-overlay") ||
+        document.querySelector(".message-delete-modal-overlay") ||
         document.querySelector(".media-viewer") ||
         document.querySelector(".attachment-preview-overlay") ||
         document.querySelector(".mobile-action-overlay")

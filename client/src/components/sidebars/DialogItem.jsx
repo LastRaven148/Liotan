@@ -171,10 +171,24 @@ export default function DialogItem({
 
     function handleEsc(e) {
 
-      if (e.key === "Escape") {
-        setMenuOpen(false);
+      if (e.key !== "Escape") {
+        return;
+      }
+
+      if (confirmDelete) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
         setConfirmDelete(false);
-    setDeleteForEveryone(false);
+        setDeleteForEveryone(false);
+        return;
+      }
+
+      if (menuOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        setMenuOpen(false);
       }
 
     }
@@ -239,7 +253,8 @@ export default function DialogItem({
     };
 
   }, [
-    menuOpen
+    menuOpen,
+    confirmDelete
   ]);
 
   function openMenu(e) {

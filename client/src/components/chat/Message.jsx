@@ -232,6 +232,38 @@ function Message({
     setDeleteForEveryone(false);
   }
 
+  useEffect(() => {
+    if (!deleteConfirmOpen) {
+      return undefined;
+    }
+
+    function handleDeleteConfirmEsc(e) {
+      if (e.key !== "Escape") {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+      setDeleteConfirmOpen(false);
+      setDeleteForEveryone(false);
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleDeleteConfirmEsc,
+      true
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleDeleteConfirmEsc,
+        true
+      );
+    };
+  }, [deleteConfirmOpen]);
+
   function renderStatus() {
     if (!isMine) {
       return null;
