@@ -251,13 +251,13 @@ function Message({
     }
 
     return (
-      <div
-  className={[
-    "message-time",
-    isAudio ? "message-time-audio" : "",
-    isFile ? "message-time-file" : ""
-  ].join(" ")}
->
+  <div
+    className={[
+      "message-time",
+      isAudio ? "message-time-audio" : "",
+      isFile ? "message-time-file" : ""
+    ].join(" ")}
+  >
         {message.edited && (
           <span className="message-edited">
             {t.edited}
@@ -451,7 +451,7 @@ function requestDownloadFile() {
           canEdit={canEdit}
           closeMenus={closeMenus}
           copyMessage={copyMessage}
-          downloadFile={downloadFile}
+          downloadFile={requestDownloadFile}
           onReply={onReply}
           onEdit={onEdit}
           onDelete={onDelete}
@@ -619,6 +619,7 @@ function requestDownloadFile() {
               closeMenus={closeMenus}
               copyMessage={copyMessage}
               downloadFile={downloadFile}
+              downloadFile={requestDownloadFile}
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}

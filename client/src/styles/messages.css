@@ -242,23 +242,6 @@
   background:transparent;
 }
 
-.audio-message-time{
-  margin-top:2px;
-  transform:translateY(10px);
-}
-
-.me .message-file{
-  background:rgba(255,255,255,.1);
-}
-
-.message-file:hover{
-  background:rgba(0,0,0,.24);
-}
-
-.me .message-file:hover{
-  background:rgba(255,255,255,.15);
-}
-
 .message-file-icon{
   position:relative;
   width:46px;
@@ -442,4 +425,43 @@
   select{
     font-size:16px !important;
   }
+}
+
+.message.audio-message,
+.message.file-message{
+  padding-bottom:24px;
+}
+
+.message-time-audio,
+.message-time-file{
+  position:absolute;
+  right:9px;
+  bottom:6px;
+  float:none;
+  margin:0;
+  height:16px;
+  line-height:16px;
+}
+
+.message-file{
+  width:100%;
+  border:none;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  color:white;
+  text-decoration:none;
+  background:transparent;
+  padding:4px 2px 0;
+  border-radius:13px;
+  margin-bottom:0;
+  cursor:pointer;
+  font-family:inherit;
+  text-align:left;
+}
+
+.message-file:hover,
+.me .message-file,
+.me .message-file:hover{
+  background:transparent;
 }
