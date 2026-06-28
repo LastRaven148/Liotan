@@ -82,12 +82,30 @@ export default function AttachmentDraftModal({
   useEffect(() => {
 
     function handleKeyDown(e) {
-      if (e.key !== "Escape") {
+      if (!attachmentDraft.length) {
         return;
       }
 
-      e.preventDefault();
-      onClose?.();
+      if (e.key === "Escape") {
+        e.preventDefault();
+
+        if (!sendingDraft) {
+          onSend?.();
+        }
+
+        return;
+      }
+
+      if (
+        e.key === "Enter" &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+
+        if (!sendingDraft) {
+          onSend?.();
+        }
+      }
     }
 
     window.addEventListener(
@@ -103,7 +121,9 @@ export default function AttachmentDraftModal({
     };
 
   }, [
-    onClose
+    attachmentDraft.length,
+    sendingDraft,
+    onSend
   ]);
 
   if (!attachmentDraft.length) {
