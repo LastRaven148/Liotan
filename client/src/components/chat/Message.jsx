@@ -56,6 +56,9 @@ from "./message/MessageActions";
 import MessageViewer
 from "./message/MessageViewer";
 
+import DownloadConfirmModal
+from "./message/DownloadConfirmModal";
+
 const AUTO_CACHE_LIMIT =
   50 * 1024 * 1024;
 
@@ -76,6 +79,9 @@ function Message({
 
   const [videoRatio, setVideoRatio] =
     useState("16 / 9");
+
+  const [downloadConfirmOpen, setDownloadConfirmOpen] =
+    useState(false);
 
   const isMine =
     message.from === username;
@@ -245,7 +251,12 @@ function Message({
     }
 
     return (
-      <div className="message-time">
+      <div
+  className={[
+    "message-time",
+    isAudio ? "audio-message-time" : ""
+  ].join(" ")}
+>
         {message.edited && (
           <span className="message-edited">
             {t.edited}
@@ -271,45 +282,59 @@ function Message({
   }
 
   async function downloadFile() {
-    if (
-      !remoteUrl &&
-      !fileUrl
-    ) {
-      return;
-    }
+  const sourceUrl =
+    localUrl ||
+    fileUrl ||
+    remoteUrl;
 
-    try {
-      if (
-        hasAttachment &&
-        !isOfflineSaved &&
-        remoteUrl
-      ) {
-        await saveOffline();
-      }
-
-      const link =
-        document.createElement("a");
-
-      link.href =
-        localUrl ||
-        fileUrl ||
-        remoteUrl;
-
-      link.download =
-        attachment.name || "download";
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      console.error(err);
-
-      window.open(
-        fileUrl || remoteUrl,
-        "_blank"
-      );
-    }
+  if (!sourceUrl) {
+    return;
   }
+
+  try {
+    if (
+      hasAttachment &&
+      !isOfflineSaved &&
+      remoteUrl
+    ) {
+      await saveOffline();
+    }
+
+    const response =
+      await fetch(sourceUrl);
+
+    if (!response.ok) {
+      throw new Error("Download failed");
+    }
+
+    const blob =
+      await response.blob();
+
+    const blobUrl =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    link.href =
+      blobUrl;
+
+    link.download =
+      attachment.name || "download";
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function requestDownloadFile() {
+  setDownloadConfirmOpen(true);
+}
 
   function copyMessage() {
     if (message.text) {
@@ -556,12 +581,12 @@ function Message({
         )}
 
         {isFile && (
-          <MessageFile
-            attachment={attachment}
-            fileUrl={fileUrl}
-            t={t}
-          />
-        )}
+  <MessageFile
+    attachment={attachment}
+    t={t}
+    onDownloadRequest={requestDownloadFile}
+  />
+)}
 
         {message.text && !isPhoto && !isVideo && (
           <MessageText
@@ -613,6 +638,19 @@ function Message({
         onDownload={downloadFile}
         onVideoMetadata={handleVideoMetadata}
       />
+
+      <DownloadConfirmModal
+  open={downloadConfirmOpen}
+  fileName={attachment?.name}
+  fileSize={attachment?.size}
+  onCancel={() =>
+    setDownloadConfirmOpen(false)
+  }
+  onConfirm={() => {
+    setDownloadConfirmOpen(false);
+    downloadFile();
+  }}
+/>
     </>
   );
 }

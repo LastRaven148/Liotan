@@ -12,8 +12,8 @@ import {
 
 export default function MessageFile({
   attachment,
-  fileUrl,
-  t
+  t,
+  onDownloadRequest
 }) {
   const fileName =
     attachment.name || t.file || "Файл";
@@ -25,15 +25,13 @@ export default function MessageFile({
     getFileLabel(fileName);
 
   return (
-    <a
+    <button
+      type="button"
       className="message-file"
-      href={fileUrl}
-      target="_blank"
-      rel="noreferrer"
-      download={fileName}
-      onClick={(e) =>
-        e.stopPropagation()
-      }
+      onClick={(e) => {
+        e.stopPropagation();
+        onDownloadRequest?.();
+      }}
     >
       <div
         className={[
@@ -57,6 +55,6 @@ export default function MessageFile({
           {formatFileSize(attachment.size)}
         </div>
       </div>
-    </a>
+    </button>
   );
 }

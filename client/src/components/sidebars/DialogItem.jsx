@@ -371,7 +371,7 @@ export default function DialogItem({
 
     return (
       <div className="dialog-preview">
-        {dialog.lastMessage || ""}
+        {dialog.lastMessage || t.noMessages || "No messages yet"}
       </div>
     );
   }

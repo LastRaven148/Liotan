@@ -208,15 +208,34 @@
 }
 
 .message-file{
+  width:100%;
+  border:none;
   display:flex;
   align-items:center;
   gap:12px;
   color:white;
   text-decoration:none;
-  background:rgba(0,0,0,.16);
-  padding:9px 10px;
+  background:transparent;
+  padding:4px 2px 18px;
   border-radius:13px;
-  margin-bottom:4px;
+  margin-bottom:0;
+  cursor:pointer;
+  font-family:inherit;
+  text-align:left;
+}
+
+.message-file:hover{
+  background:transparent;
+}
+
+.me .message-file,
+.me .message-file:hover{
+  background:transparent;
+}
+
+.audio-message-time{
+  margin-top:2px;
+  transform:translateY(10px);
 }
 
 .me .message-file{
