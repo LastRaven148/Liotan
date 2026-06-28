@@ -570,6 +570,7 @@ function requestDownloadFile() {
               audioProgress={audioProgress}
               audioDuration={audioDuration}
               attachmentSizeText={attachmentSizeText}
+              footer={renderMessageTime("message-footer-compact")}
               onToggle={toggleAudio}
               onSeek={seekAudio}
             />
@@ -579,6 +580,7 @@ function requestDownloadFile() {
             <MessageFile
               attachment={attachment}
               t={t}
+              footer={renderMessageTime("message-footer-compact")}
               onDownloadRequest={requestDownloadFile}
             />
           )}
@@ -592,7 +594,7 @@ function requestDownloadFile() {
           {!hasAttachment && renderMessageTime("message-footer-inline")}
         </div>
 
-        {hasAttachment && !isPhoto && !isVideo && renderMessageTime("message-footer-block")}
+        {hasAttachment && !isPhoto && !isVideo && !isAudio && !isFile && renderMessageTime("message-footer-block")}
       </div>
 
       {renderDesktopMenu()}

@@ -13,6 +13,7 @@ import {
 export default function MessageFile({
   attachment,
   t,
+  footer,
   onDownloadRequest
 }) {
   const fileName =
@@ -51,8 +52,12 @@ export default function MessageFile({
           {fileName}
         </div>
 
-        <div className="message-file-size">
-          {formatFileSize(attachment.size)}
+        <div className="message-file-bottom">
+          <span className="message-file-size">
+            {formatFileSize(attachment.size)}
+          </span>
+
+          {footer}
         </div>
       </div>
     </button>

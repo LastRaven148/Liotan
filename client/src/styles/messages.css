@@ -76,7 +76,7 @@
 
 .message.audio-message,
 .message.file-message{
-  padding-bottom:6px;
+  padding-bottom:7px;
 }
 
 .message-edited,
@@ -228,7 +228,7 @@
 .message.file-message{
   min-width:280px;
   max-width:min(70%, 440px);
-  padding:7px 8px 24px;
+  padding:7px 8px 7px;
 }
 
 .message-file{
@@ -315,14 +315,31 @@
   white-space:nowrap;
 }
 
-.message-file-size{
+.message-file-bottom{
   margin-top:4px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+
+.message-file-size{
   color:#8da2b5;
   font-size:12px;
+  line-height:16px;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
 .me .message-file-size{
   color:#adc4d8;
+}
+
+.message-footer-compact{
+  margin-left:auto;
+  flex-shrink:0;
 }
 
 .mobile-action-overlay{
@@ -404,7 +421,7 @@
   .message.file-message{
     min-width:240px;
     max-width:88%;
-    padding-bottom:22px;
+    padding-bottom:7px;
   }
 
   .message-file-name{

@@ -9,6 +9,7 @@ export default function MessageAudio({
   audioProgress,
   audioDuration,
   attachmentSizeText,
+  footer,
   onToggle,
   onSeek
 }) {
@@ -58,6 +59,8 @@ export default function MessageAudio({
               {attachmentSizeText}
             </span>
           )}
+
+          {footer}
         </div>
       </div>
     </div>
