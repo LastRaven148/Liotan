@@ -34,18 +34,10 @@
   font-size:14px;
 }
 
-.message-text::after{
-  content:"";
-  display:inline-block;
-  width:58px;
-}
-
 .message-time{
-  position:absolute;
-  right:8px;
-  bottom:5px;
   height:16px;
-  margin:0;
+  margin-top:2px;
+  margin-left:auto;
   font-size:12px;
   line-height:16px;
   color:#7f91a4;
@@ -53,6 +45,7 @@
   pointer-events:none;
   user-select:none;
   -webkit-user-select:none;
+  text-align:right;
 }
 
 .me .message-time{
@@ -393,4 +386,26 @@
   select{
     font-size:16px !important;
   }
+}
+
+.message-inline-time{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  margin-left:7px;
+  font-size:12px;
+  line-height:1;
+  color:#7f91a4;
+  white-space:nowrap;
+  vertical-align:baseline;
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+.me .message-inline-time{
+  color:#adc4d8;
+}
+
+.message{
+  padding:7px 9px 6px;
 }
