@@ -63,6 +63,9 @@ async function getDialogs(
     const messages =
       await Message.find({
         chatType: "private",
+        deletedFor: {
+          $ne: username
+        },
         $or: [
           { from: username },
           { to: username }

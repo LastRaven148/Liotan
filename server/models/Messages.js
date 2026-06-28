@@ -92,6 +92,11 @@ const messageSchema =
         default: []
       },
 
+      deletedFor: {
+        type: [String],
+        default: []
+      },
+
       edited: {
         type: Boolean,
         default: false

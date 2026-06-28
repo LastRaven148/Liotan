@@ -21,7 +21,10 @@ function registerDeletePrivateChat({
 
   socket.on(
     "deleteChat",
-    async ({ user2 }) => {
+    async ({
+      user2,
+      forEveryone = true
+    }) => {
 
       try {
 
@@ -37,6 +40,34 @@ function registerDeletePrivateChat({
             user1,
             user2
           );
+
+        if (!forEveryone) {
+          await Message.updateMany(
+            {
+              chatType: {
+                $ne: "group"
+              },
+              chatId
+            },
+            {
+              $addToSet: {
+                deletedFor: user1
+              }
+            }
+          );
+
+          socket.emit(
+            "chatDeleted",
+            {
+              chatId,
+              user1,
+              user2,
+              forUserOnly: true
+            }
+          );
+
+          return;
+        }
 
         const messages =
           await Message.find({
@@ -69,7 +100,8 @@ function registerDeletePrivateChat({
           payload: {
             chatId,
             user1,
-            user2
+            user2,
+            forEveryone: true
           }
         });
 

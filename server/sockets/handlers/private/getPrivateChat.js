@@ -41,7 +41,10 @@ function registerGetPrivateChat(socket) {
             chatType: {
               $ne: "group"
             },
-            chatId
+            chatId,
+            deletedFor: {
+              $ne: user1
+            }
           }).sort({
             createdAt: 1
           });

@@ -332,7 +332,10 @@ export default function useChat({
     }
   }
 
-  function deleteChat(chat = activeChat) {
+  function deleteChat(
+    chat = activeChat,
+    options = {}
+  ) {
     if (!socketRef.current || !chat) return;
 
     const dialog = dialogs?.find(item =>
@@ -346,7 +349,11 @@ export default function useChat({
 
     socketRef.current.emit(
       SOCKET_EVENTS.DELETE_CHAT,
-      { user2: chat }
+      {
+        user2: chat,
+        forEveryone:
+          options.forEveryone !== false
+      }
     );
   }
 

@@ -107,6 +107,9 @@ export default function DialogItem({
   const [confirmDelete, setConfirmDelete] =
     useState(false);
 
+  const [deleteForEveryone, setDeleteForEveryone] =
+    useState(false);
+
   const menuRef =
     useRef(null);
 
@@ -171,6 +174,7 @@ export default function DialogItem({
       if (e.key === "Escape") {
         setMenuOpen(false);
         setConfirmDelete(false);
+    setDeleteForEveryone(false);
       }
 
     }
@@ -284,11 +288,9 @@ export default function DialogItem({
 
     e.stopPropagation();
 
-    if (isGroup) {
-      return;
-    }
-
+    setDeleteForEveryone(false);
     setConfirmDelete(true);
+    setMenuOpen(false);
 
   }
 
@@ -312,10 +314,16 @@ export default function DialogItem({
 
       deleteGroupDialog(dialog);
     } else {
-      deleteChat(dialog.username);
+      deleteChat(
+        dialog.username,
+        {
+          forEveryone: deleteForEveryone
+        }
+      );
     }
 
     setConfirmDelete(false);
+    setDeleteForEveryone(false);
     setMenuOpen(false);
 
   }
@@ -429,41 +437,7 @@ export default function DialogItem({
           }
         >
 
-          {confirmDelete ? (
-            <div className="dialog-delete-confirm">
-              <div className="dialog-delete-title">
-                {t.deleteChat || "Удалить чат"}
-              </div>
-
-              <div className="dialog-delete-text">
-                {isGroup
-                  ? dialog.owner === username
-                    ? `Удалить группу ${displayName}?`
-                    : `Выйти из группы ${displayName}?`
-                  : isSavedMessages
-                    ? t.clearSavedMessages || "Очистить избранное?"
-                    : `${t.deleteChatConfirm || "Удалить чат с"} ${dialog.username}?`}
-              </div>
-
-              <div className="dialog-delete-actions">
-                <button
-                  type="button"
-                  onClick={cancelDelete}
-                >
-                  {t.cancel || "Отмена"}
-                </button>
-
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={confirmDeleteChat}
-                >
-                  {t.delete || "Удалить"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
+          <>
               {!isGroup && (
                 <>
                   <button
@@ -528,7 +502,9 @@ export default function DialogItem({
                     className="danger"
                     onClick={(e) => {
                       e.stopPropagation();
+                      setDeleteForEveryone(false);
                       setConfirmDelete(true);
+                      setMenuOpen(false);
                     }}
                   >
                     <DialogIconSlot name="delete" />
@@ -539,9 +515,74 @@ export default function DialogItem({
                   </button>
                 </>
               )}
-            </>
-          )}
+</>
 
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div
+          className="dialog-delete-modal-overlay"
+          onClick={cancelDelete}
+        >
+          <div
+            className="dialog-delete-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="dialog-delete-modal-title">
+              {isGroup
+                ? dialog.owner === username
+                  ? "Удалить группу"
+                  : "Выйти из группы"
+                : t.deleteChat || "Удалить чат"}
+            </div>
+
+            <div className="dialog-delete-modal-text">
+              {isGroup
+                ? dialog.owner === username
+                  ? `Вы точно хотите удалить группу ${displayName}?`
+                  : `Вы точно хотите выйти из группы ${displayName}?`
+                : `Вы точно хотите удалить чат с ${displayName}?`}
+            </div>
+
+            {!isGroup && !isSavedMessages && (
+              <label className="dialog-delete-checkbox-row">
+                <span className="dialog-delete-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={deleteForEveryone}
+                    onChange={(e) =>
+                      setDeleteForEveryone(e.target.checked)
+                    }
+                  />
+
+                  <span className="dialog-delete-checkbox-box" />
+                </span>
+
+                <span>
+                  Также удалить для {displayName}
+                </span>
+              </label>
+            )}
+
+            <div className="dialog-delete-modal-actions">
+              <button
+                type="button"
+                className="dialog-delete-modal-cancel"
+                onClick={cancelDelete}
+              >
+                {t.cancel || "Отмена"}
+              </button>
+
+              <button
+                type="button"
+                className="dialog-delete-modal-danger"
+                onClick={confirmDeleteChat}
+              >
+                {t.deleteChat || "Удалить чат"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
