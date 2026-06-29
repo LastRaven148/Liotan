@@ -27,6 +27,11 @@ const userSchema =
       default: false
     },
 
+    e2eePublicKey: {
+      type: Object,
+      default: null
+    },
+
     avatar: {
       type: String,
       default: ""

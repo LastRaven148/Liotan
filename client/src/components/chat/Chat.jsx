@@ -12,8 +12,8 @@ import {
 } from "react";
 
 import {
-  hasChatSecret,
-  setChatSecret
+  ensureConversationSecret,
+  hasChatSecret
 } from "../../utils/e2ee";
 
 import {
@@ -188,31 +188,71 @@ const Chat = memo(function Chat({
     };
   }, []);
 
-  function handleE2EESettings() {
+  function getConversationParticipants() {
+    if (!renderedActiveChat) {
+      return [];
+    }
+
+    if (renderedActiveDialog?.type === "group") {
+      const members = Array.isArray(renderedActiveDialog.members)
+        ? renderedActiveDialog.members
+        : Array.isArray(renderedActiveDialog.memberUsers)
+          ? renderedActiveDialog.memberUsers.map(user => user.username)
+          : [];
+
+      return [
+        ...new Set([
+          username,
+          ...members.filter(Boolean)
+        ])
+      ];
+    }
+
+    return [
+      username,
+      renderedActiveChat
+    ].filter(Boolean);
+  }
+
+  async function handleE2EESettings() {
     if (!renderedActiveChat) {
       return;
     }
 
-    const currentEnabled =
-      hasChatSecret(username, renderedActiveChat);
+    await ensureConversationSecret({
+      username,
+      chatKey: renderedActiveChat,
+      participants: getConversationParticipants()
+    });
 
-    const value = window.prompt(
-      currentEnabled
-        ? "E2EE включено. Введите новый общий ключ или оставьте пустым, чтобы выключить:"
-        : "Введите общий ключ E2EE для этого чата. Такой же ключ должен быть у собеседника:",
-      ""
-    );
+    setE2eeRevision(value => value + 1);
+  }
 
-    if (value === null) {
+  useEffect(() => {
+    if (!renderedActiveChat || !username) {
       return;
     }
 
-    setChatSecret(
+    let cancelled = false;
+
+    ensureConversationSecret({
       username,
-      renderedActiveChat,
-      value
-    );
-  }
+      chatKey: renderedActiveChat,
+      participants: getConversationParticipants()
+    }).then(() => {
+      if (!cancelled) {
+        setE2eeRevision(value => value + 1);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    username,
+    renderedActiveChat,
+    renderedActiveDialog
+  ]);
 
   useChatScroll({
     activeChat: renderedActiveChat,

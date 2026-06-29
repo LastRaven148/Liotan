@@ -160,8 +160,8 @@ export default function ChatHeader({
         ].filter(Boolean).join(" ")}
         title={
           e2eeEnabled
-            ? "E2EE включено"
-            : "Включить E2EE"
+            ? "E2EE ключ получен"
+            : "Получить E2EE ключ"
         }
         onClick={(e) => {
           e.preventDefault();
@@ -169,7 +169,7 @@ export default function ChatHeader({
           onE2EESettings?.();
         }}
       >
-        {e2eeEnabled ? "🔒" : "🔓"}
+        {e2eeEnabled ? "🔒" : "⏳"}
       </button>
     );
   }

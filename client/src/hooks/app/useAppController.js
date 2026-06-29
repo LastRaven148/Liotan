@@ -1,5 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API } from "../../config/api";
+
+import {
+  ensureE2EEIdentity
+} from "../../utils/e2ee";
 
 import useSocket from "../useSocket";
 import useProfile from "../useProfile";
@@ -130,6 +134,20 @@ export default function useAppController() {
   socketRef,
   API
 });
+
+
+  useEffect(() => {
+    if (!token || !username) {
+      return;
+    }
+
+    ensureE2EEIdentity(username).catch(err => {
+      console.warn("E2EE identity init failed", err);
+    });
+  }, [
+    token,
+    username
+  ]);
 
   useAppInitialization({
     token,

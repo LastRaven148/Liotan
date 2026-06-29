@@ -7,6 +7,9 @@ const User =
 const Message =
   require("../models/Messages");
 
+const E2EEKey =
+  require("../models/E2EEKey");
+
 const uploadToCloudinary =
   require("../utils/uploadToCloudinary");
 
@@ -587,6 +590,11 @@ async function removeGroupMember(
       }
     );
 
+    await E2EEKey.deleteOne({
+      conversationId: chatKey,
+      user: member
+    });
+
     const serialized =
   await serializeGroup(group);
 
@@ -659,6 +667,11 @@ async function leaveGroup(
         }
       }
     );
+
+    await E2EEKey.deleteOne({
+      conversationId: chatKey,
+      user: username
+    });
 
     const serialized =
   await serializeGroup(group);
@@ -742,6 +755,10 @@ async function deleteGroup(
 
     await Group.deleteOne({
       _id: group._id
+    });
+
+    await E2EEKey.deleteMany({
+      conversationId: chatKey
     });
     
     emitGroupDeleted(

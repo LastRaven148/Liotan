@@ -18,6 +18,8 @@ export default function SettingsModal({
   bio,
   saveProfile,
   uploadAvatar,
+  sendBindEmailCode,
+  bindEmail,
   logout,
   deleteAccount,
   onClose
@@ -62,6 +64,31 @@ export default function SettingsModal({
   const [
     confirmDelete,
     setConfirmDelete
+  ] = useState(false);
+
+  const [
+    emailBinding,
+    setEmailBinding
+  ] = useState(false);
+
+  const [
+    emailBindStep,
+    setEmailBindStep
+  ] = useState("email");
+
+  const [
+    emailBindValue,
+    setEmailBindValue
+  ] = useState("");
+
+  const [
+    emailBindCode,
+    setEmailBindCode
+  ] = useState("");
+
+  const [
+    emailBindLoading,
+    setEmailBindLoading
   ] = useState(false);
 
   useEffect(() => {
@@ -177,6 +204,73 @@ export default function SettingsModal({
     );
   }
 
+
+  function closeEmailBinding() {
+    setEmailBinding(false);
+    setEmailBindStep("email");
+    setEmailBindValue("");
+    setEmailBindCode("");
+    setEmailBindLoading(false);
+  }
+
+  async function handleSendBindEmailCode() {
+    if (
+      emailBindLoading ||
+      !emailBindValue.trim()
+    ) {
+      return;
+    }
+
+    setEmailBindLoading(true);
+
+    try {
+      const result =
+        await sendBindEmailCode?.(
+          emailBindValue.trim()
+        );
+
+      if (!result) {
+        return;
+      }
+
+      if (result.devCode) {
+        setEmailBindCode(
+          result.devCode
+        );
+      }
+
+      setEmailBindStep("code");
+    } finally {
+      setEmailBindLoading(false);
+    }
+  }
+
+  async function handleConfirmBindEmail() {
+    if (
+      emailBindLoading ||
+      !emailBindValue.trim() ||
+      !emailBindCode.trim()
+    ) {
+      return;
+    }
+
+    setEmailBindLoading(true);
+
+    try {
+      const ok =
+        await bindEmail?.(
+          emailBindValue.trim(),
+          emailBindCode.trim()
+        );
+
+      if (ok) {
+        closeEmailBinding();
+      }
+    } finally {
+      setEmailBindLoading(false);
+    }
+  }
+
   async function handleDeleteAccount() {
     if (!confirmDelete) {
       setConfirmDelete(true);
@@ -184,6 +278,108 @@ export default function SettingsModal({
     }
 
     await deleteAccount?.();
+  }
+
+
+  if (emailBinding) {
+    return (
+      <div
+        className="drawer-overlay drawer-overlay-left"
+        onClick={onClose}
+      >
+        <aside
+          className="settings-drawer"
+          onClick={(e) =>
+            e.stopPropagation()
+          }
+        >
+          <div className="drawer-topbar">
+            <button
+              type="button"
+              className="drawer-icon-button"
+              onClick={closeEmailBinding}
+            >
+              ←
+            </button>
+
+            <div className="drawer-title">
+              Добавить почту
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-field-label">
+              Почта
+            </div>
+
+            <input
+              className="settings-name-input"
+              type="email"
+              value={emailBindValue}
+              onChange={(e) =>
+                setEmailBindValue(e.target.value)
+              }
+              placeholder="example@mail.com"
+              disabled={
+                emailBindStep === "code" ||
+                emailBindLoading
+              }
+            />
+
+            {emailBindStep === "code" && (
+              <>
+                <div className="settings-field-label">
+                  Код из письма
+                </div>
+
+                <input
+                  className="settings-name-input"
+                  inputMode="numeric"
+                  value={emailBindCode}
+                  onChange={(e) =>
+                    setEmailBindCode(e.target.value)
+                  }
+                  placeholder="123456"
+                  maxLength={6}
+                  disabled={emailBindLoading}
+                />
+              </>
+            )}
+
+            <button
+              type="button"
+              className="settings-primary-button"
+              onClick={
+                emailBindStep === "email"
+                  ? handleSendBindEmailCode
+                  : handleConfirmBindEmail
+              }
+              disabled={emailBindLoading}
+            >
+              {emailBindLoading
+                ? "..."
+                : emailBindStep === "email"
+                  ? "Отправить код"
+                  : "Привязать почту"}
+            </button>
+
+            {emailBindStep === "code" && (
+              <button
+                type="button"
+                className="settings-secondary-button"
+                onClick={() => {
+                  setEmailBindStep("email");
+                  setEmailBindCode("");
+                }}
+                disabled={emailBindLoading}
+              >
+                Изменить почту
+              </button>
+            )}
+          </div>
+        </aside>
+      </div>
+    );
   }
 
   if (editing) {
@@ -361,6 +557,23 @@ export default function SettingsModal({
               {language === "en"
                 ? t.english || "English"
                 : t.russian || "Русский"}
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="settings-row button-row"
+            onClick={() =>
+              setEmailBinding(true)
+            }
+          >
+            <span>@</span>
+
+            <div className="settings-row-main">
+              Добавить почту
+              <div className="settings-row-sub">
+                Для входа и восстановления пароля
+              </div>
             </div>
           </button>
         </div>

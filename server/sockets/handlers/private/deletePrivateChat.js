@@ -14,6 +14,9 @@ const emitToChatUsers =
 const deleteMessageAttachments =
   require("../../services/deleteMessageAttachments");
 
+const E2EEKey =
+  require("../../../models/E2EEKey");
+
 function registerDeletePrivateChat({
   io,
   socket
@@ -90,6 +93,10 @@ function registerDeletePrivateChat({
             $ne: "group"
           },
           chatId
+        });
+
+        await E2EEKey.deleteMany({
+          conversationId: chatId
         });
 
         emitToChatUsers({

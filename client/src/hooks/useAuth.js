@@ -8,6 +8,8 @@ import {
   sendAuthEmailCode,
   verifyAuthEmailCode,
   resetPasswordApi,
+  sendBindEmailCodeApi,
+  bindEmailApi,
   deleteAccountApi
 } from "../services/api";
 
@@ -249,6 +251,64 @@ export default function useAuth({
 
   }
 
+
+  async function sendBindEmailCode(emailValue) {
+
+    try {
+
+      const result =
+        await sendBindEmailCodeApi(
+          emailValue
+        );
+
+      showToast(
+        result?.sent
+          ? "Code sent"
+          : "Mail is not configured. Code is in server logs."
+      );
+
+      return result;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return null;
+    }
+
+  }
+
+  async function bindEmail(
+    emailValue,
+    codeValue
+  ) {
+
+    try {
+
+      await bindEmailApi(
+        emailValue,
+        codeValue
+      );
+
+      showToast(
+        "Email linked"
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to link email"
+      );
+
+      return false;
+    }
+
+  }
+
   async function resetPassword() {
 
     try {
@@ -352,6 +412,8 @@ export default function useAuth({
     sendResetCode,
     verifyResetCode,
     resetPassword,
+    sendBindEmailCode,
+    bindEmail,
     logout,
     deleteAccount
   };

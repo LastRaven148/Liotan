@@ -436,3 +436,35 @@
   font-family:inherit;
   font-size:14px;
 }
+.settings-primary-button,
+.settings-secondary-button{
+  width:100%;
+  min-height:42px;
+  margin-top:12px;
+  border:none;
+  border-radius:10px;
+  font-family:inherit;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.settings-primary-button{
+  background:#3390ec;
+  color:#ffffff;
+}
+
+.settings-primary-button:disabled,
+.settings-secondary-button:disabled{
+  opacity:.65;
+  cursor:default;
+}
+
+.settings-secondary-button{
+  background:transparent;
+  color:#3390ec;
+}
+
+.settings-secondary-button:hover{
+  background:#243342;
+}

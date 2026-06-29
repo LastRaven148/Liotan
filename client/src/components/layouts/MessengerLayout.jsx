@@ -43,6 +43,8 @@ export default function MessengerLayout({
     bio,
     saveBio,
     deleteAccount,
+    sendBindEmailCode,
+    bindEmail,
     createGroupOpen,
     setCreateGroupOpen,
     addGroup,

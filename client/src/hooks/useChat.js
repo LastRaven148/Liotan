@@ -8,7 +8,9 @@ import {
 import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { uploadAttachmentApi } from "../services/api";
-import { encryptTextForChat } from "../utils/e2ee";
+import {
+  encryptTextForChat
+} from "../utils/e2ee";
 
 export default function useChat({
   username,
@@ -191,6 +193,34 @@ export default function useChat({
     setTextState("");
   }
 
+
+  function getConversationParticipants(target) {
+    const dialog = dialogs?.find(item =>
+      item.chatKey === target ||
+      item.username === target
+    );
+
+    if (dialog?.type === "group") {
+      const members = Array.isArray(dialog.members)
+        ? dialog.members
+        : Array.isArray(dialog.memberUsers)
+          ? dialog.memberUsers.map(user => user.username)
+          : [];
+
+      return [
+        ...new Set([
+          username,
+          ...members.filter(Boolean)
+        ])
+      ];
+    }
+
+    return [
+      username,
+      target
+    ].filter(Boolean);
+  }
+
   async function emitMessage({
     target,
     messageText = "",
@@ -208,6 +238,7 @@ export default function useChat({
     const encryptedText = await encryptTextForChat({
       username,
       chatKey: target,
+      participants: getConversationParticipants(target),
       text: messageText
     });
 
@@ -251,11 +282,18 @@ export default function useChat({
     const hasAttachment = Boolean(attachment);
 
     if (editingMessage && hasText) {
+      const encryptedEditText = await encryptTextForChat({
+        username,
+        chatKey: activeChat,
+        participants: getConversationParticipants(activeChat),
+        text
+      });
+
       socketRef.current.emit(
         SOCKET_EVENTS.EDIT_MESSAGE,
         {
           messageId: editingMessage._id,
-          text
+          text: encryptedEditText
         }
       );
 

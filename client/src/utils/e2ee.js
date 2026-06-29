@@ -1,7 +1,18 @@
-const E2EE_PREFIX = "__LIOTAN_E2EE_V1__";
+import {
+  getE2EEConversationKeyApi,
+  getE2EEIdentitiesApi,
+  setE2EEConversationKeysApi,
+  setE2EEIdentityApi
+} from "../services/api";
+
+const E2EE_PREFIX = "__LIOTAN_E2EE_V2__";
+const LEGACY_E2EE_PREFIX = "__LIOTAN_E2EE_V1__";
 const E2EE_ITERATIONS = 200000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+const identityCache = new Map();
+const pendingConversationKeys = new Map();
 
 function toBase64(bytes) {
   let binary = "";
@@ -25,12 +36,33 @@ function fromBase64(value) {
   return bytes;
 }
 
-function safeChatKey(username, chatKey) {
-  return encodeURIComponent(`${username || ""}:${chatKey || ""}`);
+function getConversationId(username, chatKey) {
+  const cleanUsername = String(username || "").trim();
+  const cleanChatKey = String(chatKey || "").trim();
+
+  if (!cleanUsername || !cleanChatKey) {
+    return cleanChatKey;
+  }
+
+  if (cleanChatKey.startsWith("group:")) {
+    return cleanChatKey;
+  }
+
+  return [cleanUsername, cleanChatKey]
+    .sort()
+    .join("_");
+}
+
+function safeStorageKey(username, chatKey) {
+  return encodeURIComponent(`${username || ""}:${getConversationId(username, chatKey) || ""}`);
 }
 
 export function getE2EEStorageKey(username, chatKey) {
-  return `liotan:e2ee-secret:${safeChatKey(username, chatKey)}`;
+  return `liotan:e2ee-secret:${safeStorageKey(username, chatKey)}`;
+}
+
+function getIdentityStorageKey(username) {
+  return `liotan:e2ee-identity:${encodeURIComponent(username || "")}`;
 }
 
 export function getChatSecret(username, chatKey) {
@@ -75,11 +107,14 @@ export function setChatSecret(username, chatKey, secret) {
 export function isEncryptedText(value) {
   return (
     typeof value === "string" &&
-    value.startsWith(E2EE_PREFIX)
+    (
+      value.startsWith(E2EE_PREFIX) ||
+      value.startsWith(LEGACY_E2EE_PREFIX)
+    )
   );
 }
 
-async function deriveKey(secret, salt) {
+async function deriveMessageKey(secret, salt) {
   const baseKey = await crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -105,16 +140,367 @@ async function deriveKey(secret, salt) {
   );
 }
 
+async function deriveWrapKey({
+  privateKey,
+  publicKey
+}) {
+  return crypto.subtle.deriveKey(
+    {
+      name: "ECDH",
+      public: publicKey
+    },
+    privateKey,
+    {
+      name: "AES-GCM",
+      length: 256
+    },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function randomSecret() {
+  return toBase64(
+    crypto.getRandomValues(
+      new Uint8Array(32)
+    )
+  );
+}
+
+async function importPublicKey(jwk) {
+  return crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "ECDH",
+      namedCurve: "P-256"
+    },
+    true,
+    []
+  );
+}
+
+async function importPrivateKey(jwk) {
+  return crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    {
+      name: "ECDH",
+      namedCurve: "P-256"
+    },
+    true,
+    ["deriveKey"]
+  );
+}
+
+async function loadLocalIdentity(username) {
+  if (!username) {
+    return null;
+  }
+
+  if (identityCache.has(username)) {
+    return identityCache.get(username);
+  }
+
+  const raw = localStorage.getItem(
+    getIdentityStorageKey(username)
+  );
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const data = JSON.parse(raw);
+
+    const privateKey = await importPrivateKey(
+      data.privateKey
+    );
+
+    const publicKey = await importPublicKey(
+      data.publicKey
+    );
+
+    const identity = {
+      privateKey,
+      publicKey,
+      publicJwk: data.publicKey
+    };
+
+    identityCache.set(username, identity);
+
+    return identity;
+  } catch (err) {
+    console.error("Failed to load E2EE identity", err);
+    localStorage.removeItem(
+      getIdentityStorageKey(username)
+    );
+
+    return null;
+  }
+}
+
+export async function ensureE2EEIdentity(username) {
+  if (!username || !crypto?.subtle) {
+    return null;
+  }
+
+  const existing = await loadLocalIdentity(username);
+
+  if (existing) {
+    await setE2EEIdentityApi(existing.publicJwk);
+    return existing;
+  }
+
+  const pair = await crypto.subtle.generateKey(
+    {
+      name: "ECDH",
+      namedCurve: "P-256"
+    },
+    true,
+    ["deriveKey"]
+  );
+
+  const publicJwk = await crypto.subtle.exportKey(
+    "jwk",
+    pair.publicKey
+  );
+
+  const privateJwk = await crypto.subtle.exportKey(
+    "jwk",
+    pair.privateKey
+  );
+
+  localStorage.setItem(
+    getIdentityStorageKey(username),
+    JSON.stringify({
+      publicKey: publicJwk,
+      privateKey: privateJwk
+    })
+  );
+
+  const identity = {
+    privateKey: pair.privateKey,
+    publicKey: pair.publicKey,
+    publicJwk
+  };
+
+  identityCache.set(username, identity);
+
+  await setE2EEIdentityApi(publicJwk);
+
+  return identity;
+}
+
+async function wrapSecretForUser({
+  identity,
+  username,
+  recipient,
+  recipientPublicJwk,
+  secret
+}) {
+  const recipientPublicKey = await importPublicKey(
+    recipientPublicJwk
+  );
+
+  const wrapKey = await deriveWrapKey({
+    privateKey: identity.privateKey,
+    publicKey: recipientPublicKey
+  });
+
+  const iv = crypto.getRandomValues(
+    new Uint8Array(12)
+  );
+
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv
+    },
+    wrapKey,
+    encoder.encode(secret)
+  );
+
+  return {
+    user: recipient,
+    sender: username,
+    wrappedKey: toBase64(new Uint8Array(encrypted)),
+    iv: toBase64(iv),
+    alg: "ECDH-P256-AES-GCM"
+  };
+}
+
+async function unwrapSecret({
+  identity,
+  senderPublicJwk,
+  wrappedKey,
+  iv
+}) {
+  const senderPublicKey = await importPublicKey(
+    senderPublicJwk
+  );
+
+  const wrapKey = await deriveWrapKey({
+    privateKey: identity.privateKey,
+    publicKey: senderPublicKey
+  });
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: fromBase64(iv)
+    },
+    wrapKey,
+    fromBase64(wrappedKey)
+  );
+
+  return decoder.decode(decrypted);
+}
+
+function cleanParticipants(participants) {
+  return [
+    ...new Set(
+      (participants || [])
+        .map(item => String(item || "").trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+export async function ensureConversationSecret({
+  username,
+  chatKey,
+  participants = []
+}) {
+  if (!username || !chatKey) {
+    return "";
+  }
+
+  const current = getChatSecret(username, chatKey);
+
+  const pendingKey = `${username}:${chatKey}`;
+
+  if (pendingConversationKeys.has(pendingKey)) {
+    return pendingConversationKeys.get(pendingKey);
+  }
+
+  const promise = (async () => {
+    const identity = await ensureE2EEIdentity(username);
+
+    if (!identity) {
+      return current;
+    }
+
+    if (!current) {
+      try {
+        const conversationId = getConversationId(username, chatKey);
+        const response = await getE2EEConversationKeyApi(conversationId);
+        const wrapped = response?.key;
+
+        if (wrapped?.wrappedKey && wrapped?.sender) {
+          const identities = await getE2EEIdentitiesApi([
+            wrapped.sender
+          ]);
+
+          const sender = identities?.users?.find(
+            item => item.username === wrapped.sender
+          );
+
+          if (sender?.publicKey) {
+            const unlockedSecret = await unwrapSecret({
+              identity,
+              senderPublicJwk: sender.publicKey,
+              wrappedKey: wrapped.wrappedKey,
+              iv: wrapped.iv
+            });
+
+            setChatSecret(username, chatKey, unlockedSecret);
+            return unlockedSecret;
+          }
+        }
+      } catch (err) {
+        console.warn("E2EE key fetch failed", err);
+      }
+    }
+
+    const secret = getChatSecret(username, chatKey) || randomSecret();
+    setChatSecret(username, chatKey, secret);
+
+    const safeParticipants = cleanParticipants([
+      username,
+      ...participants
+    ]);
+
+    try {
+      const identities = await getE2EEIdentitiesApi(
+        safeParticipants
+      );
+
+      const users = identities?.users || [];
+
+      const wrappedKeys = [];
+
+      for (const user of users) {
+        if (!user?.username || !user?.publicKey) {
+          continue;
+        }
+
+        try {
+          wrappedKeys.push(
+            await wrapSecretForUser({
+              identity,
+              username,
+              recipient: user.username,
+              recipientPublicJwk: user.publicKey,
+              secret
+            })
+          );
+        } catch (err) {
+          console.warn(
+            "E2EE wrap failed for user",
+            user.username,
+            err
+          );
+        }
+      }
+
+      if (wrappedKeys.length) {
+        await setE2EEConversationKeysApi(
+          getConversationId(username, chatKey),
+          wrappedKeys
+        );
+      }
+    } catch (err) {
+      console.warn("E2EE key publish failed", err);
+    }
+
+    return secret;
+  })();
+
+  pendingConversationKeys.set(pendingKey, promise);
+
+  try {
+    return await promise;
+  } finally {
+    pendingConversationKeys.delete(pendingKey);
+  }
+}
+
 export async function encryptTextForChat({
   username,
   chatKey,
+  participants,
   text
 }) {
   if (!text || isEncryptedText(text)) {
     return text || "";
   }
 
-  const secret = getChatSecret(username, chatKey);
+  const secret = await ensureConversationSecret({
+    username,
+    chatKey,
+    participants
+  });
 
   if (!secret) {
     return text;
@@ -122,7 +508,7 @@ export async function encryptTextForChat({
 
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(secret, salt);
+  const key = await deriveMessageKey(secret, salt);
 
   const encrypted = await crypto.subtle.encrypt(
     {
@@ -134,7 +520,7 @@ export async function encryptTextForChat({
   );
 
   const payload = {
-    v: 1,
+    v: 2,
     alg: "AES-GCM-256",
     kdf: "PBKDF2-SHA256",
     iter: E2EE_ITERATIONS,
@@ -155,10 +541,14 @@ export async function decryptTextForChat({
     return text || "";
   }
 
+  if (text.startsWith(LEGACY_E2EE_PREFIX)) {
+    return "🔒 Старое E2EE-сообщение. Оно было создано до авто-ключей.";
+  }
+
   const secret = getChatSecret(username, chatKey);
 
   if (!secret) {
-    return "🔒 Зашифрованное сообщение. Включите ключ этого чата.";
+    return "🔒 Зашифрованное сообщение. Ключ этого чата ещё не получен.";
   }
 
   try {
@@ -166,14 +556,14 @@ export async function decryptTextForChat({
       atob(text.slice(E2EE_PREFIX.length))
     );
 
-    if (payload?.v !== 1) {
+    if (payload?.v !== 2) {
       throw new Error("Unsupported E2EE version");
     }
 
     const salt = fromBase64(payload.salt);
     const iv = fromBase64(payload.iv);
     const ct = fromBase64(payload.ct);
-    const key = await deriveKey(secret, salt);
+    const key = await deriveMessageKey(secret, salt);
 
     const decrypted = await crypto.subtle.decrypt(
       {
@@ -187,6 +577,6 @@ export async function decryptTextForChat({
     return decoder.decode(decrypted);
   } catch (err) {
     console.error("E2EE decrypt failed", err);
-    return "🔒 Не удалось расшифровать сообщение. Проверьте ключ чата.";
+    return "🔒 Не удалось расшифровать сообщение.";
   }
 }

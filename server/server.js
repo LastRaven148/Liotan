@@ -57,6 +57,9 @@ const groupRoutes =
 const groupMessageRoutes =
   require("./routes/groupMessageRoutes");
 
+const e2eeRoutes =
+  require("./routes/e2eeRoutes");
+
 const setupSocket =
   require("./sockets/socket");
 
@@ -245,6 +248,7 @@ app.use(dialogRoutes);
 app.use(groupRoutes);
 app.use(attachmentRoutes);
 app.use(groupMessageRoutes);
+app.use(e2eeRoutes);
 
 app.use(uploadErrorHandler);
 app.use(errorHandler);

@@ -11,6 +11,8 @@ const authMiddleware =
 const {
   sendAuthCode,
   verifyAuthCode,
+  sendBindEmailCode,
+  bindEmail,
   register,
   login,
   resetPassword,
@@ -30,6 +32,20 @@ router.post(
   "/auth/verify-code",
   authLimiter,
   verifyAuthCode
+);
+
+router.post(
+  "/me/email-code",
+  authMiddleware,
+  authLimiter,
+  sendBindEmailCode
+);
+
+router.post(
+  "/me/email",
+  authMiddleware,
+  authLimiter,
+  bindEmail
 );
 
 router.post(

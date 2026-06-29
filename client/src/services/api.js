@@ -68,6 +68,35 @@ export async function verifyAuthEmailCode(
   });
 }
 
+
+export async function sendBindEmailCodeApi(email) {
+  return apiRequest(`${API}/me/email-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email
+    })
+  });
+}
+
+export async function bindEmailApi(
+  email,
+  code
+) {
+  return apiRequest(`${API}/me/email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email,
+      code
+    })
+  });
+}
+
 export async function resetPasswordApi(
   email,
   code,
@@ -414,5 +443,47 @@ export async function deleteGroupApi(groupId) {
 export async function deleteAccountApi() {
   return apiRequest(`${API}/me`, {
     method: "DELETE"
+  });
+}
+export async function setE2EEIdentityApi(publicKey) {
+  return apiRequest(`${API}/e2ee/identity`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      publicKey
+    })
+  });
+}
+
+export async function getE2EEIdentitiesApi(users) {
+  return apiRequest(`${API}/e2ee/identities`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      users
+    })
+  });
+}
+
+export async function getE2EEConversationKeyApi(conversationId) {
+  return apiRequest(`${API}/e2ee/conversations/${encodeURIComponent(conversationId)}/key`);
+}
+
+export async function setE2EEConversationKeysApi(
+  conversationId,
+  keys
+) {
+  return apiRequest(`${API}/e2ee/conversations/${encodeURIComponent(conversationId)}/keys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      keys
+    })
   });
 }
