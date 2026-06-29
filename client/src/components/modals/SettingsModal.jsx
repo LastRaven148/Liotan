@@ -241,6 +241,64 @@ export default function SettingsModal({
     logout?.();
   }
 
+  useEffect(() => {
+    const hasBlockingModal =
+      logoutConfirmOpen ||
+      deleteConfirmOpen;
+
+    if (!hasBlockingModal) {
+      return undefined;
+    }
+
+    document.body.classList.add(
+      "liotan-delete-modal-open"
+    );
+
+    function handleEscape(e) {
+      if (e.key !== "Escape") {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      window.__liotanModalEscHandledAt =
+        Date.now();
+
+      if (logoutConfirmOpen) {
+        setLogoutConfirmOpen(false);
+        return;
+      }
+
+      if (deleteConfirmOpen && !deleting) {
+        setDeleteConfirmOpen(false);
+        setDeleteStep(1);
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleEscape,
+      true
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleEscape,
+        true
+      );
+
+      document.body.classList.remove(
+        "liotan-delete-modal-open"
+      );
+    };
+  }, [
+    logoutConfirmOpen,
+    deleteConfirmOpen,
+    deleting
+  ]);
+
   if (editing) {
     return (
       <div
@@ -454,7 +512,7 @@ export default function SettingsModal({
 
         {logoutConfirmOpen && (
           <div
-            className="dialog-delete-modal-overlay"
+            className="dialog-delete-modal-overlay settings-confirm-modal-overlay"
             onClick={closeLogoutConfirm}
           >
             <div
@@ -494,7 +552,7 @@ export default function SettingsModal({
 
         {deleteConfirmOpen && (
           <div
-            className="dialog-delete-modal-overlay"
+            className="dialog-delete-modal-overlay settings-confirm-modal-overlay"
             onClick={closeDeleteConfirm}
           >
             <div

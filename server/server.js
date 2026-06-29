@@ -60,6 +60,15 @@ const groupMessageRoutes =
 const e2eeRoutes =
   require("./routes/e2eeRoutes");
 
+const callRoutes =
+  require("./routes/callRoutes");
+
+const voiceRoutes =
+  require("./routes/voiceRoutes");
+
+const proxyRoutes =
+  require("./routes/proxyRoutes");
+
 const User =
   require("./models/User");
 
@@ -202,9 +211,9 @@ app.use(
   hpp()
 );
 
-// app.use(
-//   apiLimiter
-// );
+app.use(
+  apiLimiter
+);
 
 app.get(
   "/health",
@@ -258,6 +267,9 @@ app.use(groupRoutes);
 app.use(attachmentRoutes);
 app.use(groupMessageRoutes);
 app.use(e2eeRoutes);
+app.use(callRoutes);
+app.use(voiceRoutes);
+app.use(proxyRoutes);
 
 app.use(uploadErrorHandler);
 app.use(errorHandler);

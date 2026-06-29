@@ -17,9 +17,9 @@ function privacyKey(req) {
 
   const rawKey =
     req.user?.username ||
+    req.body?.email ||
     req.body?.username ||
-    req.ip ||
-    "unknown";
+    "anonymous";
 
   return crypto
     .createHmac("sha256", secret)

@@ -90,31 +90,10 @@ export default function AttachmentDraftModal({
         e.preventDefault();
 
         if (!sendingDraft) {
-          onSend?.();
+          onClose?.();
         }
-
-        return;
       }
 
-                <input
-            value={attachmentCaption}
-            onChange={(e) =>
-              setAttachmentCaption(e.target.value)
-            }
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey
-              ) {
-                e.preventDefault();
-
-                if (!sendingDraft) {
-                  onSend?.();
-                }
-              }
-            }}
-            placeholder="Добавить подпись..."
-          />
     }
 
     window.addEventListener(
@@ -132,7 +111,7 @@ export default function AttachmentDraftModal({
   }, [
     attachmentDraft.length,
     sendingDraft,
-    onSend
+    onClose
   ]);
 
   if (!attachmentDraft.length) {
@@ -296,6 +275,18 @@ export default function AttachmentDraftModal({
             onChange={(e) =>
               setAttachmentCaption(e.target.value)
             }
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey
+              ) {
+                e.preventDefault();
+
+                if (!sendingDraft) {
+                  onSend?.();
+                }
+              }
+            }}
             placeholder="Добавить подпись..."
           />
 

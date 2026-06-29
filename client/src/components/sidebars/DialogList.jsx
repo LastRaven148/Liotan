@@ -20,14 +20,22 @@ export default function DialogList({
 }) {
 
   const safePinnedChats =
-    Array.isArray(pinnedChats)
-      ? pinnedChats
-      : [];
+    useMemo(() => (
+      Array.isArray(pinnedChats)
+        ? pinnedChats
+        : []
+    ), [
+      pinnedChats
+    ]);
 
   const safeArchivedChats =
-    Array.isArray(archivedChats)
-      ? archivedChats
-      : [];
+    useMemo(() => (
+      Array.isArray(archivedChats)
+        ? archivedChats
+        : []
+    ), [
+      archivedChats
+    ]);
 
   const sortedDialogs =
     useMemo(() => {
