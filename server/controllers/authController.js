@@ -669,7 +669,7 @@ async function listSessions(
         userId: req.user.userId,
         revokedAt: null
       })
-        .select("sessionIdHash deviceName createdAt lastSeenAt")
+        .select("sessionIdHash deviceName createdAt lastSeenAt deviceKeyFingerprint transportMode")
         .sort({
           lastSeenAt: -1
         })
@@ -685,6 +685,8 @@ async function listSessions(
           deviceName: session.deviceName,
           createdAt: session.createdAt,
           lastSeenAt: session.lastSeenAt,
+          deviceKeyFingerprint: session.deviceKeyFingerprint || "",
+          transportMode: session.transportMode || "auto",
           current: session.sessionIdHash === currentHash
         }))
     });

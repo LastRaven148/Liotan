@@ -9,6 +9,15 @@ import {
   getDeviceName
 } from "../utils/deviceId";
 
+import {
+  getDevicePublicKey,
+  getDeviceKeyFingerprint
+} from "../utils/deviceCrypto";
+
+import {
+  getTransportMode
+} from "./transportPrivacy";
+
 export async function getUsers() {
   return apiRequest(`${API}/users`);
 }
@@ -105,7 +114,8 @@ export async function sendLoginEmailCode(
       email,
       password,
       deviceId: getDeviceId(),
-      deviceName: getDeviceName()
+      deviceName: getDeviceName(),
+      transportMode: getTransportMode()
     })
   });
 }
@@ -115,6 +125,12 @@ export async function loginUser(
   password,
   code
 ) {
+  const devicePublicKey =
+    await getDevicePublicKey();
+
+  const deviceKeyFingerprint =
+    await getDeviceKeyFingerprint();
+
   return apiRequest(`${API}/login`, {
     method: "POST",
     headers: {
@@ -125,7 +141,10 @@ export async function loginUser(
       password,
       code,
       deviceId: getDeviceId(),
-      deviceName: getDeviceName()
+      deviceName: getDeviceName(),
+      transportMode: getTransportMode(),
+      devicePublicKey,
+      deviceKeyFingerprint
     })
   });
 }
@@ -136,6 +155,12 @@ export async function registerUser(
   email,
   code
 ) {
+  const devicePublicKey =
+    await getDevicePublicKey();
+
+  const deviceKeyFingerprint =
+    await getDeviceKeyFingerprint();
+
   return apiRequest(`${API}/register`, {
     method: "POST",
     headers: {
@@ -147,7 +172,10 @@ export async function registerUser(
       email,
       code,
       deviceId: getDeviceId(),
-      deviceName: getDeviceName()
+      deviceName: getDeviceName(),
+      transportMode: getTransportMode(),
+      devicePublicKey,
+      deviceKeyFingerprint
     })
   });
 }
@@ -198,6 +226,13 @@ export async function logoutOtherSessionsApi() {
   });
 }
 
+export async function getDeviceSessionsApi() {
+  return getSessionsApi();
+}
+
+export async function getTransportCapabilitiesApi() {
+  return apiRequest(`${API}/proxy/capabilities`);
+}
 
 function getAttachmentType(file) {
   const mimeType =

@@ -14,6 +14,7 @@ const {
   setIdentityBackup,
   getIdentity,
   getIdentities,
+  getDeviceIdentities,
   getConversationKey,
   setConversationKeys
 } = require("../controllers/e2eeController");
@@ -54,6 +55,13 @@ router.post(
   authMiddleware,
   e2eeLimiter,
   getIdentities
+);
+
+router.get(
+  "/e2ee/devices/:username",
+  authMiddleware,
+  e2eeLimiter,
+  getDeviceIdentities
 );
 
 router.get(

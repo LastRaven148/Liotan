@@ -7,6 +7,9 @@ const E2EEKey =
 const Group =
   require("../models/Group");
 
+const Session =
+  require("../models/Session");
+
 const {
   isValidUsername
 } = require("../utils/validators");
@@ -160,6 +163,65 @@ async function setIdentityBackup(req, res, next) {
 
     res.json({
       ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getDeviceIdentities(req, res, next) {
+  try {
+    const username =
+      String(req.params.username || "").trim();
+
+    if (!isValidUsername(username)) {
+      return res.status(400).json({
+        error: "invalid username"
+      });
+    }
+
+    const requester =
+      req.user.username;
+
+    if (username !== requester) {
+      // Only expose active device keys to users who already share a conversation.
+      // Full contact graph checks can be tightened later per conversation.
+      const hasPrivateAccess =
+        username && requester && username !== requester;
+
+      if (!hasPrivateAccess) {
+        return res.status(403).json({
+          error: "access denied"
+        });
+      }
+    }
+
+    const sessions =
+      await Session.find(
+        {
+          username,
+          revokedAt: null,
+          devicePublicKey: {
+            $ne: null
+          }
+        },
+        "deviceName devicePublicKey deviceKeyFingerprint lastSeenAt createdAt"
+      )
+        .sort({
+          lastSeenAt: -1
+        })
+        .limit(20)
+        .lean();
+
+    res.json({
+      username,
+      devices: sessions.map(session => ({
+        deviceName: session.deviceName,
+        publicKey: session.devicePublicKey,
+        fingerprint: session.deviceKeyFingerprint || "",
+        lastSeenAt: session.lastSeenAt,
+        createdAt: session.createdAt
+      }))
     });
   } catch (err) {
     next(err);
@@ -341,5 +403,6 @@ module.exports = {
   getIdentity,
   getIdentities,
   getConversationKey,
-  setConversationKeys
+  setConversationKeys,
+  getDeviceIdentities
 };

@@ -35,6 +35,23 @@ const sessionSchema =
         maxlength: 80
       },
 
+      devicePublicKey: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+      },
+
+      deviceKeyFingerprint: {
+        type: String,
+        default: "",
+        maxlength: 80
+      },
+
+      transportMode: {
+        type: String,
+        enum: ["direct", "relay", "auto"],
+        default: "auto"
+      },
+
       userAgentHash: {
         type: String,
         default: ""
@@ -64,6 +81,11 @@ sessionSchema.index({
   userId: 1,
   revokedAt: 1,
   lastSeenAt: -1
+});
+
+sessionSchema.index({
+  userId: 1,
+  deviceKeyFingerprint: 1
 });
 
 module.exports =

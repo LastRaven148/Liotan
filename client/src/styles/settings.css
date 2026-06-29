@@ -468,3 +468,71 @@
 .settings-secondary-button:hover{
   background:#243342;
 }
+
+.settings-security-card{
+  gap:0;
+}
+
+.settings-section-title{
+  padding:12px 16px 8px;
+  color:#8da2b5;
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.settings-muted-text{
+  padding:0 16px 12px;
+  color:#8da2b5;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.settings-device-row{
+  min-height:58px;
+  padding:10px 12px 10px 16px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border-top:1px solid rgba(255,255,255,.04);
+}
+
+.settings-device-main{
+  min-width:0;
+  flex:1;
+}
+
+.settings-device-name{
+  color:#ffffff;
+  font-size:14px;
+  line-height:1.25;
+  font-weight:600;
+}
+
+.settings-device-meta,
+.settings-device-fingerprint{
+  margin-top:3px;
+  color:#8da2b5;
+  font-size:11px;
+  line-height:1.25;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.settings-mini-danger{
+  flex-shrink:0;
+  border:none;
+  border-radius:16px;
+  padding:6px 10px;
+  background:rgba(255,82,82,.12);
+  color:#ff6b6b;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.settings-mini-danger:hover{
+  background:rgba(255,82,82,.18);
+}

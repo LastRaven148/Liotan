@@ -18,6 +18,31 @@ function hashSessionId(sessionId) {
   return hmac(String(sessionId || ""));
 }
 
+function isValidDevicePublicKey(value) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    value.kty === "EC" &&
+    value.crv === "P-256" &&
+    typeof value.x === "string" &&
+    value.x.length < 200 &&
+    typeof value.y === "string" &&
+    value.y.length < 200
+  );
+}
+
+function sanitizeFingerprint(value) {
+  return String(value || "")
+    .replace(/[^a-zA-Z0-9:_-]/g, "")
+    .slice(0, 80);
+}
+
+function sanitizeTransportMode(value) {
+  return ["direct", "relay", "auto"].includes(value)
+    ? value
+    : "auto";
+}
+
 function sanitizeDeviceName(value) {
   const raw =
     String(value || "")
@@ -78,6 +103,11 @@ async function createUserSession({
     req.headers["x-liotan-device-id"] ||
     "";
 
+  const devicePublicKey =
+    isValidDevicePublicKey(req.body?.devicePublicKey)
+      ? req.body.devicePublicKey
+      : null;
+
   await Session.create({
     userId: user._id,
     username: user.username,
@@ -87,6 +117,14 @@ async function createUserSession({
         ? hmac(String(deviceId).slice(0, 200))
         : "",
     deviceName: detectDeviceName(req),
+    devicePublicKey,
+    deviceKeyFingerprint: sanitizeFingerprint(
+      req.body?.deviceKeyFingerprint
+    ),
+    transportMode: sanitizeTransportMode(
+      req.body?.transportMode ||
+      req.headers["x-liotan-transport-mode"]
+    ),
     userAgentHash: hmac(
       String(req.headers["user-agent"] || "")
     )
@@ -186,5 +224,8 @@ module.exports = {
   touchSession,
   isSessionActive,
   revokeSession,
-  revokeAllUserSessions
+  revokeAllUserSessions,
+  isValidDevicePublicKey,
+  sanitizeFingerprint,
+  sanitizeTransportMode
 };

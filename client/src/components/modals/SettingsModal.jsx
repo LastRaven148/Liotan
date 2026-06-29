@@ -10,6 +10,13 @@ import {
   useLanguage
 } from "../../context/LanguageContext";
 
+import {
+  getDeviceSessionsApi,
+  revokeSessionApi,
+  logoutOtherSessionsApi,
+  getTransportCapabilitiesApi
+} from "../../services/api";
+
 export default function SettingsModal({
   username,
   displayName,
@@ -78,6 +85,65 @@ export default function SettingsModal({
     deleting,
     setDeleting
   ] = useState(false);
+
+  const [
+    sessions,
+    setSessions
+  ] = useState([]);
+
+  const [
+    sessionsLoading,
+    setSessionsLoading
+  ] = useState(false);
+
+  const [
+    transportInfo,
+    setTransportInfo
+  ] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadSecurityState() {
+      setSessionsLoading(true);
+
+      try {
+        const [sessionData, transportData] =
+          await Promise.all([
+            getDeviceSessionsApi(),
+            getTransportCapabilitiesApi().catch(() => null)
+          ]);
+
+        if (!alive) {
+          return;
+        }
+
+        setSessions(
+          Array.isArray(sessionData?.sessions)
+            ? sessionData.sessions
+            : []
+        );
+
+        setTransportInfo(
+          transportData || null
+        );
+      } catch {
+        if (alive) {
+          setSessions([]);
+        }
+      } finally {
+        if (alive) {
+          setSessionsLoading(false);
+        }
+      }
+    }
+
+    loadSecurityState();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     setNameValue(displayName || "");
@@ -181,6 +247,34 @@ export default function SettingsModal({
       setEditing(false);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRevokeSession(id) {
+    await revokeSessionApi(id);
+
+    setSessions(prev =>
+      prev.filter(item => item.id !== id)
+    );
+  }
+
+  async function handleLogoutOtherSessions() {
+    await logoutOtherSessionsApi();
+
+    setSessions(prev =>
+      prev.filter(item => item.current)
+    );
+  }
+
+  function formatSessionTime(value) {
+    if (!value) {
+      return "—";
+    }
+
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return "—";
     }
   }
 
@@ -476,6 +570,88 @@ export default function SettingsModal({
                 : t.russian || "Русский"}
             </div>
           </button>
+        </div>
+
+        <div className="settings-card settings-security-card">
+          <div className="settings-section-title">
+            Устройства
+          </div>
+
+          {sessionsLoading && (
+            <div className="settings-muted-text">
+              Загрузка...
+            </div>
+          )}
+
+          {!sessionsLoading && sessions.length === 0 && (
+            <div className="settings-muted-text">
+              Активные устройства не найдены
+            </div>
+          )}
+
+          {sessions.map(session => (
+            <div
+              key={session.id}
+              className="settings-device-row"
+            >
+              <div className="settings-device-main">
+                <div className="settings-device-name">
+                  {session.deviceName || "Устройство"}
+                  {session.current ? " • текущее" : ""}
+                </div>
+
+                <div className="settings-device-meta">
+                  Последняя активность: {formatSessionTime(session.lastSeenAt)}
+                </div>
+
+                {session.deviceKeyFingerprint && (
+                  <div className="settings-device-fingerprint">
+                    Ключ: {session.deviceKeyFingerprint}
+                  </div>
+                )}
+              </div>
+
+              {!session.current && (
+                <button
+                  type="button"
+                  className="settings-mini-danger"
+                  onClick={() =>
+                    handleRevokeSession(session.id)
+                  }
+                >
+                  Отключить
+                </button>
+              )}
+            </div>
+          ))}
+
+          {sessions.some(item => !item.current) && (
+            <button
+              type="button"
+              className="settings-row button-row danger-row"
+              onClick={handleLogoutOtherSessions}
+            >
+              <span>×</span>
+
+              <div className="settings-row-main">
+                Завершить все другие сеансы
+              </div>
+            </button>
+          )}
+        </div>
+
+        <div className="settings-card settings-security-card">
+          <div className="settings-section-title">
+            Приватность соединения
+          </div>
+
+          <div className="settings-muted-text">
+            Сейчас используется прямое защищённое соединение. Relay-режим подготовлен как запасной маршрут для зашифрованного трафика.
+          </div>
+
+          <div className="settings-device-meta">
+            Relay: {transportInfo?.enabled ? "доступен" : "не включён"}
+          </div>
         </div>
 
         <div className="settings-card">
