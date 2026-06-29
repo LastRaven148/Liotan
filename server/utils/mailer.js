@@ -1,15 +1,13 @@
-let nodemailer = null;
-
-try {
-  nodemailer = require("nodemailer");
-} catch (err) {
-  nodemailer = null;
+function getMailFrom() {
+  return (
+    process.env.MAIL_FROM ||
+    "Liotan <onboarding@resend.dev>"
+  );
 }
 
 function hasResendConfig() {
   return Boolean(
-    process.env.RESEND_API_KEY &&
-    process.env.MAIL_FROM
+    process.env.RESEND_API_KEY
   );
 }
 
@@ -25,22 +23,6 @@ function hasMailConfig() {
   return hasResendConfig() || hasSmtpConfig();
 }
 
-function createTransporter() {
-  if (!nodemailer || !hasSmtpConfig()) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || "false") === "true",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
-}
-
 function getSubject(purpose) {
   if (purpose === "reset") {
     return "Liotan password reset code";
@@ -53,25 +35,70 @@ function getSubject(purpose) {
   return "Liotan verification code";
 }
 
-function createText(code) {
+function getTitle(purpose) {
+  if (purpose === "reset") {
+    return "Password reset";
+  }
+
+  if (purpose === "login") {
+    return "Login confirmation";
+  }
+
+  return "Email verification";
+}
+
+function createText(code, purpose) {
   return (
+    `${getTitle(purpose)}\n\n` +
     `Your Liotan code: ${code}\n\n` +
     "The code expires in 10 minutes.\n\n" +
     "If you did not request this code, ignore this email."
   );
 }
 
-function createHtml(code) {
+function createHtml(code, purpose) {
+  const safeCode =
+    String(code).replace(/[^0-9]/g, "");
+
+  const title =
+    getTitle(purpose);
+
   return `
-    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
-      <h2 style="margin:0 0 12px">Liotan verification code</h2>
-      <p style="margin:0 0 16px">Use this code to continue:</p>
-      <div style="font-size:28px;font-weight:700;letter-spacing:6px;margin:18px 0">
-        ${String(code).replace(/[^0-9]/g, "")}
-      </div>
-      <p style="margin:0;color:#6b7280">The code expires in 10 minutes.</p>
-      <p style="margin:12px 0 0;color:#6b7280">If you did not request this code, ignore this email.</p>
-    </div>
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
+      <body style="margin:0;padding:0;background:#0e1621;font-family:Arial,Helvetica,sans-serif;color:#ffffff">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0e1621;padding:32px 12px">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:420px;background:#17212b;border-radius:18px;overflow:hidden;border:1px solid #243447">
+                <tr>
+                  <td style="padding:28px 28px 10px;text-align:center">
+                    <div style="width:58px;height:58px;border-radius:50%;background:#3390ec;margin:0 auto 18px;line-height:58px;font-size:28px;font-weight:800;color:#ffffff">L</div>
+                    <h1 style="margin:0;font-size:24px;line-height:1.2;color:#ffffff">${title}</h1>
+                    <p style="margin:10px 0 0;color:#9aaabc;font-size:14px;line-height:1.5">Use this code to continue in Liotan.</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 28px;text-align:center">
+                    <div style="display:inline-block;background:#0f1a25;border:1px solid #2b5278;border-radius:14px;padding:16px 22px;font-size:32px;font-weight:800;letter-spacing:8px;color:#ffffff">${safeCode}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 28px 28px;text-align:center;color:#8da2b5;font-size:13px;line-height:1.5">
+                    The code expires in 10 minutes.<br />
+                    If you did not request this code, ignore this email.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
   `;
 }
 
@@ -89,7 +116,7 @@ async function sendViaResend({
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: process.env.MAIL_FROM,
+        from: getMailFrom(),
         to,
         subject,
         text,
@@ -120,17 +147,26 @@ async function sendViaSmtp({
   text,
   html
 }) {
-  const transporter =
-    createTransporter();
-
-  if (!transporter) {
+  if (!hasSmtpConfig()) {
     return null;
   }
 
+  const nodemailer =
+    require("nodemailer");
+
+  const transporter =
+    nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: String(process.env.SMTP_SECURE || "false") === "true",
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
   await transporter.sendMail({
-    from:
-      process.env.MAIL_FROM ||
-      process.env.SMTP_USER,
+    from: getMailFrom(),
     to,
     subject,
     text,
@@ -154,10 +190,10 @@ async function sendEmailCode({
     getSubject(purpose);
 
   const text =
-    createText(code);
+    createText(code, purpose);
 
   const html =
-    createHtml(code);
+    createHtml(code, purpose);
 
   if (hasResendConfig()) {
     return sendViaResend({

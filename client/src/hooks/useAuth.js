@@ -106,7 +106,7 @@ export default function useAuth({
     showToast(
       result?.sent
         ? "Code sent"
-        : "Mail is not configured yet."
+        : "Mail is not configured yet"
     );
   }
 
