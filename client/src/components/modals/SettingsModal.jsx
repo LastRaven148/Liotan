@@ -65,6 +65,16 @@ export default function SettingsModal({
   ] = useState(false);
 
   const [
+    deleteStep,
+    setDeleteStep
+  ] = useState(1);
+
+  const [
+    logoutConfirmOpen,
+    setLogoutConfirmOpen
+  ] = useState(false);
+
+  const [
     deleting,
     setDeleting
   ] = useState(false);
@@ -182,8 +192,27 @@ export default function SettingsModal({
     );
   }
 
+  function openDeleteConfirm() {
+    setDeleteStep(1);
+    setDeleteConfirmOpen(true);
+  }
+
+  function closeDeleteConfirm() {
+    if (deleting) {
+      return;
+    }
+
+    setDeleteConfirmOpen(false);
+    setDeleteStep(1);
+  }
+
   async function handleDeleteAccount() {
     if (deleting) {
+      return;
+    }
+
+    if (deleteStep === 1) {
+      setDeleteStep(2);
       return;
     }
 
@@ -195,11 +224,21 @@ export default function SettingsModal({
 
       if (ok !== false) {
         setDeleteConfirmOpen(false);
+        setDeleteStep(1);
         onClose?.();
       }
     } finally {
       setDeleting(false);
     }
+  }
+
+  function closeLogoutConfirm() {
+    setLogoutConfirmOpen(false);
+  }
+
+  function confirmLogout() {
+    setLogoutConfirmOpen(false);
+    logout?.();
   }
 
   if (editing) {
@@ -386,7 +425,9 @@ export default function SettingsModal({
             <button
               type="button"
               className="settings-row button-row danger-row"
-              onClick={logout}
+              onClick={() =>
+                setLogoutConfirmOpen(true)
+              }
             >
               <span>×</span>
 
@@ -400,28 +441,61 @@ export default function SettingsModal({
             <button
               type="button"
               className="settings-row button-row danger-row"
-              onClick={() =>
-                setDeleteConfirmOpen(true)
-              }
+              onClick={openDeleteConfirm}
             >
               <span>!</span>
 
               <div className="settings-row-main">
                 Удалить аккаунт
-                <div className="settings-row-sub">
-                  Аккаунт, почта, ключи и сессии будут удалены
-                </div>
               </div>
             </button>
           )}
         </div>
 
+        {logoutConfirmOpen && (
+          <div
+            className="dialog-delete-modal-overlay"
+            onClick={closeLogoutConfirm}
+          >
+            <div
+              className="dialog-delete-modal"
+              onClick={(e) =>
+                e.stopPropagation()
+              }
+            >
+              <h3>
+                Выйти из аккаунта
+              </h3>
+
+              <p>
+                Подтверждаете свои действия?
+              </p>
+
+              <div className="dialog-delete-actions">
+                <button
+                  type="button"
+                  className="dialog-delete-cancel"
+                  onClick={closeLogoutConfirm}
+                >
+                  Отмена
+                </button>
+
+                <button
+                  type="button"
+                  className="dialog-delete-confirm"
+                  onClick={confirmLogout}
+                >
+                  Продолжить
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {deleteConfirmOpen && (
           <div
             className="dialog-delete-modal-overlay"
-            onClick={() =>
-              setDeleteConfirmOpen(false)
-            }
+            onClick={closeDeleteConfirm}
           >
             <div
               className="dialog-delete-modal"
@@ -434,16 +508,16 @@ export default function SettingsModal({
               </h3>
 
               <p>
-                Аккаунт будет полностью удалён. Почта освободится для новой регистрации.
+                {deleteStep === 1
+                  ? "Все ваши данные будут удалены без возможности восстановления."
+                  : "Вы точно уверены, что хотите полностью удалить аккаунт?"}
               </p>
 
               <div className="dialog-delete-actions">
                 <button
                   type="button"
                   className="dialog-delete-cancel"
-                  onClick={() =>
-                    setDeleteConfirmOpen(false)
-                  }
+                  onClick={closeDeleteConfirm}
                   disabled={deleting}
                 >
                   Отмена
@@ -455,7 +529,11 @@ export default function SettingsModal({
                   onClick={handleDeleteAccount}
                   disabled={deleting}
                 >
-                  {deleting ? "..." : "Удалить"}
+                  {deleting
+                    ? "..."
+                    : deleteStep === 1
+                      ? "Продолжить"
+                      : "Принять"}
                 </button>
               </div>
             </div>

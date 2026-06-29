@@ -114,8 +114,8 @@ export default function LoginPage({
     }
 
     return text(
-      "Придумайте username и пароль. Аккаунт создастся только после этого шага.",
-      "Create a username and password. The account is created only after this step."
+      "Придумайте Имя и Пароль",
+      "Create a name and password"
     );
   }
 
