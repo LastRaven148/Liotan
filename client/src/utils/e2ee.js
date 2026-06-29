@@ -415,7 +415,9 @@ export async function encryptAttachmentFileForChat({
   username,
   chatKey,
   participants,
-  file
+  file,
+  originalTypeOverride = "",
+  uploadExtension = ".liotanenc"
 }) {
   if (!file) {
     return null;
@@ -440,7 +442,10 @@ export async function encryptAttachmentFileForChat({
     iv
   }, key, plain);
   const originalName = file.name || "file";
-  const uploadFile = new File([encrypted], `${originalName}.liotanenc`, {
+  const safeExtension = String(uploadExtension || ".liotanenc")
+    .trim()
+    .replace(/[^a-z0-9.]/gi, "") || ".liotanenc";
+  const uploadFile = new File([encrypted], `${originalName}${safeExtension}`, {
     type: "application/octet-stream",
     lastModified: Date.now()
   });
@@ -456,7 +461,7 @@ export async function encryptAttachmentFileForChat({
       iv: toBase64(iv),
       kid: chatKey,
       originalName,
-      originalType: getAttachmentTypeFromMime(file.type),
+      originalType: originalTypeOverride || getAttachmentTypeFromMime(file.type),
       originalMimeType: file.type || "application/octet-stream",
       originalSize: file.size
     }

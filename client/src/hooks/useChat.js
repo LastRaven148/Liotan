@@ -283,6 +283,35 @@ export default function useChat({
       forEveryone: options.forEveryone !== false
     });
   }
+  async function sendVoiceMessage(file, duration = 0) {
+    if (!file || !socketRef.current || !activeChat) {
+      return false;
+    }
+    try {
+      const encryptedFile = await encryptAttachmentFileForChat({
+        username,
+        chatKey: getE2EEChatKey(activeChat),
+        participants: getConversationParticipants(activeChat),
+        file,
+        originalTypeOverride: "voice",
+        uploadExtension: ".liotanvoice"
+      });
+      const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
+      if (encryptedFile.metadata) {
+        attachment.e2eeMedia = encryptedFile.metadata;
+        attachment.type = "voice";
+        attachment.mimeType = encryptedFile.metadata.originalMimeType;
+        attachment.size = encryptedFile.metadata.originalSize;
+        attachment.name = "Голосовое сообщение";
+        attachment.duration = Number(duration) || 0;
+      }
+      return await sendMessage(attachment);
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Не удалось отправить голосовое сообщение");
+      return false;
+    }
+  }
   async function sendAttachment(file) {
     if (!file || !socketRef.current || !activeChat) {
       return false;
@@ -386,6 +415,7 @@ export default function useChat({
     sendMessage,
     sendAttachment,
     sendAttachments,
+    sendVoiceMessage,
     handleKey
   };
 }

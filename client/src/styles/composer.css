@@ -205,3 +205,133 @@
 .composer textarea::placeholder{
   color:#7f91a4;
 }
+.attach-menu button{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.attach-menu-icon{
+  width:24px;
+  height:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#8fa4b8;
+  flex-shrink:0;
+}
+
+.attach-menu-label{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.voice-button{
+  background:#3390ec;
+}
+
+.voice-record-error{
+  margin-bottom:6px;
+  padding:7px 10px;
+  border-radius:10px;
+  background:#2a1f24;
+  color:#ff7777;
+  font-size:12px;
+}
+
+.voice-record-panel{
+  width:100%;
+  min-height:46px;
+  margin-bottom:6px;
+  padding:6px 8px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:#242f3d;
+  border:1px solid #324355;
+  border-radius:12px;
+}
+
+.voice-record-cancel,
+.voice-record-send{
+  border:none;
+  font-family:inherit;
+  cursor:pointer;
+  flex-shrink:0;
+}
+
+.voice-record-cancel{
+  height:32px;
+  padding:0 10px;
+  border-radius:8px;
+  background:transparent;
+  color:#ff7777;
+  font-size:13px;
+}
+
+.voice-record-cancel:hover{
+  background:rgba(255,255,255,.06);
+}
+
+.voice-record-send{
+  width:34px;
+  height:34px;
+  border-radius:9px;
+  background:#3390ec;
+  color:#fff;
+  font-size:16px;
+}
+
+.voice-record-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#ff4d5e;
+  animation:voice-record-pulse 1s ease-in-out infinite;
+}
+
+.voice-record-time{
+  color:#d7dde5;
+  font-size:13px;
+  font-variant-numeric:tabular-nums;
+  min-width:38px;
+}
+
+.voice-record-wave{
+  height:28px;
+  flex:1;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:3px;
+  overflow:hidden;
+}
+
+.voice-record-wave span{
+  width:3px;
+  height:var(--voice-bar, 14px);
+  border-radius:8px;
+  background:#6fa8dc;
+  opacity:.9;
+  animation:voice-record-wave 900ms ease-in-out infinite alternate;
+}
+
+.voice-record-wave span:nth-child(2n){
+  animation-delay:120ms;
+}
+
+.voice-record-wave span:nth-child(3n){
+  animation-delay:240ms;
+}
+
+@keyframes voice-record-pulse{
+  0%,100%{ opacity:1; }
+  50%{ opacity:.35; }
+}
+
+@keyframes voice-record-wave{
+  from{ transform:scaleY(.55); opacity:.55; }
+  to{ transform:scaleY(1); opacity:1; }
+}

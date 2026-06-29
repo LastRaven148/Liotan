@@ -26,7 +26,7 @@ export default function MessageList({
     useMemo(() => {
 
       return messages.filter(item =>
-        item?.attachment?.type === "audio" &&
+        ["audio", "voice"].includes(item?.attachment?.type) &&
         item?.attachment?.url
       );
 

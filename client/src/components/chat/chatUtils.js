@@ -121,6 +121,10 @@ export function getMessagePreview(
     return "Видео";
   }
 
+  if (message.attachment?.type === "voice") {
+    return "Голосовое сообщение";
+  }
+
   if (message.attachment?.type === "audio") {
     return "Аудио";
   }

@@ -118,6 +118,7 @@ export default function MessengerLayout({
         sendMessage={chat.sendMessage}
         sendAttachment={chat.sendAttachment}
         sendAttachments={chat.sendAttachments}
+        sendVoiceMessage={chat.sendVoiceMessage}
         openProfile={() =>
           setProfileUser(chat.activeDialog)
         }

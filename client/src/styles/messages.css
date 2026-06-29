@@ -1,5 +1,6 @@
 @import "./MessageMedia.css";
 @import "./MessageAudio.css";
+@import "./MessageVoice.css";
 
 .message{
   position:relative;

@@ -12,6 +12,7 @@ const ALLOWED_ATTACHMENT_TYPES = [
   "photo",
   "video",
   "audio",
+  "voice",
   "file"
 ];
 
@@ -173,7 +174,10 @@ function sanitizeAttachment(input) {
   if (mimeType && ALLOWED_ATTACHMENT_MIME.includes(mimeType)) {
     const expectedType = expectedTypeForMime(mimeType);
 
-    if (expectedType !== type) {
+    if (
+      expectedType !== type &&
+      !(type === "voice" && (expectedType === "audio" || expectedType === "file"))
+    ) {
       return null;
     }
   }
@@ -200,7 +204,10 @@ function sanitizeAttachment(input) {
     height: safeNumber(input.height, 0, 20000),
     duration: safeNumber(input.duration, 0, 24 * 60 * 60),
     publicId: String(input.publicId || "").slice(0, 300),
-    resourceType: String(input.resourceType || "auto").slice(0, 40)
+    resourceType: String(input.resourceType || "auto").slice(0, 40),
+    e2eeMedia: input.e2eeMedia && typeof input.e2eeMedia === "object"
+      ? input.e2eeMedia
+      : null
   };
 
   if (input.encrypted === true || input.isEncrypted === true) {

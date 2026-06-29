@@ -59,6 +59,7 @@ const Chat = memo(function Chat({
   sendMessage,
   sendAttachment,
   sendAttachments,
+  sendVoiceMessage,
   onBack,
   openProfile
 }) {
@@ -336,6 +337,7 @@ const Chat = memo(function Chat({
             onFileChange={handleFileChange}
             onSendClick={handleSendClick}
             onKeyDown={handleComposerKeyDown}
+            onSendVoice={sendVoiceMessage}
           />
         </div>
       ) : null}

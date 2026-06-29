@@ -138,6 +138,7 @@ const messageSchema =
       "photo",
       "video",
       "audio",
+      "voice",
       "file"
     ],
     default: ""
@@ -169,6 +170,10 @@ const messageSchema =
   resourceType: {
     type: String,
     default: "auto"
+  },
+  e2eeMedia: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
   }
 }
     },

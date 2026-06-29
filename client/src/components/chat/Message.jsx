@@ -13,6 +13,7 @@ import MessageReply from "./message/MessageReply";
 import MessageText from "./message/MessageText";
 import MessageFile from "./message/MessageFile";
 import MessageAudio from "./message/MessageAudio";
+import MessageVoice from "./message/MessageVoice";
 import MessageActions from "./message/MessageActions";
 import MessageViewer from "./message/MessageViewer";
 import MessageTime from "./message/MessageTime";
@@ -49,6 +50,7 @@ function Message({
   const isPhoto = hasAttachment && attachmentType === "photo";
   const isVideo = hasAttachment && attachmentType === "video";
   const isAudio = hasAttachment && attachmentType === "audio";
+  const isVoice = hasAttachment && attachmentType === "voice";
   const isFile = hasAttachment && attachmentType === "file";
   const canEdit = isMine && message.text && !isEncryptedText(message.text) && !hasAttachment;
   const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
@@ -257,13 +259,13 @@ function Message({
     closeMenus();
   }
   function toggleAudio() {
-    if (!isAudio || !attachment?.url) {
+    if ((!isAudio && !isVoice) || !attachment?.url) {
       return;
     }
     const playlist = audioMessages.map(item => ({
       messageId: item._id,
       url: item.attachment.url,
-      name: item.attachment.name || "Аудио",
+      name: item.attachment.type === "voice" ? "Голосовое сообщение" : item.attachment.name || "Аудио",
       duration: Number(item.attachment.duration) || 0,
       size: item.attachment.size || 0
     }));
@@ -271,7 +273,7 @@ function Message({
       detail: {
         messageId: message._id,
         url: fileUrl || attachment.url,
-        name: attachment.name || "Аудио",
+        name: isVoice ? "Голосовое сообщение" : attachment.name || "Аудио",
         duration: audioDuration || attachmentDuration,
         size: attachment.size || 0,
         playlist
@@ -386,7 +388,7 @@ function Message({
       </div>;
   }
   return <>
-      <div ref={messageRef} data-message-id={message._id} data-audio-message-id={isAudio ? message._id : undefined} className={["message", isMine ? "me" : "", isPhoto ? "photo-message" : "", isVideo ? "video-message" : "", isAudio ? "audio-message" : "", isFile ? "file-message" : "", !hasAttachment ? "text-message" : "", menuOpen ? "menu-open" : ""].join(" ")} onContextMenu={handleContextMenu} onTouchStart={handleTouchStart} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onTouchCancel={clearLongPress}>
+      <div ref={messageRef} data-message-id={message._id} data-audio-message-id={isAudio || isVoice ? message._id : undefined} className={["message", isMine ? "me" : "", isPhoto ? "photo-message" : "", isVideo ? "video-message" : "", isAudio ? "audio-message" : "", isVoice ? "voice-message" : "", isFile ? "file-message" : "", !hasAttachment ? "text-message" : "", menuOpen ? "menu-open" : ""].join(" ")} onContextMenu={handleContextMenu} onTouchStart={handleTouchStart} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onTouchCancel={clearLongPress}>
         <MessageReply message={message} t={t} username={username} activeChat={activeChat} e2eeRevision={e2eeRevision} />
 
         {isPhoto && renderPhoto()}
@@ -396,12 +398,14 @@ function Message({
         <div className="message-content">
           {isAudio && <MessageAudio attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} attachmentSizeText={attachmentSizeText} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
+          {isVoice && <MessageVoice audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
+
           {isFile && <MessageFile attachment={attachment} t={t} footer={renderMessageTime("message-footer-compact")} onDownloadRequest={requestDownloadFile} />}
 
           {decryptedText && !isPhoto && !isVideo && <MessageText value={decryptedText} footer={!hasAttachment ? renderMessageTime("message-footer-inline") : null} />}
         </div>
 
-        {hasAttachment && !isPhoto && !isVideo && !isAudio && !isFile && renderMessageTime("message-footer-block")}
+        {hasAttachment && !isPhoto && !isVideo && !isAudio && !isVoice && !isFile && renderMessageTime("message-footer-block")}
       </div>
 
       {renderDesktopMenu()}

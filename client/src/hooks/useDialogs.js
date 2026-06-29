@@ -33,6 +33,9 @@ function getAttachmentPreview(attachment) {
   if (attachment.type === "video") {
     return "Видео";
   }
+  if (attachment.type === "voice") {
+    return "Голосовое сообщение";
+  }
   if (attachment.type === "audio") {
     return attachment.name || "Аудио";
   }
