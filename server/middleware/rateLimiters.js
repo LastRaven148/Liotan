@@ -71,7 +71,31 @@ const authLimiter =
     legacyHeaders: false
   });
 
+
+const uploadLimiter =
+  rateLimit({
+    windowMs:
+      15 * 60 * 1000,
+
+    max:
+      process.env.NODE_ENV === "production"
+        ? 30
+        : 300,
+
+    keyGenerator:
+      privacyKey,
+
+    message:
+      createMessage(
+        "too many upload attempts"
+      ),
+
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+
 module.exports = {
   apiLimiter,
-  authLimiter
+  authLimiter,
+  uploadLimiter
 };

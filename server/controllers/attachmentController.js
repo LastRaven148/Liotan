@@ -4,8 +4,11 @@ const cloudinary =
 const uploadToCloudinary =
   require("../utils/uploadToCloudinary");
 
-const MAX_ATTACHMENT_SIZE =
-  500 * 1024 * 1024;
+const {
+  MAX_ATTACHMENT_SIZE,
+  normalizeMime,
+  assertAllowedAttachment
+} = require("../middleware/uploadSecurity");
 
 function fixFileName(name) {
   if (!name) {
@@ -82,21 +85,25 @@ async function signAttachmentUpload(
 ) {
   try {
     const mimeType =
-      typeof req.body.mimeType === "string"
-        ? req.body.mimeType
-        : "";
+      normalizeMime(
+        typeof req.body.mimeType === "string"
+          ? req.body.mimeType
+          : ""
+      );
 
     const size =
       Number(req.body.size) || 0;
 
-    if (
-  size < 0 ||
-  size > MAX_ATTACHMENT_SIZE
-) {
-      return res.status(400).json({
-        error: "file too large"
-      });
-    }
+    const fileName =
+      typeof req.body.name === "string"
+        ? req.body.name
+        : "";
+
+    assertAllowedAttachment({
+      mimeType,
+      fileName,
+      size
+    });
 
     const type =
       getAttachmentType(mimeType);
@@ -149,9 +156,18 @@ async function uploadAttachment(
       });
     }
 
+    const mimeType =
+      normalizeMime(req.file.mimetype);
+
+    assertAllowedAttachment({
+      mimeType,
+      fileName: req.file.originalname,
+      size: req.file.size
+    });
+
     const type =
       getAttachmentType(
-        req.file.mimetype
+        mimeType
       );
 
     const result =
@@ -171,8 +187,7 @@ async function uploadAttachment(
       name:
         fixFileName(req.file.originalname),
       type,
-      mimeType:
-        req.file.mimetype,
+      mimeType,
       size:
         req.file.size,
       publicId:

@@ -21,6 +21,10 @@ const registerPrivateHandlers =
 const registerGroupHandlers =
   require("./handlers/group");
 
+const {
+  attachSocketRateLimit
+} = require("./middleware/socketRateLimit");
+
 function setupSocket(io) {
 
   io.use((socket, next) => {
@@ -79,6 +83,8 @@ function setupSocket(io) {
   io.on(
     "connection",
     async (socket) => {
+
+      attachSocketRateLimit(socket);
 
       await handleConnectionStart({
         io,

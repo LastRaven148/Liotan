@@ -1,6 +1,11 @@
 const multer =
   require("multer");
 
+const {
+  MAX_ATTACHMENT_SIZE,
+  isAllowedAttachment
+} = require("../middleware/uploadSecurity");
+
 const upload =
   multer({
     storage:
@@ -8,7 +13,26 @@ const upload =
 
     limits: {
       fileSize:
-        500 * 1024 * 1024
+        MAX_ATTACHMENT_SIZE,
+      files: 1
+    },
+
+    fileFilter: (req, file, cb) => {
+      if (
+        !isAllowedAttachment({
+          mimeType: file.mimetype,
+          fileName: file.originalname,
+          size: 0
+        })
+      ) {
+        return cb(
+          new Error(
+            "attachment is not allowed"
+          )
+        );
+      }
+
+      cb(null, true);
     }
   });
 

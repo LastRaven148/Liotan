@@ -4,6 +4,10 @@ const express =
 const authMiddleware =
   require("../middleware/authMiddleware");
 
+const {
+  uploadLimiter
+} = require("../middleware/rateLimiters");
+
 const attachmentUpload =
   require("../config/attachmentUpload");
 
@@ -18,12 +22,14 @@ const router =
 router.post(
   "/attachments/sign",
   authMiddleware,
+  uploadLimiter,
   signAttachmentUpload
 );
 
 router.post(
   "/attachments/upload",
   authMiddleware,
+  uploadLimiter,
   attachmentUpload.single("attachment"),
   uploadAttachment
 );
