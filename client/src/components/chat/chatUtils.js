@@ -1,3 +1,4 @@
+import { isEncryptedText } from "../../utils/e2ee";
 function isSameDay(a, b) {
 
   return (
@@ -109,7 +110,7 @@ export function getMessagePreview(
     return "";
   }
 
-  if (message.text) {
+  if (message.text && !isEncryptedText(message.text)) {
     return message.text;
   }
 

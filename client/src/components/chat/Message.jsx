@@ -105,9 +105,6 @@ function Message({
   useEffect(() => {
     let cancelled = false;
     async function updateText() {
-      if (isEncryptedText(message.text)) {
-        setDecryptedText("");
-      }
       const value = await decryptTextForChat({
         username,
         chatKey: activeChat,

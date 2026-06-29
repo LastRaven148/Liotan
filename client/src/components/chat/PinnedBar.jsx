@@ -1,3 +1,4 @@
+import { isEncryptedText } from "../../utils/e2ee";
 function getMessagePreview(
   message,
   t
@@ -7,7 +8,7 @@ function getMessagePreview(
     return "";
   }
 
-  if (message.text) {
+  if (message.text && !isEncryptedText(message.text)) {
     return message.text;
   }
 

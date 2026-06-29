@@ -9,9 +9,6 @@ const MAX_PARALLEL_GETS = 4;
 let activeGetCount = 0;
 const getQueue = [];
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 async function waitForGetSlot() {
   while (activeGetCount >= MAX_PARALLEL_GETS) {

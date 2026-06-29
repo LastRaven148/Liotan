@@ -41,8 +41,7 @@ export default function useProfile({
     }, [
       setAvatar,
       setBio,
-      setDisplayName,
-      showToast
+      setDisplayName
     ]);
 
   const uploadAvatar =
