@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState
@@ -60,7 +61,7 @@ export default function AudioPlayer() {
     track
   ]);
 
-  function emitAudioState(next = {}) {
+  const emitAudioState = useCallback((next = {}) => {
     const currentTrack =
       next.track ||
       trackRef.current;
@@ -100,7 +101,11 @@ export default function AudioPlayer() {
         }
       )
     );
-  }
+  }, [
+    playing,
+    progress,
+    duration
+  ]);
 
   useEffect(() => {
     function handlePlayAudio(e) {
@@ -181,7 +186,8 @@ export default function AudioPlayer() {
   }, [
     speed,
     muted,
-    repeat
+    repeat,
+    emitAudioState
   ]);
 
   useEffect(() => {
@@ -231,7 +237,9 @@ export default function AudioPlayer() {
         handleSeekAudio
       );
     };
-  }, []);
+  }, [
+    emitAudioState
+  ]);
 
   useEffect(() => {
     const audio =

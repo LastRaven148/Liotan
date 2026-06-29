@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { uploadAttachmentApi } from "../services/api";
@@ -31,6 +31,23 @@ export default function useChat({
   function getE2EEChatKey(target) {
     return getEffectiveE2EEChatKey(target, getDialogForChat(target));
   }
+  const stopTyping = useCallback((chat = activeChatRef.current) => {
+    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) {
+      return;
+    }
+    socketRef.current.emit(SOCKET_EVENTS.STOP_TYPING, {
+      to: chat
+    });
+    typingChatRef.current = null;
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }, [
+    socketRef,
+    username
+  ]);
+
   useEffect(() => {
     window.history.replaceState({
       liotanScreen: "dialogs"
@@ -47,20 +64,7 @@ export default function useChat({
     return () => {
       window.removeEventListener("popstate", handleBrowserBack);
     };
-  }, []);
-  function stopTyping(chat = activeChat) {
-    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) {
-      return;
-    }
-    socketRef.current.emit(SOCKET_EVENTS.STOP_TYPING, {
-      to: chat
-    });
-    typingChatRef.current = null;
-    if (typingTimerRef.current) {
-      clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = null;
-    }
-  }
+  }, [stopTyping]);
   function startTyping(chat) {
     if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) {
       return;

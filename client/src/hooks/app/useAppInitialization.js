@@ -30,7 +30,11 @@ export default function useAppInitialization({
 
   }, [
     token,
-    username
+    username,
+    loadDialogs,
+    loadProfile,
+    loadPinnedChats,
+    loadArchivedChats
   ]);
 
 }

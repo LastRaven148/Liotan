@@ -6,6 +6,7 @@ import Composer from "./Composer";
 
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState
@@ -195,7 +196,7 @@ const Chat = memo(function Chat({
     };
   }, []);
 
-  function getConversationParticipants() {
+  const getConversationParticipants = useCallback(() => {
     if (!renderedActiveChat) {
       return [];
     }
@@ -219,7 +220,11 @@ const Chat = memo(function Chat({
       username,
       renderedActiveChat
     ].filter(Boolean);
-  }
+  }, [
+    renderedActiveChat,
+    renderedActiveDialog,
+    username
+  ]);
 
   async function handleE2EESettings() {
     if (!renderedActiveChat) {
@@ -259,7 +264,8 @@ const Chat = memo(function Chat({
     username,
     renderedActiveChat,
     renderedActiveDialog,
-    renderedE2EEChatKey
+    renderedE2EEChatKey,
+    getConversationParticipants
   ]);
 
   useChatScroll({

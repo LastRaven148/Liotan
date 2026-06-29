@@ -54,7 +54,8 @@ const MAX_ATTACHMENT_SIZE =
 const ENCRYPTED_ATTACHMENT_EXTENSIONS = [
   ".liotanenc",
   ".liotanvoice",
-  ".liotanmedia"
+  ".liotanmedia",
+  ".liotan"
 ];
 
 function hasEncryptedAttachmentExtension(name = "") {

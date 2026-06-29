@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState
 } from "react";
@@ -74,9 +75,9 @@ export default function useOfflineMedia({
     mediaKey
   ]);
 
-  async function saveOffline(
+  const saveOffline = useCallback(async (
     options = {}
-  ) {
+  ) => {
     if (
       !remoteUrl ||
       !mediaKey ||
@@ -115,7 +116,12 @@ export default function useOfflineMedia({
     } finally {
       setSavingOffline(false);
     }
-  }
+  }, [
+    remoteUrl,
+    mediaKey,
+    savingOffline,
+    decryptBlob
+  ]);
 
   useEffect(() => {
     if (
@@ -132,7 +138,8 @@ export default function useOfflineMedia({
   }, [
     shouldAutoCache,
     isOfflineSaved,
-    savingOffline
+    savingOffline,
+    saveOffline
   ]);
 
   return {

@@ -440,7 +440,7 @@ export async function encryptAttachmentFileForChat({
     iv
   }, key, plain);
   const originalName = file.name || "file";
-  const uploadFile = new File([encrypted], `${originalName}.liotan`, {
+  const uploadFile = new File([encrypted], `${originalName}.liotanenc`, {
     type: "application/octet-stream",
     lastModified: Date.now()
   });
