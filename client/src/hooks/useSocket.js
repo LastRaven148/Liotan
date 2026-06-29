@@ -177,11 +177,8 @@ export default function useSocket({
 
     socket.on(
       "connect_error",
-      err => {
-        console.log(
-          "SOCKET ERROR",
-          err.message
-        );
+      () => {
+        // Connection errors are intentionally not logged in production.
       }
     );
 

@@ -1,23 +1,69 @@
+const User =
+  require("../../../models/User");
+
 const {
   isValidUsername
 } = require("../../../utils/validators");
 
-function safePayload(value) {
+const {
+  getCallRouteId,
+  isValidCallRouteId,
+  sanitizeCallId,
+  sanitizeSignalPayload
+} = require("../../../utils/callPrivacy");
+
+function getTargetRoute({
+  toRoute,
+  to
+}) {
+  if (isValidCallRouteId(toRoute)) {
+    return toRoute;
+  }
+
+  if (isValidUsername(to)) {
+    return getCallRouteId(to);
+  }
+
+  return null;
+}
+
+async function canRouteLegacyTarget({
+  from,
+  to
+}) {
+  if (!to) {
+    return true;
+  }
+
   if (
-    !value ||
-    typeof value !== "object"
+    !isValidUsername(to) ||
+    to === from
   ) {
-    return null;
+    return false;
   }
 
-  const text =
-    JSON.stringify(value);
+  return Boolean(
+    await User.exists({
+      username: to,
+      emailVerified: true
+    })
+  );
+}
 
-  if (text.length > 65536) {
-    return null;
+function emitCallSignal({
+  io,
+  routeId,
+  event,
+  payload
+}) {
+  if (!routeId) {
+    return;
   }
 
-  return value;
+  io.to(`call:${routeId}`).emit(
+    event,
+    payload
+  );
 }
 
 function registerCallHandlers({
@@ -26,128 +72,164 @@ function registerCallHandlers({
 }) {
   socket.on(
     "callOffer",
-    ({ to, callId, offer }) => {
+    async ({ toRoute, to, callId, offer, media = "audio" }) => {
       const from =
         socket.user.username;
 
+      const routeId =
+        getTargetRoute({ toRoute, to });
+
+      const safeCallId =
+        sanitizeCallId(callId);
+
+      const safeOffer =
+        sanitizeSignalPayload(offer);
+
       if (
-        !isValidUsername(to) ||
-        to === from ||
-        typeof callId !== "string" ||
-        callId.length > 128
+        !routeId ||
+        !safeCallId ||
+        !safeOffer ||
+        !(await canRouteLegacyTarget({ from, to }))
       ) {
         return;
       }
 
-      const safeOffer =
-        safePayload(offer);
-
-      if (!safeOffer) {
-        return;
-      }
-
-      io.to(to).emit(
-        "callOffer",
-        {
+      emitCallSignal({
+        io,
+        routeId,
+        event: "callOffer",
+        payload: {
           from,
-          callId,
+          callId: safeCallId,
           offer: safeOffer,
+          media:
+            media === "video"
+              ? "video"
+              : "audio",
           e2eeRequired: true,
-          recording: false
+          recording: false,
+          serverRecording: false,
+          ephemeral: true,
+          noPersistence: true
         }
-      );
+      });
     }
   );
 
   socket.on(
     "callAnswer",
-    ({ to, callId, answer }) => {
+    async ({ toRoute, to, callId, answer }) => {
       const from =
         socket.user.username;
 
+      const routeId =
+        getTargetRoute({ toRoute, to });
+
+      const safeCallId =
+        sanitizeCallId(callId);
+
+      const safeAnswer =
+        sanitizeSignalPayload(answer);
+
       if (
-        !isValidUsername(to) ||
-        to === from ||
-        typeof callId !== "string" ||
-        callId.length > 128
+        !routeId ||
+        !safeCallId ||
+        !safeAnswer ||
+        !(await canRouteLegacyTarget({ from, to }))
       ) {
         return;
       }
 
-      const safeAnswer =
-        safePayload(answer);
-
-      if (!safeAnswer) {
-        return;
-      }
-
-      io.to(to).emit(
-        "callAnswer",
-        {
+      emitCallSignal({
+        io,
+        routeId,
+        event: "callAnswer",
+        payload: {
           from,
-          callId,
+          callId: safeCallId,
           answer: safeAnswer,
-          e2eeRequired: true
+          e2eeRequired: true,
+          ephemeral: true,
+          noPersistence: true
         }
-      );
+      });
     }
   );
 
   socket.on(
     "callIceCandidate",
-    ({ to, callId, candidate }) => {
+    async ({ toRoute, to, callId, candidate }) => {
       const from =
         socket.user.username;
 
+      const routeId =
+        getTargetRoute({ toRoute, to });
+
+      const safeCallId =
+        sanitizeCallId(callId);
+
+      const safeCandidate =
+        sanitizeSignalPayload(candidate, 32768);
+
       if (
-        !isValidUsername(to) ||
-        to === from ||
-        typeof callId !== "string" ||
-        callId.length > 128
+        !routeId ||
+        !safeCallId ||
+        !safeCandidate ||
+        !(await canRouteLegacyTarget({ from, to }))
       ) {
         return;
       }
 
-      const safeCandidate =
-        safePayload(candidate);
-
-      if (!safeCandidate) {
-        return;
-      }
-
-      io.to(to).emit(
-        "callIceCandidate",
-        {
+      emitCallSignal({
+        io,
+        routeId,
+        event: "callIceCandidate",
+        payload: {
           from,
-          callId,
-          candidate: safeCandidate
+          callId: safeCallId,
+          candidate: safeCandidate,
+          ephemeral: true,
+          noPersistence: true
         }
-      );
+      });
     }
   );
 
   socket.on(
     "callEnd",
-    ({ to, callId }) => {
+    async ({ toRoute, to, callId, reason = "ended" }) => {
       const from =
         socket.user.username;
 
+      const routeId =
+        getTargetRoute({ toRoute, to });
+
+      const safeCallId =
+        sanitizeCallId(callId);
+
       if (
-        !isValidUsername(to) ||
-        to === from ||
-        typeof callId !== "string" ||
-        callId.length > 128
+        !routeId ||
+        !safeCallId ||
+        !(await canRouteLegacyTarget({ from, to }))
       ) {
         return;
       }
 
-      io.to(to).emit(
-        "callEnd",
-        {
+      emitCallSignal({
+        io,
+        routeId,
+        event: "callEnd",
+        payload: {
           from,
-          callId
+          callId: safeCallId,
+          reason:
+            typeof reason === "string" && reason.length <= 32
+              ? reason
+              : "ended",
+          ephemeral: true,
+          noPersistence: true
         }
-      );
+      });
     }
   );
 }

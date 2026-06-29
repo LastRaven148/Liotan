@@ -32,6 +32,10 @@ const {
 const logger =
   require("../utils/logger");
 
+const {
+  getCallRoom
+} = require("../utils/callPrivacy");
+
 function setupSocket(io) {
 
   io.use((socket, next) => {
@@ -78,6 +82,13 @@ function setupSocket(io) {
 
         socket.user =
           decoded;
+
+        const callRoom =
+          getCallRoom(decoded.username);
+
+        if (callRoom) {
+          socket.join(callRoom);
+        }
 
         next();
       }).catch(next);

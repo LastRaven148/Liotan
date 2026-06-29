@@ -15,3 +15,10 @@ export function getVoiceMessageCapabilities() {
 export function getProxyTransportCapabilities() {
   return apiRequest(`${API}/proxy/capabilities`);
 }
+
+export {
+  getCallRoute,
+  createCallId,
+  createSecurePeerConnection,
+  supportsEncodedInsertableStreams
+} from "./callSecurity";
