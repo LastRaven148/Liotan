@@ -32,6 +32,41 @@ export async function getProfile(username) {
   return apiRequest(`${API}/profile/${username}`);
 }
 
+
+export async function sendAuthEmailCode(
+  email,
+  purpose
+) {
+  return apiRequest(`${API}/auth/email-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email,
+      purpose
+    })
+  });
+}
+
+export async function resetPasswordApi(
+  email,
+  code,
+  password
+) {
+  return apiRequest(`${API}/password/reset`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email,
+      code,
+      password
+    })
+  });
+}
+
 export async function loginUser(
   username,
   password
@@ -50,7 +85,9 @@ export async function loginUser(
 
 export async function registerUser(
   username,
-  password
+  password,
+  email,
+  code
 ) {
   return apiRequest(`${API}/register`, {
     method: "POST",
@@ -59,7 +96,9 @@ export async function registerUser(
     },
     body: JSON.stringify({
       username,
-      password
+      password,
+      email,
+      code
     })
   });
 }

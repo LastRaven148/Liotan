@@ -9,13 +9,21 @@ const authMiddleware =
   require("../middleware/authMiddleware");
 
 const {
+  sendAuthCode,
   register,
   login,
+  resetPassword,
   deleteMe
 } = require("../controllers/authController");
 
 const router =
   express.Router();
+
+router.post(
+  "/auth/email-code",
+  authLimiter,
+  sendAuthCode
+);
 
 router.post(
   "/register",
@@ -27,6 +35,12 @@ router.post(
   "/login",
   authLimiter,
   login
+);
+
+router.post(
+  "/password/reset",
+  authLimiter,
+  resetPassword
 );
 
 router.delete(

@@ -9,10 +9,17 @@ import {
 export default function LoginPage({
   username,
   setUsername,
+  email,
+  setEmail,
+  emailCode,
+  setEmailCode,
   password,
   setPassword,
   login,
-  register
+  sendRegisterCode,
+  register,
+  sendResetCode,
+  resetPassword
 }) {
 
   const {
@@ -24,93 +31,309 @@ export default function LoginPage({
     useState("login");
 
   const [step, setStep] =
-    useState("username");
+    useState("login");
+
+  const isRu =
+    language === "ru";
 
   const isLogin =
     mode === "login";
 
-  const title =
-    isLogin
-      ? language === "ru"
-        ? "Вход в Liotan"
-        : "Sign in to Liotan"
-      : language === "ru"
+  const isRegister =
+    mode === "register";
+
+  const isReset =
+    mode === "reset";
+
+  function title() {
+    if (isReset) {
+      return isRu
+        ? "Восстановление пароля"
+        : "Reset password";
+    }
+
+    if (isRegister) {
+      return isRu
         ? "Создать аккаунт"
         : "Create account";
-
-  const subtitle =
-    step === "username"
-      ? language === "ru"
-        ? "Введите имя пользователя"
-        : "Enter your username to continue"
-      : language === "ru"
-        ? `Добро пожаловать, ${username}`
-        : `Welcome, ${username}`;
-
-  function handleNext() {
-
-    if (!username.trim()) {
-      return;
     }
 
-    setStep("password");
-
+    return isRu
+      ? "Вход в Liotan"
+      : "Sign in to Liotan";
   }
 
-  function handleBack() {
-
-    setStep("username");
-    setPassword("");
-
-  }
-
-  function handleSubmit() {
-
+  function subtitle() {
     if (isLogin) {
-      login();
-      return;
+      return isRu
+        ? "Введите username или email и пароль"
+        : "Enter username or email and password";
     }
 
-    register();
+    if (step === "email") {
+      return isRu
+        ? "На почту придёт код подтверждения"
+        : "A verification code will be sent to email";
+    }
 
+    if (step === "code") {
+      return isRu
+        ? "Введите код из письма"
+        : "Enter the email code";
+    }
+
+    return isRu
+      ? "Введите имя пользователя и пароль"
+      : "Enter username and password";
   }
 
-  function switchMode() {
-
-    setMode(
-      isLogin
-        ? "register"
-        : "login"
-    );
-
-    setStep("username");
+  function clearSensitive() {
     setPassword("");
+    setEmailCode("");
+  }
 
+  function switchMode(nextMode) {
+    setMode(nextMode);
+    setStep(
+      nextMode === "login"
+        ? "login"
+        : "email"
+    );
+    clearSensitive();
   }
 
   function switchLanguage() {
-
     setLanguage(
       language === "ru"
         ? "en"
         : "ru"
     );
+  }
 
+  async function handlePrimary() {
+    if (isLogin) {
+      await login();
+      return;
+    }
+
+    if (step === "email") {
+      const ok = isReset
+        ? await sendResetCode()
+        : await sendRegisterCode();
+
+      if (ok) {
+        setStep("code");
+      }
+
+      return;
+    }
+
+    if (step === "code") {
+      setStep(
+        isReset
+          ? "newPassword"
+          : "account"
+      );
+      return;
+    }
+
+    if (isReset) {
+      const ok =
+        await resetPassword();
+
+      if (ok) {
+        switchMode("login");
+      }
+
+      return;
+    }
+
+    await register();
+  }
+
+  function handleBack() {
+    if (isLogin) {
+      return;
+    }
+
+    if (step === "email") {
+      switchMode("login");
+      return;
+    }
+
+    if (step === "code") {
+      setStep("email");
+      return;
+    }
+
+    setStep("code");
   }
 
   function handleKeyDown(e) {
+    if (e.key === "Enter") {
+      handlePrimary();
+    }
+  }
 
-    if (e.key !== "Enter") {
-      return;
+  function primaryText() {
+    if (isLogin) {
+      return isRu
+        ? "Войти"
+        : "Login";
     }
 
-    if (step === "username") {
-      handleNext();
-      return;
+    if (step === "email") {
+      return isRu
+        ? "Получить код"
+        : "Get code";
     }
 
-    handleSubmit();
+    if (step === "code") {
+      return isRu
+        ? "Продолжить"
+        : "Continue";
+    }
 
+    if (isReset) {
+      return isRu
+        ? "Сменить пароль"
+        : "Change password";
+    }
+
+    return isRu
+      ? "Зарегистрироваться"
+      : "Register";
+  }
+
+  function renderFields() {
+    if (isLogin) {
+      return (
+        <>
+          <input
+            className="auth-input"
+            placeholder={
+              isRu
+                ? "Username или email"
+                : "Username or email"
+            }
+            value={username}
+            autoFocus
+            onChange={(e) =>
+              setUsername(e.target.value)
+            }
+            onKeyDown={handleKeyDown}
+          />
+
+          <input
+            className="auth-input"
+            placeholder={
+              isRu
+                ? "Пароль"
+                : "Password"
+            }
+            type="password"
+            value={password}
+            onChange={(e) =>
+              setPassword(e.target.value)
+            }
+            onKeyDown={handleKeyDown}
+          />
+        </>
+      );
+    }
+
+    if (step === "email") {
+      return (
+        <input
+          className="auth-input"
+          placeholder="Email"
+          type="email"
+          value={email}
+          autoFocus
+          onChange={(e) =>
+            setEmail(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+      );
+    }
+
+    if (step === "code") {
+      return (
+        <input
+          className="auth-input"
+          placeholder={
+            isRu
+              ? "Код из письма"
+              : "Email code"
+          }
+          inputMode="numeric"
+          maxLength={6}
+          value={emailCode}
+          autoFocus
+          onChange={(e) =>
+            setEmailCode(
+              e.target.value.replace(/\D/g, "")
+            )
+          }
+          onKeyDown={handleKeyDown}
+        />
+      );
+    }
+
+    if (isReset) {
+      return (
+        <input
+          className="auth-input"
+          placeholder={
+            isRu
+              ? "Новый пароль"
+              : "New password"
+          }
+          type="password"
+          value={password}
+          autoFocus
+          onChange={(e) =>
+            setPassword(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+      );
+    }
+
+    return (
+      <>
+        <input
+          className="auth-input"
+          placeholder={
+            isRu
+              ? "Имя пользователя"
+              : "Username"
+          }
+          value={username}
+          autoFocus
+          onChange={(e) =>
+            setUsername(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+
+        <input
+          className="auth-input"
+          placeholder={
+            isRu
+              ? "Пароль"
+              : "Password"
+          }
+          type="password"
+          value={password}
+          onChange={(e) =>
+            setPassword(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+      </>
+    );
   }
 
   return (
@@ -118,7 +341,7 @@ export default function LoginPage({
 
       <div className="auth-card">
 
-        {step === "password" && (
+        {!isLogin && (
           <button
             type="button"
             className="auth-back"
@@ -133,81 +356,64 @@ export default function LoginPage({
         </div>
 
         <h1>
-          {title}
+          {title()}
         </h1>
 
         <p className="auth-subtitle">
-          {subtitle}
+          {subtitle()}
         </p>
 
-        {step === "username" ? (
-          <input
-            className="auth-input"
-            placeholder={
-              language === "ru"
-                ? "Имя пользователя"
-                : "Username"
-            }
-            value={username}
-            autoFocus
-            onChange={(e) =>
-              setUsername(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-        ) : (
-          <input
-            className="auth-input"
-            placeholder={
-              language === "ru"
-                ? "Пароль"
-                : "Password"
-            }
-            type="password"
-            value={password}
-            autoFocus
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-        )}
+        <div className="auth-fields">
+          {renderFields()}
+        </div>
 
         <button
           type="button"
           className="auth-primary"
-          onClick={
-            step === "username"
-              ? handleNext
-              : handleSubmit
-          }
+          onClick={handlePrimary}
         >
-          {step === "username"
-            ? language === "ru"
-              ? "Далее"
-              : "Next"
-            : isLogin
-              ? language === "ru"
-                ? "Войти"
-                : "Login"
-              : language === "ru"
-                ? "Зарегистрироваться"
-                : "Register"}
+          {primaryText()}
         </button>
 
-        <button
-          type="button"
-          className="auth-link"
-          onClick={switchMode}
-        >
-          {isLogin
-            ? language === "ru"
-              ? "Создать аккаунт"
-              : "Create account"
-            : language === "ru"
+        {isLogin ? (
+          <>
+            <button
+              type="button"
+              className="auth-link"
+              onClick={() =>
+                switchMode("register")
+              }
+            >
+              {isRu
+                ? "Создать аккаунт"
+                : "Create account"}
+            </button>
+
+            <button
+              type="button"
+              className="auth-link auth-link-secondary"
+              onClick={() =>
+                switchMode("reset")
+              }
+            >
+              {isRu
+                ? "Забыли пароль?"
+                : "Forgot password?"}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="auth-link"
+            onClick={() =>
+              switchMode("login")
+            }
+          >
+            {isRu
               ? "У меня уже есть аккаунт"
               : "I already have an account"}
-        </button>
+          </button>
+        )}
 
         <button
           type="button"

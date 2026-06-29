@@ -5,6 +5,8 @@ import {
 import {
   loginUser,
   registerUser,
+  sendAuthEmailCode,
+  resetPasswordApi,
   deleteAccountApi
 } from "../services/api";
 
@@ -16,6 +18,12 @@ export default function useAuth({
     useState(
       localStorage.getItem("username") || ""
     );
+
+  const [email, setEmail] =
+    useState("");
+
+  const [emailCode, setEmailCode] =
+    useState("");
 
   const [password, setPassword] =
     useState("");
@@ -46,7 +54,28 @@ export default function useAuth({
     );
 
     setPassword("");
+    setEmailCode("");
 
+  }
+
+  function handleAuthError(
+    err,
+    fallback
+  ) {
+    if (
+      err.message === "Failed to fetch"
+    ) {
+      showToast(
+        "Server offline"
+      );
+
+      return;
+    }
+
+    showToast(
+      err.message ||
+      fallback
+    );
   }
 
   async function login() {
@@ -62,22 +91,45 @@ export default function useAuth({
       await saveSession(data);
 
     } catch (err) {
+      handleAuthError(
+        err,
+        "Login failed"
+      );
+    }
 
-      if (
-        err.message === "Failed to fetch"
-      ) {
-        showToast(
-          "Server offline"
+  }
+
+  async function sendRegisterCode() {
+
+    try {
+
+      const result =
+        await sendAuthEmailCode(
+          email,
+          "register"
         );
 
-        return;
+      if (result?.devCode) {
+        setEmailCode(
+          result.devCode
+        );
       }
 
       showToast(
-        err.message ||
-        "Login failed"
+        result?.sent
+          ? "Code sent"
+          : "Mail is not configured. Code is in server logs."
       );
 
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return false;
     }
 
   }
@@ -88,7 +140,9 @@ export default function useAuth({
 
       await registerUser(
         username,
-        password
+        password,
+        email,
+        emailCode
       );
 
       const data =
@@ -104,22 +158,75 @@ export default function useAuth({
       );
 
     } catch (err) {
+      handleAuthError(
+        err,
+        "Register failed"
+      );
+    }
 
-      if (
-        err.message === "Failed to fetch"
-      ) {
-        showToast(
-          "Server offline"
+  }
+
+  async function sendResetCode() {
+
+    try {
+
+      const result =
+        await sendAuthEmailCode(
+          email,
+          "reset"
         );
 
-        return;
+      if (result?.devCode) {
+        setEmailCode(
+          result.devCode
+        );
       }
 
       showToast(
-        err.message ||
-        "Register failed"
+        result?.sent
+          ? "Code sent"
+          : "Mail is not configured. Code is in server logs."
       );
 
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return false;
+    }
+
+  }
+
+  async function resetPassword() {
+
+    try {
+
+      await resetPasswordApi(
+        email,
+        emailCode,
+        password
+      );
+
+      showToast(
+        "Password changed"
+      );
+
+      setPassword("");
+      setEmailCode("");
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to reset password"
+      );
+
+      return false;
     }
 
   }
@@ -139,6 +246,7 @@ export default function useAuth({
     setToken("");
     setUsername("");
     setPassword("");
+    setEmailCode("");
 
   }
 
@@ -177,6 +285,12 @@ export default function useAuth({
     username,
     setUsername,
 
+    email,
+    setEmail,
+
+    emailCode,
+    setEmailCode,
+
     password,
     setPassword,
 
@@ -184,7 +298,10 @@ export default function useAuth({
     setToken,
 
     login,
+    sendRegisterCode,
     register,
+    sendResetCode,
+    resetPassword,
     logout,
     deleteAccount
   };

@@ -8,6 +8,7 @@ import {
 import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { uploadAttachmentApi } from "../services/api";
+import { encryptTextForChat } from "../utils/e2ee";
 
 export default function useChat({
   username,
@@ -190,7 +191,7 @@ export default function useChat({
     setTextState("");
   }
 
-  function emitMessage({
+  async function emitMessage({
     target,
     messageText = "",
     attachment = null
@@ -204,12 +205,18 @@ export default function useChat({
       item.username === target
     );
 
+    const encryptedText = await encryptTextForChat({
+      username,
+      chatKey: target,
+      text: messageText
+    });
+
     if (dialog?.type === "group") {
       socketRef.current.emit(
         SOCKET_EVENTS.SEND_GROUP_MESSAGE,
         {
           groupId: dialog.groupId,
-          text: messageText,
+          text: encryptedText,
           attachment,
           replyTo: replyMessage
             ? { messageId: replyMessage._id }
@@ -224,7 +231,7 @@ export default function useChat({
       SOCKET_EVENTS.SEND_MESSAGE,
       {
         to: target,
-        text: messageText,
+        text: encryptedText,
         attachment,
         replyTo: replyMessage
           ? { messageId: replyMessage._id }
@@ -235,7 +242,7 @@ export default function useChat({
     return true;
   }
 
-  function sendMessage(attachment = null) {
+  async function sendMessage(attachment = null) {
     if (!socketRef.current || !activeChat) {
       return false;
     }
@@ -265,7 +272,7 @@ export default function useChat({
       return false;
     }
 
-    const ok = emitMessage({
+    const ok = await emitMessage({
       target: activeChat,
       messageText: hasText ? text : "",
       attachment
@@ -300,7 +307,7 @@ export default function useChat({
         const attachment =
           await uploadAttachmentApi(safeFiles[i]);
 
-        const ok = emitMessage({
+        const ok = await emitMessage({
           target,
           messageText:
             i === captionIndex
@@ -365,7 +372,7 @@ export default function useChat({
     try {
       const attachment = await uploadAttachmentApi(file);
 
-      return sendMessage(attachment);
+      return await sendMessage(attachment);
     } catch (err) {
       console.error(err);
 

@@ -17,10 +17,17 @@ export default function App() {
       <AuthLayout
         username={app.username}
         setUsername={app.setUsername}
+        email={app.email}
+        setEmail={app.setEmail}
+        emailCode={app.emailCode}
+        setEmailCode={app.setEmailCode}
         password={app.password}
         setPassword={app.setPassword}
         login={app.login}
+        sendRegisterCode={app.sendRegisterCode}
         register={app.register}
+        sendResetCode={app.sendResetCode}
+        resetPassword={app.resetPassword}
       />
     );
 

@@ -1,3 +1,6 @@
+const crypto =
+  require("crypto");
+
 const rateLimit =
   require("express-rate-limit");
 
@@ -5,6 +8,24 @@ const createMessage =
   (message) => ({
     error: message
   });
+
+function privacyKey(req) {
+  const secret =
+    process.env.PRIVACY_HASH_SECRET ||
+    process.env.JWT_SECRET ||
+    "liotan-local-dev";
+
+  const rawKey =
+    req.user?.username ||
+    req.body?.username ||
+    req.ip ||
+    "unknown";
+
+  return crypto
+    .createHmac("sha256", secret)
+    .update(String(rawKey))
+    .digest("hex");
+}
 
 const apiLimiter =
   rateLimit({
@@ -15,6 +36,9 @@ const apiLimiter =
       process.env.NODE_ENV === "production"
         ? 300
         : 3000,
+
+    keyGenerator:
+      privacyKey,
 
     message:
       createMessage(
@@ -34,6 +58,9 @@ const authLimiter =
       process.env.NODE_ENV === "production"
         ? 20
         : 200,
+
+    keyGenerator:
+      privacyKey,
 
     message:
       createMessage(

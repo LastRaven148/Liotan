@@ -59,6 +59,11 @@ from "./message/MessageViewer";
 import MessageTime
 from "./message/MessageTime";
 
+import {
+  decryptTextForChat,
+  isEncryptedText
+} from "../../utils/e2ee";
+
 import DownloadConfirmModal
 from "./message/DownloadConfirmModal";
 
@@ -68,6 +73,8 @@ const AUTO_CACHE_LIMIT =
 function Message({
   message,
   username,
+  activeChat,
+  e2eeRevision = 0,
   audioMessages = [],
   onEdit,
   onDelete,
@@ -91,6 +98,9 @@ function Message({
 
   const [deleteForEveryone, setDeleteForEveryone] =
     useState(false);
+
+  const [decryptedText, setDecryptedText] =
+    useState(message.text || "");
 
   const isMine =
     message.from === username;
@@ -124,6 +134,7 @@ function Message({
   const canEdit =
     isMine &&
     message.text &&
+    !isEncryptedText(message.text) &&
     !hasAttachment;
 
   const remoteUrl =
@@ -189,6 +200,33 @@ function Message({
     openViewer,
     closeViewer
   } = useMediaViewer();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function updateText() {
+      const value = await decryptTextForChat({
+        username,
+        chatKey: activeChat,
+        text: message.text || ""
+      });
+
+      if (!cancelled) {
+        setDecryptedText(value);
+      }
+    }
+
+    updateText();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    username,
+    activeChat,
+    message.text,
+    e2eeRevision
+  ]);
 
   useEffect(() => {
     if (
@@ -338,13 +376,13 @@ function Message({
   }
 
   function renderMediaCaption() {
-    if (!message.text) {
+    if (!decryptedText) {
       return null;
     }
 
     return (
       <div className="message-media-caption">
-        {renderTextWithLinks(message.text)}
+        {renderTextWithLinks(decryptedText)}
       </div>
     );
   }
@@ -405,9 +443,9 @@ function requestDownloadFile() {
 }
 
   function copyMessage() {
-    if (message.text) {
+    if (decryptedText) {
       navigator.clipboard?.writeText(
-        message.text
+        decryptedText
       );
     }
 
@@ -713,6 +751,9 @@ function requestDownloadFile() {
         <MessageReply
           message={message}
           t={t}
+          username={username}
+          activeChat={activeChat}
+          e2eeRevision={e2eeRevision}
         />
 
         {isPhoto && renderPhoto()}
@@ -743,9 +784,9 @@ function requestDownloadFile() {
             />
           )}
 
-          {message.text && !isPhoto && !isVideo && (
+          {decryptedText && !isPhoto && !isVideo && (
             <MessageText
-              value={message.text}
+              value={decryptedText}
               footer={
                 !hasAttachment
                   ? renderMessageTime("message-footer-inline")

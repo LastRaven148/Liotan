@@ -1,14 +1,64 @@
+import {
+  useEffect,
+  useState
+} from "react";
+
+import {
+  decryptTextForChat,
+  isEncryptedText
+} from "../../../utils/e2ee";
+
 export default function MessageReply({
   message,
-  t
+  t,
+  username,
+  activeChat,
+  e2eeRevision = 0
 }) {
+  const [replyText, setReplyText] =
+    useState(message.replyTo?.text || "");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function updateReplyText() {
+      const text = message.replyTo?.text || "";
+
+      if (!isEncryptedText(text)) {
+        setReplyText(text);
+        return;
+      }
+
+      const value = await decryptTextForChat({
+        username,
+        chatKey: activeChat,
+        text
+      });
+
+      if (!cancelled) {
+        setReplyText(value);
+      }
+    }
+
+    updateReplyText();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    message.replyTo?.text,
+    username,
+    activeChat,
+    e2eeRevision
+  ]);
+
   function getReplyPreview(replyTo) {
     if (!replyTo) {
       return "";
     }
 
-    if (replyTo.text) {
-      return replyTo.text;
+    if (replyText) {
+      return replyText;
     }
 
     if (replyTo.attachmentType === "photo") {

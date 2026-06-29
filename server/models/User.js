@@ -15,6 +15,18 @@ const userSchema =
 
     password: String,
 
+    emailHash: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true
+    },
+
+    emailVerified: {
+      type: Boolean,
+      default: false
+    },
+
     avatar: {
       type: String,
       default: ""

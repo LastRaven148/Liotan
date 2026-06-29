@@ -104,7 +104,9 @@ export default function ChatHeader({
   typingUsers,
   openProfile,
   username,
-  onBack
+  onBack,
+  e2eeEnabled = false,
+  onE2EESettings
 }) {
 
   const { t } =
@@ -143,6 +145,34 @@ export default function ChatHeader({
   const isOnline =
     !isGroup &&
     onlineUsers?.includes(activeChat);
+
+  function renderedLockButton() {
+    if (!activeChat) {
+      return null;
+    }
+
+    return (
+      <button
+        type="button"
+        className={[
+          "chat-e2ee-button",
+          e2eeEnabled ? "is-enabled" : ""
+        ].filter(Boolean).join(" ")}
+        title={
+          e2eeEnabled
+            ? "E2EE включено"
+            : "Включить E2EE"
+        }
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onE2EESettings?.();
+        }}
+      >
+        {e2eeEnabled ? "🔒" : "🔓"}
+      </button>
+    );
+  }
 
   return (
     <div
@@ -183,7 +213,7 @@ export default function ChatHeader({
         )}
       </div>
 
-      <div>
+      <div className="chat-header-main">
         <div className="chat-name">
           {title}
         </div>
@@ -203,6 +233,8 @@ export default function ChatHeader({
           </div>
         )}
       </div>
+
+      {renderedLockButton()}
 
     </div>
   );

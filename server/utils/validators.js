@@ -28,7 +28,22 @@ function isValidPassword(password) {
   return (
     typeof password === "string" &&
     password.length >= 8 &&
-    password.length <= 20
+    password.length <= 64
+  );
+}
+
+function isValidEmail(email) {
+  return (
+    typeof email === "string" &&
+    email.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  );
+}
+
+function isValidEmailCode(code) {
+  return (
+    typeof code === "string" &&
+    /^\d{6}$/.test(code.trim())
   );
 }
 
@@ -52,6 +67,8 @@ module.exports = {
   isValidUsername,
   isValidDisplayName,
   isValidPassword,
+  isValidEmail,
+  isValidEmailCode,
   isValidBio,
   isValidMessage
 };

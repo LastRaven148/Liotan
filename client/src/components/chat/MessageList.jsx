@@ -12,6 +12,8 @@ export default function MessageList({
   messages,
   t,
   username,
+  activeChat,
+  e2eeRevision,
   messagesRef,
   bottomRef,
   onEdit,
@@ -69,6 +71,8 @@ export default function MessageList({
             key={item.message._id}
             message={item.message}
             username={username}
+            activeChat={activeChat}
+            e2eeRevision={e2eeRevision}
             audioMessages={audioMessages}
             onEdit={onEdit}
             onReply={onReply}
