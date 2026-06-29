@@ -4,6 +4,12 @@ import {
   apiRequest
 } from "../utils/apiRequest";
 
+import {
+  getCallSecurityPolicy,
+  installNoRecordingGuards,
+  supportsCallFrameE2EE
+} from "./secureCallFrames";
+
 export function createCallId() {
   const bytes =
     crypto.getRandomValues(new Uint8Array(18));
@@ -25,10 +31,7 @@ export async function getCallRoute(username) {
 }
 
 export function supportsEncodedInsertableStreams() {
-  return Boolean(
-    window.RTCRtpSender?.prototype?.createEncodedStreams ||
-    window.RTCRtpScriptTransform
-  );
+  return supportsCallFrameE2EE();
 }
 
 export function getSecurePeerConnectionConfig() {
@@ -41,9 +44,21 @@ export function getSecurePeerConnectionConfig() {
 }
 
 export function createSecurePeerConnection() {
-  return new RTCPeerConnection(
+  const peerConnection = new RTCPeerConnection(
     getSecurePeerConnectionConfig()
   );
+
+  installNoRecordingGuards(peerConnection);
+
+  return peerConnection;
+}
+
+export function getSecureCallPolicy() {
+  return getCallSecurityPolicy();
+}
+
+export function stopCallTracksAndWipe(stream) {
+  stopMediaStream(stream);
 }
 
 export function stopMediaStream(stream) {

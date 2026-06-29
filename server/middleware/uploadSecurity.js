@@ -13,7 +13,8 @@ const ALLOWED_ATTACHMENT_MIME = [
   "audio/wav",
   "audio/webm",
   "application/pdf",
-  "text/plain"
+  "text/plain",
+  "application/octet-stream"
 ];
 
 const BLOCKED_EXTENSIONS = [
@@ -49,6 +50,21 @@ const BLOCKED_EXTENSIONS = [
 const MAX_ATTACHMENT_SIZE =
   Number(process.env.MAX_ATTACHMENT_SIZE_BYTES) ||
   100 * 1024 * 1024;
+
+const ENCRYPTED_ATTACHMENT_EXTENSIONS = [
+  ".liotanenc",
+  ".liotanvoice",
+  ".liotanmedia"
+];
+
+function hasEncryptedAttachmentExtension(name = "") {
+  const lower =
+    String(name).toLowerCase();
+
+  return ENCRYPTED_ATTACHMENT_EXTENSIONS.some(
+    ext => lower.endsWith(ext)
+  );
+}
 
 function normalizeMime(value = "") {
   return String(value)
@@ -87,6 +103,13 @@ function isAllowedAttachment({
   }
 
   if (!normalizedMime) {
+    return false;
+  }
+
+  if (
+    normalizedMime === "application/octet-stream" &&
+    !hasEncryptedAttachmentExtension(fileName)
+  ) {
     return false;
   }
 
@@ -147,7 +170,8 @@ function hasKnownMagicBytes(buffer, mimeType = "") {
   if (
     normalizedMime.startsWith("audio/") ||
     normalizedMime.startsWith("video/") ||
-    normalizedMime === "text/plain"
+    normalizedMime === "text/plain" ||
+    normalizedMime === "application/octet-stream"
   ) {
     return true;
   }
@@ -197,5 +221,6 @@ module.exports = {
   isAllowedAttachment,
   assertAllowedAttachment,
   assertSafeFileBuffer,
-  hasKnownMagicBytes
+  hasKnownMagicBytes,
+  hasEncryptedAttachmentExtension
 };

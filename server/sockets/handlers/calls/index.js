@@ -12,6 +12,10 @@ const {
   sanitizeSignalPayload
 } = require("../../../utils/callPrivacy");
 
+const {
+  CALL_POLICY
+} = require("../../../utils/realtimeSecurityPolicy");
+
 function getTargetRoute({
   toRoute,
   to
@@ -99,7 +103,7 @@ function registerCallHandlers({
         routeId,
         event: "callOffer",
         payload: {
-          from,
+          fromRoute: getCallRouteId(from),
           callId: safeCallId,
           offer: safeOffer,
           media:
@@ -110,7 +114,8 @@ function registerCallHandlers({
           recording: false,
           serverRecording: false,
           ephemeral: true,
-          noPersistence: true
+          noPersistence: true,
+          policy: CALL_POLICY
         }
       });
     }
@@ -145,12 +150,13 @@ function registerCallHandlers({
         routeId,
         event: "callAnswer",
         payload: {
-          from,
+          fromRoute: getCallRouteId(from),
           callId: safeCallId,
           answer: safeAnswer,
           e2eeRequired: true,
           ephemeral: true,
-          noPersistence: true
+          noPersistence: true,
+          policy: CALL_POLICY
         }
       });
     }
@@ -185,11 +191,12 @@ function registerCallHandlers({
         routeId,
         event: "callIceCandidate",
         payload: {
-          from,
+          fromRoute: getCallRouteId(from),
           callId: safeCallId,
           candidate: safeCandidate,
           ephemeral: true,
-          noPersistence: true
+          noPersistence: true,
+          policy: CALL_POLICY
         }
       });
     }
@@ -220,14 +227,15 @@ function registerCallHandlers({
         routeId,
         event: "callEnd",
         payload: {
-          from,
+          fromRoute: getCallRouteId(from),
           callId: safeCallId,
           reason:
             typeof reason === "string" && reason.length <= 32
               ? reason
               : "ended",
           ephemeral: true,
-          noPersistence: true
+          noPersistence: true,
+          policy: CALL_POLICY
         }
       });
     }

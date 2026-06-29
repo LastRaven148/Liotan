@@ -2,6 +2,7 @@ const express = require("express");
 const authMiddleware = require("../middleware/authMiddleware");
 const realtimeFeatures = require("../config/realtimeFeatures");
 const { apiLimiter } = require("../middleware/rateLimiters");
+const { CALL_POLICY, noStoreHeaders } = require("../utils/realtimeSecurityPolicy");
 const User = require("../models/User");
 const { isValidUsername } = require("../utils/validators");
 const { getCallRouteId } = require("../utils/callPrivacy");
@@ -12,6 +13,7 @@ router.get(
   "/calls/capabilities",
   authMiddleware,
   apiLimiter,
+  noStoreHeaders,
   (req, res) => {
     res.json({
       ok: true,
@@ -25,6 +27,7 @@ router.post(
   "/calls/route",
   authMiddleware,
   apiLimiter,
+  noStoreHeaders,
   async (req, res, next) => {
     try {
       const username =
@@ -55,9 +58,12 @@ router.post(
         ok: true,
         routeId: getCallRouteId(username),
         privacy: {
-          persistentCallLogs: false,
+          persistentCallLogs: CALL_POLICY.persistentCallLogs,
           targetStored: false,
-          serverCanReadMedia: false
+          targetLogging: CALL_POLICY.targetLogging,
+          serverCanReadMedia: CALL_POLICY.serverMediaAccess,
+          serverRecording: CALL_POLICY.serverRecording,
+          keyRotationSeconds: CALL_POLICY.keyRotationSeconds
         }
       });
     } catch (err) {
