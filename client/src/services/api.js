@@ -49,6 +49,25 @@ export async function sendAuthEmailCode(
   });
 }
 
+
+export async function verifyAuthEmailCode(
+  email,
+  purpose,
+  code
+) {
+  return apiRequest(`${API}/auth/verify-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email,
+      purpose,
+      code
+    })
+  });
+}
+
 export async function resetPasswordApi(
   email,
   code,

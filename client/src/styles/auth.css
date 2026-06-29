@@ -172,3 +172,23 @@
   margin-top:8px;
   color:#8fa4b8;
 }
+
+.auth-primary:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.auth-primary:disabled:hover{
+  background:#3390ec;
+}
+
+.auth-hint{
+  margin:0;
+  color:#8fa4b8;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.auth-hint-error{
+  color:#ff6b6b;
+}

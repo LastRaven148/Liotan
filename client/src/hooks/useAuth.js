@@ -6,6 +6,7 @@ import {
   loginUser,
   registerUser,
   sendAuthEmailCode,
+  verifyAuthEmailCode,
   resetPasswordApi,
   deleteAccountApi
 } from "../services/api";
@@ -127,6 +128,53 @@ export default function useAuth({
       handleAuthError(
         err,
         "Failed to send code"
+      );
+
+      return false;
+    }
+
+  }
+
+
+  async function verifyRegisterCode() {
+
+    try {
+
+      await verifyAuthEmailCode(
+        email,
+        "register",
+        emailCode
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Invalid code"
+      );
+
+      return false;
+    }
+
+  }
+
+  async function verifyResetCode() {
+
+    try {
+
+      await verifyAuthEmailCode(
+        email,
+        "reset",
+        emailCode
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Invalid code"
       );
 
       return false;
@@ -299,8 +347,10 @@ export default function useAuth({
 
     login,
     sendRegisterCode,
+    verifyRegisterCode,
     register,
     sendResetCode,
+    verifyResetCode,
     resetPassword,
     logout,
     deleteAccount

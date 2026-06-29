@@ -25,8 +25,10 @@ export default function App() {
         setPassword={app.setPassword}
         login={app.login}
         sendRegisterCode={app.sendRegisterCode}
+        verifyRegisterCode={app.verifyRegisterCode}
         register={app.register}
         sendResetCode={app.sendResetCode}
+        verifyResetCode={app.verifyResetCode}
         resetPassword={app.resetPassword}
       />
     );

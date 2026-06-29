@@ -200,6 +200,98 @@ async function sendAuthCode(
 
 }
 
+
+async function verifyAuthCode(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const {
+      email,
+      purpose = "register",
+      code
+    } = req.body;
+
+    if (
+      !isValidEmail(email) ||
+      !isValidEmailCode(code) ||
+      !["register", "reset"].includes(purpose)
+    ) {
+      return res.status(400).json({
+        error: "invalid code"
+      });
+    }
+
+    const cleanEmail =
+      normalizeEmail(email);
+
+    const emailHash =
+      hashEmail(cleanEmail);
+
+    const exists =
+      await User.findOne({
+        emailHash
+      });
+
+    if (purpose === "register" && exists) {
+      return res.status(400).json({
+        error: "email already used"
+      });
+    }
+
+    if (purpose === "reset" && !exists) {
+      return res.status(400).json({
+        error: "email not found"
+      });
+    }
+
+    const record =
+      await EmailCode.findOne({
+        emailHash,
+        purpose
+      });
+
+    if (!record) {
+      return res.status(400).json({
+        error: "invalid code"
+      });
+    }
+
+    if (record.attempts >= 5) {
+      await EmailCode.deleteOne({
+        _id: record._id
+      });
+
+      return res.status(400).json({
+        error: "invalid code"
+      });
+    }
+
+    const ok =
+      record.codeHash === hmac(code);
+
+    if (!ok) {
+      record.attempts += 1;
+      await record.save();
+
+      return res.status(400).json({
+        error: "invalid code"
+      });
+    }
+
+    res.json({
+      ok: true
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 async function register(
   req,
   res,
@@ -519,6 +611,7 @@ async function deleteMe(
 
 module.exports = {
   sendAuthCode,
+  verifyAuthCode,
   register,
   login,
   resetPassword,

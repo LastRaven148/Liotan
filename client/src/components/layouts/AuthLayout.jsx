@@ -11,8 +11,10 @@ export default function AuthLayout({
   setPassword,
   login,
   sendRegisterCode,
+  verifyRegisterCode,
   register,
   sendResetCode,
+  verifyResetCode,
   resetPassword
 }) {
 
@@ -28,8 +30,10 @@ export default function AuthLayout({
       setPassword={setPassword}
       login={login}
       sendRegisterCode={sendRegisterCode}
+      verifyRegisterCode={verifyRegisterCode}
       register={register}
       sendResetCode={sendResetCode}
+      verifyResetCode={verifyResetCode}
       resetPassword={resetPassword}
     />
   );
