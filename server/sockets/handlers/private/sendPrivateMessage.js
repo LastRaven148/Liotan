@@ -67,10 +67,6 @@ function registerSendPrivateMessage({
           return;
         }
 
-        if (receiver === sender) {
-          return;
-        }
-
         const receiverExists =
           await User.exists({
             username: receiver,

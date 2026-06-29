@@ -137,7 +137,7 @@ export default function useChat({
       const members = Array.isArray(dialog.members) ? dialog.members : Array.isArray(dialog.memberUsers) ? dialog.memberUsers.map(user => user.username) : [];
       return [...new Set([username, ...members.filter(Boolean)])];
     }
-    return [username, target].filter(Boolean);
+    return [...new Set([username, target].filter(Boolean))];
   }
   async function emitMessage({
     target,
