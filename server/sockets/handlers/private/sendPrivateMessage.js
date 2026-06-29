@@ -19,26 +19,9 @@ const {
   isUserOnline
 } = require("../../state/onlineUsers");
 
-const ALLOWED_ATTACHMENT_TYPES = [
-  "photo",
-  "video",
-  "audio",
-  "file"
-];
-
-function isValidAttachment(
-  attachment
-) {
-
-  return Boolean(
-    attachment &&
-    attachment.url &&
-    ALLOWED_ATTACHMENT_TYPES.includes(
-      attachment.type
-    )
-  );
-
-}
+const {
+  sanitizeAttachment
+} = require("../../../utils/attachmentSecurity");
 
 function registerSendPrivateMessage({
   io,
@@ -63,10 +46,13 @@ function registerSendPrivateMessage({
             data.text
           );
 
-        const hasAttachment =
-          isValidAttachment(
+        const safeAttachment =
+          sanitizeAttachment(
             data.attachment
           );
+
+        const hasAttachment =
+          Boolean(safeAttachment);
 
         if (
           !isValidUsername(receiver) ||
@@ -135,7 +121,7 @@ function registerSendPrivateMessage({
                 : null,
             attachment:
               hasAttachment
-                ? data.attachment
+                ? safeAttachment
                 : undefined
           });
 

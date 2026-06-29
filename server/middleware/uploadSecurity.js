@@ -2,7 +2,6 @@ const ALLOWED_ATTACHMENT_MIME = [
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif",
   "video/mp4",
   "video/webm",
   "video/quicktime",
@@ -14,8 +13,6 @@ const ALLOWED_ATTACHMENT_MIME = [
   "audio/wav",
   "audio/webm",
   "application/pdf",
-  "application/zip",
-  "application/x-zip-compressed",
   "text/plain"
 ];
 
@@ -32,7 +29,21 @@ const BLOCKED_EXTENSIONS = [
   ".jar",
   ".apk",
   ".dmg",
-  ".sh"
+  ".sh",
+  ".html",
+  ".htm",
+  ".svg",
+  ".xml",
+  ".xhtml",
+  ".mhtml",
+  ".php",
+  ".wasm",
+  ".lnk",
+  ".reg",
+  ".hta",
+  ".docm",
+  ".xlsm",
+  ".pptm"
 ];
 
 const MAX_ATTACHMENT_SIZE =
@@ -122,13 +133,6 @@ function hasKnownMagicBytes(buffer, mimeType = "") {
     return bufferStartsWith(buffer, [0x89, 0x50, 0x4e, 0x47]);
   }
 
-  if (normalizedMime === "image/gif") {
-    return (
-      bufferStartsWith(buffer, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) ||
-      bufferStartsWith(buffer, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
-    );
-  }
-
   if (normalizedMime === "image/webp") {
     return (
       bufferStartsWith(buffer, [0x52, 0x49, 0x46, 0x46]) &&
@@ -138,13 +142,6 @@ function hasKnownMagicBytes(buffer, mimeType = "") {
 
   if (normalizedMime === "application/pdf") {
     return bufferStartsWith(buffer, [0x25, 0x50, 0x44, 0x46]);
-  }
-
-  if (
-    normalizedMime === "application/zip" ||
-    normalizedMime === "application/x-zip-compressed"
-  ) {
-    return bufferStartsWith(buffer, [0x50, 0x4b, 0x03, 0x04]);
   }
 
   if (

@@ -19,6 +19,21 @@ function securityHeaders(req, res, next) {
     "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()"
   );
 
+  res.setHeader(
+    "Cross-Origin-Opener-Policy",
+    "same-origin"
+  );
+
+  res.setHeader(
+    "Cross-Origin-Resource-Policy",
+    "same-site"
+  );
+
+  res.setHeader(
+    "X-Download-Options",
+    "noopen"
+  );
+
   if (
     req.path.startsWith("/api") ||
     req.path.startsWith("/auth") ||

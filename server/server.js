@@ -275,11 +275,23 @@ app.use(
       fallthrough: false,
       immutable: true,
       maxAge: "7d",
-      setHeaders(res) {
+      setHeaders(res, filePath) {
         res.setHeader(
           "X-Content-Type-Options",
           "nosniff"
         );
+
+        res.setHeader(
+          "Cross-Origin-Resource-Policy",
+          "same-site"
+        );
+
+        if (filePath.includes(`${path.sep}attachments${path.sep}`)) {
+          res.setHeader(
+            "Content-Disposition",
+            "attachment"
+          );
+        }
       }
     }
   )

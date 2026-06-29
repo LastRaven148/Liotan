@@ -15,26 +15,9 @@ const {
   getGroupRoom
 } = require("./joinGroup");
 
-const ALLOWED_ATTACHMENT_TYPES = [
-  "photo",
-  "video",
-  "audio",
-  "file"
-];
-
-function isValidAttachment(
-  attachment
-) {
-
-  return Boolean(
-    attachment &&
-    attachment.url &&
-    ALLOWED_ATTACHMENT_TYPES.includes(
-      attachment.type
-    )
-  );
-
-}
+const {
+  sanitizeAttachment
+} = require("../../../utils/attachmentSecurity");
 
 function registerSendGroupMessage({
   io,
@@ -77,10 +60,13 @@ function registerSendGroupMessage({
             data.text
           );
 
-        const hasAttachment =
-          isValidAttachment(
+        const safeAttachment =
+          sanitizeAttachment(
             data.attachment
           );
+
+        const hasAttachment =
+          Boolean(safeAttachment);
 
         if (
           !hasText &&
@@ -122,7 +108,7 @@ function registerSendGroupMessage({
               new Date(),
             attachment:
               hasAttachment
-                ? data.attachment
+                ? safeAttachment
                 : undefined
           });
 
