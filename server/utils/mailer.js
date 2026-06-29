@@ -1,21 +1,31 @@
+function getEnv(name) {
+  return String(
+    process.env[name] || ""
+  ).trim();
+}
+
 function getMailFrom() {
   return (
-    process.env.MAIL_FROM ||
+    getEnv("MAIL_FROM") ||
     "Liotan <onboarding@resend.dev>"
   );
 }
 
+function getResendApiKey() {
+  return getEnv("RESEND_API_KEY");
+}
+
 function hasResendConfig() {
   return Boolean(
-    process.env.RESEND_API_KEY
+    getResendApiKey()
   );
 }
 
 function hasSmtpConfig() {
   return Boolean(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
+    getEnv("SMTP_HOST") &&
+    getEnv("SMTP_USER") &&
+    getEnv("SMTP_PASS")
   );
 }
 
@@ -112,7 +122,7 @@ async function sendViaResend({
     await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        Authorization: `Bearer ${getResendApiKey()}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -122,7 +132,7 @@ async function sendViaResend({
         text,
         html,
         reply_to:
-          process.env.MAIL_REPLY_TO || undefined
+          getEnv("MAIL_REPLY_TO") || undefined
       })
     });
 
@@ -156,12 +166,12 @@ async function sendViaSmtp({
 
   const transporter =
     nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: String(process.env.SMTP_SECURE || "false") === "true",
+      host: getEnv("SMTP_HOST"),
+      port: Number(getEnv("SMTP_PORT") || 587),
+      secure: String(getEnv("SMTP_SECURE") || "false") === "true",
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        user: getEnv("SMTP_USER"),
+        pass: getEnv("SMTP_PASS")
       }
     });
 
@@ -172,7 +182,7 @@ async function sendViaSmtp({
     text,
     html,
     replyTo:
-      process.env.MAIL_REPLY_TO || undefined
+      getEnv("MAIL_REPLY_TO") || undefined
   });
 
   return {
@@ -220,14 +230,46 @@ async function sendEmailCode({
     console.log(
       `[Liotan email code] ${purpose} ${to}: ${code}`
     );
+
+    return {
+      sent: false,
+      provider: "console",
+      message: "Email provider is not configured. Development code was printed to the server console."
+    };
   }
+
+  console.error(
+    "Liotan mail is disabled: RESEND_API_KEY is missing on the API service."
+  );
 
   return {
     sent: false,
-    provider:
-      process.env.NODE_ENV === "production"
-        ? "disabled"
-        : "console"
+    provider: "disabled",
+    message: "Email service is not configured. Add RESEND_API_KEY to Liotan-api Environment and redeploy."
+  };
+}
+
+function getMailStatus() {
+  if (hasResendConfig()) {
+    return {
+      provider: "resend",
+      configured: true,
+      from: getMailFrom()
+    };
+  }
+
+  if (hasSmtpConfig()) {
+    return {
+      provider: "smtp",
+      configured: true,
+      from: getMailFrom()
+    };
+  }
+
+  return {
+    provider: "none",
+    configured: false,
+    from: getMailFrom()
   };
 }
 
@@ -235,5 +277,6 @@ module.exports = {
   sendEmailCode,
   hasMailConfig,
   hasSmtpConfig,
-  hasResendConfig
+  hasResendConfig,
+  getMailStatus
 };

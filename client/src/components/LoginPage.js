@@ -87,8 +87,8 @@ export default function LoginPage({
       }
 
       return text(
-        "Введите почту и пароль. Username используется только как публичное имя, не для входа.",
-        "Enter email and password. Username is public and is not used for login."
+        "Введите свою почту и пароль",
+        "Enter your email and password"
       );
     }
 
@@ -101,8 +101,8 @@ export default function LoginPage({
 
     if (step === "code") {
       return text(
-        "Введите код из письма. Аккаунт пока не создаётся.",
-        "Enter the email code. The account is not created yet."
+        "Введите код из письма.",
+        "Enter the email code."
       );
     }
 
@@ -489,7 +489,7 @@ export default function LoginPage({
         )}
 
         <div className="auth-logo">
-          R
+          L
         </div>
 
         <h1>

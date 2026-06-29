@@ -103,11 +103,19 @@ export default function useAuth({
       result?.maskedEmail || ""
     );
 
+    const delivered =
+      Boolean(result?.sent || result?.devCode);
+
     showToast(
-      result?.sent
+      delivered
         ? "Code sent"
-        : "Mail is not configured yet"
+        : (
+            result?.message ||
+            "Email delivery is not available. Check RESEND_API_KEY on Liotan-api."
+          )
     );
+
+    return delivered;
   }
 
   async function sendLoginCode() {
@@ -118,8 +126,7 @@ export default function useAuth({
           password
         );
 
-      showCodeResult(result);
-      return true;
+      return showCodeResult(result);
     } catch (err) {
       handleAuthError(
         err,
@@ -168,8 +175,7 @@ export default function useAuth({
           "register"
         );
 
-      showCodeResult(result);
-      return true;
+      return showCodeResult(result);
     } catch (err) {
       handleAuthError(
         err,
@@ -188,8 +194,7 @@ export default function useAuth({
           "reset"
         );
 
-      showCodeResult(result);
-      return true;
+      return showCodeResult(result);
     } catch (err) {
       handleAuthError(
         err,

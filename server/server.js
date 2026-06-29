@@ -78,6 +78,10 @@ const uploadErrorHandler =
 const attachmentRoutes =
   require("./routes/attachmentRoutes");
 
+const {
+  getMailStatus
+} = require("./utils/mailer");
+
 if (!process.env.JWT_SECRET) {
   throw new Error(
     "JWT_SECRET is missing"
@@ -303,6 +307,13 @@ async function start() {
         console.log(
           "ALLOWED ORIGINS:",
           allowedOrigins
+        );
+
+        const mailStatus =
+          getMailStatus();
+
+        console.log(
+          `MAIL PROVIDER: ${mailStatus.provider} configured=${mailStatus.configured} from=${mailStatus.from}`
         );
       }
     );
