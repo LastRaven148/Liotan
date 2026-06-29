@@ -136,8 +136,7 @@ const corsOptions = {
   ],
   allowedHeaders: [
     "Content-Type",
-    "Authorization",
-    "x-dev-admin-key"
+    "Authorization"
   ]
 };
 

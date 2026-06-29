@@ -24,8 +24,6 @@ export default function App() {
         maskedLoginEmail={app.maskedLoginEmail}
         password={app.password}
         setPassword={app.setPassword}
-        sendLegacyBindCode={app.sendLegacyBindCode}
-        legacyBindEmail={app.legacyBindEmail}
         sendLoginCode={app.sendLoginCode}
         login={app.login}
         sendRegisterCode={app.sendRegisterCode}

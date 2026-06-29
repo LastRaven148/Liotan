@@ -25,7 +25,6 @@ export default function ModalsLayer({
   sendBindEmailCode,
   bindEmail,
   logout,
-  deleteAccount,
   deleteGroupDialog,
   updateGroup,
   onGroupCreated
@@ -64,8 +63,7 @@ export default function ModalsLayer({
           onClose={() =>
             setSettingsOpen(false)
           }
-          deleteAccount={deleteAccount}
-        />
+          />
       )}
 
       {createGroupOpen && (

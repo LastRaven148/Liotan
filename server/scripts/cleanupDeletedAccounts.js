@@ -120,6 +120,24 @@ async function deleteUserCompletely(username) {
   console.log(`Deleted user: ${username}`);
 }
 
+
+async function deleteLegacyUsersWithoutEmail() {
+  const legacyUsers =
+    await User.find({
+      $or: [
+        { emailHash: { $exists: false } },
+        { emailHash: null },
+        { emailVerified: { $ne: true } }
+      ]
+    }, "username").lean();
+
+  for (const user of legacyUsers) {
+    await deleteUserCompletely(user.username);
+  }
+
+  console.log(`Deleted legacy users without verified email: ${legacyUsers.length}`);
+}
+
 async function main() {
   if (!process.env.MONGO_URI) {
     throw new Error("MONGO_URI is required");
@@ -128,6 +146,10 @@ async function main() {
   await mongoose.connect(
     process.env.MONGO_URI
   );
+
+  if (String(process.env.LIOTAN_DELETE_LEGACY_WITHOUT_EMAIL || "false") === "true") {
+    await deleteLegacyUsersWithoutEmail();
+  }
 
   const usernames =
     splitEnv("LIOTAN_CLEANUP_USERNAMES");

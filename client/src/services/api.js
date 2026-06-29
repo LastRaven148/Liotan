@@ -458,11 +458,6 @@ export async function deleteGroupApi(groupId) {
   });
 }
 
-export async function deleteAccountApi() {
-  return apiRequest(`${API}/me`, {
-    method: "DELETE"
-  });
-}
 export async function setE2EEIdentityApi(publicKey) {
   return apiRequest(`${API}/e2ee/identity`, {
     method: "POST",
@@ -518,44 +513,6 @@ export async function setE2EEConversationKeysApi(
     },
     body: JSON.stringify({
       keys
-    })
-  });
-}
-
-export async function sendLegacyBindEmailCodeApi(
-  username,
-  password,
-  email
-) {
-  return apiRequest(`${API}/legacy/email-code`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      username,
-      password,
-      email
-    })
-  });
-}
-
-export async function legacyBindEmailApi(
-  username,
-  password,
-  email,
-  code
-) {
-  return apiRequest(`${API}/legacy/bind-email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      username,
-      password,
-      email,
-      code
     })
   });
 }

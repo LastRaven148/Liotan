@@ -21,7 +21,6 @@ export default function SettingsModal({
   sendBindEmailCode,
   bindEmail,
   logout,
-  deleteAccount,
   onClose
 }) {
 
@@ -61,10 +60,6 @@ export default function SettingsModal({
     setSaving
   ] = useState(false);
 
-  const [
-    confirmDelete,
-    setConfirmDelete
-  ] = useState(false);
 
   const [
     emailBinding,
@@ -271,14 +266,6 @@ export default function SettingsModal({
     }
   }
 
-  async function handleDeleteAccount() {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
-
-    await deleteAccount?.();
-  }
 
 
   if (emailBinding) {
@@ -589,22 +576,6 @@ export default function SettingsModal({
 
               <div className="settings-row-main">
                 {t.logout || "Выйти"}
-              </div>
-            </button>
-          )}
-
-          {deleteAccount && (
-            <button
-              type="button"
-              className="settings-row button-row danger-row"
-              onClick={handleDeleteAccount}
-            >
-              <span>×</span>
-
-              <div className="settings-row-main">
-                {confirmDelete
-                  ? "Нажми ещё раз для удаления"
-                  : "Удалить аккаунт"}
               </div>
             </button>
           )}

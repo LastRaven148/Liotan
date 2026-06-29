@@ -15,8 +15,7 @@ const emailCodeSchema =
         "register",
         "reset",
         "bind",
-        "login",
-        "legacy-bind"
+        "login"
       ],
       required: true
     },

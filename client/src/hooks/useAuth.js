@@ -4,16 +4,13 @@ import {
 
 import {
   sendLoginEmailCode,
-  sendLegacyBindEmailCodeApi,
-  legacyBindEmailApi,
   loginUser,
   registerUser,
   sendAuthEmailCode,
   verifyAuthEmailCode,
   resetPasswordApi,
   sendBindEmailCodeApi,
-  bindEmailApi,
-  deleteAccountApi
+  bindEmailApi
 } from "../services/api";
 
 import {
@@ -47,7 +44,6 @@ export default function useAuth({
     );
 
   async function saveSession(data) {
-
     localStorage.setItem(
       "token",
       data.token
@@ -58,152 +54,50 @@ export default function useAuth({
       data.username
     );
 
-    setToken(
-      data.token
-    );
-
-    setUsername(
-      data.username
-    );
-
+    setToken(data.token);
+    setUsername(data.username);
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
-
   }
 
-  function handleAuthError(
-    err,
-    fallback
-  ) {
-    if (
-      err.message === "Failed to fetch"
-    ) {
-      showToast(
-        "Server offline"
-      );
-
+  function handleAuthError(err, fallback) {
+    if (err.message === "Failed to fetch") {
+      showToast("Server offline");
       return;
     }
 
     showToast(
-      err.message ||
-      fallback
+      err.message || fallback
     );
   }
 
-
-  async function sendLegacyBindCode(
-    legacyUsername
-  ) {
-
-    try {
-
-      const result =
-        await sendLegacyBindEmailCodeApi(
-          legacyUsername,
-          password,
-          email
-        );
-
-      if (result?.devCode) {
-        setEmailCode(
-          result.devCode
-        );
-      }
-
-      setMaskedLoginEmail(
-        result?.maskedEmail || ""
-      );
-
-      showToast(
-        result?.sent
-          ? "Code sent"
-          : "Mail is not configured. Code is in server logs."
-      );
-
-      return true;
-
-    } catch (err) {
-      handleAuthError(
-        err,
-        "Failed to send code"
-      );
-
-      return false;
+  function showCodeResult(result) {
+    if (result?.devCode) {
+      setEmailCode(result.devCode);
     }
 
-  }
+    setMaskedLoginEmail(
+      result?.maskedEmail || ""
+    );
 
-  async function legacyBindEmail(
-    legacyUsername
-  ) {
-
-    try {
-
-      const loginPassword =
-        password;
-
-      const data =
-        await legacyBindEmailApi(
-          legacyUsername,
-          loginPassword,
-          email,
-          emailCode
-        );
-
-      await saveSession(data);
-
-      await initE2EEAccountIdentity({
-        username: data.username,
-        password: loginPassword
-      });
-
-      showToast(
-        "Email linked"
-      );
-
-      return true;
-
-    } catch (err) {
-      handleAuthError(
-        err,
-        "Failed to link email"
-      );
-
-      return false;
-    }
-
+    showToast(
+      result?.sent
+        ? "Code sent"
+        : "Mail is not configured. Code is in server logs."
+    );
   }
 
   async function sendLoginCode() {
-
     try {
-
       const result =
         await sendLoginEmailCode(
           email,
           password
         );
 
-      if (result?.devCode) {
-        setEmailCode(
-          result.devCode
-        );
-      }
-
-      setMaskedLoginEmail(
-        result?.maskedEmail || ""
-      );
-
-      showToast(
-        result?.sent
-          ? "Code sent"
-          : "Mail is not configured. Code is in server logs."
-      );
-
+      showCodeResult(result);
       return true;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -212,13 +106,10 @@ export default function useAuth({
 
       return false;
     }
-
   }
 
   async function login() {
-
     try {
-
       const loginPassword =
         password;
 
@@ -236,40 +127,27 @@ export default function useAuth({
         password: loginPassword
       });
 
+      return true;
     } catch (err) {
       handleAuthError(
         err,
         "Login failed"
       );
-    }
 
+      return false;
+    }
   }
 
-
   async function sendRegisterCode() {
-
     try {
-
       const result =
         await sendAuthEmailCode(
           email,
           "register"
         );
 
-      if (result?.devCode) {
-        setEmailCode(
-          result.devCode
-        );
-      }
-
-      showToast(
-        result?.sent
-          ? "Code sent"
-          : "Mail is not configured. Code is in server logs."
-      );
-
+      showCodeResult(result);
       return true;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -278,14 +156,30 @@ export default function useAuth({
 
       return false;
     }
-
   }
 
+  async function sendResetCode() {
+    try {
+      const result =
+        await sendAuthEmailCode(
+          email,
+          "reset"
+        );
+
+      showCodeResult(result);
+      return true;
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return false;
+    }
+  }
 
   async function verifyRegisterCode() {
-
     try {
-
       await verifyAuthEmailCode(
         email,
         "register",
@@ -293,7 +187,6 @@ export default function useAuth({
       );
 
       return true;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -302,13 +195,10 @@ export default function useAuth({
 
       return false;
     }
-
   }
 
   async function verifyResetCode() {
-
     try {
-
       await verifyAuthEmailCode(
         email,
         "reset",
@@ -316,7 +206,6 @@ export default function useAuth({
       );
 
       return true;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -325,13 +214,10 @@ export default function useAuth({
 
       return false;
     }
-
   }
 
   async function register() {
-
     try {
-
       const registerPassword =
         password;
 
@@ -350,59 +236,43 @@ export default function useAuth({
         password: registerPassword
       });
 
-      showToast(
-        "Registered"
-      );
-
+      showToast("Registered");
+      return true;
     } catch (err) {
       handleAuthError(
         err,
         "Register failed"
       );
-    }
 
+      return false;
+    }
   }
 
-  async function sendResetCode() {
-
+  async function resetPassword() {
     try {
-
-      const result =
-        await sendAuthEmailCode(
-          email,
-          "reset"
-        );
-
-      if (result?.devCode) {
-        setEmailCode(
-          result.devCode
-        );
-      }
-
-      showToast(
-        result?.sent
-          ? "Code sent"
-          : "Mail is not configured. Code is in server logs."
+      await resetPasswordApi(
+        email,
+        emailCode,
+        password
       );
 
-      return true;
+      showToast("Password changed");
+      setPassword("");
+      setEmailCode("");
 
+      return true;
     } catch (err) {
       handleAuthError(
         err,
-        "Failed to send code"
+        "Failed to reset password"
       );
 
       return false;
     }
-
   }
 
-
   async function sendBindEmailCode(emailValue) {
-
     try {
-
       const result =
         await sendBindEmailCodeApi(
           emailValue
@@ -415,7 +285,6 @@ export default function useAuth({
       );
 
       return result;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -424,27 +293,17 @@ export default function useAuth({
 
       return null;
     }
-
   }
 
-  async function bindEmail(
-    emailValue,
-    codeValue
-  ) {
-
+  async function bindEmail(emailValue, codeValue) {
     try {
-
       await bindEmailApi(
         emailValue,
         codeValue
       );
 
-      showToast(
-        "Email linked"
-      );
-
+      showToast("Email linked");
       return true;
-
     } catch (err) {
       handleAuthError(
         err,
@@ -453,43 +312,9 @@ export default function useAuth({
 
       return false;
     }
-
   }
 
-  async function resetPassword() {
-
-    try {
-
-      await resetPasswordApi(
-        email,
-        emailCode,
-        password
-      );
-
-      showToast(
-        "Password changed"
-      );
-
-      setPassword("");
-      setEmailCode("");
-
-      return true;
-
-    } catch (err) {
-      handleAuthError(
-        err,
-        "Failed to reset password"
-      );
-
-      return false;
-    }
-
-  }
-
-  function clearSession(
-    socketRef
-  ) {
-
+  function clearSession(socketRef) {
     if (socketRef?.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
@@ -503,38 +328,10 @@ export default function useAuth({
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
-
   }
 
   function logout(socketRef) {
     clearSession(socketRef);
-  }
-
-  async function deleteAccount(
-    socketRef
-  ) {
-
-    try {
-
-      await deleteAccountApi();
-
-      clearSession(
-        socketRef
-      );
-
-      showToast(
-        "Account deleted"
-      );
-
-    } catch (err) {
-
-      showToast(
-        err.message ||
-        "Failed to delete account"
-      );
-
-    }
-
   }
 
   return {
@@ -556,8 +353,6 @@ export default function useAuth({
     token,
     setToken,
 
-    sendLegacyBindCode,
-    legacyBindEmail,
     sendLoginCode,
     login,
     sendRegisterCode,
@@ -568,8 +363,6 @@ export default function useAuth({
     resetPassword,
     sendBindEmailCode,
     bindEmail,
-    logout,
-    deleteAccount
+    logout
   };
-
 }

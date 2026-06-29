@@ -14,12 +14,9 @@ const {
   sendBindEmailCode,
   bindEmail,
   sendLoginCode,
-  sendLegacyBindEmailCode,
-  legacyBindEmail,
   register,
   login,
-  resetPassword,
-  deleteMe
+  resetPassword
 } = require("../controllers/authController");
 
 const router =
@@ -51,17 +48,6 @@ router.post(
   bindEmail
 );
 
-router.post(
-  "/legacy/email-code",
-  authLimiter,
-  sendLegacyBindEmailCode
-);
-
-router.post(
-  "/legacy/bind-email",
-  authLimiter,
-  legacyBindEmail
-);
 
 router.post(
   "/register",
@@ -87,10 +73,5 @@ router.post(
   resetPassword
 );
 
-router.delete(
-  "/me",
-  authMiddleware,
-  deleteMe
-);
 
 module.exports = router;

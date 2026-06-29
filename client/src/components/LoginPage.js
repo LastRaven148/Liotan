@@ -16,8 +16,6 @@ export default function LoginPage({
   maskedLoginEmail,
   password,
   setPassword,
-  sendLegacyBindCode,
-  legacyBindEmail,
   sendLoginCode,
   login,
   sendRegisterCode,
@@ -54,16 +52,8 @@ export default function LoginPage({
   const isReset =
     mode === "reset";
 
-  const isLegacy =
-    mode === "legacy";
-
-  function text(
-    ru,
-    en
-  ) {
-    return isRu
-      ? ru
-      : en;
+  function text(ru, en) {
+    return isRu ? ru : en;
   }
 
   function title() {
@@ -71,13 +61,6 @@ export default function LoginPage({
       return text(
         "Восстановление пароля",
         "Reset password"
-      );
-    }
-
-    if (isLegacy) {
-      return text(
-        "Привязать почту",
-        "Link email"
       );
     }
 
@@ -104,22 +87,8 @@ export default function LoginPage({
       }
 
       return text(
-        "Введите почту и пароль. Username больше не используется для входа.",
-        "Enter email and password. Username is no longer used for login."
-      );
-    }
-
-    if (isLegacy) {
-      if (step === "legacyCode") {
-        return text(
-          `Введите код из письма. Код отправлен на ${maskedLoginEmail || "вашу почту"}.`,
-          `Enter the email code. The code was sent to ${maskedLoginEmail || "your email"}.`
-        );
-      }
-
-      return text(
-        "Для старого аккаунта: введите старый username, старый пароль и новую почту. После кода вход по username отключится.",
-        "For an old account: enter old username, old password, and new email. After the code, username login is disabled."
+        "Введите почту и пароль. Username используется только как публичное имя, не для входа.",
+        "Enter email and password. Username is public and is not used for login."
       );
     }
 
@@ -161,9 +130,7 @@ export default function LoginPage({
     setStep(
       nextMode === "login"
         ? "loginCredentials"
-        : nextMode === "legacy"
-          ? "legacyCredentials"
-          : "email"
+        : "email"
     );
     clearSensitive();
   }
@@ -195,22 +162,6 @@ export default function LoginPage({
 
       if (ok) {
         setStep("loginCode");
-      }
-
-      return;
-    }
-
-    if (isLegacy) {
-      if (step === "legacyCode") {
-        await legacyBindEmail(username);
-        return;
-      }
-
-      const ok =
-        await sendLegacyBindCode(username);
-
-      if (ok) {
-        setStep("legacyCode");
       }
 
       return;
@@ -272,17 +223,6 @@ export default function LoginPage({
       return;
     }
 
-    if (isLegacy) {
-      if (step === "legacyCode") {
-        setStep("legacyCredentials");
-        setEmailCode("");
-        return;
-      }
-
-      switchMode("login");
-      return;
-    }
-
     if (step === "email") {
       switchMode("login");
       return;
@@ -310,20 +250,6 @@ export default function LoginPage({
         return text(
           "Войти",
           "Login"
-        );
-      }
-
-      return text(
-        "Получить код",
-        "Get code"
-      );
-    }
-
-    if (isLegacy) {
-      if (step === "legacyCode") {
-        return text(
-          "Привязать и войти",
-          "Link and login"
         );
       }
 
@@ -407,92 +333,71 @@ export default function LoginPage({
     return null;
   }
 
+  function renderEmailCodeField() {
+    return (
+      <input
+        className="auth-input"
+        placeholder={text(
+          "Код из письма",
+          "Email code"
+        )}
+        inputMode="numeric"
+        maxLength={6}
+        value={emailCode}
+        autoFocus
+        onChange={(e) =>
+          setEmailCode(
+            e.target.value.replace(/\D/g, "")
+          )
+        }
+        onKeyDown={handleKeyDown}
+      />
+    );
+  }
+
+  function renderPasswordFields({
+    newPassword = false
+  } = {}) {
+    return (
+      <>
+        <input
+          className="auth-input"
+          placeholder={text(
+            newPassword ? "Новый пароль" : "Пароль",
+            newPassword ? "New password" : "Password"
+          )}
+          type="password"
+          value={password}
+          autoFocus={newPassword}
+          onChange={(e) =>
+            setPassword(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+
+        <input
+          className="auth-input"
+          placeholder={text(
+            "Повторите пароль",
+            "Repeat password"
+          )}
+          type="password"
+          value={confirmPassword}
+          onChange={(e) =>
+            setConfirmPassword(e.target.value)
+          }
+          onKeyDown={handleKeyDown}
+        />
+
+        {renderPasswordHint()}
+      </>
+    );
+  }
+
   function renderFields() {
-    if (isLegacy) {
-      if (step === "legacyCode") {
-        return (
-          <input
-            className="auth-input"
-            placeholder={text(
-              "Код из письма",
-              "Email code"
-            )}
-            inputMode="numeric"
-            maxLength={6}
-            value={emailCode}
-            autoFocus
-            onChange={(e) =>
-              setEmailCode(
-                e.target.value.replace(/\D/g, "")
-              )
-            }
-            onKeyDown={handleKeyDown}
-          />
-        );
-      }
-
-      return (
-        <>
-          <input
-            className="auth-input"
-            placeholder="Username"
-            value={username}
-            autoFocus
-            onChange={(e) =>
-              setUsername(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-
-          <input
-            className="auth-input"
-            placeholder={text(
-              "Старый пароль",
-              "Old password"
-            )}
-            type="password"
-            value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-
-          <input
-            className="auth-input"
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-        </>
-      );
-    }
-
     if (isLogin) {
       if (step === "loginCode") {
-        return (
-          <input
-            className="auth-input"
-            placeholder={text(
-              "Код из письма",
-              "Email code"
-            )}
-            inputMode="numeric"
-            maxLength={6}
-            value={emailCode}
-            autoFocus
-            onChange={(e) =>
-              setEmailCode(
-                e.target.value.replace(/\D/g, "")
-              )
-            }
-            onKeyDown={handleKeyDown}
-          />
-        );
+        return renderEmailCodeField();
       }
 
       return (
@@ -543,72 +448,20 @@ export default function LoginPage({
     }
 
     if (step === "code") {
-      return (
-        <input
-          className="auth-input"
-          placeholder={text(
-            "Код из письма",
-            "Email code"
-          )}
-          inputMode="numeric"
-          maxLength={6}
-          value={emailCode}
-          autoFocus
-          onChange={(e) =>
-            setEmailCode(
-              e.target.value.replace(/\D/g, "")
-            )
-          }
-          onKeyDown={handleKeyDown}
-        />
-      );
+      return renderEmailCodeField();
     }
 
     if (isReset) {
-      return (
-        <>
-          <input
-            className="auth-input"
-            placeholder={text(
-              "Новый пароль",
-              "New password"
-            )}
-            type="password"
-            value={password}
-            autoFocus
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-
-          <input
-            className="auth-input"
-            placeholder={text(
-              "Повторите пароль",
-              "Repeat password"
-            )}
-            type="password"
-            value={confirmPassword}
-            onChange={(e) =>
-              setConfirmPassword(e.target.value)
-            }
-            onKeyDown={handleKeyDown}
-          />
-
-          {renderPasswordHint()}
-        </>
-      );
+      return renderPasswordFields({
+        newPassword: true
+      });
     }
 
     return (
       <>
         <input
           className="auth-input"
-          placeholder={text(
-            "Username",
-            "Username"
-          )}
+          placeholder="Username"
           value={username}
           autoFocus
           onChange={(e) =>
@@ -617,44 +470,14 @@ export default function LoginPage({
           onKeyDown={handleKeyDown}
         />
 
-        <input
-          className="auth-input"
-          placeholder={text(
-            "Пароль",
-            "Password"
-          )}
-          type="password"
-          value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
-          onKeyDown={handleKeyDown}
-        />
-
-        <input
-          className="auth-input"
-          placeholder={text(
-            "Повторите пароль",
-            "Repeat password"
-          )}
-          type="password"
-          value={confirmPassword}
-          onChange={(e) =>
-            setConfirmPassword(e.target.value)
-          }
-          onKeyDown={handleKeyDown}
-        />
-
-        {renderPasswordHint()}
+        {renderPasswordFields()}
       </>
     );
   }
 
   return (
     <div className="login-page">
-
       <div className="auth-card">
-
         {(!isLogin || step === "loginCode") && (
           <button
             type="button"
@@ -720,19 +543,6 @@ export default function LoginPage({
                 "Forgot password?"
               )}
             </button>
-
-            <button
-              type="button"
-              className="auth-link auth-link-secondary"
-              onClick={() =>
-                switchMode("legacy")
-              }
-            >
-              {text(
-                "Старый аккаунт без почты",
-                "Old account without email"
-              )}
-            </button>
           </>
         )}
 
@@ -760,9 +570,7 @@ export default function LoginPage({
             ? "Continue in English"
             : "Продолжить на русском"}
         </button>
-
       </div>
-
     </div>
   );
 
