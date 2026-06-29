@@ -92,6 +92,85 @@ function isAllowedAttachment({
   );
 }
 
+function bufferStartsWith(buffer, bytes) {
+  if (!Buffer.isBuffer(buffer)) {
+    return false;
+  }
+
+  if (buffer.length < bytes.length) {
+    return false;
+  }
+
+  return bytes.every((byte, index) =>
+    buffer[index] === byte
+  );
+}
+
+function hasKnownMagicBytes(buffer, mimeType = "") {
+  const normalizedMime =
+    normalizeMime(mimeType);
+
+  if (!Buffer.isBuffer(buffer) || !buffer.length) {
+    return false;
+  }
+
+  if (normalizedMime === "image/jpeg") {
+    return bufferStartsWith(buffer, [0xff, 0xd8, 0xff]);
+  }
+
+  if (normalizedMime === "image/png") {
+    return bufferStartsWith(buffer, [0x89, 0x50, 0x4e, 0x47]);
+  }
+
+  if (normalizedMime === "image/gif") {
+    return (
+      bufferStartsWith(buffer, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) ||
+      bufferStartsWith(buffer, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
+    );
+  }
+
+  if (normalizedMime === "image/webp") {
+    return (
+      bufferStartsWith(buffer, [0x52, 0x49, 0x46, 0x46]) &&
+      buffer.slice(8, 12).toString("ascii") === "WEBP"
+    );
+  }
+
+  if (normalizedMime === "application/pdf") {
+    return bufferStartsWith(buffer, [0x25, 0x50, 0x44, 0x46]);
+  }
+
+  if (
+    normalizedMime === "application/zip" ||
+    normalizedMime === "application/x-zip-compressed"
+  ) {
+    return bufferStartsWith(buffer, [0x50, 0x4b, 0x03, 0x04]);
+  }
+
+  if (
+    normalizedMime.startsWith("audio/") ||
+    normalizedMime.startsWith("video/") ||
+    normalizedMime === "text/plain"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function assertSafeFileBuffer({
+  buffer,
+  mimeType
+}) {
+  if (!hasKnownMagicBytes(buffer, mimeType)) {
+    const err =
+      new Error("file content does not match declared type");
+
+    err.status = 400;
+    throw err;
+  }
+}
+
 function assertAllowedAttachment({
   mimeType,
   fileName,
@@ -119,5 +198,7 @@ module.exports = {
   normalizeMime,
   hasBlockedExtension,
   isAllowedAttachment,
-  assertAllowedAttachment
+  assertAllowedAttachment,
+  assertSafeFileBuffer,
+  hasKnownMagicBytes
 };

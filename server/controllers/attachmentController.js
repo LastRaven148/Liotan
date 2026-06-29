@@ -7,7 +7,8 @@ const uploadToCloudinary =
 const {
   MAX_ATTACHMENT_SIZE,
   normalizeMime,
-  assertAllowedAttachment
+  assertAllowedAttachment,
+  assertSafeFileBuffer
 } = require("../middleware/uploadSecurity");
 
 function fixFileName(name) {
@@ -163,6 +164,11 @@ async function uploadAttachment(
       mimeType,
       fileName: req.file.originalname,
       size: req.file.size
+    });
+
+    assertSafeFileBuffer({
+      buffer: req.file.buffer,
+      mimeType
     });
 
     const type =

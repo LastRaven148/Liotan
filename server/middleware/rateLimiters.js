@@ -1,101 +1,113 @@
-const crypto =
-  require("crypto");
-
 const rateLimit =
   require("express-rate-limit");
+
+const {
+  hashRequestIp,
+  hmac
+} = require("../utils/securityIds");
 
 const createMessage =
   (message) => ({
     error: message
   });
 
-function privacyKey(req) {
-  const secret =
-    process.env.PRIVACY_HASH_SECRET ||
-    process.env.JWT_SECRET ||
-    "liotan-local-dev";
-
-  const rawKey =
+function userOrIpKey(req) {
+  const userKey =
+    req.user?.userId ||
     req.user?.username ||
     req.body?.email ||
-    req.body?.username ||
-    "anonymous";
+    req.body?.username;
 
-  return crypto
-    .createHmac("sha256", secret)
-    .update(String(rawKey))
-    .digest("hex");
+  if (userKey) {
+    return hmac(`user:${userKey}`);
+  }
+
+  return hashRequestIp(req);
 }
+
+const strictIpLimiter =
+  rateLimit({
+    windowMs: 1000,
+    max:
+      process.env.NODE_ENV === "production"
+        ? 5
+        : 60,
+    keyGenerator: hashRequestIp,
+    message: createMessage("too many requests"),
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
 const apiLimiter =
   rateLimit({
-    windowMs:
-      60 * 1000,
-
+    windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 300
+        ? 120
         : 3000,
-
-    keyGenerator:
-      privacyKey,
-
-    message:
-      createMessage(
-        "too many requests"
-      ),
-
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many requests"),
     standardHeaders: true,
     legacyHeaders: false
   });
 
 const authLimiter =
   rateLimit({
-    windowMs:
-      15 * 60 * 1000,
-
+    windowMs: 15 * 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 20
+        ? 12
         : 200,
-
-    keyGenerator:
-      privacyKey,
-
-    message:
-      createMessage(
-        "too many auth attempts"
-      ),
-
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many auth attempts"),
     standardHeaders: true,
     legacyHeaders: false
   });
 
+const codeLimiter =
+  rateLimit({
+    windowMs: 60 * 1000,
+    max:
+      process.env.NODE_ENV === "production"
+        ? 3
+        : 100,
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many code requests"),
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
 const uploadLimiter =
   rateLimit({
-    windowMs:
-      15 * 60 * 1000,
-
+    windowMs: 15 * 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 30
+        ? 20
         : 300,
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many upload attempts"),
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
-    keyGenerator:
-      privacyKey,
-
-    message:
-      createMessage(
-        "too many upload attempts"
-      ),
-
+const e2eeLimiter =
+  rateLimit({
+    windowMs: 60 * 1000,
+    max:
+      process.env.NODE_ENV === "production"
+        ? 60
+        : 1000,
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many key requests"),
     standardHeaders: true,
     legacyHeaders: false
   });
 
 module.exports = {
+  strictIpLimiter,
   apiLimiter,
   authLimiter,
-  uploadLimiter
+  codeLimiter,
+  uploadLimiter,
+  e2eeLimiter
 };

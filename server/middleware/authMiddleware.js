@@ -9,28 +9,38 @@ async function authMiddleware(
   res,
   next
 ) {
-
   try {
-
     const header =
       req.headers.authorization;
 
-    if (!header) {
+    if (
+      !header ||
+      !header.startsWith("Bearer ")
+    ) {
       return res.status(401).json({
-        error: "no token"
+        error: "auth required"
       });
     }
 
     const token =
-      header.replace(
-        "Bearer ",
-        ""
-      );
+      header.slice("Bearer ".length).trim();
+
+    if (
+      !token ||
+      token.length > 4096
+    ) {
+      return res.status(401).json({
+        error: "invalid token"
+      });
+    }
 
     const decoded =
       jwt.verify(
         token,
-        process.env.JWT_SECRET
+        process.env.JWT_SECRET,
+        {
+          algorithms: ["HS256"]
+        }
       );
 
     if (
@@ -42,15 +52,21 @@ async function authMiddleware(
       });
     }
 
-    const exists =
-      await User.exists({
+    const user =
+      await User.findOne({
         _id: decoded.userId,
         username: decoded.username
-      });
+      }, "username emailVerified").lean();
 
-    if (!exists) {
+    if (!user) {
       return res.status(401).json({
         error: "account deleted"
+      });
+    }
+
+    if (user.emailVerified !== true) {
+      return res.status(401).json({
+        error: "email verification required"
       });
     }
 
@@ -58,15 +74,11 @@ async function authMiddleware(
       decoded;
 
     next();
-
   } catch (err) {
-
     res.status(401).json({
       error: "auth error"
     });
-
   }
-
 }
 
 module.exports =

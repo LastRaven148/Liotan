@@ -9,6 +9,7 @@ const helmet =
   require("helmet");
 
 const {
+  strictIpLimiter,
   apiLimiter
 } = require("./middleware/rateLimiters");
 
@@ -83,6 +84,12 @@ const errorHandler =
 
 const uploadErrorHandler =
   require("./middleware/uploadErrorHandler");
+
+const securityHeaders =
+  require("./middleware/securityHeaders");
+
+const logger =
+  require("./utils/logger");
 
 const attachmentRoutes =
   require("./routes/attachmentRoutes");
@@ -198,8 +205,16 @@ app.use(
 );
 
 app.use(
+  securityHeaders
+);
+
+app.use(
+  strictIpLimiter
+);
+
+app.use(
   express.json({
-    limit: "1mb"
+    limit: "256kb"
   })
 );
 
@@ -255,7 +270,18 @@ if (!fs.existsSync(avatarsPath)) {
 app.use(
   "/uploads",
   express.static(
-    uploadsPath
+    uploadsPath,
+    {
+      fallthrough: false,
+      immutable: true,
+      maxAge: "7d",
+      setHeaders(res) {
+        res.setHeader(
+          "X-Content-Type-Options",
+          "nosniff"
+        );
+      }
+    }
   )
 );
 
@@ -295,8 +321,9 @@ async function cleanupLegacyAccountsOnStartup() {
   }
 
   if (legacyUsers.length) {
-    console.log(
-      `Deleted legacy accounts without verified email: ${legacyUsers.length}`
+    logger.warn(
+      "Deleted legacy accounts without verified email",
+      { count: legacyUsers.length }
     );
   }
 }
@@ -312,28 +339,30 @@ async function start() {
     server.listen(
       PORT,
       () => {
-        console.log(
-          `SERVER READY ${PORT}`
+        logger.info(
+          "SERVER READY",
+          { port: PORT }
         );
 
-        console.log(
-          "ALLOWED ORIGINS:",
-          allowedOrigins
+        logger.info(
+          "ALLOWED ORIGINS",
+          { allowedOrigins }
         );
 
         const mailStatus =
           getMailStatus();
 
-        console.log(
-          `MAIL PROVIDER: ${mailStatus.provider} configured=${mailStatus.configured} from=${mailStatus.from}`
+        logger.info(
+          "MAIL PROVIDER",
+          mailStatus
         );
       }
     );
 
   } catch (err) {
 
-    console.error(
-      "SERVER START ERROR:",
+    logger.error(
+      "SERVER START ERROR",
       err
     );
 

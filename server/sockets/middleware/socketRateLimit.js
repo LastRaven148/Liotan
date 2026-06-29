@@ -1,84 +1,85 @@
-const crypto =
-  require("crypto");
+const {
+  hmac,
+  hashSocketIp
+} = require("../../utils/securityIds");
 
 const buckets =
   new Map();
 
+const connectionBuckets =
+  new Map();
+
 const DEFAULT_LIMIT = {
   windowMs: 60 * 1000,
-  max: 120
+  max: 90
 };
 
 const EVENT_LIMITS = {
   sendMessage: {
     windowMs: 60 * 1000,
-    max: 24
+    max: 18
   },
   sendGroupMessage: {
     windowMs: 60 * 1000,
-    max: 24
+    max: 18
   },
   typing: {
     windowMs: 10 * 1000,
-    max: 25
+    max: 12
   },
   stopTyping: {
     windowMs: 10 * 1000,
-    max: 25
+    max: 12
   },
-  messageRead: {
+  markChatRead: {
     windowMs: 30 * 1000,
-    max: 60
-  },
-  chatRead: {
-    windowMs: 30 * 1000,
-    max: 60
+    max: 40
   },
   editMessage: {
     windowMs: 60 * 1000,
-    max: 20
+    max: 12
   },
   deleteMessage: {
     windowMs: 60 * 1000,
-    max: 20
+    max: 12
   },
   deleteChat: {
     windowMs: 60 * 1000,
-    max: 8
+    max: 5
   },
   pinMessage: {
     windowMs: 60 * 1000,
-    max: 20
+    max: 12
   },
   getChat: {
     windowMs: 60 * 1000,
-    max: 40
+    max: 25
   },
   getGroupChat: {
     windowMs: 60 * 1000,
-    max: 40
-  },
-  joinChat: {
-    windowMs: 60 * 1000,
-    max: 40
+    max: 25
   },
   joinGroup: {
     windowMs: 60 * 1000,
+    max: 20
+  },
+  callOffer: {
+    windowMs: 60 * 1000,
+    max: 10
+  },
+  callAnswer: {
+    windowMs: 60 * 1000,
+    max: 10
+  },
+  callIceCandidate: {
+    windowMs: 10 * 1000,
     max: 40
+  },
+  callEnd: {
+    windowMs: 60 * 1000,
+    max: 10
   }
 };
-
-function hashKey(value) {
-  const secret =
-    process.env.PRIVACY_HASH_SECRET ||
-    process.env.JWT_SECRET ||
-    "liotan-local-dev";
-
-  return crypto
-    .createHmac("sha256", secret)
-    .update(String(value || "anonymous"))
-    .digest("hex");
-}
 
 function getLimit(eventName) {
   return EVENT_LIMITS[eventName] ||
@@ -94,6 +95,12 @@ function cleanupBuckets() {
       buckets.delete(key);
     }
   }
+
+  for (const [key, bucket] of connectionBuckets) {
+    if (bucket.expiresAt <= now) {
+      connectionBuckets.delete(key);
+    }
+  }
 }
 
 setInterval(
@@ -101,30 +108,25 @@ setInterval(
   60 * 1000
 ).unref?.();
 
-function isRateLimited({
-  username,
-  eventName
+function consumeBucket({
+  map,
+  key,
+  windowMs,
+  max
 }) {
-  const limit =
-    getLimit(eventName);
-
-  const key =
-    `${hashKey(username)}:${eventName}`;
-
   const now =
     Date.now();
 
   const current =
-    buckets.get(key);
+    map.get(key);
 
   if (
     !current ||
     current.expiresAt <= now
   ) {
-    buckets.set(key, {
+    map.set(key, {
       count: 1,
-      expiresAt:
-        now + limit.windowMs
+      expiresAt: now + windowMs
     });
 
     return false;
@@ -132,11 +134,38 @@ function isRateLimited({
 
   current.count += 1;
 
-  if (current.count > limit.max) {
-    return true;
-  }
+  return current.count > max;
+}
 
-  return false;
+function isConnectionRateLimited(socket) {
+  return consumeBucket({
+    map: connectionBuckets,
+    key: hashSocketIp(socket),
+    windowMs: 1000,
+    max:
+      process.env.NODE_ENV === "production"
+        ? 5
+        : 50
+  });
+}
+
+function isRateLimited({
+  socket,
+  username,
+  eventName
+}) {
+  const limit =
+    getLimit(eventName);
+
+  const key =
+    `${hmac(username)}:${hashSocketIp(socket)}:${eventName}`;
+
+  return consumeBucket({
+    map: buckets,
+    key,
+    windowMs: limit.windowMs,
+    max: limit.max
+  });
 }
 
 function attachSocketRateLimit(socket) {
@@ -167,6 +196,7 @@ function attachSocketRateLimit(socket) {
 
         if (
           isRateLimited({
+            socket,
             username,
             eventName
           })
@@ -190,5 +220,6 @@ function attachSocketRateLimit(socket) {
 
 module.exports = {
   attachSocketRateLimit,
-  isRateLimited
+  isRateLimited,
+  isConnectionRateLimited
 };

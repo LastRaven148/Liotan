@@ -21,9 +21,16 @@ const registerPrivateHandlers =
 const registerGroupHandlers =
   require("./handlers/group");
 
+const registerCallHandlers =
+  require("./handlers/calls");
+
 const {
-  attachSocketRateLimit
+  attachSocketRateLimit,
+  isConnectionRateLimited
 } = require("./middleware/socketRateLimit");
+
+const logger =
+  require("../utils/logger");
 
 function setupSocket(io) {
 
@@ -31,13 +38,22 @@ function setupSocket(io) {
 
     try {
 
+      if (isConnectionRateLimited(socket)) {
+        return next(
+          new Error("too many socket connections")
+        );
+      }
+
       const token =
         socket.handshake.auth?.token;
 
       const decoded =
         jwt.verify(
           token,
-          process.env.JWT_SECRET
+          process.env.JWT_SECRET,
+          {
+            algorithms: ["HS256"]
+          }
         );
 
       if (
@@ -51,7 +67,8 @@ function setupSocket(io) {
 
       User.exists({
         _id: decoded.userId,
-        username: decoded.username
+        username: decoded.username,
+        emailVerified: true
       }).then(exists => {
         if (!exists) {
           return next(
@@ -67,9 +84,9 @@ function setupSocket(io) {
 
     } catch (err) {
 
-      console.log(
-        "AUTH FAILED:",
-        err.message
+      logger.warn(
+        "SOCKET AUTH FAILED",
+        { message: err.message }
       );
 
       next(
@@ -106,6 +123,11 @@ registerGroupHandlers({
   io,
   socket
 });
+
+      registerCallHandlers({
+        io,
+        socket
+      });
 
       socket.on(
         "disconnect",

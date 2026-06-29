@@ -2,7 +2,8 @@ const express =
   require("express");
 
 const {
-  authLimiter
+  authLimiter,
+  codeLimiter
 } = require("../middleware/rateLimiters");
 
 const authMiddleware =
@@ -22,7 +23,7 @@ const router =
 
 router.post(
   "/auth/email-code",
-  authLimiter,
+  codeLimiter,
   sendAuthCode
 );
 
@@ -41,7 +42,7 @@ router.post(
 
 router.post(
   "/login/code",
-  authLimiter,
+  codeLimiter,
   sendLoginCode
 );
 

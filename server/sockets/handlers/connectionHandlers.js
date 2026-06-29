@@ -1,6 +1,9 @@
 const User =
   require("../../models/User");
 
+const logger =
+  require("../../utils/logger");
+
 const {
   addOnlineUser,
   removeOnlineUser,
@@ -29,10 +32,9 @@ async function handleConnectionStart({
     }
   );
 
-  console.log(
-    "CONNECTED:",
-    username,
-    socket.id
+  logger.debug(
+    "socket connected",
+    { username }
   );
 
   addOnlineUser(
@@ -53,7 +55,7 @@ async function handleConnectionStart({
     });
 
   } catch (err) {
-    console.error(err);
+    logger.error("mark delivered failed", err);
   }
 
 }
@@ -67,10 +69,9 @@ function handleConnectionEnd({
   const username =
     socket.user.username;
 
-  console.log(
-    "DISCONNECTED:",
-    username,
-    socket.id
+  logger.debug(
+    "socket disconnected",
+    { username }
   );
 
   const becameOffline =
@@ -91,7 +92,7 @@ function handleConnectionEnd({
       {
         lastSeen
       }
-    ).catch(console.error);
+).catch(err => logger.error("last seen update failed", err));
 
     io.emit(
       "userLastSeen",

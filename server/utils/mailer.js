@@ -1,3 +1,6 @@
+const logger =
+  require("./logger");
+
 function getEnv(name) {
   return String(
     process.env[name] || ""
@@ -227,8 +230,9 @@ async function sendEmailCode({
   }
 
   if (process.env.NODE_ENV !== "production") {
-    console.log(
-      `[Liotan email code] ${purpose} ${to}: ${code}`
+    logger.warn(
+      "Email provider is disabled in development; code generated",
+      { purpose }
     );
 
     return {
@@ -238,8 +242,9 @@ async function sendEmailCode({
     };
   }
 
-  console.error(
-    "Liotan mail is disabled: RESEND_API_KEY is missing on the API service."
+  logger.error(
+    "Liotan mail is disabled",
+    new Error("RESEND_API_KEY missing")
   );
 
   return {
