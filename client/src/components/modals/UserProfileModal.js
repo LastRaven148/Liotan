@@ -1,22 +1,6 @@
-import {
-  useEffect,
-  useRef,
-  useState
-} from "react";
-
-import { avatarUrl }
-from "../../utils/avatarUrl";
-
-import {
-  getProfile,
-  getGroupApi,
-  searchUsers,
-  updateGroupApi,
-  uploadGroupAvatarApi,
-  addGroupMemberApi,
-  removeGroupMemberApi
-} from "../../services/api";
-
+import { useEffect, useRef, useState } from "react";
+import { avatarUrl } from "../../utils/avatarUrl";
+import { getProfile, getGroupApi, searchUsers, updateGroupApi, uploadGroupAvatarApi, addGroupMemberApi, removeGroupMemberApi } from "../../services/api";
 export default function UserProfileModal({
   user,
   username,
@@ -25,88 +9,48 @@ export default function UserProfileModal({
   openUserProfile,
   onClose
 }) {
-
-  const [profile, setProfile] =
-    useState(user);
-
-  const [search, setSearch] =
-    useState("");
-
-  const [users, setUsers] =
-    useState([]);
-
-  const [adding, setAdding] =
-    useState(false);
-
-  const [editing, setEditing] =
-    useState(false);
-
-  const [name, setName] =
-    useState("");
-
-  const [description, setDescription] =
-    useState("");
-
-  const fileInputRef =
-    useRef(null);
-
-  const isGroup =
-    user?.type === "group";
-
+  const [profile, setProfile] = useState(user);
+  const [search, setSearch] = useState("");
+  const [users, setUsers] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const fileInputRef = useRef(null);
+  const isGroup = user?.type === "group";
   useEffect(() => {
-
     setProfile(user);
     setSearch("");
     setUsers([]);
     setEditing(false);
-
     let alive = true;
-
     async function load() {
-
       if (isGroup) {
         try {
-          const data =
-            await getGroupApi(user.groupId);
-
+          const data = await getGroupApi(user.groupId);
           const normalized = {
             ...user,
             ...data,
             type: "group",
-            groupId:
-              data._id ||
-              user.groupId,
-            chatKey:
-              user.chatKey ||
-              `group:${data._id || user.groupId}`,
-            title:
-              data.name ||
-              user.title,
-            name:
-              data.name ||
-              user.name
+            groupId: data._id || user.groupId,
+            chatKey: user.chatKey || `group:${data._id || user.groupId}`,
+            title: data.name || user.title,
+            name: data.name || user.name
           };
-
           if (alive) {
             setProfile(normalized);
             setName(normalized.name || "");
-            setDescription(
-              normalized.description || ""
-            );
+            setDescription(normalized.description || "");
           }
         } catch {
           if (alive) {
             setProfile(user);
           }
         }
-
         return;
       }
-
       try {
-        const data =
-          await getProfile(user.username);
-
+        const data = await getProfile(user.username);
         if (alive) {
           setProfile(data);
         }
@@ -115,217 +59,101 @@ export default function UserProfileModal({
           setProfile(user);
         }
       }
-
     }
-
     if (user?.username) {
       load();
     }
-
     return () => {
       alive = false;
     };
-
-  }, [
-    user,
-    isGroup
-  ]);
-
+  }, [user, isGroup]);
   useEffect(() => {
-
     if (!isGroup) {
       return;
     }
-
-    const query =
-      search.trim();
-
+    const query = search.trim();
     if (!query) {
       setUsers([]);
       return;
     }
-
-    const timer =
-      setTimeout(async () => {
-        try {
-          const data =
-            await searchUsers(query);
-
-          const members =
-            profile?.members || [];
-
-          setUsers(
-            (data || []).filter(item =>
-              !members.includes(item.username)
-            )
-          );
-        } catch {
-          setUsers([]);
-        }
-      }, 250);
-
-    return () =>
-      clearTimeout(timer);
-
-  }, [
-    search,
-    isGroup,
-    profile
-  ]);
-
+    const timer = setTimeout(async () => {
+      try {
+        const data = await searchUsers(query);
+        const members = profile?.members || [];
+        setUsers((data || []).filter(item => !members.includes(item.username)));
+      } catch {
+        setUsers([]);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, isGroup, profile]);
   useEffect(() => {
-
     function handleEsc(e) {
       if (e.key === "Escape") {
         onClose();
       }
     }
-
-    window.addEventListener(
-      "keydown",
-      handleEsc
-    );
-
-    return () =>
-      window.removeEventListener(
-        "keydown",
-        handleEsc
-      );
-
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
   }, [onClose]);
-
   if (!profile) {
     return null;
   }
-
-  const title =
-    isGroup
-      ? profile.title ||
-        profile.name ||
-        "Группа"
-      : profile.displayName?.trim() ||
-        profile.username;
-
-  const members =
-    profile.memberUsers || [];
-
-  const memberCount =
-    profile.memberCount ||
-    profile.members?.length ||
-    members.length ||
-    1;
-
-  const canManageGroup =
-    isGroup &&
-    (
-      profile.owner === username ||
-      profile.admins?.includes(username)
-    );
-
+  const title = isGroup ? profile.title || profile.name || "Группа" : profile.displayName?.trim() || profile.username;
+  const members = profile.memberUsers || [];
+  const memberCount = profile.memberCount || profile.members?.length || members.length || 1;
+  const canManageGroup = isGroup && (profile.owner === username || profile.admins?.includes(username));
   function applyUpdatedGroup(updated) {
-
     const normalized = {
       ...profile,
       ...updated,
       type: "group",
-      groupId:
-        updated._id ||
-        profile.groupId,
-      chatKey:
-        profile.chatKey ||
-        `group:${updated._id || profile.groupId}`,
-      title:
-        updated.name ||
-        profile.title,
-      name:
-        updated.name ||
-        profile.name
+      groupId: updated._id || profile.groupId,
+      chatKey: profile.chatKey || `group:${updated._id || profile.groupId}`,
+      title: updated.name || profile.title,
+      name: updated.name || profile.name
     };
-
     setProfile(normalized);
     setName(normalized.name || "");
     setDescription(normalized.description || "");
-
     updateGroup?.(normalized);
   }
-
   async function saveGroup() {
-
-    if (
-      !isGroup ||
-      !profile.groupId
-    ) {
+    if (!isGroup || !profile.groupId) {
       return;
     }
-
     try {
-      const updated =
-        await updateGroupApi(
-          profile.groupId,
-          {
-            name,
-            description
-          }
-        );
-
+      const updated = await updateGroupApi(profile.groupId, {
+        name,
+        description
+      });
       applyUpdatedGroup(updated);
       setEditing(false);
     } catch (err) {
       console.error(err);
     }
-
   }
-
   async function uploadAvatar(e) {
-
-    const file =
-      e.target.files?.[0];
-
+    const file = e.target.files?.[0];
     e.target.value = "";
-
-    if (
-      !file ||
-      !isGroup ||
-      !profile.groupId
-    ) {
+    if (!file || !isGroup || !profile.groupId) {
       return;
     }
-
     try {
-      const updated =
-        await uploadGroupAvatarApi(
-          profile.groupId,
-          file
-        );
-
+      const updated = await uploadGroupAvatarApi(profile.groupId, file);
       applyUpdatedGroup(updated);
     } catch (err) {
       console.error(err);
     }
-
   }
-
   async function addMember(targetUsername) {
-
-    if (
-      !isGroup ||
-      !profile.groupId ||
-      adding
-    ) {
+    if (!isGroup || !profile.groupId || adding) {
       return;
     }
-
     setAdding(true);
-
     try {
-      const updated =
-        await addGroupMemberApi(
-          profile.groupId,
-          targetUsername
-        );
-
+      const updated = await addGroupMemberApi(profile.groupId, targetUsername);
       applyUpdatedGroup(updated);
-
       setSearch("");
       setUsers([]);
     } catch (err) {
@@ -333,65 +161,37 @@ export default function UserProfileModal({
     } finally {
       setAdding(false);
     }
-
   }
-
   async function removeMember(targetUsername) {
-
-    if (
-      !isGroup ||
-      !profile.groupId ||
-      targetUsername === profile.owner
-    ) {
+    if (!isGroup || !profile.groupId || targetUsername === profile.owner) {
       return;
     }
-
     try {
-      const updated =
-        await removeGroupMemberApi(
-          profile.groupId,
-          targetUsername
-        );
-
+      const updated = await removeGroupMemberApi(profile.groupId, targetUsername);
       applyUpdatedGroup(updated);
     } catch (err) {
       console.error(err);
     }
-
   }
-
   async function handleGroupDelete() {
-
     if (!isGroup) {
       return;
     }
-
     await deleteGroupDialog?.(profile);
     onClose();
-
   }
-
   function openMemberProfile(member) {
-
     if (!member?.username) {
       return;
     }
-
     openUserProfile?.({
       ...member,
       type: "private"
     });
-
   }
-
-    return (
-    <aside className="profile-drawer">
+  return <aside className="profile-drawer">
       <div className="drawer-topbar">
-        <button
-          type="button"
-          className="drawer-icon-button"
-          onClick={onClose}
-        >
+        <button type="button" className="drawer-icon-button" onClick={onClose}>
           ×
         </button>
 
@@ -399,79 +199,30 @@ export default function UserProfileModal({
           Информация
         </div>
 
-        {canManageGroup && (
-          <button
-            type="button"
-            className="drawer-save-button"
-            onClick={() =>
-              editing
-                ? saveGroup()
-                : setEditing(true)
-            }
-          >
-            {editing
-              ? "Сохранить"
-              : "Изм."}
-          </button>
-        )}
+        {canManageGroup && <button type="button" className="drawer-save-button" onClick={() => editing ? saveGroup() : setEditing(true)}>
+            {editing ? "Сохранить" : "Изм."}
+          </button>}
       </div>
 
       <div className="profile-drawer-main">
-        <button
-          type="button"
-          className="profile-avatar-button"
-          onClick={() =>
-            canManageGroup &&
-            fileInputRef.current?.click()
-          }
-        >
+        <button type="button" className="profile-avatar-button" onClick={() => canManageGroup && fileInputRef.current?.click()}>
           <div className="profile-drawer-avatar">
-            {profile.avatar ? (
-              <img
-                src={avatarUrl(profile.avatar)}
-                alt=""
-                className="avatar-image"
-              />
-            ) : (
-              title
-                ? title.charAt(0).toUpperCase()
-                : "?"
-            )}
+            {profile.avatar ? <img src={avatarUrl(profile.avatar)} alt="" className="avatar-image" /> : title ? title.charAt(0).toUpperCase() : "?"}
           </div>
         </button>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          hidden
-          accept="image/*"
-          onChange={uploadAvatar}
-        />
+        <input ref={fileInputRef} type="file" hidden accept="image/*" onChange={uploadAvatar} />
 
-        {editing ? (
-          <input
-            className="group-edit-name"
-            value={name}
-            onChange={(e) =>
-              setName(e.target.value)
-            }
-            maxLength={40}
-          />
-        ) : (
-          <div className="profile-drawer-name">
+        {editing ? <input className="group-edit-name" value={name} onChange={e => setName(e.target.value)} maxLength={40} /> : <div className="profile-drawer-name">
             {title}
-          </div>
-        )}
+          </div>}
 
-        {isGroup && (
-          <div className="settings-online">
+        {isGroup && <div className="settings-online">
             {memberCount} участников
-          </div>
-        )}
+          </div>}
       </div>
 
-      {isGroup ? (
-        <>
+      {isGroup ? <>
           <div className="profile-info-card">
             <div className="profile-info-row">
               <div className="profile-info-icon">
@@ -505,19 +256,7 @@ export default function UserProfileModal({
               </div>
             </div>
 
-            {editing ? (
-              <textarea
-                className="group-edit-description"
-                value={description}
-                onChange={(e) =>
-                  setDescription(e.target.value)
-                }
-                maxLength={120}
-                placeholder="Описание группы"
-              />
-            ) : (
-              profile.description?.trim() && (
-                <div className="profile-info-row">
+            {editing ? <textarea className="group-edit-description" value={description} onChange={e => setDescription(e.target.value)} maxLength={120} placeholder="Описание группы" /> : profile.description?.trim() && <div className="profile-info-row">
                   <div className="profile-info-icon">
                     i
                   </div>
@@ -531,47 +270,19 @@ export default function UserProfileModal({
                       описание
                     </div>
                   </div>
-                </div>
-              )
-            )}
+                </div>}
           </div>
 
-          {canManageGroup && (
-            <div className="profile-info-card">
+          {canManageGroup && <div className="profile-info-card">
               <div className="group-add-title">
                 Добавить участника
               </div>
 
-              <input
-                className="group-add-input"
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-                placeholder="Поиск пользователя"
-              />
+              <input className="group-add-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск пользователя" />
 
-              {users.map(item => (
-                <button
-                  key={item.username}
-                  type="button"
-                  className="group-member-row button-row"
-                  onClick={() =>
-                    addMember(item.username)
-                  }
-                >
+              {users.map(item => <button key={item.username} type="button" className="group-member-row button-row" onClick={() => addMember(item.username)}>
                   <div className="avatar small-avatar">
-                    {item.avatar ? (
-                      <img
-                        src={avatarUrl(item.avatar)}
-                        alt=""
-                        className="avatar-image"
-                      />
-                    ) : (
-                      (item.displayName?.trim() || item.username)
-                        .charAt(0)
-                        .toUpperCase()
-                    )}
+                    {item.avatar ? <img src={avatarUrl(item.avatar)} alt="" className="avatar-image" /> : (item.displayName?.trim() || item.username).charAt(0).toUpperCase()}
                   </div>
 
                   <div>
@@ -583,40 +294,18 @@ export default function UserProfileModal({
                       добавить
                     </div>
                   </div>
-                </button>
-              ))}
-            </div>
-          )}
+                </button>)}
+            </div>}
 
           <div className="profile-info-card">
             <div className="group-add-title">
               Участники
             </div>
 
-            {members.map(member => (
-              <div
-                key={member.username}
-                className="group-member-row"
-              >
-                <button
-                  type="button"
-                  className="group-member-profile"
-                  onClick={() =>
-                    openMemberProfile(member)
-                  }
-                >
+            {members.map(member => <div key={member.username} className="group-member-row">
+                <button type="button" className="group-member-profile" onClick={() => openMemberProfile(member)}>
                   <div className="avatar small-avatar">
-                    {member.avatar ? (
-                      <img
-                        src={avatarUrl(member.avatar)}
-                        alt=""
-                        className="avatar-image"
-                      />
-                    ) : (
-                      (member.displayName?.trim() || member.username)
-                        .charAt(0)
-                        .toUpperCase()
-                    )}
+                    {member.avatar ? <img src={avatarUrl(member.avatar)} alt="" className="avatar-image" /> : (member.displayName?.trim() || member.username).charAt(0).toUpperCase()}
                   </div>
 
                   <div>
@@ -625,49 +314,27 @@ export default function UserProfileModal({
                     </div>
 
                     <div className="profile-info-sub">
-                      {member.username === profile.owner
-                        ? "владелец"
-                        : profile.admins?.includes(member.username)
-                          ? "админ"
-                          : "участник"}
+                      {member.username === profile.owner ? "владелец" : profile.admins?.includes(member.username) ? "админ" : "участник"}
                     </div>
                   </div>
                 </button>
 
-                {canManageGroup &&
-                  member.username !== profile.owner && (
-                  <button
-                    type="button"
-                    className="group-member-remove"
-                    onClick={() =>
-                      removeMember(member.username)
-                    }
-                  >
+                {canManageGroup && member.username !== profile.owner && <button type="button" className="group-member-remove" onClick={() => removeMember(member.username)}>
                     ×
-                  </button>
-                )}
-              </div>
-            ))}
+                  </button>}
+              </div>)}
           </div>
 
           <div className="profile-info-card">
-            <button
-              type="button"
-              className="settings-row button-row danger-row"
-              onClick={handleGroupDelete}
-            >
+            <button type="button" className="settings-row button-row danger-row" onClick={handleGroupDelete}>
               <span>×</span>
 
               <div className="settings-row-main">
-                {profile.owner === username
-                  ? "Удалить группу"
-                  : "Выйти из группы"}
+                {profile.owner === username ? "Удалить группу" : "Выйти из группы"}
               </div>
             </button>
           </div>
-        </>
-      ) : (
-        <div className="profile-info-card">
+        </> : <div className="profile-info-card">
           <div className="profile-info-row">
             <div className="profile-info-icon">
               @
@@ -684,8 +351,7 @@ export default function UserProfileModal({
             </div>
           </div>
 
-          {profile.bio?.trim() && (
-            <div className="profile-info-row">
+          {profile.bio?.trim() && <div className="profile-info-row">
               <div className="profile-info-icon">
                 i
               </div>
@@ -699,11 +365,7 @@ export default function UserProfileModal({
                   о себе
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-    </aside>
-  );
-
+            </div>}
+        </div>}
+    </aside>;
 }

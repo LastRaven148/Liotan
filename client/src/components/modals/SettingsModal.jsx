@@ -1,22 +1,7 @@
-import {
-  useEffect,
-  useState
-} from "react";
-
-import { avatarUrl }
-from "../../utils/avatarUrl";
-
-import {
-  useLanguage
-} from "../../context/LanguageContext";
-
-import {
-  getDeviceSessionsApi,
-  revokeSessionApi,
-  logoutOtherSessionsApi,
-  getTransportCapabilitiesApi
-} from "../../services/api";
-
+import { useEffect, useState } from "react";
+import { avatarUrl } from "../../utils/avatarUrl";
+import { useLanguage } from "../../context/LanguageContext";
+import { getDeviceSessionsApi, revokeSessionApi, logoutOtherSessionsApi, getTransportCapabilitiesApi } from "../../services/api";
 export default function SettingsModal({
   username,
   displayName,
@@ -29,104 +14,35 @@ export default function SettingsModal({
   deleteAccount,
   onClose
 }) {
-
   const {
     t,
     language,
     setLanguage
   } = useLanguage();
-
-  const [
-    editing,
-    setEditing
-  ] = useState(false);
-
-  const [
-    nameValue,
-    setNameValue
-  ] = useState(displayName || "");
-
-  const [
-    bioValue,
-    setBioValue
-  ] = useState(bio || "");
-
-  const [
-    previewAvatar,
-    setPreviewAvatar
-  ] = useState("");
-
-  const [
-    pendingAvatarFile,
-    setPendingAvatarFile
-  ] = useState(null);
-
-  const [
-    saving,
-    setSaving
-  ] = useState(false);
-
-  const [
-    deleteConfirmOpen,
-    setDeleteConfirmOpen
-  ] = useState(false);
-
-  const [
-    deleteStep,
-    setDeleteStep
-  ] = useState(1);
-
-  const [
-    logoutConfirmOpen,
-    setLogoutConfirmOpen
-  ] = useState(false);
-
-  const [
-    deleting,
-    setDeleting
-  ] = useState(false);
-
-  const [
-    sessions,
-    setSessions
-  ] = useState([]);
-
-  const [
-    sessionsLoading,
-    setSessionsLoading
-  ] = useState(false);
-
-  const [
-    transportInfo,
-    setTransportInfo
-  ] = useState(null);
-
+  const [editing, setEditing] = useState(false);
+  const [nameValue, setNameValue] = useState(displayName || "");
+  const [bioValue, setBioValue] = useState(bio || "");
+  const [previewAvatar, setPreviewAvatar] = useState("");
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [transportInfo, setTransportInfo] = useState(null);
   useEffect(() => {
     let alive = true;
-
     async function loadSecurityState() {
       setSessionsLoading(true);
-
       try {
-        const [sessionData, transportData] =
-          await Promise.all([
-            getDeviceSessionsApi(),
-            getTransportCapabilitiesApi().catch(() => null)
-          ]);
-
+        const [sessionData, transportData] = await Promise.all([getDeviceSessionsApi(), getTransportCapabilitiesApi().catch(() => null)]);
         if (!alive) {
           return;
         }
-
-        setSessions(
-          Array.isArray(sessionData?.sessions)
-            ? sessionData.sessions
-            : []
-        );
-
-        setTransportInfo(
-          transportData || null
-        );
+        setSessions(Array.isArray(sessionData?.sessions) ? sessionData.sessions : []);
+        setTransportInfo(transportData || null);
       } catch {
         if (alive) {
           setSessions([]);
@@ -137,111 +53,70 @@ export default function SettingsModal({
         }
       }
     }
-
     loadSecurityState();
-
     return () => {
       alive = false;
     };
   }, []);
-
   useEffect(() => {
     setNameValue(displayName || "");
-  }, [
-    displayName
-  ]);
-
+  }, [displayName]);
   useEffect(() => {
     setBioValue(bio || "");
-  }, [
-    bio
-  ]);
-
+  }, [bio]);
   useEffect(() => {
     return () => {
       if (previewAvatar) {
         URL.revokeObjectURL(previewAvatar);
       }
     };
-  }, [
-    previewAvatar
-  ]);
-
-  const shownName =
-    displayName?.trim() ||
-    username;
-
-  const shownAvatar =
-    previewAvatar ||
-    avatarUrl(avatar);
-
+  }, [previewAvatar]);
+  const shownName = displayName?.trim() || username;
+  const shownAvatar = previewAvatar || avatarUrl(avatar);
   function closeEdit() {
     if (previewAvatar) {
       URL.revokeObjectURL(previewAvatar);
     }
-
     setPreviewAvatar("");
     setPendingAvatarFile(null);
     setNameValue(displayName || "");
     setBioValue(bio || "");
     setEditing(false);
   }
-
   function handleAvatarSelect(e) {
-    const file =
-      e.target.files?.[0];
-
+    const file = e.target.files?.[0];
     e.target.value = "";
-
     if (!file) {
       return;
     }
-
     if (previewAvatar) {
       URL.revokeObjectURL(previewAvatar);
     }
-
     setPendingAvatarFile(file);
-
-    setPreviewAvatar(
-      URL.createObjectURL(file)
-    );
+    setPreviewAvatar(URL.createObjectURL(file));
   }
-
   async function handleSave() {
     if (saving) {
       return;
     }
-
     setSaving(true);
-
     try {
-      const saved =
-        await saveProfile?.({
-          bio: bioValue,
-          displayName: nameValue
-        });
-
+      const saved = await saveProfile?.({
+        bio: bioValue,
+        displayName: nameValue
+      });
       if (!saved) {
         return;
       }
-
       if (saved.displayName !== undefined) {
-        setDisplayName?.(
-          saved.displayName || ""
-        );
+        setDisplayName?.(saved.displayName || "");
       }
-
       if (pendingAvatarFile) {
-        await uploadAvatar?.(
-          pendingAvatarFile
-        );
+        await uploadAvatar?.(pendingAvatarFile);
       }
-
       if (previewAvatar) {
         URL.revokeObjectURL(previewAvatar);
       }
-
       setPreviewAvatar("");
       setPendingAvatarFile(null);
       setEditing(false);
@@ -249,73 +124,49 @@ export default function SettingsModal({
       setSaving(false);
     }
   }
-
   async function handleRevokeSession(id) {
     await revokeSessionApi(id);
-
-    setSessions(prev =>
-      prev.filter(item => item.id !== id)
-    );
+    setSessions(prev => prev.filter(item => item.id !== id));
   }
-
   async function handleLogoutOtherSessions() {
     await logoutOtherSessionsApi();
-
-    setSessions(prev =>
-      prev.filter(item => item.current)
-    );
+    setSessions(prev => prev.filter(item => item.current));
   }
-
   function formatSessionTime(value) {
     if (!value) {
       return "—";
     }
-
     try {
       return new Date(value).toLocaleString();
     } catch {
       return "—";
     }
   }
-
   function toggleLanguage() {
-    setLanguage(
-      language === "en"
-        ? "ru"
-        : "en"
-    );
+    setLanguage(language === "en" ? "ru" : "en");
   }
-
   function openDeleteConfirm() {
     setDeleteStep(1);
     setDeleteConfirmOpen(true);
   }
-
   function closeDeleteConfirm() {
     if (deleting) {
       return;
     }
-
     setDeleteConfirmOpen(false);
     setDeleteStep(1);
   }
-
   async function handleDeleteAccount() {
     if (deleting) {
       return;
     }
-
     if (deleteStep === 1) {
       setDeleteStep(2);
       return;
     }
-
     setDeleting(true);
-
     try {
-      const ok =
-        await deleteAccount?.();
-
+      const ok = await deleteAccount?.();
       if (ok !== false) {
         setDeleteConfirmOpen(false);
         setDeleteStep(1);
@@ -325,92 +176,46 @@ export default function SettingsModal({
       setDeleting(false);
     }
   }
-
   function closeLogoutConfirm() {
     setLogoutConfirmOpen(false);
   }
-
   function confirmLogout() {
     setLogoutConfirmOpen(false);
     logout?.();
   }
-
   useEffect(() => {
-    const hasBlockingModal =
-      logoutConfirmOpen ||
-      deleteConfirmOpen;
-
+    const hasBlockingModal = logoutConfirmOpen || deleteConfirmOpen;
     if (!hasBlockingModal) {
       return undefined;
     }
-
-    document.body.classList.add(
-      "liotan-delete-modal-open"
-    );
-
+    document.body.classList.add("liotan-delete-modal-open");
     function handleEscape(e) {
       if (e.key !== "Escape") {
         return;
       }
-
       e.preventDefault();
       e.stopPropagation();
-
-      window.__liotanModalEscHandledAt =
-        Date.now();
-
+      window.__liotanModalEscHandledAt = Date.now();
       if (logoutConfirmOpen) {
         setLogoutConfirmOpen(false);
         return;
       }
-
       if (deleteConfirmOpen && !deleting) {
         setDeleteConfirmOpen(false);
         setDeleteStep(1);
       }
     }
-
-    window.addEventListener(
-      "keydown",
-      handleEscape,
-      true
-    );
-
+    window.addEventListener("keydown", handleEscape, true);
     return () => {
-      window.removeEventListener(
-        "keydown",
-        handleEscape,
-        true
-      );
-
-      document.body.classList.remove(
-        "liotan-delete-modal-open"
-      );
+      window.removeEventListener("keydown", handleEscape, true);
+      document.body.classList.remove("liotan-delete-modal-open");
     };
-  }, [
-    logoutConfirmOpen,
-    deleteConfirmOpen,
-    deleting
-  ]);
-
+  }, [logoutConfirmOpen, deleteConfirmOpen, deleting]);
   if (editing) {
-    return (
-      <div
-        className="drawer-overlay drawer-overlay-left"
-        onClick={onClose}
-      >
-        <aside
-          className="settings-drawer"
-          onClick={(e) =>
-            e.stopPropagation()
-          }
-        >
+    return <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
+        <aside className="settings-drawer" onClick={e => e.stopPropagation()}>
           <div className="drawer-topbar">
-            <button
-              type="button"
-              className="drawer-icon-button"
-              onClick={closeEdit}
-            >
+            <button type="button" className="drawer-icon-button" onClick={closeEdit}>
               ←
             </button>
 
@@ -418,39 +223,17 @@ export default function SettingsModal({
               {t.editProfile || "Изменить профиль"}
             </div>
 
-            <button
-              type="button"
-              className="drawer-save-button"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving
-                ? "..."
-                : t.save || "Сохранить"}
+            <button type="button" className="drawer-save-button" onClick={handleSave} disabled={saving}>
+              {saving ? "..." : t.save || "Сохранить"}
             </button>
           </div>
 
           <label className="edit-avatar">
             <div className="settings-avatar large">
-              {shownAvatar ? (
-                <img
-                  src={shownAvatar}
-                  alt=""
-                  className="avatar-image"
-                />
-              ) : (
-                username
-                  .charAt(0)
-                  .toUpperCase()
-              )}
+              {shownAvatar ? <img src={shownAvatar} alt="" className="avatar-image" /> : username.charAt(0).toUpperCase()}
             </div>
 
-            <input
-              type="file"
-              hidden
-              accept="image/*"
-              onChange={handleAvatarSelect}
-            />
+            <input type="file" hidden accept="image/*" onChange={handleAvatarSelect} />
           </label>
 
           <div className="settings-card">
@@ -458,15 +241,7 @@ export default function SettingsModal({
               Имя
             </div>
 
-            <input
-              className="settings-name-input"
-              value={nameValue}
-              onChange={(e) =>
-                setNameValue(e.target.value)
-              }
-              placeholder="Имя"
-              maxLength={20}
-            />
+            <input className="settings-name-input" value={nameValue} onChange={e => setNameValue(e.target.value)} placeholder="Имя" maxLength={20} />
 
             <div className="settings-field-label">
               {t.username || "Имя пользователя"}
@@ -480,38 +255,15 @@ export default function SettingsModal({
               {t.bio || "О себе"}
             </div>
 
-            <textarea
-              className="settings-bio-input"
-              value={bioValue}
-              onChange={(e) =>
-                setBioValue(e.target.value)
-              }
-              placeholder={t.aboutYou || "О себе"}
-              maxLength={50}
-            />
+            <textarea className="settings-bio-input" value={bioValue} onChange={e => setBioValue(e.target.value)} placeholder={t.aboutYou || "О себе"} maxLength={50} />
           </div>
         </aside>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div
-      className="drawer-overlay drawer-overlay-left"
-      onClick={onClose}
-    >
-      <aside
-        className="settings-drawer"
-        onClick={(e) =>
-          e.stopPropagation()
-        }
-      >
+  return <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
+      <aside className="settings-drawer" onClick={e => e.stopPropagation()}>
         <div className="drawer-topbar">
-          <button
-            type="button"
-            className="drawer-icon-button"
-            onClick={onClose}
-          >
+          <button type="button" className="drawer-icon-button" onClick={onClose}>
             ←
           </button>
 
@@ -520,25 +272,9 @@ export default function SettingsModal({
           </div>
         </div>
 
-        <button
-          type="button"
-          className="settings-profile-button"
-          onClick={() =>
-            setEditing(true)
-          }
-        >
+        <button type="button" className="settings-profile-button" onClick={() => setEditing(true)}>
           <div className="settings-avatar">
-            {avatar ? (
-              <img
-                src={avatarUrl(avatar)}
-                alt=""
-                className="avatar-image"
-              />
-            ) : (
-              username
-                .charAt(0)
-                .toUpperCase()
-            )}
+            {avatar ? <img src={avatarUrl(avatar)} alt="" className="avatar-image" /> : username.charAt(0).toUpperCase()}
           </div>
 
           <div>
@@ -553,11 +289,7 @@ export default function SettingsModal({
         </button>
 
         <div className="settings-card">
-          <button
-            type="button"
-            className="settings-row button-row"
-            onClick={toggleLanguage}
-          >
+          <button type="button" className="settings-row button-row" onClick={toggleLanguage}>
             <span>•</span>
 
             <div className="settings-row-main">
@@ -565,9 +297,7 @@ export default function SettingsModal({
             </div>
 
             <div className="settings-row-value">
-              {language === "en"
-                ? t.english || "English"
-                : t.russian || "Русский"}
+              {language === "en" ? t.english || "English" : t.russian || "Русский"}
             </div>
           </button>
         </div>
@@ -577,23 +307,15 @@ export default function SettingsModal({
             Устройства
           </div>
 
-          {sessionsLoading && (
-            <div className="settings-muted-text">
+          {sessionsLoading && <div className="settings-muted-text">
               Загрузка...
-            </div>
-          )}
+            </div>}
 
-          {!sessionsLoading && sessions.length === 0 && (
-            <div className="settings-muted-text">
+          {!sessionsLoading && sessions.length === 0 && <div className="settings-muted-text">
               Активные устройства не найдены
-            </div>
-          )}
+            </div>}
 
-          {sessions.map(session => (
-            <div
-              key={session.id}
-              className="settings-device-row"
-            >
+          {sessions.map(session => <div key={session.id} className="settings-device-row">
               <div className="settings-device-main">
                 <div className="settings-device-name">
                   {session.deviceName || "Устройство"}
@@ -604,40 +326,23 @@ export default function SettingsModal({
                   Последняя активность: {formatSessionTime(session.lastSeenAt)}
                 </div>
 
-                {session.deviceKeyFingerprint && (
-                  <div className="settings-device-fingerprint">
+                {session.deviceKeyFingerprint && <div className="settings-device-fingerprint">
                     Ключ: {session.deviceKeyFingerprint}
-                  </div>
-                )}
+                  </div>}
               </div>
 
-              {!session.current && (
-                <button
-                  type="button"
-                  className="settings-mini-danger"
-                  onClick={() =>
-                    handleRevokeSession(session.id)
-                  }
-                >
+              {!session.current && <button type="button" className="settings-mini-danger" onClick={() => handleRevokeSession(session.id)}>
                   Отключить
-                </button>
-              )}
-            </div>
-          ))}
+                </button>}
+            </div>)}
 
-          {sessions.some(item => !item.current) && (
-            <button
-              type="button"
-              className="settings-row button-row danger-row"
-              onClick={handleLogoutOtherSessions}
-            >
+          {sessions.some(item => !item.current) && <button type="button" className="settings-row button-row danger-row" onClick={handleLogoutOtherSessions}>
               <span>×</span>
 
               <div className="settings-row-main">
                 Завершить все другие сеансы
               </div>
-            </button>
-          )}
+            </button>}
         </div>
 
         <div className="settings-card settings-security-card">
@@ -655,48 +360,25 @@ export default function SettingsModal({
         </div>
 
         <div className="settings-card">
-          {logout && (
-            <button
-              type="button"
-              className="settings-row button-row danger-row"
-              onClick={() =>
-                setLogoutConfirmOpen(true)
-              }
-            >
+          {logout && <button type="button" className="settings-row button-row danger-row" onClick={() => setLogoutConfirmOpen(true)}>
               <span>×</span>
 
               <div className="settings-row-main">
                 {t.logout || "Выйти"}
               </div>
-            </button>
-          )}
+            </button>}
 
-          {deleteAccount && (
-            <button
-              type="button"
-              className="settings-row button-row danger-row"
-              onClick={openDeleteConfirm}
-            >
+          {deleteAccount && <button type="button" className="settings-row button-row danger-row" onClick={openDeleteConfirm}>
               <span>!</span>
 
               <div className="settings-row-main">
                 Удалить аккаунт
               </div>
-            </button>
-          )}
+            </button>}
         </div>
 
-        {logoutConfirmOpen && (
-          <div
-            className="dialog-delete-modal-overlay settings-confirm-modal-overlay"
-            onClick={closeLogoutConfirm}
-          >
-            <div
-              className="dialog-delete-modal"
-              onClick={(e) =>
-                e.stopPropagation()
-              }
-            >
+        {logoutConfirmOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={closeLogoutConfirm}>
+            <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
               <div className="dialog-delete-modal-title">
                 Выйти из аккаунта
               </div>
@@ -706,75 +388,38 @@ export default function SettingsModal({
               </div>
 
               <div className="dialog-delete-modal-actions">
-                <button
-                  type="button"
-                  className="dialog-delete-modal-cancel"
-                  onClick={closeLogoutConfirm}
-                >
+                <button type="button" className="dialog-delete-modal-cancel" onClick={closeLogoutConfirm}>
                   Отмена
                 </button>
 
-                <button
-                  type="button"
-                  className="dialog-delete-modal-danger"
-                  onClick={confirmLogout}
-                >
+                <button type="button" className="dialog-delete-modal-danger" onClick={confirmLogout}>
                   Продолжить
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          </div>}
 
-        {deleteConfirmOpen && (
-          <div
-            className="dialog-delete-modal-overlay settings-confirm-modal-overlay"
-            onClick={closeDeleteConfirm}
-          >
-            <div
-              className="dialog-delete-modal"
-              onClick={(e) =>
-                e.stopPropagation()
-              }
-            >
+        {deleteConfirmOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={closeDeleteConfirm}>
+            <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
               <div className="dialog-delete-modal-title">
                 Удалить аккаунт
               </div>
 
               <div className="dialog-delete-modal-text">
-                {deleteStep === 1
-                  ? "Все ваши данные будут удалены без возможности восстановления"
-                  : "Вы точно уверены что хотите полностью удалить аккаунт?"}
+                {deleteStep === 1 ? "Все ваши данные будут удалены без возможности восстановления" : "Вы точно уверены что хотите полностью удалить аккаунт?"}
               </div>
 
               <div className="dialog-delete-modal-actions">
-                <button
-                  type="button"
-                  className="dialog-delete-modal-cancel"
-                  onClick={closeDeleteConfirm}
-                  disabled={deleting}
-                >
+                <button type="button" className="dialog-delete-modal-cancel" onClick={closeDeleteConfirm} disabled={deleting}>
                   Отмена
                 </button>
 
-                <button
-                  type="button"
-                  className="dialog-delete-modal-danger"
-                  onClick={handleDeleteAccount}
-                  disabled={deleting}
-                >
-                  {deleting
-                    ? "..."
-                    : deleteStep === 1
-                      ? "Продолжить"
-                      : "Принять"}
+                <button type="button" className="dialog-delete-modal-danger" onClick={handleDeleteAccount} disabled={deleting}>
+                  {deleting ? "..." : deleteStep === 1 ? "Продолжить" : "Принять"}
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          </div>}
       </aside>
-    </div>
-  );
-
+    </div>;
 }
