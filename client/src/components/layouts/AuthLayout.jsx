@@ -7,8 +7,12 @@ export default function AuthLayout({
   setEmail,
   emailCode,
   setEmailCode,
+  maskedLoginEmail,
   password,
   setPassword,
+  sendLegacyBindCode,
+  legacyBindEmail,
+  sendLoginCode,
   login,
   sendRegisterCode,
   verifyRegisterCode,
@@ -26,8 +30,12 @@ export default function AuthLayout({
       setEmail={setEmail}
       emailCode={emailCode}
       setEmailCode={setEmailCode}
+      maskedLoginEmail={maskedLoginEmail}
       password={password}
       setPassword={setPassword}
+      sendLegacyBindCode={sendLegacyBindCode}
+      legacyBindEmail={legacyBindEmail}
+      sendLoginCode={sendLoginCode}
       login={login}
       sendRegisterCode={sendRegisterCode}
       verifyRegisterCode={verifyRegisterCode}

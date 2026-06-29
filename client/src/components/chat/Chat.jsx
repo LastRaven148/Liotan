@@ -13,6 +13,7 @@ import {
 
 import {
   ensureConversationSecret,
+  getEffectiveE2EEChatKey,
   hasChatSecret
 } from "../../utils/e2ee";
 
@@ -164,10 +165,16 @@ const Chat = memo(function Chat({
   const chatVisible =
     Boolean(activeChat);
 
+  const renderedE2EEChatKey =
+    getEffectiveE2EEChatKey(
+      renderedActiveChat,
+      renderedActiveDialog
+    );
+
   const e2eeEnabled =
     Boolean(
       renderedActiveChat &&
-      hasChatSecret(username, renderedActiveChat)
+      hasChatSecret(username, renderedE2EEChatKey)
     );
 
   useEffect(() => {
@@ -221,7 +228,7 @@ const Chat = memo(function Chat({
 
     await ensureConversationSecret({
       username,
-      chatKey: renderedActiveChat,
+      chatKey: renderedE2EEChatKey,
       participants: getConversationParticipants()
     });
 
@@ -237,7 +244,7 @@ const Chat = memo(function Chat({
 
     ensureConversationSecret({
       username,
-      chatKey: renderedActiveChat,
+      chatKey: renderedE2EEChatKey,
       participants: getConversationParticipants()
     }).then(() => {
       if (!cancelled) {
@@ -251,7 +258,8 @@ const Chat = memo(function Chat({
   }, [
     username,
     renderedActiveChat,
-    renderedActiveDialog
+    renderedActiveDialog,
+    renderedE2EEChatKey
   ]);
 
   useChatScroll({
@@ -293,7 +301,7 @@ const Chat = memo(function Chat({
             messages={renderedMessages}
             t={t}
             username={username}
-            activeChat={renderedActiveChat}
+            activeChat={renderedE2EEChatKey}
             e2eeRevision={e2eeRevision}
             messagesRef={messagesRef}
             bottomRef={bottomRef}

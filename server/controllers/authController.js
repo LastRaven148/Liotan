@@ -19,6 +19,9 @@ const Group =
 const EmailCode =
   require("../models/EmailCode");
 
+const E2EEKey =
+  require("../models/E2EEKey");
+
 const deleteUploadedFile =
   require("../utils/deleteUploadedFile");
 
@@ -46,6 +49,20 @@ function createCode() {
       1000000
     )
   );
+}
+
+function maskEmail(email) {
+  const cleanEmail =
+    normalizeEmail(email);
+
+  const [name, domain] =
+    cleanEmail.split("@");
+
+  if (!name || !domain) {
+    return "";
+  }
+
+  return `${name[0]}***************@${domain}`;
 }
 
 function signToken(user) {
@@ -470,6 +487,302 @@ async function bindEmail(
 
 }
 
+
+
+async function sendLegacyBindEmailCode(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const {
+      username,
+      password,
+      email
+    } = req.body;
+
+    if (
+      !isValidUsername(username) ||
+      !isValidPassword(password) ||
+      !isValidEmail(email)
+    ) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const cleanUsername =
+      username.trim();
+
+    const cleanEmail =
+      normalizeEmail(email);
+
+    const emailHash =
+      hashEmail(cleanEmail);
+
+    const user =
+      await User.findOne({
+        username: cleanUsername
+      });
+
+    if (!user || user.emailHash) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const passwordOk =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!passwordOk) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const usedByOther =
+      await User.findOne({
+        emailHash,
+        username: {
+          $ne: cleanUsername
+        }
+      });
+
+    if (usedByOther) {
+      return res.status(400).json({
+        error: "email already used"
+      });
+    }
+
+    const code =
+      createCode();
+
+    await saveEmailCode({
+      emailHash,
+      purpose: "legacy-bind",
+      code
+    });
+
+    const result =
+      await sendEmailCode({
+        to: cleanEmail,
+        code,
+        purpose: "bind"
+      });
+
+    res.json({
+      ok: true,
+      sent: result.sent,
+      maskedEmail: maskEmail(cleanEmail),
+      devCode:
+        result.sent || process.env.NODE_ENV === "production"
+          ? undefined
+          : code
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function legacyBindEmail(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const {
+      username,
+      password,
+      email,
+      code
+    } = req.body;
+
+    if (
+      !isValidUsername(username) ||
+      !isValidPassword(password) ||
+      !isValidEmail(email) ||
+      !isValidEmailCode(code)
+    ) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const cleanUsername =
+      username.trim();
+
+    const cleanEmail =
+      normalizeEmail(email);
+
+    const emailHash =
+      hashEmail(cleanEmail);
+
+    const user =
+      await User.findOne({
+        username: cleanUsername
+      });
+
+    if (!user || user.emailHash) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const passwordOk =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!passwordOk) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const usedByOther =
+      await User.findOne({
+        emailHash,
+        username: {
+          $ne: cleanUsername
+        }
+      });
+
+    if (usedByOther) {
+      return res.status(400).json({
+        error: "email already used"
+      });
+    }
+
+    const verified =
+      await verifyEmailCode({
+        emailHash,
+        purpose: "legacy-bind",
+        code
+      });
+
+    if (!verified) {
+      return res.status(400).json({
+        error: "invalid code"
+      });
+    }
+
+    user.emailHash =
+      emailHash;
+
+    user.emailVerified =
+      true;
+
+    user.lastSeen =
+      new Date();
+
+    await user.save();
+
+    res.json({
+      ok: true,
+      token: signToken(user),
+      username: user.username
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function sendLoginCode(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const {
+      email,
+      password
+    } = req.body;
+
+    if (
+      !isValidEmail(email) ||
+      !isValidPassword(password)
+    ) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const cleanEmail =
+      normalizeEmail(email);
+
+    const emailHash =
+      hashEmail(cleanEmail);
+
+    const user =
+      await User.findOne({
+        emailHash,
+        emailVerified: true
+      });
+
+    if (!user) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const passwordOk =
+      await bcrypt.compare(
+        password,
+        user.password
+      );
+
+    if (!passwordOk) {
+      return res.status(400).json({
+        error: "invalid credentials"
+      });
+    }
+
+    const code =
+      createCode();
+
+    await saveEmailCode({
+      emailHash,
+      purpose: "login",
+      code
+    });
+
+    const result =
+      await sendEmailCode({
+        to: cleanEmail,
+        code,
+        purpose: "login"
+      });
+
+    res.json({
+      ok: true,
+      sent: result.sent,
+      maskedEmail: maskEmail(cleanEmail),
+      devCode:
+        result.sent || process.env.NODE_ENV === "production"
+          ? undefined
+          : code
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 async function register(
   req,
   res,
@@ -538,16 +851,21 @@ async function register(
         12
       );
 
-    await User.create({
-      username: cleanUsername,
-      password: hash,
-      emailHash,
-      emailVerified: true,
-      lastSeen: new Date()
-    });
+    const user =
+      await User.create({
+        username: cleanUsername,
+        password: hash,
+        emailHash,
+        emailVerified: true,
+        lastSeen: new Date()
+      });
 
     res.json({
-      ok: true
+      ok: true,
+      token:
+        signToken(user),
+      username:
+        user.username
     });
 
   } catch (err) {
@@ -565,35 +883,32 @@ async function login(
   try {
 
     const {
-      username,
-      password
+      email,
+      password,
+      code
     } = req.body;
 
-    const loginValue =
-      String(username || "").trim();
-
     if (
-      !loginValue ||
-      !isValidPassword(password)
+      !isValidEmail(email) ||
+      !isValidPassword(password) ||
+      !isValidEmailCode(code)
     ) {
       return res.status(400).json({
         error: "invalid credentials"
       });
     }
 
-    const query =
-      isValidEmail(loginValue)
-        ? {
-            emailHash:
-              hashEmail(loginValue)
-          }
-        : {
-            username:
-              loginValue
-          };
+    const cleanEmail =
+      normalizeEmail(email);
+
+    const emailHash =
+      hashEmail(cleanEmail);
 
     const user =
-      await User.findOne(query);
+      await User.findOne({
+        emailHash,
+        emailVerified: true
+      });
 
     if (!user) {
       return res.status(400).json({
@@ -601,15 +916,28 @@ async function login(
       });
     }
 
-    const ok =
+    const passwordOk =
       await bcrypt.compare(
         password,
         user.password
       );
 
-    if (!ok) {
+    if (!passwordOk) {
       return res.status(400).json({
         error: "invalid credentials"
+      });
+    }
+
+    const verified =
+      await verifyEmailCode({
+        emailHash,
+        purpose: "login",
+        code
+      });
+
+    if (!verified) {
+      return res.status(400).json({
+        error: "invalid code"
       });
     }
 
@@ -630,6 +958,7 @@ async function login(
   }
 
 }
+
 
 async function resetPassword(
   req,
@@ -655,8 +984,11 @@ async function resetPassword(
       });
     }
 
+    const cleanEmail =
+      normalizeEmail(email);
+
     const emailHash =
-      hashEmail(email);
+      hashEmail(cleanEmail);
 
     const user =
       await User.findOne({
@@ -773,6 +1105,16 @@ async function deleteMe(
       }
     });
 
+    if (user.emailHash) {
+      await EmailCode.deleteMany({
+        emailHash: user.emailHash
+      });
+    }
+
+    await E2EEKey.deleteMany({
+      user: username
+    });
+
     await User.deleteOne({
       username
     });
@@ -792,6 +1134,9 @@ module.exports = {
   verifyAuthCode,
   sendBindEmailCode,
   bindEmail,
+  sendLoginCode,
+  sendLegacyBindEmailCode,
+  legacyBindEmail,
   register,
   login,
   resetPassword,

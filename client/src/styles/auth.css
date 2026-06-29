@@ -1,5 +1,6 @@
 .login-page{
-  height:100vh;
+  min-height:100vh;
+  min-height:100svh;
   display:flex;
   justify-content:center;
   align-items:center;
@@ -191,4 +192,18 @@
 
 .auth-hint-error{
   color:#ff6b6b;
+}
+
+@media (max-width:768px){
+  .login-page{
+    min-height:100svh;
+    padding:calc(18px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px));
+  }
+
+  .auth-card{
+    width:min(100%, 420px);
+    max-height:calc(100svh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
 }

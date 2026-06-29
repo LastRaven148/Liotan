@@ -349,3 +349,16 @@
     border-radius:0;
   }
 }
+.message-encrypted-media-placeholder{
+  width:min(320px, 78vw);
+  min-height:150px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  border-radius:14px;
+  background:rgba(0,0,0,.18);
+  color:#b7c4d1;
+  font-size:13px;
+  text-align:center;
+}

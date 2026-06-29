@@ -60,7 +60,9 @@ import MessageTime
 from "./message/MessageTime";
 
 import {
+  decryptAttachmentBlobForChat,
   decryptTextForChat,
+  isEncryptedAttachment,
   isEncryptedText
 } from "../../utils/e2ee";
 
@@ -148,6 +150,9 @@ function Message({
   const attachmentSizeText =
     formatFileSize(attachment?.size);
 
+  const encryptedMedia =
+    isEncryptedAttachment(attachment);
+
   const shouldAutoCache =
     hasAttachment &&
     attachment.size > 0 &&
@@ -164,11 +169,20 @@ function Message({
   } = useOfflineMedia({
     attachment,
     remoteUrl,
-    shouldAutoCache
+    shouldAutoCache: shouldAutoCache || encryptedMedia,
+    decryptBlob: encryptedMedia
+      ? (blob) => decryptAttachmentBlobForChat({
+          username,
+          chatKey: activeChat,
+          attachment,
+          blob
+        })
+      : null
   });
 
-  const fileUrl =
-    localUrl || remoteUrl;
+  const fileUrl = encryptedMedia
+    ? localUrl
+    : localUrl || remoteUrl;
 
   const {
     menuOpen,
@@ -413,8 +427,17 @@ function Message({
       throw new Error("Download failed");
     }
 
-    const blob =
+    const remoteBlob =
       await response.blob();
+
+    const blob = encryptedMedia && !localUrl
+      ? await decryptAttachmentBlobForChat({
+          username,
+          chatKey: activeChat,
+          attachment,
+          blob: remoteBlob
+        })
+      : remoteBlob;
 
     const blobUrl =
       URL.createObjectURL(blob);
@@ -481,7 +504,7 @@ function requestDownloadFile() {
         {
           detail: {
             messageId: message._id,
-            url: attachment.url,
+            url: fileUrl || attachment.url,
             name:
               attachment.name ||
               "Аудио",
@@ -656,11 +679,17 @@ function requestDownloadFile() {
         className="message-photo-wrap"
         onClick={openViewer}
       >
-        <img
-          src={fileUrl}
-          alt={attachment.name || ""}
-          className="message-photo"
-        />
+        {fileUrl ? (
+          <img
+            src={fileUrl}
+            alt={attachment.name || ""}
+            className="message-photo"
+          />
+        ) : (
+          <div className="message-encrypted-media-placeholder">
+            🔒 Расшифровка медиа...
+          </div>
+        )}
 
         {renderMediaCaption()}
         {renderTimeLayer()}
@@ -685,15 +714,21 @@ function requestDownloadFile() {
           "--video-ratio": videoRatio
         }}
       >
-        <video
-          src={fileUrl}
-          className="message-video"
-          preload="metadata"
-          muted
-          playsInline
-          loop
-          onLoadedMetadata={handleVideoMetadata}
-        />
+        {fileUrl ? (
+          <video
+            src={fileUrl}
+            className="message-video"
+            preload="metadata"
+            muted
+            playsInline
+            loop
+            onLoadedMetadata={handleVideoMetadata}
+          />
+        ) : (
+          <div className="message-encrypted-media-placeholder">
+            🔒 Расшифровка видео...
+          </div>
+        )}
 
         <button
           type="button"

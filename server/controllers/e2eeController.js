@@ -15,7 +15,7 @@ function isValidConversationId(value) {
   return (
     isValidUsername(value) ||
     /^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$/.test(value) ||
-    /^group:[a-fA-F0-9]{24}$/.test(value)
+    /^group:[a-fA-F0-9]{24}(?::v\d+)?$/.test(value)
   );
 }
 
@@ -67,7 +67,9 @@ async function canAccessConversation({
 }) {
   if (conversationId.startsWith("group:")) {
     const groupId =
-      conversationId.slice("group:".length);
+      conversationId
+        .slice("group:".length)
+        .split(":v")[0];
 
     const group =
       await Group.findById(groupId, "members");

@@ -19,7 +19,8 @@ export function getMediaKey(attachment) {
 export default function useOfflineMedia({
   attachment,
   remoteUrl,
-  shouldAutoCache
+  shouldAutoCache,
+  decryptBlob
 }) {
   const [localUrl, setLocalUrl] =
     useState("");
@@ -90,8 +91,12 @@ export default function useOfflineMedia({
       const response =
         await fetch(remoteUrl);
 
-      const blob =
+      const remoteBlob =
         await response.blob();
+
+      const blob = decryptBlob
+        ? await decryptBlob(remoteBlob)
+        : remoteBlob;
 
       await saveOfflineBlob(
         mediaKey,

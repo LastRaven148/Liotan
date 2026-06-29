@@ -115,9 +115,26 @@ export async function resetPasswordApi(
   });
 }
 
-export async function loginUser(
-  username,
+export async function sendLoginEmailCode(
+  email,
   password
+) {
+  return apiRequest(`${API}/login/code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email,
+      password
+    })
+  });
+}
+
+export async function loginUser(
+  email,
+  password,
+  code
 ) {
   return apiRequest(`${API}/login`, {
     method: "POST",
@@ -125,8 +142,9 @@ export async function loginUser(
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      username,
-      password
+      email,
+      password,
+      code
     })
   });
 }
@@ -500,6 +518,44 @@ export async function setE2EEConversationKeysApi(
     },
     body: JSON.stringify({
       keys
+    })
+  });
+}
+
+export async function sendLegacyBindEmailCodeApi(
+  username,
+  password,
+  email
+) {
+  return apiRequest(`${API}/legacy/email-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username,
+      password,
+      email
+    })
+  });
+}
+
+export async function legacyBindEmailApi(
+  username,
+  password,
+  email,
+  code
+) {
+  return apiRequest(`${API}/legacy/bind-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username,
+      password,
+      email,
+      code
     })
   });
 }

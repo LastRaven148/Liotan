@@ -15,6 +15,7 @@ const decoder = new TextDecoder();
 
 const identityCache = new Map();
 const pendingConversationKeys = new Map();
+const ATTACHMENT_E2EE_PREFIX = "__LIOTAN_E2EE_FILE_V1__";
 
 function toBase64(bytes) {
   let binary = "";
@@ -53,6 +54,22 @@ function getConversationId(username, chatKey) {
   return [cleanUsername, cleanChatKey]
     .sort()
     .join("_");
+}
+
+
+export function getEffectiveE2EEChatKey(chatKey, dialog) {
+  if (!chatKey) {
+    return chatKey || "";
+  }
+
+  if (String(chatKey).startsWith("group:")) {
+    const version =
+      Number(dialog?.e2eeVersion) || 1;
+
+    return `${chatKey}:v${version}`;
+  }
+
+  return chatKey;
 }
 
 function safeStorageKey(username, chatKey) {
@@ -647,6 +664,141 @@ export async function ensureConversationSecret({
   }
 }
 
+
+export function isEncryptedAttachment(attachment) {
+  return Boolean(
+    attachment?.e2eeMedia?.v === 1 &&
+    attachment.e2eeMedia.iv &&
+    attachment.e2eeMedia.salt
+  );
+}
+
+export async function encryptAttachmentFileForChat({
+  username,
+  chatKey,
+  participants,
+  file
+}) {
+  if (!file) {
+    return null;
+  }
+
+  const secret = await ensureConversationSecret({
+    username,
+    chatKey,
+    participants
+  });
+
+  if (!secret || !crypto?.subtle) {
+    return {
+      uploadFile: file,
+      metadata: null
+    };
+  }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveMessageKey(secret, salt);
+  const plain = await file.arrayBuffer();
+
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv
+    },
+    key,
+    plain
+  );
+
+  const originalName = file.name || "file";
+
+  const uploadFile = new File(
+    [encrypted],
+    `${originalName}.liotan`,
+    {
+      type: "application/octet-stream",
+      lastModified: Date.now()
+    }
+  );
+
+  return {
+    uploadFile,
+    metadata: {
+      v: 1,
+      prefix: ATTACHMENT_E2EE_PREFIX,
+      alg: "AES-GCM-256",
+      kdf: "PBKDF2-SHA256",
+      iter: E2EE_ITERATIONS,
+      salt: toBase64(salt),
+      iv: toBase64(iv),
+      kid: chatKey,
+      originalName,
+      originalType: getAttachmentTypeFromMime(file.type),
+      originalMimeType: file.type || "application/octet-stream",
+      originalSize: file.size
+    }
+  };
+}
+
+function getAttachmentTypeFromMime(mimeType = "") {
+  if (mimeType.startsWith("image/")) {
+    return "photo";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  return "file";
+}
+
+export async function decryptAttachmentBlobForChat({
+  username,
+  chatKey,
+  attachment,
+  blob
+}) {
+  if (!isEncryptedAttachment(attachment)) {
+    return blob;
+  }
+
+  const meta = attachment.e2eeMedia;
+
+  const secret = getChatSecret(
+    username,
+    meta.kid || chatKey
+  );
+
+  if (!secret) {
+    throw new Error("E2EE media key is not available");
+  }
+
+  const key = await deriveMessageKey(
+    secret,
+    fromBase64(meta.salt)
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: fromBase64(meta.iv)
+    },
+    key,
+    await blob.arrayBuffer()
+  );
+
+  return new Blob(
+    [decrypted],
+    {
+      type: meta.originalMimeType || attachment.mimeType || "application/octet-stream"
+    }
+  );
+}
+
 export async function encryptTextForChat({
   username,
   chatKey,
@@ -685,6 +837,7 @@ export async function encryptTextForChat({
     alg: "AES-GCM-256",
     kdf: "PBKDF2-SHA256",
     iter: E2EE_ITERATIONS,
+    kid: chatKey,
     salt: toBase64(salt),
     iv: toBase64(iv),
     ct: toBase64(new Uint8Array(encrypted))
@@ -706,7 +859,58 @@ export async function decryptTextForChat({
     return "🔒 Старое E2EE-сообщение. Оно было создано до авто-ключей.";
   }
 
-  const secret = getChatSecret(username, chatKey);
+  try {
+    const payload = JSON.parse(
+      atob(text.slice(E2EE_PREFIX.length))
+    );
+
+    if (payload?.v !== 2) {
+      throw new Error("Unsupported E2EE version");
+    }
+
+    const secret = getChatSecret(
+      username,
+      payload.kid || chatKey
+    );
+
+    if (!secret) {
+      return "🔒 Зашифрованное сообщение. Ключ этого чата ещё не получен.";
+    }
+
+    const salt = fromBase64(payload.salt);
+    const iv = fromBase64(payload.iv);
+    const ct = fromBase64(payload.ct);
+    const key = await deriveMessageKey(secret, salt);
+
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv
+      },
+      key,
+      ct
+    );
+
+    return decoder.decode(decrypted);
+  } catch (err) {
+    console.error("E2EE decrypt failed", err);
+    return "🔒 Не удалось расшифровать сообщение.";
+  }
+}) {
+  if (!isEncryptedText(text)) {
+    return text || "";
+  }
+
+  if (text.startsWith(LEGACY_E2EE_PREFIX)) {
+    return "🔒 Старое E2EE-сообщение. Оно было создано до авто-ключей.";
+  }
+
+  const meta = attachment.e2eeMedia;
+
+  const secret = getChatSecret(
+    username,
+    meta.kid || chatKey
+  );
 
   if (!secret) {
     return "🔒 Зашифрованное сообщение. Ключ этого чата ещё не получен.";

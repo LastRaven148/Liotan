@@ -47,6 +47,12 @@ const groupSchema =
       members: {
         type: [String],
         default: []
+      },
+
+      e2eeVersion: {
+        type: Number,
+        default: 1,
+        min: 1
       }
     },
     {

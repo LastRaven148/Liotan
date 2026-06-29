@@ -9,7 +9,9 @@ import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { uploadAttachmentApi } from "../services/api";
 import {
-  encryptTextForChat
+  encryptAttachmentFileForChat,
+  encryptTextForChat,
+  getEffectiveE2EEChatKey
 } from "../utils/e2ee";
 
 export default function useChat({
@@ -40,6 +42,20 @@ export default function useChat({
   }, [dialogs, activeChat]);
 
   const isGroupChat = activeDialog?.type === "group";
+
+  function getDialogForChat(target) {
+    return dialogs?.find(item =>
+      item.chatKey === target ||
+      item.username === target
+    );
+  }
+
+  function getE2EEChatKey(target) {
+    return getEffectiveE2EEChatKey(
+      target,
+      getDialogForChat(target)
+    );
+  }
 
   useEffect(() => {
     window.history.replaceState(
@@ -230,14 +246,11 @@ export default function useChat({
       return false;
     }
 
-    const dialog = dialogs?.find(item =>
-      item.chatKey === target ||
-      item.username === target
-    );
+    const dialog = getDialogForChat(target);
 
     const encryptedText = await encryptTextForChat({
       username,
-      chatKey: target,
+      chatKey: getE2EEChatKey(target),
       participants: getConversationParticipants(target),
       text: messageText
     });
@@ -284,7 +297,7 @@ export default function useChat({
     if (editingMessage && hasText) {
       const encryptedEditText = await encryptTextForChat({
         username,
-        chatKey: activeChat,
+        chatKey: getE2EEChatKey(activeChat),
         participants: getConversationParticipants(activeChat),
         text
       });
@@ -342,8 +355,24 @@ export default function useChat({
 
     try {
       for (let i = 0; i < safeFiles.length; i += 1) {
+        const encryptedFile =
+          await encryptAttachmentFileForChat({
+            username,
+            chatKey: getE2EEChatKey(target),
+            participants: getConversationParticipants(target),
+            file: safeFiles[i]
+          });
+
         const attachment =
-          await uploadAttachmentApi(safeFiles[i]);
+          await uploadAttachmentApi(encryptedFile.uploadFile);
+
+        if (encryptedFile.metadata) {
+          attachment.e2eeMedia = encryptedFile.metadata;
+          attachment.type = encryptedFile.metadata.originalType;
+          attachment.mimeType = encryptedFile.metadata.originalMimeType;
+          attachment.size = encryptedFile.metadata.originalSize;
+          attachment.name = encryptedFile.metadata.originalName;
+        }
 
         const ok = await emitMessage({
           target,
@@ -408,7 +437,23 @@ export default function useChat({
     }
 
     try {
-      const attachment = await uploadAttachmentApi(file);
+      const encryptedFile =
+        await encryptAttachmentFileForChat({
+          username,
+          chatKey: getE2EEChatKey(activeChat),
+          participants: getConversationParticipants(activeChat),
+          file
+        });
+
+      const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
+
+      if (encryptedFile.metadata) {
+        attachment.e2eeMedia = encryptedFile.metadata;
+        attachment.type = encryptedFile.metadata.originalType;
+        attachment.mimeType = encryptedFile.metadata.originalMimeType;
+        attachment.size = encryptedFile.metadata.originalSize;
+        attachment.name = encryptedFile.metadata.originalName;
+      }
 
       return await sendMessage(attachment);
     } catch (err) {

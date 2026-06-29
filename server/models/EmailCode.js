@@ -13,7 +13,10 @@ const emailCodeSchema =
       type: String,
       enum: [
         "register",
-        "reset"
+        "reset",
+        "bind",
+        "login",
+        "legacy-bind"
       ],
       required: true
     },

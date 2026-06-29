@@ -21,8 +21,12 @@ export default function App() {
         setEmail={app.setEmail}
         emailCode={app.emailCode}
         setEmailCode={app.setEmailCode}
+        maskedLoginEmail={app.maskedLoginEmail}
         password={app.password}
         setPassword={app.setPassword}
+        sendLegacyBindCode={app.sendLegacyBindCode}
+        legacyBindEmail={app.legacyBindEmail}
+        sendLoginCode={app.sendLoginCode}
         login={app.login}
         sendRegisterCode={app.sendRegisterCode}
         verifyRegisterCode={app.verifyRegisterCode}

@@ -13,6 +13,9 @@ const {
   verifyAuthCode,
   sendBindEmailCode,
   bindEmail,
+  sendLoginCode,
+  sendLegacyBindEmailCode,
+  legacyBindEmail,
   register,
   login,
   resetPassword,
@@ -49,9 +52,27 @@ router.post(
 );
 
 router.post(
+  "/legacy/email-code",
+  authLimiter,
+  sendLegacyBindEmailCode
+);
+
+router.post(
+  "/legacy/bind-email",
+  authLimiter,
+  legacyBindEmail
+);
+
+router.post(
   "/register",
   authLimiter,
   register
+);
+
+router.post(
+  "/login/code",
+  authLimiter,
+  sendLoginCode
 );
 
 router.post(

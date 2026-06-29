@@ -3,6 +3,9 @@ import {
 } from "react";
 
 import {
+  sendLoginEmailCode,
+  sendLegacyBindEmailCodeApi,
+  legacyBindEmailApi,
   loginUser,
   registerUser,
   sendAuthEmailCode,
@@ -30,6 +33,9 @@ export default function useAuth({
     useState("");
 
   const [emailCode, setEmailCode] =
+    useState("");
+
+  const [maskedLoginEmail, setMaskedLoginEmail] =
     useState("");
 
   const [password, setPassword] =
@@ -62,6 +68,7 @@ export default function useAuth({
 
     setPassword("");
     setEmailCode("");
+    setMaskedLoginEmail("");
 
   }
 
@@ -85,6 +92,129 @@ export default function useAuth({
     );
   }
 
+
+  async function sendLegacyBindCode(
+    legacyUsername
+  ) {
+
+    try {
+
+      const result =
+        await sendLegacyBindEmailCodeApi(
+          legacyUsername,
+          password,
+          email
+        );
+
+      if (result?.devCode) {
+        setEmailCode(
+          result.devCode
+        );
+      }
+
+      setMaskedLoginEmail(
+        result?.maskedEmail || ""
+      );
+
+      showToast(
+        result?.sent
+          ? "Code sent"
+          : "Mail is not configured. Code is in server logs."
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return false;
+    }
+
+  }
+
+  async function legacyBindEmail(
+    legacyUsername
+  ) {
+
+    try {
+
+      const loginPassword =
+        password;
+
+      const data =
+        await legacyBindEmailApi(
+          legacyUsername,
+          loginPassword,
+          email,
+          emailCode
+        );
+
+      await saveSession(data);
+
+      await initE2EEAccountIdentity({
+        username: data.username,
+        password: loginPassword
+      });
+
+      showToast(
+        "Email linked"
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to link email"
+      );
+
+      return false;
+    }
+
+  }
+
+  async function sendLoginCode() {
+
+    try {
+
+      const result =
+        await sendLoginEmailCode(
+          email,
+          password
+        );
+
+      if (result?.devCode) {
+        setEmailCode(
+          result.devCode
+        );
+      }
+
+      setMaskedLoginEmail(
+        result?.maskedEmail || ""
+      );
+
+      showToast(
+        result?.sent
+          ? "Code sent"
+          : "Mail is not configured. Code is in server logs."
+      );
+
+      return true;
+
+    } catch (err) {
+      handleAuthError(
+        err,
+        "Failed to send code"
+      );
+
+      return false;
+    }
+
+  }
+
   async function login() {
 
     try {
@@ -94,8 +224,9 @@ export default function useAuth({
 
       const data =
         await loginUser(
-          username,
-          loginPassword
+          email,
+          loginPassword,
+          emailCode
         );
 
       await saveSession(data);
@@ -113,6 +244,7 @@ export default function useAuth({
     }
 
   }
+
 
   async function sendRegisterCode() {
 
@@ -200,20 +332,15 @@ export default function useAuth({
 
     try {
 
-      await registerUser(
-        username,
-        password,
-        email,
-        emailCode
-      );
-
       const registerPassword =
         password;
 
       const data =
-        await loginUser(
+        await registerUser(
           username,
-          registerPassword
+          registerPassword,
+          email,
+          emailCode
         );
 
       await saveSession(data);
@@ -375,6 +502,7 @@ export default function useAuth({
     setUsername("");
     setPassword("");
     setEmailCode("");
+    setMaskedLoginEmail("");
 
   }
 
@@ -419,12 +547,18 @@ export default function useAuth({
     emailCode,
     setEmailCode,
 
+    maskedLoginEmail,
+    setMaskedLoginEmail,
+
     password,
     setPassword,
 
     token,
     setToken,
 
+    sendLegacyBindCode,
+    legacyBindEmail,
+    sendLoginCode,
     login,
     sendRegisterCode,
     verifyRegisterCode,

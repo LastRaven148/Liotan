@@ -573,6 +573,9 @@ async function removeGroupMember(
         item !== member
       );
 
+    group.e2eeVersion =
+      (Number(group.e2eeVersion) || 1) + 1;
+
     await group.save();
 
     const chatKey =
@@ -590,9 +593,10 @@ async function removeGroupMember(
       }
     );
 
-    await E2EEKey.deleteOne({
-      conversationId: chatKey,
-      user: member
+    await E2EEKey.deleteMany({
+      conversationId: {
+        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
+      }
     });
 
     const serialized =
@@ -651,6 +655,9 @@ async function leaveGroup(
         item !== username
       );
 
+    group.e2eeVersion =
+      (Number(group.e2eeVersion) || 1) + 1;
+
     await group.save();
 
     const chatKey =
@@ -668,9 +675,10 @@ async function leaveGroup(
       }
     );
 
-    await E2EEKey.deleteOne({
-      conversationId: chatKey,
-      user: username
+    await E2EEKey.deleteMany({
+      conversationId: {
+        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
+      }
     });
 
     const serialized =
@@ -758,7 +766,9 @@ async function deleteGroup(
     });
 
     await E2EEKey.deleteMany({
-      conversationId: chatKey
+      conversationId: {
+        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
+      }
     });
     
     emitGroupDeleted(
