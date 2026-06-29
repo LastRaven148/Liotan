@@ -30,6 +30,23 @@ function isValidPublicKey(value) {
   );
 }
 
+
+function isValidIdentityBackup(value) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    isValidPublicKey(value.publicKey) &&
+    typeof value.encryptedPrivateKey === "string" &&
+    value.encryptedPrivateKey.length < 10000 &&
+    typeof value.salt === "string" &&
+    value.salt.length < 500 &&
+    typeof value.iv === "string" &&
+    value.iv.length < 500 &&
+    typeof value.alg === "string" &&
+    value.alg.length < 100
+  );
+}
+
 function isValidWrappedKey(value) {
   return Boolean(
     value &&
@@ -83,6 +100,58 @@ async function setIdentity(req, res, next) {
       {
         $set: {
           e2eePublicKey: publicKey
+        }
+      }
+    );
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getIdentityBackup(req, res, next) {
+  try {
+    const username =
+      req.user.username;
+
+    const user =
+      await User.findOne(
+        { username },
+        "username e2eeIdentityBackup e2eePublicKey"
+      ).lean();
+
+    res.json({
+      backup: user?.e2eeIdentityBackup || null,
+      publicKey: user?.e2eePublicKey || null
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function setIdentityBackup(req, res, next) {
+  try {
+    const username =
+      req.user.username;
+
+    const backup =
+      req.body.backup;
+
+    if (!isValidIdentityBackup(backup)) {
+      return res.status(400).json({
+        error: "invalid identity backup"
+      });
+    }
+
+    await User.updateOne(
+      { username },
+      {
+        $set: {
+          e2eePublicKey: backup.publicKey,
+          e2eeIdentityBackup: backup
         }
       }
     );
@@ -265,6 +334,8 @@ async function setConversationKeys(req, res, next) {
 
 module.exports = {
   setIdentity,
+  getIdentityBackup,
+  setIdentityBackup,
   getIdentity,
   getIdentities,
   getConversationKey,

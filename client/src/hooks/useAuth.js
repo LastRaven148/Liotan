@@ -13,6 +13,10 @@ import {
   deleteAccountApi
 } from "../services/api";
 
+import {
+  initE2EEAccountIdentity
+} from "../utils/e2ee";
+
 export default function useAuth({
   showToast
 }) {
@@ -85,13 +89,21 @@ export default function useAuth({
 
     try {
 
+      const loginPassword =
+        password;
+
       const data =
         await loginUser(
           username,
-          password
+          loginPassword
         );
 
       await saveSession(data);
+
+      await initE2EEAccountIdentity({
+        username: data.username,
+        password: loginPassword
+      });
 
     } catch (err) {
       handleAuthError(
@@ -195,13 +207,21 @@ export default function useAuth({
         emailCode
       );
 
+      const registerPassword =
+        password;
+
       const data =
         await loginUser(
           username,
-          password
+          registerPassword
         );
 
       await saveSession(data);
+
+      await initE2EEAccountIdentity({
+        username: data.username,
+        password: registerPassword
+      });
 
       showToast(
         "Registered"

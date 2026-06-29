@@ -32,6 +32,11 @@ const userSchema =
       default: null
     },
 
+    e2eeIdentityBackup: {
+      type: Object,
+      default: null
+    },
+
     avatar: {
       type: String,
       default: ""

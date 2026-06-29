@@ -1,8 +1,10 @@
 import {
   getE2EEConversationKeyApi,
   getE2EEIdentitiesApi,
+  getE2EEIdentityBackupApi,
   setE2EEConversationKeysApi,
-  setE2EEIdentityApi
+  setE2EEIdentityApi,
+  setE2EEIdentityBackupApi
 } from "../services/api";
 
 const E2EE_PREFIX = "__LIOTAN_E2EE_V2__";
@@ -140,6 +142,32 @@ async function deriveMessageKey(secret, salt) {
   );
 }
 
+async function deriveBackupKey(password, salt) {
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(String(password || "")),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: E2EE_ITERATIONS,
+      hash: "SHA-256"
+    },
+    baseKey,
+    {
+      name: "AES-GCM",
+      length: 256
+    },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
 async function deriveWrapKey({
   privateKey,
   publicKey
@@ -240,18 +268,7 @@ async function loadLocalIdentity(username) {
   }
 }
 
-export async function ensureE2EEIdentity(username) {
-  if (!username || !crypto?.subtle) {
-    return null;
-  }
-
-  const existing = await loadLocalIdentity(username);
-
-  if (existing) {
-    await setE2EEIdentityApi(existing.publicJwk);
-    return existing;
-  }
-
+async function createIdentityPair() {
   const pair = await crypto.subtle.generateKey(
     {
       name: "ECDH",
@@ -271,6 +288,15 @@ export async function ensureE2EEIdentity(username) {
     pair.privateKey
   );
 
+  return {
+    privateKey: pair.privateKey,
+    publicKey: pair.publicKey,
+    publicJwk,
+    privateJwk
+  };
+}
+
+function saveLocalIdentity(username, publicJwk, privateJwk) {
   localStorage.setItem(
     getIdentityStorageKey(username),
     JSON.stringify({
@@ -279,17 +305,152 @@ export async function ensureE2EEIdentity(username) {
     })
   );
 
-  const identity = {
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
-    publicJwk
+  identityCache.delete(username);
+}
+
+async function encryptIdentityBackup({
+  publicJwk,
+  privateJwk,
+  password
+}) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveBackupKey(password, salt);
+
+  const encrypted = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv
+    },
+    key,
+    encoder.encode(JSON.stringify(privateJwk))
+  );
+
+  return {
+    v: 1,
+    alg: "PBKDF2-SHA256-AES-GCM",
+    iter: E2EE_ITERATIONS,
+    publicKey: publicJwk,
+    encryptedPrivateKey: toBase64(new Uint8Array(encrypted)),
+    salt: toBase64(salt),
+    iv: toBase64(iv)
   };
+}
 
-  identityCache.set(username, identity);
+async function decryptIdentityBackup({
+  backup,
+  password
+}) {
+  const key = await deriveBackupKey(
+    password,
+    fromBase64(backup.salt)
+  );
 
-  await setE2EEIdentityApi(publicJwk);
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: fromBase64(backup.iv)
+    },
+    key,
+    fromBase64(backup.encryptedPrivateKey)
+  );
 
-  return identity;
+  return JSON.parse(decoder.decode(decrypted));
+}
+
+export async function initE2EEAccountIdentity({
+  username,
+  password
+}) {
+  if (!username || !password || !crypto?.subtle) {
+    return null;
+  }
+
+  let backup = null;
+
+  try {
+    const response = await getE2EEIdentityBackupApi();
+    backup = response?.backup || null;
+  } catch (err) {
+    console.warn("E2EE backup fetch failed", err);
+  }
+
+  if (backup?.publicKey && backup?.encryptedPrivateKey) {
+    try {
+      const privateJwk = await decryptIdentityBackup({
+        backup,
+        password
+      });
+
+      saveLocalIdentity(username, backup.publicKey, privateJwk);
+
+      const identity = await loadLocalIdentity(username);
+
+      if (identity) {
+        await setE2EEIdentityApi(identity.publicJwk);
+      }
+
+      return identity;
+    } catch (err) {
+      console.warn("E2EE backup decrypt failed; creating a new identity", err);
+    }
+  }
+
+  const local = await loadLocalIdentity(username);
+
+  if (local) {
+    const raw = localStorage.getItem(
+      getIdentityStorageKey(username)
+    );
+    const parsed = raw ? JSON.parse(raw) : null;
+
+    if (parsed?.privateKey && parsed?.publicKey) {
+      const nextBackup = await encryptIdentityBackup({
+        publicJwk: parsed.publicKey,
+        privateJwk: parsed.privateKey,
+        password
+      });
+
+      await setE2EEIdentityBackupApi(nextBackup);
+      await setE2EEIdentityApi(parsed.publicKey);
+    }
+
+    return local;
+  }
+
+  const created = await createIdentityPair();
+
+  saveLocalIdentity(
+    username,
+    created.publicJwk,
+    created.privateJwk
+  );
+
+  const nextBackup = await encryptIdentityBackup({
+    publicJwk: created.publicJwk,
+    privateJwk: created.privateJwk,
+    password
+  });
+
+  await setE2EEIdentityBackupApi(nextBackup);
+  await setE2EEIdentityApi(created.publicJwk);
+
+  return loadLocalIdentity(username);
+}
+
+export async function ensureE2EEIdentity(username) {
+  if (!username || !crypto?.subtle) {
+    return null;
+  }
+
+  const existing = await loadLocalIdentity(username);
+
+  if (existing) {
+    await setE2EEIdentityApi(existing.publicJwk);
+    return existing;
+  }
+
+  return null;
 }
 
 async function wrapSecretForUser({

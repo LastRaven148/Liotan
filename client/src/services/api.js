@@ -457,6 +457,22 @@ export async function setE2EEIdentityApi(publicKey) {
   });
 }
 
+export async function getE2EEIdentityBackupApi() {
+  return apiRequest(`${API}/e2ee/identity-backup`);
+}
+
+export async function setE2EEIdentityBackupApi(backup) {
+  return apiRequest(`${API}/e2ee/identity-backup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      backup
+    })
+  });
+}
+
 export async function getE2EEIdentitiesApi(users) {
   return apiRequest(`${API}/e2ee/identities`, {
     method: "POST",

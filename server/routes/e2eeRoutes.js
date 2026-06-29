@@ -6,6 +6,8 @@ const authMiddleware =
 
 const {
   setIdentity,
+  getIdentityBackup,
+  setIdentityBackup,
   getIdentity,
   getIdentities,
   getConversationKey,
@@ -19,6 +21,18 @@ router.post(
   "/e2ee/identity",
   authMiddleware,
   setIdentity
+);
+
+router.get(
+  "/e2ee/identity-backup",
+  authMiddleware,
+  getIdentityBackup
+);
+
+router.post(
+  "/e2ee/identity-backup",
+  authMiddleware,
+  setIdentityBackup
 );
 
 router.get(
