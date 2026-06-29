@@ -86,6 +86,27 @@ function DialogIconSlot({ name }) {
   );
 }
 
+
+function isEncryptedPreviewText(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  return (
+    value.startsWith("__LIOTAN_E2EE_V2__") ||
+    value.startsWith("__LIOTAN_E2EE_V1__") ||
+    value.startsWith("__LIOTAN_E2EE_FILE_V1__")
+  );
+}
+
+function getSafePreviewText(value, fallback = "Сообщение") {
+  if (isEncryptedPreviewText(value)) {
+    return fallback;
+  }
+
+  return value || "";
+}
+
 export default function DialogItem({
   dialog,
   activeChat,
@@ -529,7 +550,7 @@ export default function DialogItem({
     return (
       <div className="dialog-preview dialog-preview-attachment">
   <span>
-    {lastAttachmentName || dialog.lastMessage || "Аудио"}
+    {lastAttachmentName || getSafePreviewText(dialog.lastMessage, "Аудио") || "Аудио"}
   </span>
 </div>
     );
@@ -547,7 +568,7 @@ export default function DialogItem({
 
   return (
     <div className="dialog-preview">
-      {dialog.lastMessage || ""}
+      {getSafePreviewText(dialog.lastMessage)}
     </div>
   );
 }

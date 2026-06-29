@@ -463,18 +463,18 @@ export default function SettingsModal({
                 e.stopPropagation()
               }
             >
-              <h3>
+              <div className="dialog-delete-modal-title">
                 Выйти из аккаунта
-              </h3>
+              </div>
 
-              <p>
+              <div className="dialog-delete-modal-text">
                 Подтверждаете свои действия?
-              </p>
+              </div>
 
-              <div className="dialog-delete-actions">
+              <div className="dialog-delete-modal-actions">
                 <button
                   type="button"
-                  className="dialog-delete-cancel"
+                  className="dialog-delete-modal-cancel"
                   onClick={closeLogoutConfirm}
                 >
                   Отмена
@@ -482,7 +482,7 @@ export default function SettingsModal({
 
                 <button
                   type="button"
-                  className="dialog-delete-confirm"
+                  className="dialog-delete-modal-danger"
                   onClick={confirmLogout}
                 >
                   Продолжить
@@ -503,20 +503,20 @@ export default function SettingsModal({
                 e.stopPropagation()
               }
             >
-              <h3>
+              <div className="dialog-delete-modal-title">
                 Удалить аккаунт
-              </h3>
+              </div>
 
-              <p>
+              <div className="dialog-delete-modal-text">
                 {deleteStep === 1
-                  ? "Все ваши данные будут удалены без возможности восстановления."
-                  : "Вы точно уверены, что хотите полностью удалить аккаунт?"}
-              </p>
+                  ? "Все ваши данные будут удалены без возможности восстановления"
+                  : "Вы точно уверены что хотите полностью удалить аккаунт?"}
+              </div>
 
-              <div className="dialog-delete-actions">
+              <div className="dialog-delete-modal-actions">
                 <button
                   type="button"
-                  className="dialog-delete-cancel"
+                  className="dialog-delete-modal-cancel"
                   onClick={closeDeleteConfirm}
                   disabled={deleting}
                 >
@@ -525,7 +525,7 @@ export default function SettingsModal({
 
                 <button
                   type="button"
-                  className="dialog-delete-confirm"
+                  className="dialog-delete-modal-danger"
                   onClick={handleDeleteAccount}
                   disabled={deleting}
                 >
