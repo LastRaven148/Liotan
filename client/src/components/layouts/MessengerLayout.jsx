@@ -42,8 +42,7 @@ export default function MessengerLayout({
     settingsOpen,
     bio,
     saveBio,
-    sendBindEmailCode,
-    bindEmail,
+    deleteAccount,
     createGroupOpen,
     setCreateGroupOpen,
     addGroup,
@@ -70,8 +69,6 @@ export default function MessengerLayout({
         setProfileMenu={setProfileMenu}
         fileInputRef={fileInputRef}
         uploadAvatar={uploadAvatar}
-        sendBindEmailCode={sendBindEmailCode}
-        bindEmail={bindEmail}
         logout={() =>
           logout(socketRef)
         }
@@ -140,10 +137,11 @@ export default function MessengerLayout({
         saveBio={saveBio}
         saveProfile={saveProfile}
         uploadAvatar={uploadAvatar}
-        sendBindEmailCode={sendBindEmailCode}
-        bindEmail={bindEmail}
         logout={() =>
           logout(socketRef)
+        }
+        deleteAccount={() =>
+          deleteAccount(socketRef)
         }
         deleteGroupDialog={deleteGroupDialog}
         updateGroup={updateGroup}

@@ -10,7 +10,8 @@ const upload =
 const {
   getProfile,
   updateProfile,
-  uploadAvatar
+  uploadAvatar,
+  deleteAccount
 } = require("../controllers/profileController");
 
 const router =
@@ -32,6 +33,12 @@ router.post(
   authMiddleware,
   upload.single("avatar"),
   uploadAvatar
+);
+
+router.delete(
+  "/me/account",
+  authMiddleware,
+  deleteAccount
 );
 
 module.exports = router;

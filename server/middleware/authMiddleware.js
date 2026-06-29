@@ -1,7 +1,10 @@
 const jwt =
   require("jsonwebtoken");
 
-function authMiddleware(
+const User =
+  require("../models/User");
+
+async function authMiddleware(
   req,
   res,
   next
@@ -36,6 +39,18 @@ function authMiddleware(
     ) {
       return res.status(401).json({
         error: "invalid token"
+      });
+    }
+
+    const exists =
+      await User.exists({
+        _id: decoded.userId,
+        username: decoded.username
+      });
+
+    if (!exists) {
+      return res.status(401).json({
+        error: "account deleted"
       });
     }
 

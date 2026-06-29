@@ -102,7 +102,11 @@ function Message({
     useState(false);
 
   const [decryptedText, setDecryptedText] =
-    useState(message.text || "");
+    useState(
+      isEncryptedText(message.text)
+        ? ""
+        : message.text || ""
+    );
 
   const isMine =
     message.from === username;
@@ -219,6 +223,10 @@ function Message({
     let cancelled = false;
 
     async function updateText() {
+      if (isEncryptedText(message.text)) {
+        setDecryptedText("");
+      }
+
       const value = await decryptTextForChat({
         username,
         chatKey: activeChat,

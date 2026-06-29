@@ -65,6 +65,14 @@ export async function apiRequest(
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("username");
+      window.dispatchEvent(
+        new Event("liotan:session-expired")
+      );
+    }
+
     if (res.status === 413) {
       throw new Error(
         "Файл слишком большой для сервера"

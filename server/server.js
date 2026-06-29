@@ -60,6 +60,12 @@ const groupMessageRoutes =
 const e2eeRoutes =
   require("./routes/e2eeRoutes");
 
+const User =
+  require("./models/User");
+
+const deleteAccountData =
+  require("./utils/deleteAccountData");
+
 const setupSocket =
   require("./sockets/socket");
 
@@ -254,11 +260,38 @@ app.use(errorHandler);
 
 setupSocket(io);
 
+async function cleanupLegacyAccountsOnStartup() {
+  if (String(process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false") === "true") {
+    return;
+  }
+
+  const legacyUsers =
+    await User.find({
+      $or: [
+        { emailHash: { $exists: false } },
+        { emailHash: null },
+        { emailVerified: { $ne: true } }
+      ]
+    }, "username").lean();
+
+  for (const user of legacyUsers) {
+    await deleteAccountData(user.username);
+  }
+
+  if (legacyUsers.length) {
+    console.log(
+      `Deleted legacy accounts without verified email: ${legacyUsers.length}`
+    );
+  }
+}
+
 async function start() {
 
   try {
 
     await connectDb();
+
+    await cleanupLegacyAccountsOnStartup();
 
     server.listen(
       PORT,

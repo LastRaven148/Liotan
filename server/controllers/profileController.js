@@ -7,6 +7,9 @@ const uploadToCloudinary =
 const deleteUploadedFile =
   require("../utils/deleteUploadedFile");
 
+const deleteAccountData =
+  require("../utils/deleteAccountData");
+
 const {
   isValidBio,
   isValidUsername
@@ -205,8 +208,51 @@ async function uploadAvatar(req, res, next) {
   }
 }
 
+async function deleteAccount(req, res, next) {
+  try {
+    const username =
+      req.user.username;
+
+    const result =
+      await deleteAccountData(username);
+
+    if (!result.ok) {
+      return res.status(404).json({
+        error: "not found"
+      });
+    }
+
+    const io =
+      req.app.get("io");
+
+    if (io) {
+      io.to(username).emit(
+        "accountDeleted",
+        {
+          username
+        }
+      );
+
+      io.emit(
+        "userDeleted",
+        {
+          username,
+          chatIds: result.chatIds || []
+        }
+      );
+    }
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
-  uploadAvatar
+  uploadAvatar,
+  deleteAccount
 };

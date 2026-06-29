@@ -180,13 +180,18 @@ async function sendEmailCode({
     return smtpResult;
   }
 
-  console.log(
-    `[Liotan email code] ${purpose} ${to}: ${code}`
-  );
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      `[Liotan email code] ${purpose} ${to}: ${code}`
+    );
+  }
 
   return {
     sent: false,
-    provider: "console"
+    provider:
+      process.env.NODE_ENV === "production"
+        ? "disabled"
+        : "console"
   };
 }
 

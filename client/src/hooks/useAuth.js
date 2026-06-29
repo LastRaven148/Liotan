@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState
 } from "react";
 
@@ -9,8 +10,7 @@ import {
   sendAuthEmailCode,
   verifyAuthEmailCode,
   resetPasswordApi,
-  sendBindEmailCodeApi,
-  bindEmailApi
+  deleteAccountApi
 } from "../services/api";
 
 import {
@@ -42,6 +42,28 @@ export default function useAuth({
     useState(
       localStorage.getItem("token") || ""
     );
+
+  useEffect(() => {
+    function handleExpiredSession() {
+      setToken("");
+      setUsername("");
+      setPassword("");
+      setEmailCode("");
+      setMaskedLoginEmail("");
+    }
+
+    window.addEventListener(
+      "liotan:session-expired",
+      handleExpiredSession
+    );
+
+    return () => {
+      window.removeEventListener(
+        "liotan:session-expired",
+        handleExpiredSession
+      );
+    };
+  }, []);
 
   async function saveSession(data) {
     localStorage.setItem(
@@ -84,7 +106,7 @@ export default function useAuth({
     showToast(
       result?.sent
         ? "Code sent"
-        : "Mail is not configured. Code is in server logs."
+        : "Mail is not configured yet."
     );
   }
 
@@ -271,43 +293,16 @@ export default function useAuth({
     }
   }
 
-  async function sendBindEmailCode(emailValue) {
+  async function deleteAccount(socketRef) {
     try {
-      const result =
-        await sendBindEmailCodeApi(
-          emailValue
-        );
-
-      showToast(
-        result?.sent
-          ? "Code sent"
-          : "Mail is not configured. Code is in server logs."
-      );
-
-      return result;
-    } catch (err) {
-      handleAuthError(
-        err,
-        "Failed to send code"
-      );
-
-      return null;
-    }
-  }
-
-  async function bindEmail(emailValue, codeValue) {
-    try {
-      await bindEmailApi(
-        emailValue,
-        codeValue
-      );
-
-      showToast("Email linked");
+      await deleteAccountApi();
+      showToast("Account deleted");
+      clearSession(socketRef);
       return true;
     } catch (err) {
       handleAuthError(
         err,
-        "Failed to link email"
+        "Failed to delete account"
       );
 
       return false;
@@ -361,8 +356,7 @@ export default function useAuth({
     sendResetCode,
     verifyResetCode,
     resetPassword,
-    sendBindEmailCode,
-    bindEmail,
+    deleteAccount,
     logout
   };
 }

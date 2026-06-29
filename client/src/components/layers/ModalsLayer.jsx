@@ -22,9 +22,8 @@ export default function ModalsLayer({
   saveBio,
   saveProfile,
   uploadAvatar,
-  sendBindEmailCode,
-  bindEmail,
   logout,
+  deleteAccount,
   deleteGroupDialog,
   updateGroup,
   onGroupCreated
@@ -57,9 +56,8 @@ export default function ModalsLayer({
           saveBio={saveBio}
           saveProfile={saveProfile}
           uploadAvatar={uploadAvatar}
-          sendBindEmailCode={sendBindEmailCode}
-          bindEmail={bindEmail}
           logout={logout}
+          deleteAccount={deleteAccount}
           onClose={() =>
             setSettingsOpen(false)
           }

@@ -29,6 +29,7 @@ export default function useChat({
   const activeChatRef = useRef(null);
   const typingTimerRef = useRef(null);
   const typingChatRef = useRef(null);
+  const sendingRef = useRef(false);
 
   useEffect(() => {
     activeChatRef.current = activeChat;
@@ -287,6 +288,10 @@ export default function useChat({
   }
 
   async function sendMessage(attachment = null) {
+    if (sendingRef.current) {
+      return false;
+    }
+
     if (!socketRef.current || !activeChat) {
       return false;
     }
@@ -323,23 +328,35 @@ export default function useChat({
       return false;
     }
 
-    const ok = await emitMessage({
-      target: activeChat,
-      messageText: hasText ? text : "",
-      attachment
-    });
+    sendingRef.current = true;
 
-    if (!ok) return false;
+    try {
+      const ok = await emitMessage({
+        target: activeChat,
+        messageText: hasText ? text : "",
+        attachment
+      });
 
-    stopTyping(activeChat);
+      if (!ok) return false;
 
-    setReplyMessage(null);
-    setTextState("");
+      stopTyping(activeChat);
 
-    return true;
+      setReplyMessage(null);
+      setTextState("");
+
+      return true;
+    } finally {
+      window.setTimeout(() => {
+        sendingRef.current = false;
+      }, 350);
+    }
   }
 
   async function sendAttachments(files, caption = "") {
+    if (sendingRef.current) {
+      return false;
+    }
+
     if (
       !socketRef.current ||
       !activeChat ||
@@ -352,6 +369,8 @@ export default function useChat({
     const safeFiles = Array.from(files).slice(0, 10);
     const captionText = caption.trim();
     const captionIndex = safeFiles.length - 1;
+
+    sendingRef.current = true;
 
     try {
       for (let i = 0; i < safeFiles.length; i += 1) {
@@ -403,6 +422,10 @@ export default function useChat({
       );
 
       return false;
+    } finally {
+      window.setTimeout(() => {
+        sendingRef.current = false;
+      }, 350);
     }
   }
 

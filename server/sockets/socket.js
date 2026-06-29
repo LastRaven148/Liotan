@@ -1,6 +1,9 @@
 const jwt =
   require("jsonwebtoken");
 
+const User =
+  require("../models/User");
+
 const {
   registerTypingHandlers,
   emitStopTyping,
@@ -42,10 +45,21 @@ function setupSocket(io) {
         );
       }
 
-      socket.user =
-        decoded;
+      User.exists({
+        _id: decoded.userId,
+        username: decoded.username
+      }).then(exists => {
+        if (!exists) {
+          return next(
+            new Error("account deleted")
+          );
+        }
 
-      next();
+        socket.user =
+          decoded;
+
+        next();
+      }).catch(next);
 
     } catch (err) {
 

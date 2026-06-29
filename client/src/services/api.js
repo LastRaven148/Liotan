@@ -69,34 +69,6 @@ export async function verifyAuthEmailCode(
 }
 
 
-export async function sendBindEmailCodeApi(email) {
-  return apiRequest(`${API}/me/email-code`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email
-    })
-  });
-}
-
-export async function bindEmailApi(
-  email,
-  code
-) {
-  return apiRequest(`${API}/me/email`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email,
-      code
-    })
-  });
-}
-
 export async function resetPasswordApi(
   email,
   code,
@@ -186,6 +158,13 @@ export async function uploadAvatarApi(
     body: form
   });
 }
+
+export async function deleteAccountApi() {
+  return apiRequest(`${API}/me/account`, {
+    method: "DELETE"
+  });
+}
+
 
 function getAttachmentType(file) {
   const mimeType =
