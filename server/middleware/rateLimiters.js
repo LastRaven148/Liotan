@@ -25,13 +25,16 @@ function userOrIpKey(req) {
   return hashRequestIp(req);
 }
 
+// Global safety limiter. It must be soft enough for app bootstrap,
+// because the client loads profile/dialogs/groups/devices in parallel.
+// Strict protection stays on auth/upload/socket-specific limiters.
 const strictIpLimiter =
   rateLimit({
-    windowMs: 1000,
+    windowMs: 10 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 5
-        : 60,
+        ? 80
+        : 1000,
     keyGenerator: hashRequestIp,
     message: createMessage("too many requests"),
     standardHeaders: true,
@@ -43,7 +46,7 @@ const apiLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 120
+        ? 300
         : 3000,
     keyGenerator: userOrIpKey,
     message: createMessage("too many requests"),

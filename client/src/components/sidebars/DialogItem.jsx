@@ -306,7 +306,7 @@ export default function DialogItem({
     }
     if (lastAttachmentType === "voice") {
       return <div className="dialog-preview dialog-preview-attachment">
-        <span> Голосовое сообщение</span>
+        <span>🎤 Голосовое сообщение</span>
       </div>;
     }
     if (lastAttachmentType === "audio") {
