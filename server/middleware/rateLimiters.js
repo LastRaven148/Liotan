@@ -33,8 +33,8 @@ const strictIpLimiter =
     windowMs: 10 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 80
-        : 1000,
+        ? 300
+        : 5000,
     keyGenerator: hashRequestIp,
     message: createMessage("too many requests"),
     standardHeaders: true,
@@ -46,9 +46,19 @@ const apiLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 300
-        : 3000,
+        ? 2000
+        : 10000,
     keyGenerator: userOrIpKey,
+    skip: (req) =>
+      req.method === "GET" &&
+      (req.path === "/profile" ||
+        req.path.startsWith("/profile/") ||
+        req.path === "/dialogs" ||
+        req.path === "/groups" ||
+        req.path === "/archived-chats" ||
+        req.path === "/pinned-chats" ||
+        req.path === "/sessions" ||
+        req.path === "/devices"),
     message: createMessage("too many requests"),
     standardHeaders: true,
     legacyHeaders: false
