@@ -35,9 +35,7 @@ export default function useProfile({
         );
 
         return data;
-      } catch (err) {
-        console.error(err);
-        showToast?.("Failed to load profile.");
+      } catch {
         return null;
       }
     }, [

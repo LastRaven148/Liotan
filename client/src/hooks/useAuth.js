@@ -18,6 +18,14 @@ import {
   initE2EEAccountIdentity
 } from "../utils/e2ee";
 
+import {
+  clearApiRequestMemory
+} from "../utils/apiRequest";
+
+import {
+  resetAppBootstrapGuard
+} from "./app/useAppInitialization";
+
 export default function useAuth({
   showToast
 }) {
@@ -46,6 +54,8 @@ export default function useAuth({
 
   useEffect(() => {
     function handleExpiredSession() {
+      clearApiRequestMemory();
+      resetAppBootstrapGuard();
       setToken("");
       setUsername("");
       setPassword("");
@@ -67,6 +77,9 @@ export default function useAuth({
   }, []);
 
   async function saveSession(data) {
+    clearApiRequestMemory();
+    resetAppBootstrapGuard();
+
     localStorage.setItem(
       "token",
       data.token

@@ -113,7 +113,7 @@ export default function useDialogs({
       const data = await getPinnedChatsApi();
       setPinnedChats(data.pinnedChats || []);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, []);
   const loadArchivedChats = useCallback(async () => {
@@ -121,7 +121,7 @@ export default function useDialogs({
       const data = await getArchivedChatsApi();
       setArchivedChats(data.archivedChats || []);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, []);
   const togglePin = useCallback(async chatKey => {
@@ -129,7 +129,7 @@ export default function useDialogs({
       const data = await togglePinnedChatApi(chatKey);
       setPinnedChats(data.pinnedChats || []);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, []);
   const toggleArchive = useCallback(async chatKey => {
@@ -137,7 +137,7 @@ export default function useDialogs({
       const data = await toggleArchivedChatApi(chatKey);
       setArchivedChats(data.archivedChats || []);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, []);
   const loadDialogs = useCallback(async () => {
@@ -145,7 +145,7 @@ export default function useDialogs({
       const [privateDialogs, groups] = await Promise.all([getDialogs(), getGroupsApi()]);
       setDialogs([...groups.map(normalizeGroup), ...privateDialogs.map(normalizePrivateDialog)]);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, []);
   const addGroup = useCallback(group => {
@@ -208,7 +208,7 @@ export default function useDialogs({
         const data = await searchUsers(query);
         setSearchResults(data);
       } catch (err) {
-        console.error(err);
+        // startup/network errors are handled by request guards
         setSearchResults([]);
       }
     }, 250);
@@ -279,7 +279,7 @@ export default function useDialogs({
       const key = dialog.chatKey || `group:${dialog.groupId}`;
       removeDialog(key);
     } catch (err) {
-      console.error(err);
+      // startup/network errors are handled by request guards
     }
   }, [username, removeDialog]);
   const filteredDialogs = useMemo(() => {

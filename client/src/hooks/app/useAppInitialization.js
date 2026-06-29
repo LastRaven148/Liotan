@@ -1,7 +1,27 @@
 import {
-  useEffect,
-  useRef
+  useEffect
 } from "react";
+
+const bootRegistry =
+  new Map();
+
+const BOOT_SUCCESS_TTL_MS =
+  5 * 60 * 1000;
+
+const BOOT_ERROR_TTL_MS =
+  20 * 1000;
+
+function getBootEntry(key) {
+  return bootRegistry.get(key) || null;
+}
+
+function setBootEntry(key, value) {
+  bootRegistry.set(key, value);
+}
+
+export function resetAppBootstrapGuard() {
+  bootRegistry.clear();
+}
 
 export default function useAppInitialization({
   token,
@@ -12,82 +32,74 @@ export default function useAppInitialization({
   loadArchivedChats
 }) {
 
-  const bootKeyRef =
-    useRef("");
-
-  const bootingRef =
-    useRef(false);
-
-  const failedAtRef =
-    useRef(0);
-
   useEffect(() => {
 
     if (!token || !username) {
-      bootKeyRef.current = "";
-      bootingRef.current = false;
-      return;
+      return undefined;
     }
 
     const bootKey =
-      `${username}:${token.slice(0, 16)}`;
-
-    if (
-      bootKeyRef.current === bootKey ||
-      bootingRef.current
-    ) {
-      return;
-    }
+      `${username}:${token.slice(0, 24)}`;
 
     const now =
       Date.now();
 
-    if (
-      failedAtRef.current &&
-      now - failedAtRef.current < 5000
-    ) {
-      return;
+    const existing =
+      getBootEntry(bootKey);
+
+    if (existing?.status === "running") {
+      return undefined;
+    }
+
+    if (existing?.until && existing.until > now) {
+      return undefined;
     }
 
     let cancelled =
       false;
 
-    bootingRef.current =
-      true;
+    async function boot() {
+      setBootEntry(bootKey, {
+        status: "running",
+        until: Date.now() + BOOT_ERROR_TTL_MS
+      });
 
-    const tasks = [
-      loadDialogs?.(),
-      loadProfile?.(username),
-      loadPinnedChats?.(),
-      loadArchivedChats?.()
-    ].filter(Boolean);
+      try {
+        // Sequential bootstrap is intentional: browsers can choke when several
+        // authenticated startup requests fail at the same time.
+        await loadProfile?.(username);
 
-    Promise.allSettled(tasks)
-      .then(results => {
         if (cancelled) {
           return;
         }
 
-        const hasRejected =
-          results.some(
-            result => result.status === "rejected"
-          );
+        await loadDialogs?.();
 
-        if (hasRejected) {
-          failedAtRef.current =
-            Date.now();
+        if (cancelled) {
           return;
         }
 
-        bootKeyRef.current =
-          bootKey;
-      })
-      .finally(() => {
-        if (!cancelled) {
-          bootingRef.current =
-            false;
+        await loadPinnedChats?.();
+
+        if (cancelled) {
+          return;
         }
-      });
+
+        await loadArchivedChats?.();
+
+        setBootEntry(bootKey, {
+          status: "done",
+          until: Date.now() + BOOT_SUCCESS_TTL_MS
+        });
+      } catch {
+        setBootEntry(bootKey, {
+          status: "failed",
+          until: Date.now() + BOOT_ERROR_TTL_MS
+        });
+      }
+    }
+
+    boot();
 
     return () => {
       cancelled = true;
