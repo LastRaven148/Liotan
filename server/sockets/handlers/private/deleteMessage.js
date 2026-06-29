@@ -7,6 +7,11 @@ const emitToChatUsers =
 const deleteAttachmentFile =
   require("../../services/deleteAttachmentFile");
 
+const {
+  canAccessMessage,
+  canDeleteForEveryone
+} = require("../../../utils/messagePermissions");
+
 function registerDeleteMessage({
   io,
   socket
@@ -37,6 +42,13 @@ function registerDeleteMessage({
           );
 
         if (!msg) {
+          return;
+        }
+
+        if (!(await canAccessMessage({
+          username: requester,
+          message: msg
+        }))) {
           return;
         }
 
@@ -86,6 +98,13 @@ function registerDeleteMessage({
             return;
           }
 
+          if (!(await canDeleteForEveryone({
+            username: requester,
+            message: msg
+          }))) {
+            return;
+          }
+
           await deleteAttachmentFile(
             msg.attachment
           );
@@ -116,14 +135,6 @@ function registerDeleteMessage({
             }
           );
 
-          return;
-        }
-
-        const isParticipant =
-          msg.from === requester ||
-          msg.to === requester;
-
-        if (!isParticipant) {
           return;
         }
 
@@ -164,6 +175,13 @@ function registerDeleteMessage({
             }
           );
 
+          return;
+        }
+
+        if (!(await canDeleteForEveryone({
+          username: requester,
+          message: msg
+        }))) {
           return;
         }
 

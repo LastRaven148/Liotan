@@ -36,6 +36,11 @@ const {
   getCallRoom
 } = require("../utils/callPrivacy");
 
+const {
+  isSessionActive,
+  touchSession
+} = require("../utils/sessionSecurity");
+
 function setupSocket(io) {
 
   io.use((socket, next) => {
@@ -62,23 +67,39 @@ function setupSocket(io) {
 
       if (
         !decoded.userId ||
-        !decoded.username
+        !decoded.username ||
+        !decoded.sid
       ) {
         return next(
           new Error("invalid token")
         );
       }
 
-      User.exists({
-        _id: decoded.userId,
-        username: decoded.username,
-        emailVerified: true
-      }).then(exists => {
+      Promise.all([
+        User.exists({
+          _id: decoded.userId,
+          username: decoded.username,
+          emailVerified: true
+        }),
+        isSessionActive({
+          userId: decoded.userId,
+          username: decoded.username,
+          sessionId: decoded.sid
+        })
+      ]).then(async ([exists, sessionOk]) => {
         if (!exists) {
           return next(
             new Error("account deleted")
           );
         }
+
+        if (!sessionOk) {
+          return next(
+            new Error("session expired")
+          );
+        }
+
+        await touchSession(decoded.sid);
 
         socket.user =
           decoded;

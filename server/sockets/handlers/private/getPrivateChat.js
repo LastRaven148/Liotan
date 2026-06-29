@@ -13,7 +13,34 @@ function registerGetPrivateChat(socket) {
   socket.on(
     "joinChat",
     (chatId) => {
-      socket.join(chatId);
+      const username =
+        socket.user.username;
+
+      const raw =
+        String(chatId || "");
+
+      const parts =
+        raw.split("_");
+
+      if (
+        parts.length !== 2 ||
+        !parts.includes(username) ||
+        !parts.every(isValidUsername)
+      ) {
+        return;
+      }
+
+      const expected =
+        getChatId(
+          parts[0],
+          parts[1]
+        );
+
+      if (expected !== raw) {
+        return;
+      }
+
+      socket.join(raw);
     }
   );
 

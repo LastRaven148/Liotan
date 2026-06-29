@@ -13,6 +13,9 @@ const EmailCode =
 const E2EEKey =
   require("../models/E2EEKey");
 
+const Session =
+  require("../models/Session");
+
 const deleteUploadedFile =
   require("./deleteUploadedFile");
 
@@ -126,6 +129,13 @@ async function deleteAccountData(username) {
       emailHash: user.emailHash
     });
   }
+
+  await Session.deleteMany({
+    $or: [
+      { userId: user._id },
+      { username }
+    ]
+  });
 
   await User.deleteOne({
     username

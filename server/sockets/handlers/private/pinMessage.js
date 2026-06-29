@@ -1,11 +1,12 @@
 const Message =
   require("../../../models/Messages");
 
-const Group =
-  require("../../../models/Group");
-
 const emitToChatUsers =
   require("../../services/emitToChatUsers");
+
+const {
+  canPinMessage
+} = require("../../../utils/messagePermissions");
 
 function registerPinMessage({
   io,
@@ -36,15 +37,10 @@ function registerPinMessage({
 
         if (msg.chatType === "group") {
 
-          const group =
-            await Group.findById(
-              msg.groupId
-            );
-
-          if (
-            !group ||
-            !group.members.includes(username)
-          ) {
+          if (!(await canPinMessage({
+            username,
+            message: msg
+          }))) {
             return;
           }
 
@@ -71,11 +67,10 @@ function registerPinMessage({
           return;
         }
 
-        const isParticipant =
-          msg.from === username ||
-          msg.to === username;
-
-        if (!isParticipant) {
+        if (!(await canPinMessage({
+          username,
+          message: msg
+        }))) {
           return;
         }
 

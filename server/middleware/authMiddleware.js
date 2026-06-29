@@ -4,6 +4,11 @@ const jwt =
 const User =
   require("../models/User");
 
+const {
+  isSessionActive,
+  touchSession
+} = require("../utils/sessionSecurity");
+
 async function authMiddleware(
   req,
   res,
@@ -45,7 +50,8 @@ async function authMiddleware(
 
     if (
       !decoded.userId ||
-      !decoded.username
+      !decoded.username ||
+      !decoded.sid
     ) {
       return res.status(401).json({
         error: "invalid token"
@@ -69,6 +75,21 @@ async function authMiddleware(
         error: "email verification required"
       });
     }
+
+    const sessionOk =
+      await isSessionActive({
+        userId: decoded.userId,
+        username: decoded.username,
+        sessionId: decoded.sid
+      });
+
+    if (!sessionOk) {
+      return res.status(401).json({
+        error: "session expired"
+      });
+    }
+
+    await touchSession(decoded.sid);
 
     req.user =
       decoded;

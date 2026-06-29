@@ -17,12 +17,22 @@ const EmailCode =
 const E2EEKey =
   require("../models/E2EEKey");
 
+const Session =
+  require("../models/Session");
+
 
 const {
   normalizeEmail,
   hashEmail,
   hmac
 } = require("../utils/privacy");
+
+const {
+  createUserSession,
+  hashSessionId,
+  revokeSession,
+  revokeAllUserSessions
+} = require("../utils/sessionSecurity");
 
 const {
   sendEmailCode
@@ -58,17 +68,26 @@ function maskEmail(email) {
   return `${name[0]}***************@${domain}`;
 }
 
-function signToken(user) {
+async function signToken(req, user) {
+  const sessionId =
+    await createUserSession({
+      req,
+      user
+    });
+
   return jwt.sign(
     {
       userId:
         user._id.toString(),
       username:
-        user.username
+        user.username,
+      sid:
+        sessionId
     },
     process.env.JWT_SECRET,
     {
-      expiresIn: "7d"
+      expiresIn: "7d",
+      algorithm: "HS256"
     }
   );
 }
@@ -468,7 +487,7 @@ async function register(
     res.json({
       ok: true,
       token:
-        signToken(user),
+        await signToken(req, user),
       username:
         user.username
     });
@@ -553,7 +572,7 @@ async function login(
 
     res.json({
       token:
-        signToken(user),
+        await signToken(req, user),
       username:
         user.username
     });
@@ -637,11 +656,129 @@ async function resetPassword(
 
 }
 
+async function listSessions(
+  req,
+  res,
+  next
+) {
+
+  try {
+
+    const sessions =
+      await Session.find({
+        userId: req.user.userId,
+        revokedAt: null
+      })
+        .select("sessionIdHash deviceName createdAt lastSeenAt")
+        .sort({
+          lastSeenAt: -1
+        })
+        .lean();
+
+    const currentHash =
+      hashSessionId(req.user.sid);
+
+    res.json({
+      sessions:
+        sessions.map(session => ({
+          id: session.sessionIdHash,
+          deviceName: session.deviceName,
+          createdAt: session.createdAt,
+          lastSeenAt: session.lastSeenAt,
+          current: session.sessionIdHash === currentHash
+        }))
+    });
+
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function logoutCurrentSession(
+  req,
+  res,
+  next
+) {
+
+  try {
+    await revokeSession({
+      userId: req.user.userId,
+      sessionIdHash: hashSessionId(req.user.sid)
+    });
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function revokeOneSession(
+  req,
+  res,
+  next
+) {
+
+  try {
+    const sessionIdHash =
+      String(req.params.id || "").trim();
+
+    if (
+      !sessionIdHash ||
+      sessionIdHash.length > 200
+    ) {
+      return res.status(400).json({
+        error: "invalid session"
+      });
+    }
+
+    await revokeSession({
+      userId: req.user.userId,
+      sessionIdHash
+    });
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+
+}
+
+async function logoutOtherSessions(
+  req,
+  res,
+  next
+) {
+
+  try {
+    await revokeAllUserSessions({
+      userId: req.user.userId,
+      exceptSessionId: req.user.sid
+    });
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+
+}
+
 module.exports = {
   sendAuthCode,
   verifyAuthCode,
   sendLoginCode,
   register,
   login,
-  resetPassword
+  resetPassword,
+  listSessions,
+  logoutCurrentSession,
+  revokeOneSession,
+  logoutOtherSessions
 };

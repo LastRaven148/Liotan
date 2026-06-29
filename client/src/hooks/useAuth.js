@@ -10,7 +10,8 @@ import {
   sendAuthEmailCode,
   verifyAuthEmailCode,
   resetPasswordApi,
-  deleteAccountApi
+  deleteAccountApi,
+  logoutCurrentSessionApi
 } from "../services/api";
 
 import {
@@ -330,7 +331,13 @@ export default function useAuth({
     setMaskedLoginEmail("");
   }
 
-  function logout(socketRef) {
+  async function logout(socketRef) {
+    try {
+      await logoutCurrentSessionApi();
+    } catch {
+      // Local logout must still work when the session is already expired.
+    }
+
     clearSession(socketRef);
   }
 

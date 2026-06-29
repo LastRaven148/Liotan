@@ -15,7 +15,11 @@ const {
   sendLoginCode,
   register,
   login,
-  resetPassword
+  resetPassword,
+  listSessions,
+  logoutCurrentSession,
+  revokeOneSession,
+  logoutOtherSessions
 } = require("../controllers/authController");
 
 const router =
@@ -56,6 +60,30 @@ router.post(
   "/password/reset",
   authLimiter,
   resetPassword
+);
+
+router.get(
+  "/auth/sessions",
+  authMiddleware,
+  listSessions
+);
+
+router.post(
+  "/auth/logout",
+  authMiddleware,
+  logoutCurrentSession
+);
+
+router.delete(
+  "/auth/sessions/:id",
+  authMiddleware,
+  revokeOneSession
+);
+
+router.post(
+  "/auth/sessions/logout-others",
+  authMiddleware,
+  logoutOtherSessions
 );
 
 

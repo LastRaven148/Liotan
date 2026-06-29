@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const User =
+  require("../../../models/User");
+
 const getChatId =
   require("../../../utils/getChatId");
 
@@ -61,6 +64,20 @@ function registerSendPrivateMessage({
             !hasAttachment
           )
         ) {
+          return;
+        }
+
+        if (receiver === sender) {
+          return;
+        }
+
+        const receiverExists =
+          await User.exists({
+            username: receiver,
+            emailVerified: true
+          });
+
+        if (!receiverExists) {
           return;
         }
 

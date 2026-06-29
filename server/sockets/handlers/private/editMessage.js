@@ -8,6 +8,10 @@ const {
 const emitToChatUsers =
   require("../../services/emitToChatUsers");
 
+const {
+  canEditMessage
+} = require("../../../utils/messagePermissions");
+
 function registerEditMessage({
   io,
   socket
@@ -39,7 +43,10 @@ function registerEditMessage({
 
         if (
           !msg ||
-          msg.from !== sender
+          !(await canEditMessage({
+            username: sender,
+            message: msg
+          }))
         ) {
           return;
         }

@@ -4,6 +4,11 @@ import {
   apiRequest
 } from "../utils/apiRequest";
 
+import {
+  getDeviceId,
+  getDeviceName
+} from "../utils/deviceId";
+
 export async function getUsers() {
   return apiRequest(`${API}/users`);
 }
@@ -98,7 +103,9 @@ export async function sendLoginEmailCode(
     },
     body: JSON.stringify({
       email,
-      password
+      password,
+      deviceId: getDeviceId(),
+      deviceName: getDeviceName()
     })
   });
 }
@@ -116,7 +123,9 @@ export async function loginUser(
     body: JSON.stringify({
       email,
       password,
-      code
+      code,
+      deviceId: getDeviceId(),
+      deviceName: getDeviceName()
     })
   });
 }
@@ -136,7 +145,9 @@ export async function registerUser(
       username,
       password,
       email,
-      code
+      code,
+      deviceId: getDeviceId(),
+      deviceName: getDeviceName()
     })
   });
 }
@@ -162,6 +173,28 @@ export async function uploadAvatarApi(
 export async function deleteAccountApi() {
   return apiRequest(`${API}/me/account`, {
     method: "DELETE"
+  });
+}
+
+export async function getSessionsApi() {
+  return apiRequest(`${API}/auth/sessions`);
+}
+
+export async function logoutCurrentSessionApi() {
+  return apiRequest(`${API}/auth/logout`, {
+    method: "POST"
+  });
+}
+
+export async function revokeSessionApi(id) {
+  return apiRequest(`${API}/auth/sessions/${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function logoutOtherSessionsApi() {
+  return apiRequest(`${API}/auth/sessions/logout-others`, {
+    method: "POST"
   });
 }
 
