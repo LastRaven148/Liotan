@@ -25,17 +25,46 @@ function userOrIpKey(req) {
   return hashRequestIp(req);
 }
 
-// Global safety limiter. It must be soft enough for app bootstrap,
-// because the client loads profile/dialogs/groups/devices in parallel.
-// Strict protection stays on auth/upload/socket-specific limiters.
+function isReadRequest(req) {
+  return req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+}
+
+function isBootstrapPath(req) {
+  const path = req.path || "";
+
+  return (
+    path === "/health" ||
+    path === "/profile" ||
+    path.startsWith("/profile/") ||
+    path === "/dialogs" ||
+    path === "/groups" ||
+    path === "/archived-chats" ||
+    path === "/pinned-chats" ||
+    path === "/me/archived-chats" ||
+    path === "/me/pinned-chats" ||
+    path === "/sessions" ||
+    path === "/devices" ||
+    path.startsWith("/e2ee/identity") ||
+    path.startsWith("/e2ee/devices/") ||
+    path.startsWith("/e2ee/conversations/") ||
+    path === "/proxy/status" ||
+    path === "/voice/policy" ||
+    path === "/calls/policy"
+  );
+}
+
+// Safety net only. It must never break normal application bootstrap.
+// Real strict protection is applied by auth/upload/e2ee/socket-specific limiters.
 const strictIpLimiter =
   rateLimit({
-    windowMs: 10 * 1000,
+    windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 300
-        : 5000,
+        ? 5000
+        : 50000,
     keyGenerator: hashRequestIp,
+    skip: (req) =>
+      isReadRequest(req) && isBootstrapPath(req),
     message: createMessage("too many requests"),
     standardHeaders: true,
     legacyHeaders: false
@@ -46,19 +75,11 @@ const apiLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 2000
-        : 10000,
+        ? 5000
+        : 50000,
     keyGenerator: userOrIpKey,
     skip: (req) =>
-      req.method === "GET" &&
-      (req.path === "/profile" ||
-        req.path.startsWith("/profile/") ||
-        req.path === "/dialogs" ||
-        req.path === "/groups" ||
-        req.path === "/archived-chats" ||
-        req.path === "/pinned-chats" ||
-        req.path === "/sessions" ||
-        req.path === "/devices"),
+      isReadRequest(req) && isBootstrapPath(req),
     message: createMessage("too many requests"),
     standardHeaders: true,
     legacyHeaders: false
@@ -69,7 +90,7 @@ const authLimiter =
     windowMs: 15 * 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 12
+        ? 24
         : 200,
     keyGenerator: userOrIpKey,
     message: createMessage("too many auth attempts"),
@@ -82,7 +103,7 @@ const codeLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 3
+        ? 5
         : 100,
     keyGenerator: userOrIpKey,
     message: createMessage("too many code requests"),
@@ -108,9 +129,11 @@ const e2eeLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 60
-        : 1000,
+        ? 600
+        : 5000,
     keyGenerator: userOrIpKey,
+    skip: (req) =>
+      isReadRequest(req) && isBootstrapPath(req),
     message: createMessage("too many key requests"),
     standardHeaders: true,
     legacyHeaders: false

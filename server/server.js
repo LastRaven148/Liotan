@@ -9,7 +9,6 @@ const helmet =
   require("helmet");
 
 const {
-  strictIpLimiter,
   apiLimiter
 } = require("./middleware/rateLimiters");
 
@@ -210,9 +209,6 @@ app.use(
   securityHeaders
 );
 
-app.use(
-  strictIpLimiter
-);
 
 app.use(
   express.json({
