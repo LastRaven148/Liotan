@@ -13,6 +13,7 @@ client/build
 .env.*
 !.env.example
 server/.env
+server/.evn.exapmle
 
 # uploads
 uploads
