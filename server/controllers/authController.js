@@ -402,7 +402,7 @@ async function listSessions(req, res, next) {
     const sessions = await Session.find({
       userId: req.user.userId,
       revokedAt: null
-    }).select("sessionIdHash deviceName createdAt lastSeenAt deviceKeyFingerprint transportMode").sort({
+    }).select("sessionIdHash deviceName createdAt lastSeenAt transportMode").sort({
       lastSeenAt: -1
     }).lean();
     const currentHash = hashSessionId(req.user.sid);
@@ -412,7 +412,6 @@ async function listSessions(req, res, next) {
         deviceName: session.deviceName,
         createdAt: session.createdAt,
         lastSeenAt: session.lastSeenAt,
-        deviceKeyFingerprint: session.deviceKeyFingerprint || "",
         transportMode: session.transportMode || "auto",
         current: session.sessionIdHash === currentHash
       }))

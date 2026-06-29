@@ -536,3 +536,153 @@
 .settings-mini-danger:hover{
   background:rgba(255,82,82,.18);
 }
+
+
+/* v42.8 settings polish */
+.settings-topbar{
+  position:relative;
+}
+
+.settings-topbar-actions{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  position:relative;
+}
+
+.settings-overflow-menu{
+  position:absolute;
+  top:42px;
+  right:0;
+  width:190px;
+  padding:6px;
+  border:1px solid #263645;
+  border-radius:12px;
+  background:#17212b;
+  box-shadow:0 12px 28px rgba(0,0,0,.42);
+  z-index:20;
+}
+
+.settings-overflow-menu button{
+  width:100%;
+  height:38px;
+  border:none;
+  border-radius:8px;
+  background:transparent;
+  color:#d7dde5;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 10px;
+  cursor:pointer;
+  font:inherit;
+  text-align:left;
+}
+
+.settings-overflow-menu button:hover{
+  background:#223142;
+}
+
+.settings-overflow-menu button.danger{
+  color:#ff6b6b;
+}
+
+.settings-profile-hero{
+  padding:18px 12px 12px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+
+.settings-avatar-hero{
+  width:92px;
+  height:92px;
+  border:none;
+  cursor:pointer;
+}
+
+.settings-name-hero{
+  margin-top:10px;
+  font-size:20px;
+}
+
+.settings-info-row{
+  min-height:50px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:8px 12px;
+}
+
+.settings-info-icon{
+  width:28px;
+  flex-shrink:0;
+  color:#9fb0c1;
+  text-align:center;
+  font-weight:700;
+}
+
+.settings-info-value{
+  color:#fff;
+  font-size:14px;
+  line-height:1.25;
+  word-break:break-word;
+}
+
+.settings-info-label{
+  margin-top:2px;
+  color:#7d8fa3;
+  font-size:12px;
+}
+
+.settings-language-modal{
+  width:240px;
+}
+
+.settings-language-option{
+  width:100%;
+  height:42px;
+  border:none;
+  border-radius:10px;
+  margin-top:6px;
+  padding:0 12px;
+  background:transparent;
+  color:#d7dde5;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.settings-language-option:hover,
+.settings-language-option.active{
+  background:#243342;
+  color:#fff;
+}
+
+.settings-device-fingerprint{
+  display:none !important;
+}
+
+@media (max-width:768px){
+  .drawer-overlay-left{
+    align-items:stretch;
+  }
+
+  .settings-drawer{
+    width:min(100vw, 360px);
+    max-width:100vw;
+    height:100svh;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .settings-profile-hero{
+    padding-top:14px;
+  }
+
+  .settings-avatar-hero{
+    width:86px;
+    height:86px;
+  }
+}

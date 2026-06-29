@@ -205,7 +205,7 @@ async function getDeviceIdentities(req, res, next) {
             $ne: null
           }
         },
-        "deviceName devicePublicKey deviceKeyFingerprint lastSeenAt createdAt"
+        "deviceName devicePublicKey lastSeenAt createdAt"
       )
         .sort({
           lastSeenAt: -1
@@ -218,7 +218,6 @@ async function getDeviceIdentities(req, res, next) {
       devices: sessions.map(session => ({
         deviceName: session.deviceName,
         publicKey: session.devicePublicKey,
-        fingerprint: session.deviceKeyFingerprint || "",
         lastSeenAt: session.lastSeenAt,
         createdAt: session.createdAt
       }))

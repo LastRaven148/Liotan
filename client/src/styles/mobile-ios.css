@@ -255,3 +255,38 @@ textarea{
     -webkit-overflow-scrolling:touch !important;
   }
 }
+
+
+/* v42.8 compact mobile message actions */
+@media (max-width:768px){
+  .mobile-action-overlay{
+    align-items:flex-end !important;
+    background:rgba(0,0,0,.18) !important;
+  }
+
+  .mobile-action-sheet{
+    width:min(292px, calc(100vw - 24px - var(--safe-left) - var(--safe-right))) !important;
+    max-width:292px !important;
+    max-height:none !important;
+    margin:0 auto calc(74px + var(--safe-bottom)) !important;
+    padding:6px !important;
+    border:1px solid #2a3a4a !important;
+    border-radius:14px !important;
+    background:#17212b !important;
+    box-shadow:0 14px 34px rgba(0,0,0,.42) !important;
+    overflow:hidden !important;
+  }
+
+  .mobile-action-sheet button{
+    height:38px !important;
+    min-height:38px !important;
+    padding:0 10px !important;
+    border-radius:9px !important;
+    font-size:13px !important;
+  }
+
+  .mobile-action-sheet button .menu-icon{
+    width:22px !important;
+    min-width:22px !important;
+  }
+}

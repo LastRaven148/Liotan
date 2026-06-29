@@ -8,6 +8,18 @@ import {
   isEncryptedText
 } from "../../../utils/e2ee";
 
+function cleanReplyPreview(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (isEncryptedText(value)) {
+    return "";
+  }
+
+  return value;
+}
+
 export default function MessageReply({
   message,
   t,
@@ -16,7 +28,7 @@ export default function MessageReply({
   e2eeRevision = 0
 }) {
   const [replyText, setReplyText] =
-    useState(message.replyTo?.text || "");
+    useState(cleanReplyPreview(message.replyTo?.text || ""));
 
   useEffect(() => {
     let cancelled = false;
@@ -25,7 +37,7 @@ export default function MessageReply({
       const text = message.replyTo?.text || "";
 
       if (!isEncryptedText(text)) {
-        setReplyText(text);
+        setReplyText(cleanReplyPreview(text));
         return;
       }
 
@@ -36,7 +48,7 @@ export default function MessageReply({
       });
 
       if (!cancelled) {
-        setReplyText(value);
+        setReplyText(cleanReplyPreview(value));
       }
     }
 
@@ -67,6 +79,10 @@ export default function MessageReply({
 
     if (replyTo.attachmentType === "video") {
       return "Видео";
+    }
+
+    if (replyTo.attachmentType === "voice") {
+      return t.voiceMessage || "Голосовое сообщение";
     }
 
     if (replyTo.attachmentType === "audio") {

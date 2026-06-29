@@ -67,7 +67,7 @@ function isEncryptedPreviewText(value) {
   if (typeof value !== "string") {
     return false;
   }
-  return value.startsWith("__LIOTAN_E2EE_V2__") || value.startsWith("__LIOTAN_E2EE_V1__") || value.startsWith("__LIOTAN_E2EE_FILE_V1__");
+  return value.startsWith("__LIOTAN_E2EE_") || value.startsWith("__LIOTAN_VOICE_");
 }
 function getSafePreviewText(value, fallback = "Сообщение") {
   if (isEncryptedPreviewText(value)) {

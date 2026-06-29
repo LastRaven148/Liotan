@@ -28,6 +28,8 @@ export default function SettingsModal({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -142,8 +144,20 @@ export default function SettingsModal({
       return "—";
     }
   }
-  function toggleLanguage() {
-    setLanguage(language === "en" ? "ru" : "en");
+  function selectLanguage(nextLanguage) {
+    if (nextLanguage === language) {
+      setLanguagePickerOpen(false);
+      return;
+    }
+
+    setLanguage(nextLanguage);
+    setLanguagePickerOpen(false);
+    window.location.reload();
+  }
+
+  function getSessionTitle(session) {
+    const name = session.deviceName || "Устройство";
+    return session.current ? `${name} • текущее` : name;
   }
   function openDeleteConfirm() {
     setDeleteStep(1);
@@ -262,7 +276,7 @@ export default function SettingsModal({
   }
   return <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
       <aside className="settings-drawer" onClick={e => e.stopPropagation()}>
-        <div className="drawer-topbar">
+        <div className="drawer-topbar settings-topbar">
           <button type="button" className="drawer-icon-button" onClick={onClose}>
             ←
           </button>
@@ -270,35 +284,92 @@ export default function SettingsModal({
           <div className="drawer-title">
             {t.settings || "Настройки"}
           </div>
+
+          <div className="settings-topbar-actions">
+            <button type="button" className="drawer-icon-button" onClick={() => setEditing(true)} aria-label="Изменить">
+              ✎
+            </button>
+
+            <button type="button" className="drawer-icon-button" onClick={() => setSettingsMenuOpen(value => !value)} aria-label="Ещё">
+              ⋮
+            </button>
+
+            {settingsMenuOpen && <div className="settings-overflow-menu">
+                {logout && <button type="button" onClick={() => { setSettingsMenuOpen(false); setLogoutConfirmOpen(true); }}>
+                    <span>×</span>
+                    {t.logout || "Выйти"}
+                  </button>}
+
+                {deleteAccount && <button type="button" className="danger" onClick={() => { setSettingsMenuOpen(false); openDeleteConfirm(); }}>
+                    <span>!</span>
+                    Удалить аккаунт
+                  </button>}
+              </div>}
+          </div>
         </div>
 
-        <button type="button" className="settings-profile-button" onClick={() => setEditing(true)}>
-          <div className="settings-avatar">
+        <div className="settings-profile-hero">
+          <button type="button" className="settings-avatar settings-avatar-hero" onClick={() => setEditing(true)}>
             {avatar ? <img src={avatarUrl(avatar)} alt="" className="avatar-image" /> : username.charAt(0).toUpperCase()}
+          </button>
+
+          <div className="settings-name settings-name-hero">
+            {shownName}
           </div>
 
-          <div>
-            <div className="settings-name">
-              {shownName}
-            </div>
-
-            <div className="settings-online">
-              {t.online || "онлайн"}
-            </div>
+          <div className="settings-online">
+            {t.online || "онлайн"}
           </div>
-        </button>
+        </div>
 
         <div className="settings-card">
-          <button type="button" className="settings-row button-row" onClick={toggleLanguage}>
-            <span>•</span>
-
-            <div className="settings-row-main">
-              {t.language || "Язык"}
+          <div className="settings-info-row">
+            <span className="settings-info-icon">@</span>
+            <div>
+              <div className="settings-info-value">@{username}</div>
+              <div className="settings-info-label">{t.username || "Имя пользователя"}</div>
             </div>
+          </div>
 
-            <div className="settings-row-value">
-              {language === "en" ? t.english || "English" : t.russian || "Русский"}
+          <div className="settings-info-row">
+            <span className="settings-info-icon">i</span>
+            <div>
+              <div className="settings-info-value">{bio || "—"}</div>
+              <div className="settings-info-label">{t.bio || "О себе"}</div>
             </div>
+          </div>
+        </div>
+
+        <div className="settings-card">
+          <button type="button" className="settings-row button-row">
+            <span>🔔</span>
+            <div className="settings-row-main">Уведомления и звук</div>
+          </button>
+
+          <button type="button" className="settings-row button-row">
+            <span>▣</span>
+            <div className="settings-row-main">Данные и память</div>
+          </button>
+
+          <button type="button" className="settings-row button-row">
+            <span>🔒</span>
+            <div className="settings-row-main">Конфиденциальность</div>
+          </button>
+
+          <button type="button" className="settings-row button-row">
+            <span>⚙</span>
+            <div className="settings-row-main">Общие настройки</div>
+          </button>
+
+          <button type="button" className="settings-row button-row">
+            <span>▣</span>
+            <div className="settings-row-main">Звук и камера</div>
+          </button>
+
+          <button type="button" className="settings-row button-row" onClick={() => setLanguagePickerOpen(true)}>
+            <span>文</span>
+            <div className="settings-row-main">{t.language || "Язык"}</div>
+            <div className="settings-row-value">{language === "en" ? t.english || "English" : t.russian || "Русский"}</div>
           </button>
         </div>
 
@@ -318,17 +389,13 @@ export default function SettingsModal({
           {sessions.map(session => <div key={session.id} className="settings-device-row">
               <div className="settings-device-main">
                 <div className="settings-device-name">
-                  {session.deviceName || "Устройство"}
-                  {session.current ? " • текущее" : ""}
+                  {getSessionTitle(session)}
                 </div>
 
                 <div className="settings-device-meta">
                   Последняя активность: {formatSessionTime(session.lastSeenAt)}
                 </div>
 
-                {session.deviceKeyFingerprint && <div className="settings-device-fingerprint">
-                    Ключ: {session.deviceKeyFingerprint}
-                  </div>}
               </div>
 
               {!session.current && <button type="button" className="settings-mini-danger" onClick={() => handleRevokeSession(session.id)}>
@@ -359,23 +426,24 @@ export default function SettingsModal({
           </div>
         </div>
 
-        <div className="settings-card">
-          {logout && <button type="button" className="settings-row button-row danger-row" onClick={() => setLogoutConfirmOpen(true)}>
-              <span>×</span>
 
-              <div className="settings-row-main">
-                {t.logout || "Выйти"}
+
+
+        {languagePickerOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={() => setLanguagePickerOpen(false)}>
+            <div className="dialog-delete-modal settings-language-modal" onClick={e => e.stopPropagation()}>
+              <div className="dialog-delete-modal-title">
+                {t.language || "Язык"}
               </div>
-            </button>}
 
-          {deleteAccount && <button type="button" className="settings-row button-row danger-row" onClick={openDeleteConfirm}>
-              <span>!</span>
+              <button type="button" className={language === "ru" ? "settings-language-option active" : "settings-language-option"} onClick={() => selectLanguage("ru")}>
+                Русский
+              </button>
 
-              <div className="settings-row-main">
-                Удалить аккаунт
-              </div>
-            </button>}
-        </div>
+              <button type="button" className={language === "en" ? "settings-language-option active" : "settings-language-option"} onClick={() => selectLanguage("en")}>
+                English
+              </button>
+            </div>
+          </div>}
 
         {logoutConfirmOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={closeLogoutConfirm}>
             <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>

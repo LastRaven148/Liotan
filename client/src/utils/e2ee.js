@@ -229,7 +229,9 @@ export async function initE2EEAccountIdentity({
     const response = await getE2EEIdentityBackupApi();
     backup = response?.backup || null;
   } catch (err) {
-    console.warn("E2EE backup fetch failed", err);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("E2EE backup fetch failed", err);
+    }
   }
   if (backup?.publicKey && backup?.encryptedPrivateKey) {
     try {
@@ -244,7 +246,9 @@ export async function initE2EEAccountIdentity({
       }
       return identity;
     } catch (err) {
-      console.warn("E2EE backup decrypt failed; creating a new identity", err);
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("E2EE backup decrypt failed; creating a new identity", err);
+      }
     }
   }
   const local = await loadLocalIdentity(username);
@@ -367,7 +371,9 @@ export async function ensureConversationSecret({
           }
         }
       } catch (err) {
-        console.warn("E2EE key fetch failed", err);
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("E2EE key fetch failed", err);
+        }
       }
     }
     const secret = getChatSecret(username, chatKey) || randomSecret();
@@ -390,14 +396,18 @@ export async function ensureConversationSecret({
             secret
           }));
         } catch (err) {
-          console.warn("E2EE wrap failed for user", user.username, err);
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("E2EE wrap failed for user", user.username, err);
+          }
         }
       }
       if (wrappedKeys.length) {
         await setE2EEConversationKeysApi(getConversationId(username, chatKey), wrappedKeys);
       }
     } catch (err) {
-      console.warn("E2EE key publish failed", err);
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("E2EE key publish failed", err);
+      }
     }
     return secret;
   })();
