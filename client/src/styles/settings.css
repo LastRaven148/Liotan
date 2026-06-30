@@ -538,7 +538,6 @@
 }
 
 
-/* v42.8 settings polish */
 .settings-topbar{
   position:relative;
 }
@@ -687,7 +686,6 @@
   }
 }
 
-/* v43 settings pages */
 .settings-page-section{
   overflow:hidden;
 }
@@ -914,7 +912,6 @@
   cursor:pointer;
 }
 
-/* v43.5 corrections */
 .settings-info-row.no-icon{
   padding-left:16px;
 }
@@ -933,7 +930,6 @@
   display:block;
 }
 
-/* v43.8 notification controls cleanup */
 .settings-primary-button-compact{
   width:auto;
   min-width:0;
@@ -955,7 +951,6 @@
   cursor:default;
 }
 
-/* v43.9 notification button alignment */
 .settings-notifications-web .settings-section-title{
   padding-bottom:6px;
 }

@@ -10,9 +10,15 @@ from "../layers/ModalsLayer";
 import AudioPlayer
 from "../chat/AudioPlayer";
 
+import useViewportMode
+from "../../hooks/ui/useViewportMode";
+
 export default function MessengerLayout({
   app
 }) {
+
+  const viewportMode =
+    useViewportMode();
 
   const {
     username,
@@ -57,6 +63,7 @@ export default function MessengerLayout({
     <div
       className={[
         "app",
+        `app--${viewportMode}`,
         chat.activeChat ? "has-active-chat" : "",
         profileUser ? "has-profile-drawer" : ""
       ].join(" ")}

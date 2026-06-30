@@ -1,0 +1,336 @@
+/* Mobile layout and iOS browser hardening */
+
+html{
+  height:100%;
+  height:-webkit-fill-available;
+  background:#09111a;
+  overscroll-behavior:none;
+  -webkit-text-size-adjust:100%;
+}
+
+body,
+#root{
+  min-height:100%;
+  min-height:-webkit-fill-available;
+  background:#09111a;
+  overscroll-behavior:none;
+  touch-action:manipulation;
+}
+
+button,
+input,
+textarea,
+select{
+  font:inherit;
+}
+
+input,
+textarea{
+  font-size:16px;
+}
+
+@supports (-webkit-touch-callout:none){
+  .app,
+  .app > .sidebar,
+  .app > .chat,
+  .app > .profile-drawer{
+    height:100svh !important;
+    min-height:100svh !important;
+  }
+}
+
+@media (max-width:768px){
+  :root{
+    --safe-top:env(safe-area-inset-top, 0px);
+    --safe-right:env(safe-area-inset-right, 0px);
+    --safe-bottom:env(safe-area-inset-bottom, 0px);
+    --safe-left:env(safe-area-inset-left, 0px);
+  }
+
+  .app--mobile{
+    height:100svh !important;
+    min-height:100svh !important;
+    overflow:hidden !important;
+    background:#0e1621;
+  }
+
+  html,
+  body,
+  #root,
+  .app--mobile{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+  }
+
+  .app--mobile{
+    position:relative !important;
+    display:block !important;
+    width:100vw !important;
+    height:100dvh !important;
+  }
+
+  .app--mobile > .sidebar{
+    position:absolute !important;
+    inset:0 !important;
+    width:100vw !important;
+    min-width:100vw !important;
+    max-width:100vw !important;
+    height:100dvh !important;
+    border-right:none;
+    transform:translateX(0) !important;
+    transition:transform .22s ease;
+    z-index:2;
+  }
+
+  .app--mobile > .chat{
+    position:absolute !important;
+    inset:0 !important;
+    width:100vw !important;
+    min-width:100vw !important;
+    max-width:100vw !important;
+    height:100dvh !important;
+    transform:translateX(100%) !important;
+    transition:transform .22s ease;
+    z-index:3;
+  }
+
+  .app--mobile.has-active-chat > .sidebar{
+    transform:translateX(-25%) !important;
+  }
+
+  .app--mobile.has-active-chat > .chat{
+    transform:translateX(0) !important;
+  }
+
+  .app--mobile > .profile-drawer{
+    position:absolute !important;
+    inset:0 !important;
+    z-index:4;
+    width:100vw !important;
+    min-width:100vw !important;
+    max-width:100vw !important;
+    height:100dvh !important;
+    transform:translateX(100%) !important;
+    transition:transform .22s ease;
+    border-left:none;
+  }
+
+  .app--mobile.has-profile-drawer > .profile-drawer{
+    display:block !important;
+    transform:translateX(0) !important;
+  }
+
+  .app--mobile .sidebar,
+  .app--mobile .chat,
+  .app--mobile .profile-drawer{
+    padding-left:var(--safe-left);
+    padding-right:var(--safe-right);
+  }
+
+  .app--mobile .sidebar-header,
+  .app--mobile .chat-header,
+  .app--mobile .profile-drawer-header,
+  .app--mobile .settings-header,
+  .app--mobile .create-group-header{
+    padding-top:var(--safe-top) !important;
+    min-height:calc(56px + var(--safe-top));
+  }
+
+  .app--mobile .chat-header{
+    height:calc(56px + var(--safe-top));
+    padding-left:calc(8px + var(--safe-left));
+    padding-right:calc(12px + var(--safe-right));
+    gap:8px;
+  }
+
+  .app--mobile .mobile-back-button{
+    display:flex !important;
+    width:38px;
+    height:38px;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    border:none;
+    border-radius:50%;
+    background:transparent;
+    color:#d7dde5;
+    font-size:24px;
+    line-height:1;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  .app--mobile .chat-header-avatar,
+  .app--mobile .dialog-avatar{
+    flex-shrink:0;
+  }
+
+  .app--mobile .chat-name,
+  .app--mobile .dialog-name,
+  .app--mobile .dialog-last,
+  .app--mobile .pinned-bar-text{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .app--mobile .messages{
+    padding:12px calc(8px + var(--safe-right)) 10px calc(8px + var(--safe-left));
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+  }
+
+  .app--mobile .message{
+    max-width:88%;
+  }
+
+  .app--mobile .message.text-message{
+    max-width:86%;
+  }
+
+  .app--mobile .message.photo-message,
+  .app--mobile .message.video-message{
+    max-width:84vw;
+  }
+
+  .app--mobile .message-photo,
+  .app--mobile .message-video{
+    max-width:84vw;
+    max-height:62svh;
+  }
+
+  .app--mobile .message.audio-message,
+  .app--mobile .message.file-message{
+    min-width:min(280px, calc(100vw - 54px));
+    max-width:calc(100vw - 42px);
+  }
+
+  .app--mobile .message-audio{
+    min-width:0;
+  }
+
+  .app--mobile .composer-shell{
+    padding-left:calc(8px + var(--safe-left));
+    padding-right:calc(8px + var(--safe-right));
+    padding-bottom:calc(6px + var(--safe-bottom));
+  }
+
+  .app--mobile .attach-menu{
+    width:min(252px, calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
+  }
+
+  .app--mobile .composer-row{
+    min-height:46px;
+  }
+
+  .app--mobile .composer-input,
+  .app--mobile .message-input,
+  .app--mobile textarea{
+    font-size:16px !important;
+  }
+
+  .app--mobile .telegram-action-menu{
+    max-width:calc(100vw - 18px);
+  }
+
+  .app--mobile .mobile-action-overlay,
+  .app--mobile .dialog-delete-modal-overlay,
+  .app--mobile .media-viewer,
+  .app--mobile .attachment-preview-overlay{
+    padding-top:var(--safe-top);
+    padding-bottom:var(--safe-bottom);
+    padding-left:var(--safe-left);
+    padding-right:var(--safe-right);
+  }
+
+  .app--mobile .dialog-delete-modal,
+  .app--mobile .settings-modal,
+  .app--mobile .create-group-modal{
+    max-width:calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  }
+
+  .app--mobile .settings-modal,
+  .app--mobile .create-group-modal{
+    max-height:calc(100svh - var(--safe-top) - var(--safe-bottom) - 24px);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .app--mobile .audio-topbar{
+    top:calc(56px + var(--safe-top) + 6px) !important;
+    left:calc(8px + var(--safe-left)) !important;
+    right:calc(8px + var(--safe-right)) !important;
+    width:auto !important;
+  }
+
+  .app--mobile .mobile-action-overlay{
+    position:fixed !important;
+    inset:0 !important;
+    height:100svh !important;
+    min-height:100svh !important;
+    z-index:50000 !important;
+    display:flex !important;
+    align-items:flex-end !important;
+    justify-content:center !important;
+    overflow:hidden !important;
+    overscroll-behavior:contain !important;
+    background:rgba(0,0,0,.18) !important;
+  }
+
+  .app--mobile .mobile-action-sheet{
+    width:min(292px, calc(100vw - 24px - var(--safe-left) - var(--safe-right))) !important;
+    max-width:292px !important;
+    max-height:none !important;
+    margin:0 auto calc(74px + var(--safe-bottom)) !important;
+    padding:6px !important;
+    border:1px solid #2a3a4a !important;
+    border-radius:14px !important;
+    background:#17212b !important;
+    box-shadow:0 14px 34px rgba(0,0,0,.42) !important;
+    overflow:hidden !important;
+    -webkit-overflow-scrolling:touch !important;
+  }
+
+  .app--mobile .mobile-action-sheet button{
+    height:38px !important;
+    min-height:38px !important;
+    padding:0 10px !important;
+    border-radius:9px !important;
+    font-size:13px !important;
+  }
+
+  .app--mobile .mobile-action-sheet button .menu-icon{
+    width:22px !important;
+    min-width:22px !important;
+  }
+
+  .app--mobile .dialog-context-menu{
+    position:fixed !important;
+    left:50% !important;
+    right:auto !important;
+    top:auto !important;
+    bottom:calc(12px + var(--safe-bottom)) !important;
+    transform:translateX(-50%) !important;
+    width:min(300px, calc(100vw - 24px - var(--safe-left) - var(--safe-right))) !important;
+    max-height:calc(100svh - var(--safe-top) - var(--safe-bottom) - 24px) !important;
+    overflow:auto !important;
+    z-index:50001 !important;
+    -webkit-overflow-scrolling:touch !important;
+  }
+}
+
+@media (max-width:420px){
+  .app--mobile .message{
+    max-width:92%;
+  }
+
+  .app--mobile .message.text-message{
+    max-width:90%;
+  }
+
+  .app--mobile .message-photo,
+  .app--mobile .message-video{
+    max-width:88vw;
+  }
+}

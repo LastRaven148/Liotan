@@ -1,161 +1,58 @@
-.attach-wrapper{
-  position:relative;
-  left:44px;
-  bottom:10px;
-  flex-shrink:0;
-}
-
-.attach-button{
-  width:28px;
-  height:28px;
-  border:none;
-  background:none;
-  color:#7f91a4;
-  font-size:24px;
-  line-height:28px;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:0;
-}
-
-.attach-button:hover{
-  background:#2b394a;
-  color:white;
-}
+/* Attachment menu and unified attachment preview */
 
 .attach-menu{
-  bottom:48px;
-  left:-6px;
-  width:160px;
+  position:absolute;
+  left:0;
+  bottom:44px;
+  width:252px;
+  padding:4px;
+  overflow:visible;
   background:#17212b;
   border:1px solid #243342;
   border-radius:12px;
-  overflow:hidden;
-  box-shadow:0 8px 30px rgba(0,0,0,.35);
-  z-index:20;
+  box-shadow:0 10px 35px rgba(0,0,0,.45);
+  z-index:100;
 }
 
 .attach-menu button{
   width:100%;
+  min-height:46px;
   border:none;
+  border-radius:9px;
   background:transparent;
-  color:white;
-  padding:12px 14px;
-  text-align:left;
+  color:#d7dde5;
   cursor:pointer;
   font-family:inherit;
   font-size:14px;
+  text-align:left;
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  white-space:nowrap;
 }
 
 .attach-menu button:hover{
   background:#243342;
 }
-/* v43.5 attachment draft fixes */
-.attach-wrapper{
-  left:0;
-  bottom:0;
-}
-.attach-menu{
-  position:absolute;
-  width:210px;
-  bottom:38px;
-  left:0;
-}
-.attach-menu button{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  white-space:nowrap;
-}
-.attachment-preview-modal{
-  max-width:min(560px, calc(100vw - 32px));
-}
-.attachment-preview-list{
-  align-items:center;
-}
-.attachment-preview-item{
-  width:100%;
-  max-width:420px;
-  aspect-ratio:auto !important;
-}
-.attachment-preview-item img,
-.attachment-preview-video{
-  max-width:100%;
-  max-height:52vh;
-  width:auto;
-  height:auto;
-  object-fit:contain;
-  border-radius:12px;
-  display:block;
-  margin:0 auto;
-}
-.attachment-preview-file-card{
-  width:100%;
-  min-height:88px;
-  padding:16px;
-  border-radius:14px;
-  background:#202b36;
-  display:flex;
-  align-items:center;
-  gap:14px;
-}
-.attachment-preview-file-icon{
-  width:48px;
-  height:48px;
-  border-radius:12px;
-  background:#3390ec;
-  color:#fff;
+
+.attach-menu-icon{
+  width:24px;
+  height:24px;
+  flex-shrink:0;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:10px;
-  font-weight:800;
-  flex-shrink:0;
-  overflow:hidden;
+  color:#8fa4b8;
 }
-.attachment-preview-file-main{
+
+.attach-menu-label{
   min-width:0;
-  flex:1;
-}
-.attachment-preview-file-name{
-  color:#fff;
-  font-size:14px;
-  font-weight:700;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.attachment-preview-file-meta{
-  margin-top:4px;
-  color:#8da2b5;
-  font-size:12px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-/* v43.6 stable unified attachment preview */
-.attachment-preview-overlay{
-  z-index:43000;
-}
-.attachment-preview-list{
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-}
-.attachment-preview-item{
-  position:relative;
   overflow:visible;
-  background:transparent;
-}
-.attachment-preview-item img,
-.attachment-preview-video{
-  object-fit:contain !important;
+  text-overflow:clip;
+  white-space:nowrap;
 }
 
-/* v43.7 Telegram-like attachment preview */
 .attachment-preview-overlay{
   position:fixed;
   inset:0;
@@ -180,7 +77,7 @@
 }
 
 .attachment-preview-modal.is-file-preview{
-  width:min(510px, calc(100vw - 32px));
+  width:min(560px, calc(100vw - 32px));
 }
 
 .attachment-preview-header{
@@ -227,6 +124,49 @@
   font-size:20px;
 }
 
+.attachment-preview-menu-wrap{
+  position:relative;
+}
+
+.attachment-preview-menu{
+  position:absolute;
+  top:38px;
+  right:0;
+  width:220px;
+  padding:4px;
+  border-radius:12px;
+  background:#17212b;
+  border:1px solid #263645;
+  box-shadow:0 12px 34px rgba(0,0,0,.38);
+  z-index:2;
+}
+
+.attachment-preview-menu button{
+  width:100%;
+  min-height:38px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#d7dde5;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 10px;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:13px;
+}
+
+.attachment-preview-menu button:hover{
+  background:#243342;
+}
+
+.attachment-preview-menu-icon{
+  width:20px;
+  text-align:center;
+  color:#8fa4b8;
+}
+
 .attachment-preview-list{
   flex:1;
   overflow:auto;
@@ -241,6 +181,7 @@
   width:100%;
   max-width:360px;
   position:relative;
+  overflow:visible;
   border-radius:12px;
   background:transparent;
 }
@@ -279,19 +220,19 @@
 
 .attachment-preview-file-card{
   width:100%;
-  min-height:72px;
-  padding:10px 12px;
+  min-height:76px;
+  padding:12px 14px;
   border-radius:12px;
   background:#2b2b2b;
   display:grid;
-  grid-template-columns:44px minmax(0, 1fr) 36px;
+  grid-template-columns:48px minmax(0, 1fr) 38px;
   align-items:center;
   gap:12px;
 }
 
 .attachment-preview-file-icon{
-  width:44px;
-  height:44px;
+  width:48px;
+  height:48px;
   border-radius:10px;
   background:#3390ec;
   color:#fff;
@@ -337,15 +278,15 @@
   width:32px;
   height:32px;
   border:0;
-  border-radius:50%;
-  background:rgba(255,255,255,.08);
+  border-radius:10px;
+  background:rgba(255,255,255,.075);
   color:#b9c4cf;
   cursor:pointer;
   position:relative;
 }
 
 .attachment-preview-file-remove:hover{
-  background:rgba(255,90,90,.14);
+  background:rgba(255,90,90,.16);
   color:#ff6b6b;
 }
 
@@ -357,17 +298,17 @@
 }
 
 .attachment-preview-file-remove::before{
-  left:9px;
-  top:10px;
+  left:10px;
+  top:9px;
   width:14px;
   height:2px;
   border-radius:2px;
 }
 
 .attachment-preview-file-remove::after{
-  left:10px;
+  left:11px;
   top:13px;
-  width:12px;
+  width:10px;
   height:11px;
   border:2px solid currentColor;
   border-top:0;
@@ -407,85 +348,4 @@
   color:#fff;
   font-size:18px;
   cursor:pointer;
-}
-
-.attachment-preview-menu{
-  position:absolute;
-  top:38px;
-  right:0;
-  width:220px;
-  padding:4px;
-  border-radius:12px;
-  background:#17212b;
-  border:1px solid #263645;
-  box-shadow:0 12px 34px rgba(0,0,0,.38);
-  z-index:2;
-}
-
-/* v43.8 attachment menu readability */
-.attach-menu{
-  width:236px;
-  left:0;
-  bottom:42px;
-}
-.attach-menu button{
-  min-height:42px;
-  padding:11px 14px;
-  gap:12px;
-}
-.attach-menu-label{
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-/* v43.8 file preview polish */
-.attachment-preview-modal.is-file-preview{
-  width:min(560px, calc(100vw - 32px));
-}
-.attachment-preview-modal.is-file-preview .attachment-preview-file-card{
-  min-height:76px;
-  padding:12px 14px;
-  grid-template-columns:48px minmax(0, 1fr) 38px;
-}
-.attachment-preview-file-remove{
-  border-radius:10px;
-  background:rgba(255,255,255,.075);
-}
-.attachment-preview-file-remove::before{
-  left:10px;
-  top:9px;
-  width:14px;
-  height:2px;
-}
-.attachment-preview-file-remove::after{
-  left:11px;
-  top:13px;
-  width:10px;
-  height:11px;
-  border-width:2px;
-}
-.attachment-preview-file-remove:hover{
-  background:rgba(255,90,90,.16);
-}
-
-/* v43.9 attachment menu final sizing and stable closing target */
-.attach-menu{
-  width:252px;
-  left:0;
-  bottom:44px;
-  padding:4px;
-  overflow:visible;
-}
-
-.attach-menu button{
-  min-height:46px;
-  padding:12px 14px;
-  border-radius:9px;
-}
-
-.attach-menu-label{
-  overflow:visible;
-  text-overflow:clip;
 }

@@ -47,38 +47,6 @@
   color:white;
 }
 
-.attach-menu{
-  position:absolute;
-  left:0;
-  bottom:44px;
-  top:auto;
-  width:128px;
-  padding:6px;
-  background:#17212b;
-  border:1px solid #243342;
-  border-radius:12px;
-  box-shadow:0 10px 35px rgba(0,0,0,.45);
-  z-index:100;
-}
-
-.attach-menu button{
-  width:100%;
-  height:36px;
-  border:none;
-  border-radius:8px;
-  background:transparent;
-  color:#d7dde5;
-  cursor:pointer;
-  font-family:inherit;
-  font-size:14px;
-  text-align:left;
-  padding:0 10px;
-}
-
-.attach-menu button:hover{
-  background:#243342;
-}
-
 .composer-shell textarea{
   width:100%;
   flex:1;
@@ -205,29 +173,6 @@
 .composer textarea::placeholder{
   color:#7f91a4;
 }
-.attach-menu button{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-
-.attach-menu-icon{
-  width:24px;
-  height:24px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#8fa4b8;
-  flex-shrink:0;
-}
-
-.attach-menu-label{
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
 .voice-button{
   background:#3390ec;
 }
