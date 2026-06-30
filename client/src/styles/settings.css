@@ -913,3 +913,22 @@
   font-weight:700;
   cursor:pointer;
 }
+
+/* v43.5 corrections */
+.settings-info-row.no-icon{
+  padding-left:16px;
+}
+.settings-info-row.no-icon .settings-info-icon{
+  display:none;
+}
+.settings-radio-stacked > span:last-child{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+}
+.settings-row .settings-item-icon svg{
+  width:18px;
+  height:18px;
+  display:block;
+}

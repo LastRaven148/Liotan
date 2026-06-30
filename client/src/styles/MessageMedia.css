@@ -362,3 +362,10 @@
   font-size:13px;
   text-align:center;
 }
+
+.message-media-pending{
+  width:260px;
+  min-height:160px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+}

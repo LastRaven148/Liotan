@@ -58,6 +58,12 @@ export default function AudioPlayer() {
   const [duration, setDuration] =
     useState(0);
 
+  const durationRef =
+    useRef(0);
+
+  const progressRef =
+    useRef(0);
+
   const [muted, setMuted] =
     useState(false);
 
@@ -73,6 +79,14 @@ export default function AudioPlayer() {
   }, [
     track
   ]);
+
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   const emitAudioState = useCallback((next = {}) => {
     const currentTrack =
@@ -107,17 +121,15 @@ export default function AudioPlayer() {
             playing:
               next.playing ?? playing,
             progress:
-              next.progress ?? progress,
+              next.progress ?? progressRef.current,
             duration:
-              next.duration ?? duration
+              next.duration ?? durationRef.current
           }
         }
       )
     );
   }, [
-    playing,
-    progress,
-    duration
+    playing
   ]);
 
   useEffect(() => {
@@ -144,7 +156,7 @@ export default function AudioPlayer() {
         nextTrack.messageId
       ) {
         if (audio.paused) {
-          audio.play();
+          audio.play().catch(() => {});
         } else {
           audio.pause();
         }
@@ -161,6 +173,8 @@ export default function AudioPlayer() {
       const nextDuration =
         Number(nextTrack.duration) || 0;
 
+      durationRef.current = nextDuration;
+      progressRef.current = 0;
       setDuration(nextDuration);
 
       audio.src =
@@ -175,7 +189,9 @@ export default function AudioPlayer() {
       audio.loop =
         repeat;
 
-      audio.play();
+      audio.play().catch(() => {
+        setPlaying(false);
+      });
 
       emitAudioState({
         track: nextTrack,
@@ -231,7 +247,8 @@ export default function AudioPlayer() {
       audio.currentTime =
         nextTime;
 
-      setProgress(nextTime);
+      progressRef.current = nextTime;
+    setProgress(nextTime);
 
       emitAudioState({
         track: currentTrack,
@@ -285,7 +302,7 @@ export default function AudioPlayer() {
     }
 
     if (audio.paused) {
-      audio.play();
+      audio.play().catch(() => {});
     } else {
       audio.pause();
     }
@@ -306,6 +323,8 @@ export default function AudioPlayer() {
       null;
 
     setPlaying(false);
+    progressRef.current = 0;
+    durationRef.current = 0;
     setProgress(0);
     setDuration(0);
 
@@ -331,6 +350,7 @@ export default function AudioPlayer() {
     audio.currentTime =
       nextTime;
 
+    progressRef.current = nextTime;
     setProgress(nextTime);
 
     emitAudioState({
@@ -358,6 +378,7 @@ export default function AudioPlayer() {
     audio.currentTime =
       nextTime;
 
+    progressRef.current = nextTime;
     setProgress(nextTime);
 
     emitAudioState({
@@ -398,6 +419,7 @@ export default function AudioPlayer() {
 
     if (!nextTrack?.url) {
       setPlaying(false);
+      progressRef.current = 0;
       setProgress(0);
 
       emitAudioState({
@@ -425,6 +447,8 @@ export default function AudioPlayer() {
     if (!track) {
       return null;
     }
+
+    const progressPercent = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0;
 
     return createPortal(
       <div className="audio-topbar">
@@ -476,6 +500,7 @@ export default function AudioPlayer() {
               max={duration || Math.max(progress, 1)}
               step="0.01"
               value={progress}
+              style={{ "--audio-progress": `${progressPercent}%` }}
               onChange={seekAudio}
               onInput={seekAudio}
             />
@@ -553,11 +578,14 @@ export default function AudioPlayer() {
           });
         }}
         onLoadedMetadata={(e) => {
+          const nativeDuration = Number(e.currentTarget.duration);
+          const fallbackDuration = Number(trackRef.current?.duration) || durationRef.current || 0;
           const nextDuration =
-            Number.isFinite(e.currentTarget.duration)
-              ? e.currentTarget.duration
-              : 0;
+            Number.isFinite(nativeDuration) && nativeDuration > 0
+              ? nativeDuration
+              : fallbackDuration;
 
+          durationRef.current = nextDuration;
           setDuration(nextDuration);
 
           emitAudioState({
@@ -565,13 +593,16 @@ export default function AudioPlayer() {
           });
         }}
         onTimeUpdate={(e) => {
-          const nextProgress =
-            e.currentTarget.currentTime;
+          const current = Number(e.currentTarget.currentTime) || 0;
+          const knownDuration = durationRef.current || Number(trackRef.current?.duration) || 0;
+          const nextProgress = knownDuration > 0 ? Math.min(current, knownDuration) : current;
 
+          progressRef.current = nextProgress;
           setProgress(nextProgress);
 
           emitAudioState({
-            progress: nextProgress
+            progress: nextProgress,
+            duration: knownDuration || durationRef.current
           });
         }}
         onEnded={() => {

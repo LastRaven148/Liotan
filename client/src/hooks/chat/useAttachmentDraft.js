@@ -43,30 +43,38 @@ export function useAttachmentDraft({
     };
   }, []);
 
-  function isPreviewMedia(file) {
-    return (
-      file.type.startsWith("image/") ||
-      file.type.startsWith("video/")
-    );
+  function isDraftFile(file) {
+    return Boolean(file);
   }
 
   function getDraftType(file) {
+    if (file.type.startsWith("image/")) {
+      return "photo";
+    }
+
     if (file.type.startsWith("video/")) {
       return "video";
     }
 
-    return "photo";
+    if (file.type.startsWith("audio/")) {
+      return "audio";
+    }
+
+    return "file";
   }
 
   function createDraftItems(files) {
     return Array
       .from(files)
-      .filter(isPreviewMedia)
+      .filter(isDraftFile)
       .slice(0, 10)
       .map(file => ({
         file,
         type: getDraftType(file),
         url: URL.createObjectURL(file),
+        name: file.name || "Файл",
+        size: file.size || 0,
+        mimeType: file.type || "",
         width: 0,
         height: 0,
         ratio: "",
@@ -199,7 +207,7 @@ export function useAttachmentDraft({
       );
 
     const mediaFiles =
-      files.filter(isPreviewMedia);
+      files.filter(isDraftFile);
 
     if (!mediaFiles.length) {
       return;
@@ -225,14 +233,14 @@ export function useAttachmentDraft({
   }
 
   function handleFileChange(e) {
-    const file =
-      e.target.files?.[0];
+    const files =
+      e.target.files;
 
-    if (!file) {
+    if (!files?.length) {
       return;
     }
 
-    sendAttachment(file);
+    addDraftFiles(files);
 
     e.target.value = "";
     setAttachMenuOpen(false);

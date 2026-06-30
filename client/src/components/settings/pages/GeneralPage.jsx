@@ -2,7 +2,7 @@ import { useState } from "react";
 import { SettingsRadio, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
 
 export default function GeneralPage({ back, labels }) {
-  const [textSize, setTextSize] = useState(Number(localStorage.getItem("liotan_text_size") || 100));
+  const [textSize, setTextSize] = useState(() => Math.min(150, Math.max(50, Number(localStorage.getItem("liotan_text_size") || 100))));
   const [theme, setTheme] = useState(localStorage.getItem("liotan_theme") || "dark");
   const [timeFormat, setTimeFormat] = useState(localStorage.getItem("liotan_time_format") || "24");
   function saveTextSize(value) {
@@ -31,7 +31,7 @@ export default function GeneralPage({ back, labels }) {
         <SettingsRadio active={theme === "system"} title={labels.system} onClick={() => saveTheme("system")} />
       </SettingsSection>
       <SettingsSection title={labels.wallpaper}>
-        <SettingsRadio active title={labels.defaultWallpaper} subtitle={labels.wallpaperLater} />
+        <div className="settings-wallpaper-current">{labels.defaultWallpaper}</div>
       </SettingsSection>
       <SettingsSection title={labels.timeFormat}>
         <SettingsRadio active={timeFormat === "24"} title={labels.time24} onClick={() => saveTime("24")} />

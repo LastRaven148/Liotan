@@ -14,7 +14,12 @@ const ALLOWED_ATTACHMENT_MIME = [
   "audio/webm",
   "application/pdf",
   "text/plain",
-  "application/octet-stream"
+  "application/octet-stream",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/x-7z-compressed",
+  "application/vnd.rar",
+  "application/x-rar-compressed",
 ];
 
 const BLOCKED_EXTENSIONS = [
@@ -107,11 +112,15 @@ function isAllowedAttachment({
     return false;
   }
 
-  if (
-    normalizedMime === "application/octet-stream" &&
-    !hasEncryptedAttachmentExtension(fileName)
-  ) {
-    return false;
+  if ([
+    "application/octet-stream",
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/x-7z-compressed",
+    "application/vnd.rar",
+    "application/x-rar-compressed"
+  ].includes(normalizedMime)) {
+    return true;
   }
 
   if (
@@ -172,7 +181,12 @@ function hasKnownMagicBytes(buffer, mimeType = "") {
     normalizedMime.startsWith("audio/") ||
     normalizedMime.startsWith("video/") ||
     normalizedMime === "text/plain" ||
-    normalizedMime === "application/octet-stream"
+    normalizedMime === "application/octet-stream" ||
+    normalizedMime === "application/zip" ||
+    normalizedMime === "application/x-zip-compressed" ||
+    normalizedMime === "application/x-7z-compressed" ||
+    normalizedMime === "application/vnd.rar" ||
+    normalizedMime === "application/x-rar-compressed"
   ) {
     return true;
   }

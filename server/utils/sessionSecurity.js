@@ -69,8 +69,8 @@ function detectBrowserName(ua) {
 
 function detectOsName(ua) {
   const ios = ua.match(/(?:iPhone OS|CPU OS) ([0-9_]+)/i);
-  if (/iphone/i.test(ua)) return `iPhone iOS ${ios ? ios[1].replace(/_/g, ".") : ""}`.trim();
-  if (/ipad/i.test(ua)) return `iPadOS ${ios ? ios[1].replace(/_/g, ".") : ""}`.trim();
+  if (/iphone/i.test(ua)) return `iPhone${ios ? ` iOS ${ios[1].replace(/_/g, ".")}` : ""}`;
+  if (/ipad/i.test(ua)) return `iPad${ios ? ` iPadOS ${ios[1].replace(/_/g, ".")}` : ""}`;
   const android = ua.match(/Android ([0-9.]+)/i);
   if (android) return `Android ${android[1]}`;
   if (/windows nt/i.test(ua)) return "Windows";

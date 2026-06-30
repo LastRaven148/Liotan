@@ -13,8 +13,9 @@ export default function MessageAudio({
   onToggle,
   onSeek
 }) {
-  const duration = audioDuration || 0;
+  const duration = audioDuration || Number(attachment?.duration) || 0;
   const progress = Math.min(audioProgress || 0, duration || audioProgress || 0);
+  const progressPercent = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0;
 
   return (
     <div className="message-audio">
@@ -40,6 +41,7 @@ export default function MessageAudio({
             max={duration || Math.max(progress, 1)}
             step="0.01"
             value={progress}
+            style={{ "--audio-progress": `${progressPercent}%` }}
             onChange={onSeek}
             onInput={onSeek}
           />

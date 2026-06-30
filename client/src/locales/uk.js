@@ -90,6 +90,8 @@ const uk = {
   sound: "Звук і камера",
   devices: "Пристрої",
   connectionPrivacy: "Приватність з'єднання",
+  connectionSecureText: "Ваше з’єднання захищене.",
+  connectionUnsafeText: "Ваше з’єднання небезпечне.",
   connectionPrivacyText: "Зараз використовується пряме захищене з'єднання. Relay-режим підготовлений як запасний маршрут для зашифрованого трафіку.",
   available: "доступний",
   off: "не ввімкнено",

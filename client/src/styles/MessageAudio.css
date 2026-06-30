@@ -537,3 +537,31 @@
     border-radius:10px;
   }
 }
+/* v43.6 smooth message audio progress */
+.audio-range{
+  background:linear-gradient(to right, rgba(255,255,255,.82) 0 var(--audio-progress, 0%), rgba(255,255,255,.25) var(--audio-progress, 0%) 100%);
+}
+.audio-range::-webkit-slider-runnable-track{
+  background:transparent;
+}
+.audio-range::-moz-range-track{
+  background:transparent;
+}
+.audio-topbar-range{
+  background:linear-gradient(to right, #8774e1 0 var(--audio-progress, 0%), #344658 var(--audio-progress, 0%) 100%);
+}
+.audio-topbar-range::-webkit-slider-runnable-track{
+  background:transparent;
+}
+.audio-topbar-range::-moz-range-track{
+  background:transparent;
+}
+.audio-topbar-actions .audio-topbar-button{
+  border-radius:8px;
+}
+.audio-topbar-mute::before,
+.audio-topbar-mute::after,
+.audio-topbar-repeat::before,
+.audio-topbar-repeat::after{
+  transform:none;
+}

@@ -203,6 +203,9 @@ function sanitizeAttachment(input) {
     width: safeNumber(input.width, 0, 20000),
     height: safeNumber(input.height, 0, 20000),
     duration: safeNumber(input.duration, 0, 24 * 60 * 60),
+    waveform: Array.isArray(input.waveform)
+      ? input.waveform.slice(0, 64).map(item => safeNumber(item, 0, 1))
+      : [],
     publicId: String(input.publicId || "").slice(0, 300),
     resourceType: String(input.resourceType || "auto").slice(0, 40),
     e2eeMedia: input.e2eeMedia && typeof input.e2eeMedia === "object"

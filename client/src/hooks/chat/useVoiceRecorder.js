@@ -45,6 +45,9 @@ export default function useVoiceRecorder({
   const chunksRef = useRef([]);
   const startedAtRef = useRef(0);
   const timerRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const waveformRef = useRef([]);
   const cancelledRef = useRef(false);
 
   const [isRecording, setIsRecording] = useState(false);
@@ -67,6 +70,11 @@ export default function useVoiceRecorder({
       timerRef.current = null;
     }
     stopTracks();
+    if (audioContextRef.current) {
+      audioContextRef.current.close?.();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
   }
 
   async function startRecording() {
@@ -100,6 +108,23 @@ export default function useVoiceRecorder({
       cancelledRef.current = false;
       startedAtRef.current = Date.now();
 
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          source.connect(analyser);
+          audioContextRef.current = ctx;
+          analyserRef.current = analyser;
+          waveformRef.current = [];
+        }
+      } catch {
+        analyserRef.current = null;
+        waveformRef.current = [];
+      }
+
       recorder.ondataavailable = event => {
         if (event.data?.size > 0) {
           chunksRef.current.push(event.data);
@@ -113,6 +138,7 @@ export default function useVoiceRecorder({
           1,
           Math.round((Date.now() - startedAtRef.current) / 1000)
         );
+        const waveform = normalizeWaveform(waveformRef.current);
         const finalMime = recorder.mimeType || mimeType || "audio/webm";
         resetRecordingState();
 
@@ -129,7 +155,7 @@ export default function useVoiceRecorder({
             `voice-${Date.now()}.${ext}`,
             { type: finalMime }
           );
-          await onSendVoice?.(file, durationSeconds);
+          await onSendVoice?.(file, durationSeconds, waveform);
         } finally {
           setSendingVoice(false);
         }
@@ -140,6 +166,7 @@ export default function useVoiceRecorder({
       setRecordingSeconds(0);
       timerRef.current = setInterval(() => {
         const seconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
+        sampleWaveform(analyserRef.current, waveformRef.current);
         setRecordingSeconds(seconds);
         if (seconds >= MAX_VOICE_SECONDS) {
           stopRecording();
@@ -187,4 +214,32 @@ export default function useVoiceRecorder({
     stopRecording,
     cancelRecording
   };
+}
+
+
+function sampleWaveform(analyser, target) {
+  if (!analyser || !Array.isArray(target)) return;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 1) {
+    const centered = (data[i] - 128) / 128;
+    sum += centered * centered;
+  }
+  const rms = Math.sqrt(sum / data.length);
+  target.push(Math.max(0, Math.min(1, rms * 5)));
+}
+
+function normalizeWaveform(values) {
+  const source = Array.isArray(values) && values.length ? values : [0.04];
+  const count = 28;
+  const result = [];
+  for (let i = 0; i < count; i += 1) {
+    const start = Math.floor((i / count) * source.length);
+    const end = Math.max(start + 1, Math.floor(((i + 1) / count) * source.length));
+    const chunk = source.slice(start, end);
+    const average = chunk.reduce((sum, item) => sum + Number(item || 0), 0) / chunk.length;
+    result.push(Number(Math.max(0.02, Math.min(1, average)).toFixed(2)));
+  }
+  return result;
 }

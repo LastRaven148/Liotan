@@ -20,7 +20,7 @@ export function SettingsItem({ icon, title, subtitle, value, danger, onClick, ch
         <div>{title}</div>
         {subtitle && <div className="settings-row-sub">{subtitle}</div>}
       </div>
-      {value && <div className="settings-row-value">{value}</div>}
+      {value !== undefined && value !== null && String(value) !== "" && <div className="settings-row-value">{value}</div>}
       {children}
     </Tag>
   );
@@ -62,9 +62,9 @@ export function SettingsSlider({ label, value, min, max, step = 1, onChange, suf
   );
 }
 
-export function SettingsRadio({ active, title, subtitle, onClick }) {
+export function SettingsRadio({ active, title, subtitle, stacked, onClick }) {
   return (
-    <button type="button" className="settings-radio-row" onClick={onClick}>
+    <button type="button" className={`settings-radio-row ${stacked ? "settings-radio-stacked" : ""}`.trim()} onClick={onClick}>
       <span className={active ? "settings-radio-dot active" : "settings-radio-dot"} />
       <span>
         <b>{title}</b>

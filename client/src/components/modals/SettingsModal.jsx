@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../context/LanguageContext";
 import {
   getDeviceSessionsApi,
@@ -93,14 +93,40 @@ export default function SettingsModal({
     };
   }, [deleteOpen, logoutOpen, deleting]);
 
-  function closeEdit() {
+
+
+  const closeEdit = useCallback(function closeEdit() {
     if (previewAvatar) URL.revokeObjectURL(previewAvatar);
     setPreviewAvatar("");
     setPendingAvatarFile(null);
     setNameValue(displayName || "");
     setBioValue(bio || "");
     setEditing(false);
-  }
+  }, [previewAvatar, displayName, bio]);
+
+  useEffect(() => {
+    function handleSettingsEscape(e) {
+      if (e.key !== "Escape") return;
+      if (deleteOpen || logoutOpen || emailChangeOpen) return;
+      if (editing) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        window.__liotanModalEscHandledAt = Date.now();
+        closeEdit();
+        return;
+      }
+      if (page !== "main") {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        window.__liotanModalEscHandledAt = Date.now();
+        setPage("main");
+      }
+    }
+    window.addEventListener("keydown", handleSettingsEscape, true);
+    return () => window.removeEventListener("keydown", handleSettingsEscape, true);
+  }, [page, editing, deleteOpen, logoutOpen, emailChangeOpen, closeEdit]);
 
   function selectAvatar(e) {
     const file = e.target.files?.[0];
@@ -276,6 +302,8 @@ function getLabels(t) {
     language: t.language || "Язык",
     connectionPrivacy: t.connectionPrivacy || "Приватность соединения",
     connectionPrivacyText: t.connectionPrivacyText || "Liotan автоматически выбирает безопасный маршрут соединения и при необходимости использует резервный транспорт для зашифрованного трафика.",
+    connectionSecureText: t.connectionSecureText || "Ваше соединение защищено.",
+    connectionUnsafeText: t.connectionUnsafeText || "Ваше соединение небезопасно.",
     connectionPrivacyAdvice: t.connectionPrivacyAdvice || "Если соединение выглядит небезопасным из-за VPN, прокси или сторонних сетевых сервисов, это предупреждение можно игнорировать.",
     available: t.available || "доступен",
     off: t.off || "не включён",

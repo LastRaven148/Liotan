@@ -57,7 +57,7 @@ function Message({
   const attachmentDuration = Number(attachment?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachment?.size);
   const encryptedMedia = isEncryptedAttachment(attachment);
-  const shouldAutoCache = hasAttachment && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isAudio);
+  const shouldAutoCache = hasAttachment && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice);
   const {
     localUrl,
     isOfflineSaved,
@@ -350,9 +350,7 @@ function Message({
   }
   function renderPhoto() {
     return <div className="message-photo-wrap" onClick={openViewer}>
-        {fileUrl ? <img src={fileUrl} alt={attachment.name || ""} className="message-photo" /> : <div className="message-encrypted-media-placeholder">
-            {t.loadingMedia || "Загрузка медиа..."}
-          </div>}
+        {fileUrl ? <img src={fileUrl} alt={attachment.name || ""} className="message-photo" /> : <div className="message-media-pending" />}
 
         {renderMediaCaption()}
         {renderTimeLayer()}
@@ -363,9 +361,7 @@ function Message({
     return <div className="message-video-wrap" onClick={() => isOfflineSaved || !needsManualDownload ? openViewer() : downloadFile()} style={{
       "--video-ratio": videoRatio
     }}>
-        {fileUrl ? <video src={fileUrl} className="message-video" preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-encrypted-media-placeholder">
-            {t.loadingVideo || "Загрузка видео..."}
-          </div>}
+        {fileUrl ? <video src={fileUrl} className="message-video" preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-media-pending" />}
 
         <button type="button" className="message-video-play" aria-label={t.openVideo || "Открыть видео"} />
 

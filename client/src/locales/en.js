@@ -90,6 +90,8 @@ const en = {
   sound: "Sound and camera",
   devices: "Devices",
   connectionPrivacy: "Connection privacy",
+  connectionSecureText: "Your connection is secure.",
+  connectionUnsafeText: "Your connection is not secure.",
   connectionPrivacyText: "A direct secure connection is currently used. Relay mode is prepared as a fallback route for encrypted traffic.",
   available: "available",
   off: "off",

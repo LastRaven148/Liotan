@@ -162,7 +162,7 @@ export default function Composer({
           <button type="button" className="attach-button" onClick={() => setAttachMenuOpen(prev => !prev)}>+</button>
           {attachMenuOpen && <AttachMenu t={t} photoInputRef={photoInputRef} fileInputRef={fileInputRef} />}
           <input ref={photoInputRef} type="file" hidden multiple accept="image/*,video/*" onChange={onPhotoChange} />
-          <input ref={fileInputRef} type="file" hidden onChange={onFileChange} />
+          <input ref={fileInputRef} type="file" hidden multiple onChange={onFileChange} />
         </div>
 
         <textarea

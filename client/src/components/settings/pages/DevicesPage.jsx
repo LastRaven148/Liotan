@@ -33,7 +33,10 @@ function DeviceRow({ session, labels, onRevoke }) {
 function formatDeviceName(value, labels) {
   const name = String(value || "").trim();
   if (!name) return labels.unknownDevice;
-  if (/^ios device$/i.test(name)) return "iPhone / iPad iOS";
+  if (/^ios device$/i.test(name)) return "iPhone";
+  if (/iphone\s*\/\s*ipad/i.test(name)) return "iPhone";
+  if (/iphone/i.test(name)) return name.replace(/iphone\s*\/\s*ipad\s*ios/i, "iPhone").replace(/iphone\s*\/\s*ipad/i, "iPhone");
+  if (/ipad/i.test(name) && !/iphone/i.test(name)) return name.replace(/ipad\s*os/i, "iPadOS");
   return name;
 }
 

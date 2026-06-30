@@ -163,6 +163,10 @@ const messageSchema =
     type: Number,
     default: 0
   },
+  waveform: {
+    type: [Number],
+    default: []
+  },
   publicId: {
     type: String,
     default: ""

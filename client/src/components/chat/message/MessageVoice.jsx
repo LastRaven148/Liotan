@@ -56,7 +56,8 @@ export default function MessageVoice({
   onToggle,
   onSeek
 }) {
-  const duration = audioStarted ? audioProgress : audioDuration;
+  const totalDuration = audioDuration || Number(attachment?.duration) || 0;
+  const duration = audioStarted ? audioProgress : totalDuration;
 
   return (
     <div className="message-voice">
@@ -72,13 +73,13 @@ export default function MessageVoice({
 
       <div className="voice-main">
         <div className="voice-progress-row">
-          <VoiceWave active={audioPlaying || audioStarted} progress={audioProgress} duration={audioDuration} attachment={attachment} />
+          <VoiceWave active={audioPlaying || audioStarted} progress={audioProgress} duration={totalDuration} attachment={attachment} />
 
           <input
             className="voice-range"
             type="range"
             min="0"
-            max={audioDuration || Math.max(audioProgress, 1)}
+            max={totalDuration || Math.max(audioProgress, 1)}
             step="0.01"
             value={audioProgress}
             onChange={onSeek}

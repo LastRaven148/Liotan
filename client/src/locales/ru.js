@@ -90,6 +90,8 @@ const ru = {
   sound: "Звук и камера",
   devices: "Устройства",
   connectionPrivacy: "Приватность соединения",
+  connectionSecureText: "Ваше соединение защищено.",
+  connectionUnsafeText: "Ваше соединение небезопасно.",
   connectionPrivacyText: "Сейчас используется прямое защищённое соединение. Relay-режим подготовлен как запасной маршрут для зашифрованного трафика.",
   available: "доступен",
   off: "не включён",

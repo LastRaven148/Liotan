@@ -283,7 +283,7 @@ export default function useChat({
       forEveryone: options.forEveryone !== false
     });
   }
-  async function sendVoiceMessage(file, duration = 0) {
+  async function sendVoiceMessage(file, duration = 0, waveform = []) {
     if (!file || !socketRef.current || !activeChat) {
       return false;
     }
@@ -304,6 +304,7 @@ export default function useChat({
         attachment.size = encryptedFile.metadata.originalSize;
         attachment.name = "Голосовое сообщение";
         attachment.duration = Number(duration) || 0;
+        attachment.waveform = Array.isArray(waveform) ? waveform.slice(0, 64) : [];
       }
       return await sendMessage(attachment);
     } catch (err) {

@@ -4,42 +4,28 @@ import {
 } from "react";
 
 function getDraftTitle(items) {
-  const photos =
-    items.filter(item =>
-      item.type === "photo"
-    ).length;
-
-  const videos =
-    items.filter(item =>
-      item.type === "video"
-    ).length;
-
-  if (
-    items.length === 1 &&
-    videos === 1
-  ) {
-    return "Отправить 1 видео";
+  if (items.length === 1) {
+    const item = items[0];
+    if (item.type === "video") return "Отправить 1 видео";
+    if (item.type === "photo") return "Отправить 1 фото";
+    if (item.type === "audio") return "Отправить 1 аудио";
+    return "Отправить 1 файл";
   }
 
-  if (
-    items.length === 1 &&
-    photos === 1
-  ) {
-    return "Отправить 1 фото";
-  }
+  return `Отправить ${items.length} вложений`;
+}
 
-  if (
-    videos > 0 &&
-    photos > 0
-  ) {
-    return `Отправить ${items.length} медиа`;
-  }
+function formatFileSize(value = 0) {
+  const size = Number(value) || 0;
+  if (size < 1024) return `${size} Б`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} КБ`;
+  return `${(size / 1024 / 1024).toFixed(1)} МБ`;
+}
 
-  if (videos > 0) {
-    return `Отправить ${videos} видео`;
-  }
-
-  return `Отправить ${photos} фото`;
+function getExtension(name = "") {
+  const clean = String(name || "");
+  const index = clean.lastIndexOf(".");
+  return index >= 0 ? clean.slice(index + 1).toUpperCase() : "FILE";
 }
 
 function getItemClass(item) {
@@ -88,6 +74,9 @@ export default function AttachmentDraftModal({
 
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        window.__liotanModalEscHandledAt = Date.now();
 
         if (!sendingDraft) {
           onClose?.();
@@ -98,13 +87,15 @@ export default function AttachmentDraftModal({
 
     window.addEventListener(
       "keydown",
-      handleKeyDown
+      handleKeyDown,
+      true
     );
 
     return () => {
       window.removeEventListener(
         "keydown",
-        handleKeyDown
+        handleKeyDown,
+        true
       );
     };
 
@@ -121,8 +112,8 @@ export default function AttachmentDraftModal({
   return (
     <div
       className="attachment-preview-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) {
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !sendingDraft) {
           onClose?.();
         }
       }}
@@ -211,49 +202,31 @@ export default function AttachmentDraftModal({
                   preload="metadata"
                   className="attachment-preview-video"
                   onLoadedMetadata={(e) => {
-                    const video =
-                      e.currentTarget;
-
-                    if (
-                      video.videoWidth &&
-                      video.videoHeight
-                    ) {
-                      onMediaMeta?.(
-                        index,
-                        {
-                          width:
-                            video.videoWidth,
-                          height:
-                            video.videoHeight
-                        }
-                      );
+                    const video = e.currentTarget;
+                    if (video.videoWidth && video.videoHeight) {
+                      onMediaMeta?.(index, { width: video.videoWidth, height: video.videoHeight });
                     }
                   }}
                 />
-              ) : (
+              ) : item.type === "photo" ? (
                 <img
                   src={item.url}
                   alt=""
                   onLoad={(e) => {
-                    const img =
-                      e.currentTarget;
-
-                    if (
-                      img.naturalWidth &&
-                      img.naturalHeight
-                    ) {
-                      onMediaMeta?.(
-                        index,
-                        {
-                          width:
-                            img.naturalWidth,
-                          height:
-                            img.naturalHeight
-                        }
-                      );
+                    const img = e.currentTarget;
+                    if (img.naturalWidth && img.naturalHeight) {
+                      onMediaMeta?.(index, { width: img.naturalWidth, height: img.naturalHeight });
                     }
                   }}
                 />
+              ) : (
+                <div className="attachment-preview-file-card">
+                  <div className="attachment-preview-file-icon">{getExtension(item.name)}</div>
+                  <div className="attachment-preview-file-main">
+                    <div className="attachment-preview-file-name">{item.name || "Файл"}</div>
+                    <div className="attachment-preview-file-meta">{item.mimeType || "Файл"} · {formatFileSize(item.size)}</div>
+                  </div>
+                </div>
               )}
 
               <button

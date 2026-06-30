@@ -6,6 +6,8 @@ export default function MainSettingsPage({ state, actions, labels }) {
   const shownName = displayName?.trim() || username;
   const currentLabel = language === "en" ? "English" : language === "uk" ? "Українська" : "Русский";
   const otherCount = sessions.filter((item) => !item.current).length;
+  const browserConnectionRisk = getBrowserConnectionRisk();
+  const connectionIsSuspicious = browserConnectionRisk !== "secure" || state.transportInfo?.connectionRisk === "suspicious";
   return (
     <>
       <div className="drawer-topbar settings-topbar">
@@ -30,8 +32,8 @@ export default function MainSettingsPage({ state, actions, labels }) {
       </div>
 
       <SettingsSection>
-        <div className="settings-info-row"><span className="settings-info-icon">@</span><div><div className="settings-info-value">@{username}</div><div className="settings-info-label">{labels.username}</div></div></div>
-        <div className="settings-info-row"><span className="settings-info-icon">i</span><div><div className="settings-info-value">{bio || "—"}</div><div className="settings-info-label">{labels.bio}</div></div></div>
+        <div className="settings-info-row no-icon"><div><div className="settings-info-value">@{username}</div><div className="settings-info-label">{labels.username}</div></div></div>
+        <div className="settings-info-row no-icon"><div><div className="settings-info-value">{bio || "—"}</div><div className="settings-info-label">{labels.bio}</div></div></div>
       </SettingsSection>
 
       <SettingsSection>
@@ -40,13 +42,44 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <SettingsItem icon="" title={labels.general} onClick={() => actions.openPage("general")} />
         <SettingsItem icon="" title={labels.sound} onClick={() => actions.openPage("sound")} />
         <SettingsItem icon="" title={labels.devices} value={otherCount ? String(otherCount + 1) : ""} onClick={() => actions.openPage("devices")} />
-        <SettingsItem icon="↔" title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
+        <SettingsItem icon={<TranslateIcon />} title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
       </SettingsSection>
 
       <SettingsSection title={labels.connectionPrivacy}>
-        <div className="settings-muted-text">{labels.connectionPrivacyText}</div>
-        <div className="settings-muted-text settings-connection-advice">{labels.connectionPrivacyAdvice}</div>
+        <div className="settings-muted-text">
+          {connectionIsSuspicious ? labels.connectionUnsafeText : labels.connectionSecureText}
+        </div>
+        {connectionIsSuspicious && (
+          <div className="settings-muted-text settings-connection-advice">
+            {labels.connectionPrivacyAdvice}
+          </div>
+        )}
       </SettingsSection>
     </>
   );
+}
+
+
+function TranslateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+      <path d="M4 5.5H13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M8.75 3.5V5.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M6 9.5C7.15 12.15 9.4 14.1 12.2 15.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M12.8 7.5C11.75 10.45 9.4 13.25 5 15.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M14.5 20.5L18 12.5L21.5 20.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M15.6 18H20.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+
+function getBrowserConnectionRisk() {
+  if (typeof window === "undefined") return "secure";
+  const host = window.location.hostname;
+  const isLocalhost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+  if (window.location.protocol !== "https:" && !isLocalhost) return "insecure-context";
+  if (window.isSecureContext === false && !isLocalhost) return "insecure-context";
+  return "secure";
 }

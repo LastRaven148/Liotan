@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
+import { decryptAttachmentBlobForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
 function DialogMenuIcon({
   name
 }) {
@@ -109,6 +110,47 @@ export default function DialogItem({
   const lastAttachmentType = lastAttachment?.type || dialog.lastMessageType || dialog.attachmentType || "";
   const lastAttachmentName = lastAttachment?.name || dialog.lastAttachmentName || dialog.attachmentName || "";
   const lastAttachmentUrl = lastAttachment?.thumbnailUrl || lastAttachment?.previewUrl || lastAttachment?.url || dialog.lastAttachmentThumbnail || dialog.lastAttachmentUrl || "";
+  const [decryptedPreviewUrl, setDecryptedPreviewUrl] = useState("");
+  const previewUrl = decryptedPreviewUrl || lastAttachmentUrl;
+
+  useEffect(() => {
+    let alive = true;
+    let objectUrl = "";
+
+    async function loadEncryptedPreview() {
+      setDecryptedPreviewUrl("");
+      if (!lastAttachment || !lastAttachmentUrl || !isEncryptedAttachment(lastAttachment)) {
+        return;
+      }
+      if (lastAttachmentType !== "photo" && lastAttachmentType !== "video") {
+        return;
+      }
+
+      try {
+        const response = await fetch(mediaUrl(lastAttachmentUrl));
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const decrypted = await decryptAttachmentBlobForChat({
+          username,
+          chatKey: getEffectiveE2EEChatKey(chatKey, dialog),
+          attachment: lastAttachment,
+          blob
+        });
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(decrypted);
+        setDecryptedPreviewUrl(objectUrl);
+      } catch {
+        if (alive) setDecryptedPreviewUrl("");
+      }
+    }
+
+    loadEncryptedPreview();
+
+    return () => {
+      alive = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [lastAttachment, lastAttachmentUrl, lastAttachmentType, username, chatKey, dialog]);
   const rememberDialogsScroll = useCallback(() => {
     const dialogsList = itemRef.current?.closest?.(".dialogs-list");
     if (dialogsList) {
@@ -288,8 +330,8 @@ export default function DialogItem({
   function renderPreview() {
     if (lastAttachmentType === "photo") {
       return <div className="dialog-preview dialog-preview-media">
-        {lastAttachmentUrl && <span className="dialog-preview-photo-thumb">
-            <img src={mediaUrl(lastAttachmentUrl)} alt="" className="dialog-preview-thumb" loading="lazy" />
+        {previewUrl && <span className="dialog-preview-photo-thumb">
+            <img src={previewUrl.startsWith("blob:") ? previewUrl : mediaUrl(previewUrl)} alt="" className="dialog-preview-thumb" loading="lazy" />
           </span>}
 
         <span>{t.photo || "Фото"}</span>
@@ -297,8 +339,8 @@ export default function DialogItem({
     }
     if (lastAttachmentType === "video") {
       return <div className="dialog-preview dialog-preview-media">
-        {lastAttachmentUrl && <span className="dialog-preview-video-thumb">
-            <video src={mediaUrl(lastAttachmentUrl)} className="dialog-preview-thumb" muted playsInline preload="metadata" />
+        {previewUrl && <span className="dialog-preview-video-thumb">
+            <video src={previewUrl.startsWith("blob:") ? previewUrl : mediaUrl(previewUrl)} className="dialog-preview-thumb" muted playsInline preload="metadata" />
 
             <span className="dialog-preview-play" />
           </span>}
@@ -420,7 +462,7 @@ export default function DialogItem({
       <div className="avatar">
         {isSavedMessages ? <div className="saved-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7 4.8C7 3.8 7.8 3 8.8 3H15.2C16.2 3 17 3.8 17 4.8V20L12 16.9L7 20V4.8Z" fill="currentColor"/>
+              <path d="M12 3.6L14.45 8.55L19.9 9.35L15.95 13.2L16.9 18.65L12 16.08L7.1 18.65L8.05 13.2L4.1 9.35L9.55 8.55L12 3.6Z" fill="currentColor"/>
             </svg>
           </div> : dialog.avatar ? <img src={avatarUrl(dialog.avatar)} alt="" className="avatar-image" /> : displayName ? displayName.charAt(0).toUpperCase() : "?"}
       </div>

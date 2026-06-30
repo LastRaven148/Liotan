@@ -9,7 +9,7 @@ export default function PrivacyPage({ back, labels, actions }) {
     { icon: "", title: labels.about, value: labels.everybody },
     { icon: "", title: labels.calls, value: labels.everybody },
     { icon: "", title: labels.invites, value: labels.everybody },
-    { icon: "", title: labels.forwardLinks, value: labels.nobody }
+    { icon: "", title: labels.forwardLinks, value: labels.everybody }
   ];
 
   return (
