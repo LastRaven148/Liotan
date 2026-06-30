@@ -2,14 +2,14 @@ import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives"
 
 export default function PrivacyPage({ back, labels }) {
   const items = [
-    ["⛔", labels.blacklist, ""],
-    ["✉", labels.loginEmail, ""],
-    ["◷", labels.lastSeen, labels.everybody],
-    ["🖼", labels.profilePhoto, labels.everybody],
+    ["", labels.blacklist, ""],
+    ["", labels.loginEmail, ""],
+    ["", labels.lastSeenPrivacy || labels.lastSeen, labels.everybody],
+    ["", labels.profilePhoto, labels.everybody],
     ["i", labels.about, labels.everybody],
-    ["☎", labels.calls, labels.everybody],
-    ["＋", labels.invites, labels.everybody],
-    ["↗", labels.forwardLinks, labels.nobody]
+    ["", labels.calls, labels.everybody],
+    ["", labels.invites, labels.everybody],
+    ["", labels.forwardLinks, labels.nobody]
   ];
   return (
     <>

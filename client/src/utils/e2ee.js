@@ -557,7 +557,7 @@ export async function decryptTextForChat({
     return text || "";
   }
   if (text.startsWith(LEGACY_E2EE_PREFIX)) {
-    return "🔒 Старое E2EE-сообщение. Оно было создано до авто-ключей.";
+    return "Старое E2EE-сообщение. Оно было создано до авто-ключей.";
   }
   try {
     const payload = JSON.parse(atob(text.slice(E2EE_PREFIX.length)));
@@ -566,7 +566,7 @@ export async function decryptTextForChat({
     }
     const secret = getChatSecret(username, payload.kid || chatKey);
     if (!secret) {
-      return "🔒 Зашифрованное сообщение. Ключ этого чата ещё не получен.";
+      return "Зашифрованное сообщение. Ключ этого чата ещё не получен.";
     }
     const salt = fromBase64(payload.salt);
     const iv = fromBase64(payload.iv);
@@ -579,6 +579,6 @@ export async function decryptTextForChat({
     return decoder.decode(decrypted);
   } catch (err) {
     console.error("E2EE decrypt failed", err);
-    return "🔒 Не удалось расшифровать сообщение.";
+    return "Не удалось расшифровать сообщение.";
   }
 }

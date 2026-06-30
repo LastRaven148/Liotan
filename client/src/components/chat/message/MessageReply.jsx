@@ -78,7 +78,7 @@ export default function MessageReply({
     }
 
     if (replyTo.attachmentType === "video") {
-      return "Видео";
+      return t.video || "Видео";
     }
 
     if (replyTo.attachmentType === "voice") {
@@ -86,7 +86,7 @@ export default function MessageReply({
     }
 
     if (replyTo.attachmentType === "audio") {
-      return "Аудио";
+      return t.audio || "Аудио";
     }
 
     if (replyTo.attachmentType === "file") {

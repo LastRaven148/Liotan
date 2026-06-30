@@ -17,15 +17,15 @@ function getMessagePreview(
   }
 
   if (message.attachment?.type === "voice") {
-    return "Голосовое сообщение";
+    return t.voiceMessage || "Голосовое сообщение";
   }
 
   if (message.attachment?.type === "audio") {
-    return "Аудио";
+    return t.audio || "Аудио";
   }
 
   if (message.attachment?.type === "video") {
-    return "Видео";
+    return t.video || "Видео";
   }
 
   if (message.attachment?.type === "file") {

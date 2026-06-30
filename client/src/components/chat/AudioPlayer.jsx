@@ -9,6 +9,19 @@ import { createPortal } from "react-dom";
 
 import { mediaUrl } from "../../utils/mediaUrl";
 
+
+function getAudioSource(value) {
+  if (!value) {
+    return "";
+  }
+
+  if (String(value).startsWith("blob:")) {
+    return value;
+  }
+
+  return mediaUrl(value);
+}
+
 function formatDuration(value) {
   if (!Number.isFinite(value)) {
     return "0:00";
@@ -151,7 +164,7 @@ export default function AudioPlayer() {
       setDuration(nextDuration);
 
       audio.src =
-        mediaUrl(nextTrack.url);
+        getAudioSource(nextTrack.url);
 
       audio.playbackRate =
         speed;

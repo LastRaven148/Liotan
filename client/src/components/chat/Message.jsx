@@ -262,7 +262,7 @@ function Message({
     const playlist = audioMessages.map(item => ({
       messageId: item._id,
       url: item.attachment.url,
-      name: item.attachment.type === "voice" ? "Голосовое сообщение" : item.attachment.name || "Аудио",
+      name: item.attachment.type === "voice" ? t.voiceMessage || "Голосовое сообщение" : item.attachment.name || t.audio || "Аудио",
       duration: Number(item.attachment.duration) || 0,
       size: item.attachment.size || 0
     }));
@@ -270,7 +270,7 @@ function Message({
       detail: {
         messageId: message._id,
         url: fileUrl || attachment.url,
-        name: isVoice ? "Голосовое сообщение" : attachment.name || "Аудио",
+        name: isVoice ? t.voiceMessage || "Голосовое сообщение" : attachment.name || t.audio || "Аудио",
         duration: audioDuration || attachmentDuration,
         size: attachment.size || 0,
         playlist
@@ -298,7 +298,7 @@ function Message({
   }
   const otherDeleteUser = isMine ? message.to : message.from;
   const canDeleteForEveryone = message.chatType === "group" ? isMine : Boolean(otherDeleteUser && otherDeleteUser !== username);
-  const deleteForEveryoneLabel = message.chatType === "group" ? "Также удалить для всех" : `Также удалить для ${otherDeleteUser}`;
+  const deleteForEveryoneLabel = message.chatType === "group" ? t.alsoDeleteForAll || "Также удалить для всех" : `${t.alsoDeleteFor || "Также удалить для"} ${otherDeleteUser}`;
   function renderDeleteConfirmModal() {
     if (!deleteConfirmOpen) {
       return null;
@@ -306,11 +306,11 @@ function Message({
     return createPortal(<div className="dialog-delete-modal-overlay message-delete-modal-overlay" onClick={cancelDeleteMessage}>
         <div className="dialog-delete-modal message-delete-modal" onClick={e => e.stopPropagation()}>
           <div className="dialog-delete-modal-title">
-            Удалить сообщение
+            {t.deleteMessage || "Удалить сообщение"}
           </div>
 
           <div className="dialog-delete-modal-text">
-            Вы точно хотите удалить это сообщение?
+            {t.deleteMessageConfirm || "Вы точно хотите удалить это сообщение?"}
           </div>
 
           {canDeleteForEveryone && <label className="dialog-delete-checkbox-row">
@@ -351,7 +351,7 @@ function Message({
   function renderPhoto() {
     return <div className="message-photo-wrap" onClick={openViewer}>
         {fileUrl ? <img src={fileUrl} alt={attachment.name || ""} className="message-photo" /> : <div className="message-encrypted-media-placeholder">
-            🔒 Расшифровка медиа...
+            {t.decryptingMedia || "Расшифровка медиа..."}
           </div>}
 
         {renderMediaCaption()}
@@ -364,10 +364,10 @@ function Message({
       "--video-ratio": videoRatio
     }}>
         {fileUrl ? <video src={fileUrl} className="message-video" preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-encrypted-media-placeholder">
-            🔒 Расшифровка видео...
+            {t.decryptingVideo || "Расшифровка видео..."}
           </div>}
 
-        <button type="button" className="message-video-play" aria-label="Открыть видео" />
+        <button type="button" className="message-video-play" aria-label={t.openVideo || "Открыть видео"} />
 
         <div className="video-duration-layer">
           {formatDuration(videoDuration)}
@@ -395,7 +395,7 @@ function Message({
         <div className="message-content">
           {isAudio && <MessageAudio attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} attachmentSizeText={attachmentSizeText} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
-          {isVoice && <MessageVoice audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
+          {isVoice && <MessageVoice t={t} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
           {isFile && <MessageFile attachment={attachment} t={t} footer={renderMessageTime("message-footer-compact")} onDownloadRequest={requestDownloadFile} />}
 

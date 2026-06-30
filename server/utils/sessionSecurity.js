@@ -56,6 +56,27 @@ function sanitizeDeviceName(value) {
   return raw.slice(0, 80);
 }
 
+function detectBrowserName(ua) {
+  if (/Edg\//i.test(ua)) return "Microsoft Edge";
+  if (/OPR\//i.test(ua)) return "Opera";
+  if (/Firefox\//i.test(ua)) return "Firefox";
+  if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) return "Chrome";
+  if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) return "Safari";
+  return "Browser";
+}
+
+function detectOsName(ua) {
+  const ios = ua.match(/(?:iPhone OS|CPU OS) ([0-9_]+)/i);
+  if (/iphone/i.test(ua)) return `iPhone iOS ${ios ? ios[1].replace(/_/g, ".") : ""}`.trim();
+  if (/ipad/i.test(ua)) return `iPadOS ${ios ? ios[1].replace(/_/g, ".") : ""}`.trim();
+  const android = ua.match(/Android ([0-9.]+)/i);
+  if (android) return `Android ${android[1]}`;
+  if (/windows nt/i.test(ua)) return "Windows";
+  if (/macintosh|mac os/i.test(ua)) return "macOS";
+  if (/linux/i.test(ua)) return "Linux";
+  return "Web";
+}
+
 function detectDeviceName(req) {
   const explicit =
     req.body?.deviceName ||
@@ -68,27 +89,14 @@ function detectDeviceName(req) {
   const ua =
     String(req.headers["user-agent"] || "");
 
-  if (/iphone|ipad|ios/i.test(ua)) {
-    return "iOS device";
-  }
+  const os = detectOsName(ua);
+  const browser = detectBrowserName(ua);
 
-  if (/android/i.test(ua)) {
-    return "Android device";
-  }
-
-  if (/windows/i.test(ua)) {
-    return "Windows device";
-  }
-
-  if (/macintosh|mac os/i.test(ua)) {
-    return "Mac device";
-  }
-
-  if (/linux/i.test(ua)) {
-    return "Linux device";
-  }
-
-  return "Web device";
+  return sanitizeDeviceName(
+    os === "Web"
+      ? `${browser} Web`
+      : `${os} · ${browser}`
+  );
 }
 
 async function createUserSession({

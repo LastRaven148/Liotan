@@ -21,6 +21,7 @@ function VoiceWave({
 }
 
 export default function MessageVoice({
+  t = {},
   audioPlaying,
   audioStarted,
   audioProgress,
@@ -43,7 +44,7 @@ export default function MessageVoice({
           audioPlaying ? "is-playing" : ""
         ].join(" ")}
         onClick={onToggle}
-        aria-label={audioPlaying ? "Пауза" : "Воспроизвести"}
+        aria-label={audioPlaying ? t.pause || "Пауза" : t.play || "Воспроизвести"}
       />
 
       <div className="voice-main">
@@ -58,7 +59,7 @@ export default function MessageVoice({
             step="0.01"
             value={audioProgress}
             onChange={onSeek}
-            aria-label="Позиция голосового сообщения"
+            aria-label={t.voicePosition || "Позиция голосового сообщения"}
           />
         </div>
 

@@ -28,7 +28,8 @@ export default function LoginPage({
 
   const {
     language,
-    setLanguage
+    setLanguage,
+    t
   } = useLanguage();
 
   const [mode, setMode] =
@@ -40,8 +41,6 @@ export default function LoginPage({
   const [confirmPassword, setConfirmPassword] =
     useState("");
 
-  const isRu =
-    language === "ru";
 
   const isLogin =
     mode === "login";
@@ -52,71 +51,44 @@ export default function LoginPage({
   const isReset =
     mode === "reset";
 
-  function text(ru, en) {
-    return isRu ? ru : en;
+  function text(key, fallback) {
+    return t[key] || fallback;
   }
 
   function title() {
     if (isReset) {
-      return text(
-        "Восстановление пароля",
-        "Reset password"
-      );
+      return text("restorePassword", "Восстановление пароля");
     }
 
     if (isRegister) {
-      return text(
-        "Создать аккаунт",
-        "Create account"
-      );
+      return text("createAccount", "Создать аккаунт");
     }
 
-    return text(
-      "Вход в Liotan",
-      "Sign in to Liotan"
-    );
+    return text("loginTitle", "Вход в Liotan");
   }
 
   function subtitle() {
     if (isLogin) {
       if (step === "loginCode") {
-        return text(
-          `Введите код из письма. Код отправлен на ${maskedLoginEmail || "вашу почту"}.`,
-          `Enter the email code. The code was sent to ${maskedLoginEmail || "your email"}.`
-        );
+        return `${t.emailCodeSentTo || "Введите код из письма. Код отправлен на"} ${maskedLoginEmail || t.yourEmail || "вашу почту"}.`;
       }
 
-      return text(
-        "Введите свою почту и пароль",
-        "Enter your email and password"
-      );
+      return text("enterEmailPassword", "Введите свою почту и пароль");
     }
 
     if (step === "email") {
-      return text(
-        "Введите почту. Мы отправим код подтверждения.",
-        "Enter your email. We will send a verification code."
-      );
+      return text("enterEmailForCode", "Введите почту. Мы отправим код подтверждения.");
     }
 
     if (step === "code") {
-      return text(
-        "Введите код из письма.",
-        "Enter the email code."
-      );
+      return text("enterCodeFromEmail", "Введите код из письма.");
     }
 
     if (isReset) {
-      return text(
-        "Придумайте новый пароль.",
-        "Create a new password."
-      );
+      return text("createNewPassword", "Придумайте новый пароль.");
     }
 
-    return text(
-      "Придумайте Имя и Пароль",
-      "Create a name and password"
-    );
+    return text("createNamePassword", "Придумайте Имя и Пароль");
   }
 
   function clearSensitive() {
@@ -139,7 +111,9 @@ export default function LoginPage({
     setLanguage(
       language === "ru"
         ? "en"
-        : "ru"
+        : language === "en"
+          ? "uk"
+          : "ru"
     );
   }
 
@@ -247,43 +221,25 @@ export default function LoginPage({
   function primaryText() {
     if (isLogin) {
       if (step === "loginCode") {
-        return text(
-          "Войти",
-          "Login"
-        );
+        return text("login", "Войти");
       }
 
-      return text(
-        "Получить код",
-        "Get code"
-      );
+      return text("getCode", "Получить код");
     }
 
     if (step === "email") {
-      return text(
-        "Получить код",
-        "Get code"
-      );
+      return text("getCode", "Получить код");
     }
 
     if (step === "code") {
-      return text(
-        "Проверить код",
-        "Verify code"
-      );
+      return text("verifyCode", "Проверить код");
     }
 
     if (isReset) {
-      return text(
-        "Сменить пароль",
-        "Change password"
-      );
+      return text("changePassword", "Сменить пароль");
     }
 
-    return text(
-      "Создать аккаунт",
-      "Create account"
-    );
+    return text("createAccount", "Создать аккаунт");
   }
 
   function renderPasswordHint() {
@@ -297,10 +253,7 @@ export default function LoginPage({
     if (!password && !confirmPassword) {
       return (
         <p className="auth-hint">
-          {text(
-            "Минимум 8 символов.",
-            "At least 8 characters."
-          )}
+          {text("minPassword", "Минимум 8 символов.")}
         </p>
       );
     }
@@ -308,10 +261,7 @@ export default function LoginPage({
     if (password.length < 8) {
       return (
         <p className="auth-hint auth-hint-error">
-          {text(
-            "Пароль слишком короткий.",
-            "Password is too short."
-          )}
+          {text("passwordTooShort", "Пароль слишком короткий.")}
         </p>
       );
     }
@@ -322,10 +272,7 @@ export default function LoginPage({
     ) {
       return (
         <p className="auth-hint auth-hint-error">
-          {text(
-            "Пароли не совпадают.",
-            "Passwords do not match."
-          )}
+          {text("passwordsDoNotMatch", "Пароли не совпадают.")}
         </p>
       );
     }
@@ -337,10 +284,7 @@ export default function LoginPage({
     return (
       <input
         className="auth-input"
-        placeholder={text(
-          "Код из письма",
-          "Email code"
-        )}
+        placeholder={text("emailCode", "Код из письма")}
         inputMode="numeric"
         maxLength={6}
         value={emailCode}
@@ -362,10 +306,7 @@ export default function LoginPage({
       <>
         <input
           className="auth-input"
-          placeholder={text(
-            newPassword ? "Новый пароль" : "Пароль",
-            newPassword ? "New password" : "Password"
-          )}
+          placeholder={newPassword ? text("newPassword", "Новый пароль") : text("password", "Пароль")}
           type="password"
           value={password}
           autoFocus={newPassword}
@@ -377,10 +318,7 @@ export default function LoginPage({
 
         <input
           className="auth-input"
-          placeholder={text(
-            "Повторите пароль",
-            "Repeat password"
-          )}
+          placeholder={text("repeatPassword", "Повторите пароль")}
           type="password"
           value={confirmPassword}
           onChange={(e) =>
@@ -538,10 +476,7 @@ export default function LoginPage({
                 switchMode("reset")
               }
             >
-              {text(
-                "Забыли пароль?",
-                "Forgot password?"
-              )}
+              {text("forgotPassword", "Забыли пароль?")}
             </button>
           </>
         )}
@@ -554,10 +489,7 @@ export default function LoginPage({
               switchMode("login")
             }
           >
-            {text(
-              "У меня уже есть аккаунт",
-              "I already have an account"
-            )}
+            {text("alreadyHaveAccount", "У меня уже есть аккаунт")}
           </button>
         )}
 
@@ -567,8 +499,8 @@ export default function LoginPage({
           onClick={switchLanguage}
         >
           {language === "ru"
-            ? "Continue in English"
-            : "Продолжить на русском"}
+            ? t.continueEnglish || "Continue in English"
+            : t.continueRussian || "Продолжить на русском"}
         </button>
       </div>
     </div>

@@ -13,10 +13,10 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <div className="drawer-title">{labels.settings}</div>
         <div className="settings-topbar-actions">
           <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}>✎</button>
-          <button type="button" className="drawer-icon-button" onClick={actions.toggleMenu} aria-label="Ещё">⋮</button>
+          <button type="button" className="drawer-icon-button" onClick={actions.toggleMenu} aria-label={labels.more || "More"}>⋮</button>
           {state.menuOpen && <div className="settings-overflow-menu">
-            <button type="button" onClick={actions.askLogout}><span>×</span>{labels.logout}</button>
-            <button type="button" className="danger" onClick={actions.askDelete}><span>!</span>{labels.deleteAccount}</button>
+            <button type="button" onClick={actions.askLogout}>{labels.logout}</button>
+            <button type="button" className="danger" onClick={actions.askDelete}>{labels.deleteAccount}</button>
           </div>}
         </div>
       </div>
@@ -35,12 +35,12 @@ export default function MainSettingsPage({ state, actions, labels }) {
       </SettingsSection>
 
       <SettingsSection>
-        <SettingsItem icon="🔔" title={labels.notifications} onClick={() => actions.openPage("notifications")} />
-        <SettingsItem icon="🔒" title={labels.privacy} onClick={() => actions.openPage("privacy")} />
-        <SettingsItem icon="⚙" title={labels.general} onClick={() => actions.openPage("general")} />
-        <SettingsItem icon="🎙" title={labels.sound} onClick={() => actions.openPage("sound")} />
-        <SettingsItem icon="▣" title={labels.devices} value={otherCount ? String(otherCount + 1) : ""} onClick={() => actions.openPage("devices")} />
-        <SettingsItem icon="文" title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
+        <SettingsItem icon="" title={labels.notifications} onClick={() => actions.openPage("notifications")} />
+        <SettingsItem icon="" title={labels.privacy} onClick={() => actions.openPage("privacy")} />
+        <SettingsItem icon="" title={labels.general} onClick={() => actions.openPage("general")} />
+        <SettingsItem icon="" title={labels.sound} onClick={() => actions.openPage("sound")} />
+        <SettingsItem icon="" title={labels.devices} value={otherCount ? String(otherCount + 1) : ""} onClick={() => actions.openPage("devices")} />
+        <SettingsItem icon="" title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
       </SettingsSection>
 
       <SettingsSection title={labels.connectionPrivacy}>

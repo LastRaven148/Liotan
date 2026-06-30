@@ -28,8 +28,8 @@ export default function SidebarMenu({
           closeProfileMenu();
         }}
       >
-        <span>@</span>
-        Мой профиль
+        <span className="telegram-menu-icon" />
+        {t.myProfile || "Мой профиль"}
       </button>
 
       <button
@@ -39,8 +39,8 @@ export default function SidebarMenu({
           closeProfileMenu();
         }}
       >
-        <span>+</span>
-        Создать группу
+        <span className="telegram-menu-icon" />
+        {t.createGroup || "Создать группу"}
       </button>
 
       <button
@@ -51,7 +51,7 @@ export default function SidebarMenu({
           setShowArchive(false);
         }}
       >
-        <span>☆</span>
+        <span className="telegram-menu-icon" />
         {t.savedMessages}
       </button>
 
@@ -62,21 +62,10 @@ export default function SidebarMenu({
           closeProfileMenu();
         }}
       >
-        <span>□</span>
+        <span className="telegram-menu-icon" />
         {showArchive
           ? t.search
           : t.archive}
-      </button>
-
-      <button
-        className="telegram-menu-item"
-        onClick={() => {
-          openSettings();
-          closeProfileMenu();
-        }}
-      >
-        <span>⚬</span>
-        {t.settings}
       </button>
     </div>
   );

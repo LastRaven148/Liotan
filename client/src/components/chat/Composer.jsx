@@ -55,6 +55,7 @@ function VoiceWave() {
 }
 
 function AttachMenu({
+  t,
   photoInputRef,
   fileInputRef
 }) {
@@ -62,12 +63,12 @@ function AttachMenu({
     <div className="attach-menu">
       <button type="button" onClick={() => photoInputRef.current?.click()}>
         <span className="attach-menu-icon"><GalleryIcon /></span>
-        <span className="attach-menu-label">Фото или видео</span>
+        <span className="attach-menu-label">{t.photoOrVideo || "Фото или видео"}</span>
       </button>
 
       <button type="button" onClick={() => fileInputRef.current?.click()}>
         <span className="attach-menu-icon"><FileIcon /></span>
-        <span className="attach-menu-label">Файл</span>
+        <span className="attach-menu-label">{t.file || "Файл"}</span>
       </button>
     </div>
   );
@@ -159,7 +160,7 @@ export default function Composer({
 
         <div className="attach-wrapper">
           <button type="button" className="attach-button" onClick={() => setAttachMenuOpen(prev => !prev)}>+</button>
-          {attachMenuOpen && <AttachMenu photoInputRef={photoInputRef} fileInputRef={fileInputRef} />}
+          {attachMenuOpen && <AttachMenu t={t} photoInputRef={photoInputRef} fileInputRef={fileInputRef} />}
           <input ref={photoInputRef} type="file" hidden multiple accept="image/*,video/*" onChange={onPhotoChange} />
           <input ref={fileInputRef} type="file" hidden onChange={onFileChange} />
         </div>
@@ -182,7 +183,7 @@ export default function Composer({
             className="send-button voice-button"
             onClick={startRecording}
             disabled={sendingVoice || isRecording || Boolean(editingMessage)}
-            title="Голосовое сообщение"
+            title={t.voiceMessage || "Голосовое сообщение"}
           >
             <MicIcon />
           </button>

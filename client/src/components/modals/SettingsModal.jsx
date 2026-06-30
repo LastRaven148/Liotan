@@ -288,7 +288,7 @@ function getLabels(t) {
     channels: t.channels || "Каналы",
     blacklist: t.blacklist || "Чёрный список",
     loginEmail: t.loginEmail || "Почта для входа",
-    lastSeen: t.lastSeen || "Кто видит последнее посещение",
+    lastSeen: t.lastSeenPrivacy || "Кто видит последнее посещение",
     profilePhoto: t.profilePhoto || "Кто видит фото в моём профиле",
     about: t.about || "Кто видит мой раздел «О себе»",
     calls: t.calls || "Кто может звонить",
@@ -320,6 +320,7 @@ function getLabels(t) {
     unknownDevice: t.unknownDevice || "Устройство",
     current: t.current || "текущее",
     lastActive: t.lastActive || "Последняя активность",
-    disconnect: t.disconnect || "Отключить"
+    disconnect: t.disconnect || "Отключить",
+    more: t.more || "Ещё"
   };
 }

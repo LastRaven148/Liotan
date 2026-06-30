@@ -290,7 +290,7 @@ export default function DialogItem({
       return <div className="dialog-preview dialog-preview-media">
         {lastAttachmentUrl && <img src={mediaUrl(lastAttachmentUrl)} alt="" className="dialog-preview-thumb" />}
 
-        <span>Фото</span>
+        <span>{t.photo || "Фото"}</span>
       </div>;
     }
     if (lastAttachmentType === "video") {
@@ -301,18 +301,18 @@ export default function DialogItem({
             <span className="dialog-preview-play" />
           </span>}
 
-        <span>Видео</span>
+        <span>{t.video || "Видео"}</span>
       </div>;
     }
     if (lastAttachmentType === "voice") {
       return <div className="dialog-preview dialog-preview-attachment">
-        <span>🎤 Голосовое сообщение</span>
+        <span>{t.voiceMessage || "Голосовое сообщение"}</span>
       </div>;
     }
     if (lastAttachmentType === "audio") {
       return <div className="dialog-preview dialog-preview-attachment">
   <span>
-    {lastAttachmentName || getSafePreviewText(dialog.lastMessage, "Аудио") || "Аудио"}
+    {lastAttachmentName || getSafePreviewText(dialog.lastMessage, t.audio || "Аудио") || t.audio || "Аудио"}
   </span>
 </div>;
     }
@@ -374,7 +374,7 @@ export default function DialogItem({
           }}>
                     <DialogIconSlot name="delete" />
 
-                    {dialog.owner === username ? "Удалить группу" : "Выйти из группы"}
+                    {dialog.owner === username ? t.deleteGroup || "Удалить группу" : t.leaveGroup || "Выйти из группы"}
                   </button>
                 </>}
 </>
@@ -384,11 +384,11 @@ export default function DialogItem({
       {confirmDelete && createPortal(<div className="dialog-delete-modal-overlay" onClick={cancelDelete}>
           <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
             <div className="dialog-delete-modal-title">
-              {isGroup ? dialog.owner === username ? "Удалить группу" : "Выйти из группы" : t.deleteChat || "Удалить чат"}
+              {isGroup ? dialog.owner === username ? t.deleteGroup || "Удалить группу" : t.leaveGroup || "Выйти из группы" : t.deleteChat || "Удалить чат"}
             </div>
 
             <div className="dialog-delete-modal-text">
-              {isGroup ? dialog.owner === username ? `Вы точно хотите удалить группу ${displayName}?` : `Вы точно хотите выйти из группы ${displayName}?` : `Вы точно хотите удалить чат с ${displayName}?`}
+              {isGroup ? dialog.owner === username ? `${t.confirmDeleteGroup || "Вы точно хотите удалить группу"} ${displayName}?` : `${t.confirmLeaveGroup || "Вы точно хотите выйти из группы"} ${displayName}?` : `${t.deleteChatConfirm || "Удалить чат с"} ${displayName}?`}
             </div>
 
             {!isGroup && !isSavedMessages && <label className="dialog-delete-checkbox-row">
@@ -399,7 +399,7 @@ export default function DialogItem({
                 </span>
 
                 <span>
-                  Также удалить для {displayName}
+                  {t.alsoDeleteFor || "Также удалить для"} {displayName}
                 </span>
               </label>}
 
@@ -409,7 +409,7 @@ export default function DialogItem({
               </button>
 
               <button type="button" className="dialog-delete-modal-danger" onClick={confirmDeleteChat}>
-                {isGroup ? dialog.owner === username ? "Удалить" : "Выйти" : t.deleteChat || "Удалить чат"}
+                {isGroup ? dialog.owner === username ? t.delete || "Удалить" : t.logout || "Выйти" : t.deleteChat || "Удалить чат"}
               </button>
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function DialogItem({
 
       <div className="avatar">
         {isSavedMessages ? <div className="saved-icon">
-            ★
+            
           </div> : dialog.avatar ? <img src={avatarUrl(dialog.avatar)} alt="" className="avatar-image" /> : displayName ? displayName.charAt(0).toUpperCase() : "?"}
       </div>
 
