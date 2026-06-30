@@ -12,6 +12,10 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+  "node": "22.x",
+  "npm": "10.x"
+},
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.0",

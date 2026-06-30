@@ -4,6 +4,11 @@
   "main": "electron/main.js",
   "type": "commonjs",
 
+  "engines": {
+  "node": "22.x",
+  "npm": "10.x"
+},
+
   "scripts": {
     "dev": "concurrently \"node server/server.js\" \"cd client && npm start\" \"wait-on http://localhost:3000 && electron .\"",
 
