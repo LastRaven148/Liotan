@@ -311,6 +311,7 @@ function getLabels(t) {
     enableNotifications: t.enableNotifications || "Включить уведомления",
     disableNotifications: t.disableNotifications || "Выключить уведомления",
     notificationsAllowed: t.notificationsAllowed || "Разрешено отправлять уведомления. Если уведомления не приходят — обновите страницу.",
+    notificationsBlocked: t.notificationsBlocked || "Запрещено отправлять уведомления.",
     notificationsHelp: t.notificationsHelp || "Разрешите Liotan отправлять вам уведомления. Возможно, потребуется обновить страницу, чтобы увидеть изменения.",
     soundBlock: t.soundBlock || "Звук",
     notificationSound: t.notificationSound || "Звук уведомлений",

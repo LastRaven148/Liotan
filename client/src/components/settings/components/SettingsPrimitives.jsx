@@ -26,12 +26,13 @@ export function SettingsItem({ icon, title, subtitle, value, danger, onClick, ch
   );
 }
 
-export function SettingsCheck({ checked, onChange, label, hint }) {
+export function SettingsCheck({ checked, onChange, label, hint, disabled = false }) {
   return (
-    <label className="settings-check-row">
+    <label className={`settings-check-row ${disabled ? "is-disabled" : ""}`.trim()}>
       <input
         type="checkbox"
         checked={Boolean(checked)}
+        disabled={disabled}
         onChange={(e) => onChange?.(e.target.checked)}
       />
       <span className="settings-check-box" />
@@ -43,9 +44,9 @@ export function SettingsCheck({ checked, onChange, label, hint }) {
   );
 }
 
-export function SettingsSlider({ label, value, min, max, step = 1, onChange, suffix = "" }) {
+export function SettingsSlider({ label, value, min, max, step = 1, onChange, suffix = "", disabled = false }) {
   return (
-    <div className="settings-slider-row">
+    <div className={`settings-slider-row ${disabled ? "is-disabled" : ""}`.trim()}>
       <div className="settings-slider-head">
         <span>{label}</span>
         <b>{value}{suffix}</b>
@@ -56,6 +57,7 @@ export function SettingsSlider({ label, value, min, max, step = 1, onChange, suf
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange?.(Number(e.target.value))}
       />
     </div>

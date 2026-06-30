@@ -57,16 +57,17 @@ function VoiceWave() {
 function AttachMenu({
   t,
   photoInputRef,
-  fileInputRef
+  fileInputRef,
+  closeMenu
 }) {
   return (
     <div className="attach-menu">
-      <button type="button" onClick={() => photoInputRef.current?.click()}>
+      <button type="button" onClick={() => { closeMenu?.(); photoInputRef.current?.click(); }}>
         <span className="attach-menu-icon"><GalleryIcon /></span>
         <span className="attach-menu-label">{t.photoOrVideo || "Фото или видео"}</span>
       </button>
 
-      <button type="button" onClick={() => fileInputRef.current?.click()}>
+      <button type="button" onClick={() => { closeMenu?.(); fileInputRef.current?.click(); }}>
         <span className="attach-menu-icon"><FileIcon /></span>
         <span className="attach-menu-label">{t.file || "Файл"}</span>
       </button>
@@ -160,7 +161,7 @@ export default function Composer({
 
         <div className="attach-wrapper">
           <button type="button" className="attach-button" onClick={() => setAttachMenuOpen(prev => !prev)}>+</button>
-          {attachMenuOpen && <AttachMenu t={t} photoInputRef={photoInputRef} fileInputRef={fileInputRef} />}
+          {attachMenuOpen && <AttachMenu t={t} photoInputRef={photoInputRef} fileInputRef={fileInputRef} closeMenu={() => setAttachMenuOpen(false)} />}
           <input ref={photoInputRef} type="file" hidden multiple accept="image/*,video/*" onChange={onPhotoChange} />
           <input ref={fileInputRef} type="file" hidden multiple onChange={onFileChange} />
         </div>
