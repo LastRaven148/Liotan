@@ -87,6 +87,9 @@ const uploadErrorHandler =
 const securityHeaders =
   require("./middleware/securityHeaders");
 
+const contentSecurityPolicy =
+  require("./middleware/contentSecurityPolicy");
+
 const logger =
   require("./utils/logger");
 
@@ -194,10 +197,23 @@ app.set(
 
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy,
     crossOriginResourcePolicy: {
       policy: "cross-origin"
-    }
+    },
+    referrerPolicy: {
+      policy: "no-referrer"
+    },
+    frameguard: {
+      action: "deny"
+    },
+    hsts: process.env.NODE_ENV === "production"
+      ? {
+          maxAge: 15552000,
+          includeSubDomains: true,
+          preload: false
+        }
+      : false
   })
 );
 
@@ -252,7 +268,8 @@ const avatarsPath =
 
 if (!fs.existsSync(uploadsPath)) {
   fs.mkdirSync(
-    uploadsPath
+    uploadsPath,
+    { recursive: true }
   );
 }
 

@@ -25,6 +25,9 @@ const {
   isValidEmail,
   isValidEmailCode
 } = require("../utils/validators");
+const {
+  assertAcceptableEmail
+} = require("../utils/emailRisk");
 function createCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
@@ -109,6 +112,9 @@ async function sendAuthCode(req, res, next) {
       });
     }
     const cleanEmail = normalizeEmail(email);
+    if (purpose === "register") {
+      await assertAcceptableEmail(cleanEmail);
+    }
     const emailHash = hashEmail(cleanEmail);
     const exists = await User.findOne({
       emailHash
@@ -157,6 +163,9 @@ async function verifyAuthCode(req, res, next) {
       });
     }
     const cleanEmail = normalizeEmail(email);
+    if (purpose === "register") {
+      await assertAcceptableEmail(cleanEmail);
+    }
     const emailHash = hashEmail(cleanEmail);
     const exists = await User.findOne({
       emailHash
@@ -267,6 +276,7 @@ async function register(req, res, next) {
     }
     const cleanUsername = username.trim();
     const cleanEmail = normalizeEmail(email);
+    await assertAcceptableEmail(cleanEmail);
     const emailHash = hashEmail(cleanEmail);
     const exists = await User.findOne({
       $or: [{
@@ -472,6 +482,7 @@ async function sendEmailChangeNewCode(req, res, next) {
     if (!tokenPayload || !isValidEmail(cleanEmail)) {
       return res.status(400).json({ error: "invalid request" });
     }
+    await assertAcceptableEmail(cleanEmail);
     const newEmailHash = hashEmail(cleanEmail);
     const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
     if (exists) {
@@ -494,6 +505,7 @@ async function confirmEmailChange(req, res, next) {
     if (!tokenPayload || !isValidEmail(cleanEmail) || !isValidEmailCode(code)) {
       return res.status(400).json({ error: "invalid request" });
     }
+    await assertAcceptableEmail(cleanEmail);
     const newEmailHash = hashEmail(cleanEmail);
     const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
     if (!user || user.emailHash !== tokenPayload.emailHash) {

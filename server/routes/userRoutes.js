@@ -18,6 +18,7 @@ const router =
 
 router.get(
   "/users",
+  authMiddleware,
   getUsers
 );
 

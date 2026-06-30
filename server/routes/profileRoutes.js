@@ -19,6 +19,7 @@ const router =
 
 router.get(
   "/profile/:username",
+  authMiddleware,
   getProfile
 );
 

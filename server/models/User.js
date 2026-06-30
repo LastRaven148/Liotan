@@ -73,6 +73,9 @@ const userSchema =
     }
   });
 
+userSchema.index({ username: 1 }, { unique: true });
+userSchema.index({ emailHash: 1 }, { unique: true, sparse: true });
+
 module.exports =
   mongoose.models.User ||
   mongoose.model(

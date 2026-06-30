@@ -1,55 +1,48 @@
-const Group =
-  require("../models/Group");
+const Group = require("../models/Group");
+const Message = require("../models/Messages");
 
-const Message =
-  require("../models/Messages");
+function parseLimit(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return 50;
+  return Math.min(Math.floor(number), 100);
+}
 
-async function getGroupMessages(
-  req,
-  res,
-  next
-) {
+function parseBefore(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
+async function getGroupMessages(req, res, next) {
   try {
+    const username = req.user.username;
+    const group = await Group.findById(req.params.id);
 
-    const username =
-      req.user.username;
+    if (!group) return res.status(404).json({ error: "group not found" });
+    if (!group.members.includes(username)) return res.status(403).json({ error: "access denied" });
 
-    const group =
-      await Group.findById(
-        req.params.id
-      );
+    const limit = parseLimit(req.query.limit);
+    const before = parseBefore(req.query.before);
+    const query = {
+      chatType: "group",
+      groupId: group._id,
+      deletedFor: { $ne: username }
+    };
 
-    if (!group) {
-      return res.status(404).json({
-        error: "group not found"
-      });
-    }
+    if (before) query.createdAt = { $lt: before };
 
-    if (
-      !group.members.includes(username)
-    ) {
-      return res.status(403).json({
-        error: "access denied"
-      });
-    }
+    const messages = await Message.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
 
-    const messages =
-      await Message.find({
-        chatType: "group",
-        groupId: group._id
-      }).sort({
-        createdAt: 1
-      });
+    const hasMore = messages.length > limit;
+    const page = messages.slice(0, limit).reverse();
 
-    res.json(messages);
-
+    res.json({ messages: page, hasMore, nextBefore: hasMore ? page[0]?.createdAt : null });
   } catch (err) {
     next(err);
   }
-
 }
 
-module.exports = {
-  getGroupMessages
-};
+module.exports = { getGroupMessages };

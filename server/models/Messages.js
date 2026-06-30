@@ -188,12 +188,33 @@ const messageSchema =
 
 messageSchema.index({
   chatType: 1,
-  chatId: 1
+  chatId: 1,
+  createdAt: -1
 });
 
 messageSchema.index({
   chatType: 1,
-  groupId: 1
+  groupId: 1,
+  createdAt: -1
+});
+
+messageSchema.index({
+  chatType: 1,
+  from: 1,
+  createdAt: -1
+});
+
+messageSchema.index({
+  chatType: 1,
+  to: 1,
+  createdAt: -1
+});
+
+messageSchema.index({
+  chatType: 1,
+  to: 1,
+  status: 1,
+  createdAt: -1
 });
 
 module.exports =

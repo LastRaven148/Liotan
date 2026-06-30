@@ -1,7 +1,5 @@
-const {
-  isValidUsername
-} = require("../../utils/validators");
-
+const { isValidUsername } = require("../../utils/validators");
+const User = require("../../models/User");
 const {
   typingTimers,
   getTypingKey,
@@ -10,139 +8,47 @@ const {
   deleteTypingTimerByKey
 } = require("../state/typingTimers");
 
-function emitStopTyping({
-  io,
-  from,
-  to
-}) {
-
-  clearTypingTimer(
-    from,
-    to
-  );
-
-  io.to(to).emit(
-    "userStoppedTyping",
-    {
-      from
-    }
-  );
-
+function emitStopTyping({ io, from, to }) {
+  if (!isValidUsername(to) || !isValidUsername(from) || from === to) return;
+  clearTypingTimer(from, to);
+  io.to(to).emit("userStoppedTyping", { from });
 }
 
-function registerTypingHandlers({
-  io,
-  socket
-}) {
+function registerTypingHandlers({ io, socket }) {
+  socket.on("typing", async ({ to }) => {
+    try {
+      const from = socket.user.username;
+      if (!isValidUsername(to) || from === to) return;
 
-  socket.on(
-    "typing",
-    ({ to }) => {
+      const exists = await User.exists({ username: to, emailVerified: true });
+      if (!exists) return;
 
-      const from =
-        socket.user.username;
+      const key = getTypingKey(from, to);
+      clearTypingTimer(from, to);
+      io.to(to).emit("userTyping", { from });
 
-      if (
-        !isValidUsername(to) ||
-        from === to
-      ) {
-        return;
-      }
+      const timer = setTimeout(() => {
+        typingTimers.delete(key);
+        io.to(to).emit("userStoppedTyping", { from });
+      }, 2500);
 
-      const key =
-        getTypingKey(
-          from,
-          to
-        );
+      setTypingTimer(from, to, timer);
+    } catch {}
+  });
 
-      clearTypingTimer(
-        from,
-        to
-      );
-
-      io.to(to).emit(
-        "userTyping",
-        {
-          from
-        }
-      );
-
-      const timer =
-        setTimeout(
-          () => {
-
-            typingTimers.delete(key);
-
-            io.to(to).emit(
-              "userStoppedTyping",
-              {
-                from
-              }
-            );
-
-          },
-          2500
-        );
-
-      setTypingTimer(
-        from,
-        to,
-        timer
-      );
-
-    }
-  );
-
-  socket.on(
-    "stopTyping",
-    ({ to }) => {
-
-      const from =
-        socket.user.username;
-
-      if (
-        !isValidUsername(to) ||
-        from === to
-      ) {
-        return;
-      }
-
-      emitStopTyping({
-        io,
-        from,
-        to
-      });
-
-    }
-  );
-
+  socket.on("stopTyping", ({ to }) => {
+    emitStopTyping({ io, from: socket.user.username, to });
+  });
 }
 
-function clearUserTyping({
-  io,
-  username
-}) {
-
+function clearUserTyping({ io, username }) {
   for (const key of typingTimers.keys()) {
-
     if (key.startsWith(`${username}->`)) {
-
-      const to =
-        key.split("->")[1];
-
+      const to = key.split("->")[1];
       deleteTypingTimerByKey(key);
-
-      io.to(to).emit(
-        "userStoppedTyping",
-        {
-          from: username
-        }
-      );
-
+      io.to(to).emit("userStoppedTyping", { from: username });
     }
-
   }
-
 }
 
 module.exports = {

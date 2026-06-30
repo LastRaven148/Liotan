@@ -83,7 +83,16 @@ async function canAccessConversation({
     );
   }
 
-  return conversationId.includes(username);
+  if (isValidUsername(conversationId)) {
+    return conversationId === username;
+  }
+
+  const participants = String(conversationId || "").split(":");
+  if (participants.length !== 2 || !participants.every(isValidUsername)) {
+    return false;
+  }
+
+  return participants.includes(username);
 }
 
 async function setIdentity(req, res, next) {

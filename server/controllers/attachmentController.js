@@ -1,214 +1,130 @@
-const cloudinary =
-  require("../config/cloudinary");
-
-const uploadToCloudinary =
-  require("../utils/uploadToCloudinary");
-
+const fs = require("fs").promises;
+const cloudinary = require("../config/cloudinary");
+const uploadToCloudinary = require("../utils/uploadToCloudinary");
 const {
-  MAX_ATTACHMENT_SIZE,
   normalizeMime,
   assertAllowedAttachment,
-  assertSafeFileBuffer
+  assertSafeFileBuffer,
+  hasEncryptedAttachmentExtension
 } = require("../middleware/uploadSecurity");
 
+async function removeTempFile(file) {
+  if (!file?.path) return;
+  try { await fs.unlink(file.path); } catch {}
+}
+
 function fixFileName(name) {
-  if (!name) {
-    return "file";
-  }
-
+  if (!name) return "file";
   try {
-    const fixed =
-      Buffer
-        .from(name, "latin1")
-        .toString("utf8");
-
-    if (fixed && !fixed.includes("�")) {
-      return fixed;
-    }
-
-    return name;
+    const fixed = Buffer.from(name, "latin1").toString("utf8");
+    return fixed && !fixed.includes("�") ? fixed : name;
   } catch {
     return name;
   }
 }
 
 function getAttachmentType(mimeType = "") {
-  if (mimeType.startsWith("image/")) {
-    return "photo";
-  }
-
-  if (mimeType.startsWith("video/")) {
-    return "video";
-  }
-
-  if (mimeType.startsWith("audio/")) {
-    return "audio";
-  }
-
+  if (mimeType.startsWith("image/")) return "photo";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
   return "file";
 }
 
 function getResourceType(type) {
-  if (type === "photo") {
-    return "image";
-  }
-
-  if (
-    type === "video" ||
-    type === "audio"
-  ) {
-    return "video";
-  }
-
+  if (type === "photo") return "image";
+  if (type === "video" || type === "audio") return "video";
   return "raw";
 }
 
-function getFolder(type) {
-  if (type === "photo") {
-    return "liotan/photos";
-  }
-
-  if (type === "video") {
-    return "liotan/videos";
-  }
-
-  if (type === "audio") {
-    return "liotan/audio";
-  }
-
-  return "liotan/files";
+function getFolder(type, username = "user") {
+  const safeUser = String(username || "user").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+  if (type === "photo") return `liotan/${safeUser}/photos`;
+  if (type === "video") return `liotan/${safeUser}/videos`;
+  if (type === "audio") return `liotan/${safeUser}/audio`;
+  return `liotan/${safeUser}/files`;
 }
 
-async function signAttachmentUpload(
-  req,
-  res,
-  next
-) {
+async function signAttachmentUpload(req, res, next) {
   try {
-    const mimeType =
-      normalizeMime(
-        typeof req.body.mimeType === "string"
-          ? req.body.mimeType
-          : ""
-      );
+    const mimeType = normalizeMime(typeof req.body.mimeType === "string" ? req.body.mimeType : "");
+    const size = Number(req.body.size) || 0;
+    const fileName = typeof req.body.name === "string" ? req.body.name : "";
 
-    const size =
-      Number(req.body.size) || 0;
+    assertAllowedAttachment({ mimeType, fileName, size });
 
-    const fileName =
-      typeof req.body.name === "string"
-        ? req.body.name
-        : "";
-
-    assertAllowedAttachment({
-      mimeType,
-      fileName,
-      size
-    });
-
-    const type =
-      getAttachmentType(mimeType);
-
-    const folder =
-      getFolder(type);
-
-    const resourceType =
-      getResourceType(type);
-
-    const timestamp =
-      Math.round(
-        Date.now() / 1000
-      );
-
-    const signature =
-      cloudinary.utils.api_sign_request(
-        {
-          timestamp,
-          folder
-        },
-        process.env.CLOUDINARY_API_SECRET
-      );
+    const type = getAttachmentType(mimeType);
+    const folder = getFolder(type, req.user.username);
+    const resourceType = getResourceType(type);
+    const timestamp = Math.round(Date.now() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      { timestamp, folder, overwrite: false },
+      process.env.CLOUDINARY_API_SECRET
+    );
 
     res.json({
-      cloudName:
-        process.env.CLOUDINARY_CLOUD_NAME,
-      apiKey:
-        process.env.CLOUDINARY_API_KEY,
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
       timestamp,
       signature,
       folder,
       resourceType,
-      type
+      type,
+      overwrite: false
     });
   } catch (err) {
     next(err);
   }
 }
 
-async function uploadAttachment(
-  req,
-  res,
-  next
-) {
+async function readMagicBytes(file) {
+  if (file.buffer) return file.buffer;
+  if (!file.path) return Buffer.alloc(0);
+  const handle = await fs.open(file.path, "r");
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        error: "no file"
-      });
+    const buffer = Buffer.alloc(64);
+    const { bytesRead } = await handle.read(buffer, 0, 64, 0);
+    return buffer.slice(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function uploadAttachment(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ error: "no file" });
+
+    const mimeType = normalizeMime(req.file.mimetype);
+    const fixedName = fixFileName(req.file.originalname);
+
+    assertAllowedAttachment({ mimeType, fileName: fixedName, size: req.file.size });
+
+    if (!hasEncryptedAttachmentExtension(fixedName)) {
+      const magic = await readMagicBytes(req.file);
+      assertSafeFileBuffer({ buffer: magic, mimeType });
     }
 
-    const mimeType =
-      normalizeMime(req.file.mimetype);
-
-    assertAllowedAttachment({
-      mimeType,
-      fileName: req.file.originalname,
-      size: req.file.size
+    const type = getAttachmentType(mimeType);
+    const result = await uploadToCloudinary(req.file, {
+      folder: getFolder(type, req.user.username),
+      resourceType: getResourceType(type)
     });
-
-    assertSafeFileBuffer({
-      buffer: req.file.buffer,
-      mimeType
-    });
-
-    const type =
-      getAttachmentType(
-        mimeType
-      );
-
-    const result =
-      await uploadToCloudinary(
-        req.file,
-        {
-          folder:
-            getFolder(type),
-          resourceType:
-            getResourceType(type)
-        }
-      );
 
     res.json({
-      url:
-        result.secure_url,
-      name:
-        fixFileName(req.file.originalname),
+      url: result.secure_url,
+      name: fixedName,
       type,
       mimeType,
-      size:
-        req.file.size,
-      publicId:
-        result.public_id,
-      resourceType:
-        result.resource_type,
-      width:
-        result.width || 0,
-      height:
-        result.height || 0,
-      duration:
-        result.duration || 0
+      size: req.file.size,
+      publicId: result.public_id,
+      resourceType: result.resource_type,
+      width: result.width || 0,
+      height: result.height || 0,
+      duration: result.duration || 0
     });
   } catch (err) {
     next(err);
+  } finally {
+    await removeTempFile(req.file);
   }
 }
 

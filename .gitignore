@@ -1,55 +1,16 @@
-# dependencies
-node_modules
-client/node_modules
-server/node_modules
-
-# builds
-dist
-build
-client/build
-
-# environment
+node_modules/
+client/node_modules/
+server/node_modules/
+client/build/
+server/uploads/*
+!server/uploads/.gitkeep
 .env
 .env.*
 !.env.example
 server/.env
-server/.evn.exapmle
-
-# uploads
-uploads
-server/uploads
-
-# logs
-*.log
+server/.env.*
+!server/.env.example
+.DS_Store
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# OS
-.DS_Store
-Thumbs.db
-
-# VS Code
-.vscode
-
-# Electron
-release
-out
-
-# coverage
-coverage
-
-# cache
-.cache
-
-RavensNest_Source.txt
-RavensNest_All_Code.txt
-*_Source.txt
-*_All_Code.txt
-
-server/uploads/*
-!server/uploads/.gitkeep
-!server/uploads/avatars/
-!server/uploads/attachments/
-!server/uploads/avatars/.gitkeep
-!server/uploads/attachments/.gitkeep

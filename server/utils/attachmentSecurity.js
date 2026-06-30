@@ -184,7 +184,6 @@ function sanitizeAttachment(input) {
 
   if (
     mimeType &&
-    mimeType !== "application/octet-stream" &&
     !isAllowedAttachment({
       mimeType,
       fileName: name,

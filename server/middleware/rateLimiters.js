@@ -60,7 +60,7 @@ const strictIpLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 5000
+        ? 1200
         : 50000,
     keyGenerator: hashRequestIp,
     skip: (req) =>
@@ -75,7 +75,7 @@ const apiLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 5000
+        ? 1200
         : 50000,
     keyGenerator: userOrIpKey,
     skip: (req) =>
@@ -90,7 +90,7 @@ const authLimiter =
     windowMs: 15 * 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 24
+        ? 12
         : 200,
     keyGenerator: userOrIpKey,
     message: createMessage("too many auth attempts"),
@@ -103,7 +103,7 @@ const codeLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 5
+        ? 3
         : 100,
     keyGenerator: userOrIpKey,
     message: createMessage("too many code requests"),
@@ -116,7 +116,7 @@ const uploadLimiter =
     windowMs: 15 * 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 20
+        ? 12
         : 300,
     keyGenerator: userOrIpKey,
     message: createMessage("too many upload attempts"),
@@ -129,7 +129,7 @@ const e2eeLimiter =
     windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 600
+        ? 300
         : 5000,
     keyGenerator: userOrIpKey,
     skip: (req) =>
