@@ -229,7 +229,7 @@ export async function initE2EEAccountIdentity({
     const response = await getE2EEIdentityBackupApi();
     backup = response?.backup || null;
   } catch (err) {
-    if (import.meta.env.MODE !== "production") {
+    if (import.meta.env.DEV) {
       console.warn("E2EE backup fetch failed", err);
     }
   }
@@ -246,7 +246,7 @@ export async function initE2EEAccountIdentity({
       }
       return identity;
     } catch (err) {
-      if (import.meta.env.MODE !== "production") {
+      if (import.meta.env.DEV) {
         console.warn("E2EE backup decrypt failed; creating a new identity", err);
       }
     }
@@ -371,7 +371,7 @@ export async function ensureConversationSecret({
           }
         }
       } catch (err) {
-        if (import.meta.env.MODE !== "production") {
+        if (import.meta.env.DEV) {
           console.warn("E2EE key fetch failed", err);
         }
       }
@@ -396,7 +396,7 @@ export async function ensureConversationSecret({
             secret
           }));
         } catch (err) {
-          if (import.meta.env.MODE !== "production") {
+          if (import.meta.env.DEV) {
             console.warn("E2EE wrap failed for user", user.username, err);
           }
         }
@@ -405,7 +405,7 @@ export async function ensureConversationSecret({
         await setE2EEConversationKeysApi(getConversationId(username, chatKey), wrappedKeys);
       }
     } catch (err) {
-      if (import.meta.env.MODE !== "production") {
+      if (import.meta.env.DEV) {
         console.warn("E2EE key publish failed", err);
       }
     }

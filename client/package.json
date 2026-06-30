@@ -1,7 +1,6 @@
 {
   "name": "client",
   "version": "0.1.0",
-  "homepage": ".",
   "private": true,
   "dependencies": {
     "react": "^19.2.7",
@@ -14,12 +13,12 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.3.6"
+  },
   "engines": {
     "node": "22.x",
     "npm": "10.x"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
-    "vite": "^7.3.0"
   }
 }
