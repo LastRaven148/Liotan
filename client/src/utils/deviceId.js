@@ -31,6 +31,8 @@ export function getDeviceId() {
 
 function getBrowserName(ua) {
   if (/Edg\//i.test(ua)) return "Microsoft Edge";
+  if (/CriOS\//i.test(ua)) return "Chrome";
+  if (/FxiOS\//i.test(ua)) return "Firefox";
   if (/OPR\//i.test(ua)) return "Opera";
   if (/Firefox\//i.test(ua)) return "Firefox";
   if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) return "Chrome";

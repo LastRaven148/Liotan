@@ -19,7 +19,11 @@ const {
   listSessions,
   logoutCurrentSession,
   revokeOneSession,
-  logoutOtherSessions
+  logoutOtherSessions,
+  startEmailChangeCurrent,
+  verifyEmailChangeCurrent,
+  sendEmailChangeNewCode,
+  confirmEmailChange
 } = require("../controllers/authController");
 
 const router =
@@ -60,6 +64,35 @@ router.post(
   "/password/reset",
   authLimiter,
   resetPassword
+);
+
+
+router.post(
+  "/auth/email-change/current",
+  authLimiter,
+  authMiddleware,
+  startEmailChangeCurrent
+);
+
+router.post(
+  "/auth/email-change/verify-current",
+  authLimiter,
+  authMiddleware,
+  verifyEmailChangeCurrent
+);
+
+router.post(
+  "/auth/email-change/new-code",
+  codeLimiter,
+  authMiddleware,
+  sendEmailChangeNewCode
+);
+
+router.post(
+  "/auth/email-change/confirm",
+  authLimiter,
+  authMiddleware,
+  confirmEmailChange
 );
 
 router.get(

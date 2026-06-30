@@ -13,6 +13,9 @@ export default function MessageAudio({
   onToggle,
   onSeek
 }) {
+  const duration = audioDuration || 0;
+  const progress = Math.min(audioProgress || 0, duration || audioProgress || 0);
+
   return (
     <div className="message-audio">
       <button
@@ -30,19 +33,16 @@ export default function MessageAudio({
         </div>
 
         <div className="audio-progress-line">
-          {audioStarted ? (
-            <input
-              className="audio-range"
-              type="range"
-              min="0"
-              max={audioDuration || 0}
-              step="0.01"
-              value={audioProgress}
-              onChange={onSeek}
-            />
-          ) : (
-            <div className="audio-range-placeholder" />
-          )}
+          <input
+            className="audio-range"
+            type="range"
+            min="0"
+            max={duration || Math.max(progress, 1)}
+            step="0.01"
+            value={progress}
+            onChange={onSeek}
+            onInput={onSeek}
+          />
         </div>
 
         <div className="audio-meta">
@@ -50,8 +50,8 @@ export default function MessageAudio({
             <span>
               {formatDuration(
                 audioStarted
-                  ? audioProgress
-                  : audioDuration
+                  ? progress
+                  : duration
               )}
             </span>
 

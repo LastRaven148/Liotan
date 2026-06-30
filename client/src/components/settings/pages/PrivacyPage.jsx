@@ -1,21 +1,22 @@
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
-export default function PrivacyPage({ back, labels }) {
+export default function PrivacyPage({ back, labels, actions }) {
   const items = [
-    ["", labels.blacklist, ""],
-    ["", labels.loginEmail, ""],
-    ["", labels.lastSeenPrivacy || labels.lastSeen, labels.everybody],
-    ["", labels.profilePhoto, labels.everybody],
-    ["i", labels.about, labels.everybody],
-    ["", labels.calls, labels.everybody],
-    ["", labels.invites, labels.everybody],
-    ["", labels.forwardLinks, labels.nobody]
+    { icon: "", title: labels.blacklist, value: "0" },
+    { icon: "", title: labels.loginEmail, value: "", onClick: actions?.openEmailChange },
+    { icon: "", title: labels.lastSeenPrivacy || labels.lastSeen, value: labels.everybody },
+    { icon: "", title: labels.profilePhoto, value: labels.everybody },
+    { icon: "", title: labels.about, value: labels.everybody },
+    { icon: "", title: labels.calls, value: labels.everybody },
+    { icon: "", title: labels.invites, value: labels.everybody },
+    { icon: "", title: labels.forwardLinks, value: labels.nobody }
   ];
+
   return (
     <>
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.privacy}</div></div>
       <SettingsSection>
-        {items.map(([icon, title, value]) => <SettingsItem key={title} icon={icon} title={title} value={value} />)}
+        {items.map((item) => <SettingsItem key={item.title} icon={item.icon} title={item.title} value={item.value} onClick={item.onClick} />)}
       </SettingsSection>
     </>
   );

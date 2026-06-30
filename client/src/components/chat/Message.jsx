@@ -278,7 +278,7 @@ function Message({
     }));
   }
   function seekAudio(e) {
-    const nextTime = Number(e.target.value);
+    const nextTime = Number(e.currentTarget.value);
     setAudioProgress(nextTime);
     window.dispatchEvent(new CustomEvent("liotan:seek-audio", {
       detail: {
@@ -351,7 +351,7 @@ function Message({
   function renderPhoto() {
     return <div className="message-photo-wrap" onClick={openViewer}>
         {fileUrl ? <img src={fileUrl} alt={attachment.name || ""} className="message-photo" /> : <div className="message-encrypted-media-placeholder">
-            {t.decryptingMedia || "Расшифровка медиа..."}
+            {t.loadingMedia || "Загрузка медиа..."}
           </div>}
 
         {renderMediaCaption()}
@@ -364,7 +364,7 @@ function Message({
       "--video-ratio": videoRatio
     }}>
         {fileUrl ? <video src={fileUrl} className="message-video" preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-encrypted-media-placeholder">
-            {t.decryptingVideo || "Расшифровка видео..."}
+            {t.loadingVideo || "Загрузка видео..."}
           </div>}
 
         <button type="button" className="message-video-play" aria-label={t.openVideo || "Открыть видео"} />
@@ -395,7 +395,7 @@ function Message({
         <div className="message-content">
           {isAudio && <MessageAudio attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} attachmentSizeText={attachmentSizeText} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
-          {isVoice && <MessageVoice t={t} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
+          {isVoice && <MessageVoice t={t} attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
           {isFile && <MessageFile attachment={attachment} t={t} footer={renderMessageTime("message-footer-compact")} onDownloadRequest={requestDownloadFile} />}
 

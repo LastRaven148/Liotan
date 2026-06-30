@@ -473,10 +473,11 @@ export default function AudioPlayer() {
               className="audio-topbar-range"
               type="range"
               min="0"
-              max={duration || 0}
+              max={duration || Math.max(progress, 1)}
               step="0.01"
               value={progress}
               onChange={seekAudio}
+              onInput={seekAudio}
             />
 
             <span className="audio-topbar-time">

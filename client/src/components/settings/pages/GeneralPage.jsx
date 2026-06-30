@@ -23,7 +23,7 @@ export default function GeneralPage({ back, labels }) {
     <>
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.general}</div></div>
       <SettingsSection title={labels.textSize}>
-        <SettingsSlider label={labels.messageTextSize} value={textSize} min={80} max={150} suffix="%" onChange={saveTextSize} />
+        <SettingsSlider label={labels.messageTextSize} value={textSize} min={50} max={150} suffix="%" onChange={saveTextSize} />
       </SettingsSection>
       <SettingsSection title={labels.theme}>
         <SettingsRadio active={theme === "dark"} title={labels.dark} onClick={() => saveTheme("dark")} />

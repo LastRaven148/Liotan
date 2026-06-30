@@ -288,7 +288,9 @@ export default function DialogItem({
   function renderPreview() {
     if (lastAttachmentType === "photo") {
       return <div className="dialog-preview dialog-preview-media">
-        {lastAttachmentUrl && <img src={mediaUrl(lastAttachmentUrl)} alt="" className="dialog-preview-thumb" />}
+        {lastAttachmentUrl && <span className="dialog-preview-photo-thumb">
+            <img src={mediaUrl(lastAttachmentUrl)} alt="" className="dialog-preview-thumb" loading="lazy" />
+          </span>}
 
         <span>{t.photo || "Фото"}</span>
       </div>;
@@ -416,8 +418,10 @@ export default function DialogItem({
         </div>, document.body)}
 
       <div className="avatar">
-        {isSavedMessages ? <div className="saved-icon">
-            
+        {isSavedMessages ? <div className="saved-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7 4.8C7 3.8 7.8 3 8.8 3H15.2C16.2 3 17 3.8 17 4.8V20L12 16.9L7 20V4.8Z" fill="currentColor"/>
+            </svg>
           </div> : dialog.avatar ? <img src={avatarUrl(dialog.avatar)} alt="" className="avatar-image" /> : displayName ? displayName.charAt(0).toUpperCase() : "?"}
       </div>
 

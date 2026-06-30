@@ -4,6 +4,10 @@ import {
   getDeviceSessionsApi,
   getTransportCapabilitiesApi,
   logoutOtherSessionsApi,
+  startEmailChangeCurrentApi,
+  verifyEmailChangeCurrentApi,
+  sendEmailChangeNewCodeApi,
+  confirmEmailChangeApi,
   revokeSessionApi
 } from "../../services/api";
 import MainSettingsPage from "../settings/pages/MainSettingsPage";
@@ -41,6 +45,7 @@ export default function SettingsModal({
   const [deleteStep, setDeleteStep] = useState(1);
   const [deleting, setDeleting] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [transportInfo, setTransportInfo] = useState(null);
 
@@ -191,7 +196,7 @@ export default function SettingsModal({
         ) : page === "notifications" ? (
           <NotificationsPage back={() => setPage("main")} labels={labels} />
         ) : page === "privacy" ? (
-          <PrivacyPage back={() => setPage("main")} labels={labels} />
+          <PrivacyPage back={() => setPage("main")} labels={labels} actions={{ openEmailChange: () => setEmailChangeOpen(true) }} />
         ) : page === "general" ? (
           <GeneralPage back={() => setPage("main")} labels={labels} />
         ) : page === "sound" ? (
@@ -212,6 +217,8 @@ export default function SettingsModal({
           onClose={() => setLogoutOpen(false)}
           onAction={() => { setLogoutOpen(false); logout?.(); }}
         />}
+
+        {emailChangeOpen && <EmailChangeModal labels={labels} onClose={() => setEmailChangeOpen(false)} />}
 
         {deleteOpen && <ConfirmModal
           title={labels.deleteAccount}
@@ -268,11 +275,13 @@ function getLabels(t) {
     devices: t.devices || "Устройства",
     language: t.language || "Язык",
     connectionPrivacy: t.connectionPrivacy || "Приватность соединения",
-    connectionPrivacyText: t.connectionPrivacyText || "Сейчас используется прямое защищённое соединение. Relay-режим подготовлен как запасной маршрут для зашифрованного трафика.",
+    connectionPrivacyText: t.connectionPrivacyText || "Liotan автоматически выбирает безопасный маршрут соединения и при необходимости использует резервный транспорт для зашифрованного трафика.",
+    connectionPrivacyAdvice: t.connectionPrivacyAdvice || "Если соединение выглядит небезопасным из-за VPN, прокси или сторонних сетевых сервисов, это предупреждение можно игнорировать.",
     available: t.available || "доступен",
     off: t.off || "не включён",
     showNotifications: t.showNotifications || "Показывать уведомления",
     enableNotifications: t.enableNotifications || "Включить уведомления",
+    disableNotifications: t.disableNotifications || "Выключить уведомления",
     notificationsAllowed: t.notificationsAllowed || "Разрешено отправлять уведомления. Если уведомления не приходят — обновите страницу.",
     notificationsHelp: t.notificationsHelp || "Разрешите Liotan отправлять вам уведомления. Возможно, потребуется обновить страницу, чтобы увидеть изменения.",
     soundBlock: t.soundBlock || "Звук",
@@ -321,6 +330,73 @@ function getLabels(t) {
     current: t.current || "текущее",
     lastActive: t.lastActive || "Последняя активность",
     disconnect: t.disconnect || "Отключить",
-    more: t.more || "Ещё"
+    more: t.more || "Ещё",
+    currentEmailTitle: t.currentEmailTitle || "Изменение почты",
+    currentEmailText: t.currentEmailText || "Для того чтобы изменить почту, введите текущую.",
+    newEmailTitle: t.newEmailTitle || "Новая почта",
+    newEmailText: t.newEmailText || "Введите новую почту и подтвердите её кодом из письма.",
+    email: t.email || "Почта",
+    code: t.code || "Код",
+    sendCode: t.sendCode || "Отправить код",
+    confirm: t.confirm || "Подтвердить",
+    emailChanged: t.emailChanged || "Почта изменена",
+    invalidEmailOrCode: t.invalidEmailOrCode || "Проверьте почту или код"
   };
+}
+
+function EmailChangeModal({ labels, onClose }) {
+  const [step, setStep] = useState("currentEmail");
+  const [currentEmail, setCurrentEmail] = useState("");
+  const [currentCode, setCurrentCode] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newCode, setNewCode] = useState("");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(action) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (err) {
+      setError(err?.message || labels.invalidEmailOrCode);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
+      <div className="dialog-delete-modal settings-email-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-delete-modal-title">{step === "done" ? labels.emailChanged : step === "currentEmail" || step === "currentCode" ? labels.currentEmailTitle : labels.newEmailTitle}</div>
+        {step === "currentEmail" && <>
+          <div className="dialog-delete-modal-text">{labels.currentEmailText}</div>
+          <input className="settings-modal-input" type="email" value={currentEmail} onChange={(e) => setCurrentEmail(e.target.value)} placeholder={labels.email} />
+        </>}
+        {step === "currentCode" && <>
+          <div className="dialog-delete-modal-text">Введите одноразовый код из письма.</div>
+          <input className="settings-modal-input" value={currentCode} onChange={(e) => setCurrentCode(e.target.value)} placeholder={labels.code} inputMode="numeric" />
+        </>}
+        {step === "newEmail" && <>
+          <div className="dialog-delete-modal-text">{labels.newEmailText}</div>
+          <input className="settings-modal-input" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder={labels.email} />
+        </>}
+        {step === "newCode" && <>
+          <div className="dialog-delete-modal-text">Введите код, отправленный на новую почту.</div>
+          <input className="settings-modal-input" value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder={labels.code} inputMode="numeric" />
+        </>}
+        {error && <div className="settings-modal-error">{error}</div>}
+        <div className="dialog-delete-modal-actions">
+          <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={busy}>{labels.cancel}</button>
+          {step === "currentEmail" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await startEmailChangeCurrentApi(currentEmail); setStep("currentCode"); })}>{labels.sendCode}</button>}
+          {step === "currentCode" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { const data = await verifyEmailChangeCurrentApi(currentEmail, currentCode); setToken(data.token || ""); setStep("newEmail"); })}>{labels.confirm}</button>}
+          {step === "newEmail" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await sendEmailChangeNewCodeApi(token, newEmail); setStep("newCode"); })}>{labels.sendCode}</button>}
+          {step === "newCode" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await confirmEmailChangeApi(token, newEmail, newCode); setStep("done"); })}>{labels.confirm}</button>}
+          {step === "done" && <button type="button" className="dialog-delete-modal-danger" onClick={onClose}>OK</button>}
+        </div>
+      </div>
+    </div>
+  );
 }

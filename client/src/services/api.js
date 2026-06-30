@@ -204,6 +204,39 @@ export async function deleteAccountApi() {
   });
 }
 
+
+export async function startEmailChangeCurrentApi(currentEmail) {
+  return apiRequest(`${API}/auth/email-change/current`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentEmail })
+  });
+}
+
+export async function verifyEmailChangeCurrentApi(currentEmail, code) {
+  return apiRequest(`${API}/auth/email-change/verify-current`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentEmail, code })
+  });
+}
+
+export async function sendEmailChangeNewCodeApi(token, newEmail) {
+  return apiRequest(`${API}/auth/email-change/new-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newEmail })
+  });
+}
+
+export async function confirmEmailChangeApi(token, newEmail, code) {
+  return apiRequest(`${API}/auth/email-change/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newEmail, code })
+  });
+}
+
 export async function getSessionsApi() {
   return apiRequest(`${API}/auth/sessions`);
 }

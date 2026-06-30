@@ -2,7 +2,7 @@ import { avatarUrl } from "../../../utils/avatarUrl";
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
 export default function MainSettingsPage({ state, actions, labels }) {
-  const { username, displayName, avatar, bio, language, sessions, transportInfo } = state;
+  const { username, displayName, avatar, bio, language, sessions } = state;
   const shownName = displayName?.trim() || username;
   const currentLabel = language === "en" ? "English" : language === "uk" ? "Українська" : "Русский";
   const otherCount = sessions.filter((item) => !item.current).length;
@@ -40,12 +40,12 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <SettingsItem icon="" title={labels.general} onClick={() => actions.openPage("general")} />
         <SettingsItem icon="" title={labels.sound} onClick={() => actions.openPage("sound")} />
         <SettingsItem icon="" title={labels.devices} value={otherCount ? String(otherCount + 1) : ""} onClick={() => actions.openPage("devices")} />
-        <SettingsItem icon="" title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
+        <SettingsItem icon="↔" title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
       </SettingsSection>
 
       <SettingsSection title={labels.connectionPrivacy}>
         <div className="settings-muted-text">{labels.connectionPrivacyText}</div>
-        <div className="settings-device-meta settings-relay-label">Relay: {transportInfo?.enabled ? labels.available : labels.off}</div>
+        <div className="settings-muted-text settings-connection-advice">{labels.connectionPrivacyAdvice}</div>
       </SettingsSection>
     </>
   );

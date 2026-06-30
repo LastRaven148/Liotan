@@ -397,6 +397,125 @@ async function resetPassword(req, res, next) {
     next(err);
   }
 }
+function signEmailChangeToken(user, currentEmailHash) {
+  return jwt.sign({
+    userId: user._id.toString(),
+    username: user.username,
+    emailHash: currentEmailHash,
+    scope: "email-change"
+  }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+    algorithm: "HS256"
+  });
+}
+
+function verifyEmailChangeToken(token, req) {
+  try {
+    const payload = jwt.verify(String(token || ""), process.env.JWT_SECRET, {
+      algorithms: ["HS256"]
+    });
+    if (payload?.scope !== "email-change" || payload?.userId !== req.user.userId || payload?.username !== req.user.username) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function startEmailChangeCurrent(req, res, next) {
+  try {
+    const cleanEmail = normalizeEmail(req.body?.currentEmail);
+    if (!isValidEmail(cleanEmail)) {
+      return res.status(400).json({ error: "invalid email" });
+    }
+    const emailHash = hashEmail(cleanEmail);
+    const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
+    if (!user || user.emailHash !== emailHash) {
+      return res.status(400).json({ error: "invalid email" });
+    }
+    const code = createCode();
+    await saveEmailCode({ emailHash, purpose: "change_current", code });
+    const result = await sendEmailCode({ to: cleanEmail, code, purpose: "change_current" });
+    res.json({ ok: true, sent: result.sent, maskedEmail: maskEmail(cleanEmail), devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function verifyEmailChangeCurrent(req, res, next) {
+  try {
+    const cleanEmail = normalizeEmail(req.body?.currentEmail);
+    const code = req.body?.code;
+    if (!isValidEmail(cleanEmail) || !isValidEmailCode(code)) {
+      return res.status(400).json({ error: "invalid code" });
+    }
+    const emailHash = hashEmail(cleanEmail);
+    const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
+    if (!user || user.emailHash !== emailHash) {
+      return res.status(400).json({ error: "invalid email" });
+    }
+    const verified = await verifyEmailCode({ emailHash, purpose: "change_current", code });
+    if (!verified) {
+      return res.status(400).json({ error: "invalid code" });
+    }
+    res.json({ ok: true, token: signEmailChangeToken(user, emailHash) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function sendEmailChangeNewCode(req, res, next) {
+  try {
+    const tokenPayload = verifyEmailChangeToken(req.body?.token, req);
+    const cleanEmail = normalizeEmail(req.body?.newEmail);
+    if (!tokenPayload || !isValidEmail(cleanEmail)) {
+      return res.status(400).json({ error: "invalid request" });
+    }
+    const newEmailHash = hashEmail(cleanEmail);
+    const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
+    if (exists) {
+      return res.status(400).json({ error: "email already used" });
+    }
+    const code = createCode();
+    await saveEmailCode({ emailHash: newEmailHash, purpose: "change_new", code });
+    const result = await sendEmailCode({ to: cleanEmail, code, purpose: "change_new" });
+    res.json({ ok: true, sent: result.sent, maskedEmail: maskEmail(cleanEmail), devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function confirmEmailChange(req, res, next) {
+  try {
+    const tokenPayload = verifyEmailChangeToken(req.body?.token, req);
+    const cleanEmail = normalizeEmail(req.body?.newEmail);
+    const code = req.body?.code;
+    if (!tokenPayload || !isValidEmail(cleanEmail) || !isValidEmailCode(code)) {
+      return res.status(400).json({ error: "invalid request" });
+    }
+    const newEmailHash = hashEmail(cleanEmail);
+    const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
+    if (!user || user.emailHash !== tokenPayload.emailHash) {
+      return res.status(400).json({ error: "invalid request" });
+    }
+    const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
+    if (exists) {
+      return res.status(400).json({ error: "email already used" });
+    }
+    const verified = await verifyEmailCode({ emailHash: newEmailHash, purpose: "change_new", code });
+    if (!verified) {
+      return res.status(400).json({ error: "invalid code" });
+    }
+    user.emailHash = newEmailHash;
+    user.emailVerified = true;
+    await user.save();
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listSessions(req, res, next) {
   try {
     const sessions = await Session.find({
@@ -475,5 +594,9 @@ module.exports = {
   listSessions,
   logoutCurrentSession,
   revokeOneSession,
-  logoutOtherSessions
+  logoutOtherSessions,
+  startEmailChangeCurrent,
+  verifyEmailChangeCurrent,
+  sendEmailChangeNewCode,
+  confirmEmailChange
 };

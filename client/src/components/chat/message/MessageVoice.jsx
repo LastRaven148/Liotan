@@ -2,26 +2,52 @@ import {
   formatDuration
 } from "./messageFormatters";
 
+function buildWaveform(seed = "", count = 28) {
+  const source = String(seed || "");
+  const values = [];
+  for (let index = 0; index < count; index += 1) {
+    const code = source.charCodeAt(index % Math.max(source.length, 1)) || 0;
+    const next = (code + index * 17) % 100;
+    values.push(next / 100);
+  }
+  return values;
+}
+
 function VoiceWave({
-  active
+  active,
+  progress = 0,
+  duration = 0,
+  attachment
 }) {
+  const waveform = Array.isArray(attachment?.waveform) && attachment.waveform.length
+    ? attachment.waveform
+    : buildWaveform(attachment?.url || attachment?.name || "voice");
+  const playedRatio = duration > 0 ? Math.max(0, Math.min(1, progress / duration)) : 0;
+
   return (
     <div className="voice-wave" aria-hidden="true">
-      {Array.from({ length: 28 }).map((_, index) => (
-        <span
-          key={index}
-          className={active && index % 3 === 0 ? "is-active" : ""}
-          style={{
-            "--voice-wave-height": `${6 + ((index * 11) % 22)}px`
-          }}
-        />
-      ))}
+      {Array.from({ length: 28 }).map((_, index) => {
+        const raw = Number(waveform[index % waveform.length]) || 0;
+        const normalized = raw > 1 ? raw / 100 : raw;
+        const height = 3 + Math.round(Math.max(0.04, Math.min(1, normalized)) * 24);
+        const played = index / 28 <= playedRatio;
+        return (
+          <span
+            key={index}
+            className={(active && played) ? "is-active" : ""}
+            style={{
+              "--voice-wave-height": `${height}px`
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
 
 export default function MessageVoice({
   t = {},
+  attachment,
   audioPlaying,
   audioStarted,
   audioProgress,
@@ -30,10 +56,7 @@ export default function MessageVoice({
   onToggle,
   onSeek
 }) {
-  const duration =
-    audioStarted
-      ? audioProgress
-      : audioDuration;
+  const duration = audioStarted ? audioProgress : audioDuration;
 
   return (
     <div className="message-voice">
@@ -49,16 +72,17 @@ export default function MessageVoice({
 
       <div className="voice-main">
         <div className="voice-progress-row">
-          <VoiceWave active={audioPlaying} />
+          <VoiceWave active={audioPlaying || audioStarted} progress={audioProgress} duration={audioDuration} attachment={attachment} />
 
           <input
             className="voice-range"
             type="range"
             min="0"
-            max={audioDuration || 0}
+            max={audioDuration || Math.max(audioProgress, 1)}
             step="0.01"
             value={audioProgress}
             onChange={onSeek}
+            onInput={onSeek}
             aria-label={t.voicePosition || "Позиция голосового сообщения"}
           />
         </div>

@@ -8,7 +8,7 @@ export default function DevicesPage({ back, state, actions, labels }) {
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.devices}</div></div>
       <SettingsSection title={labels.thisDevice}>
         {current ? <DeviceRow session={current} labels={labels} /> : <div className="settings-muted-text">{labels.noDevices}</div>}
-        {others.length > 0 && <button type="button" className="settings-session-danger" onClick={actions.logoutOthers}>{labels.terminateOthers}</button>}
+        {others.length > 0 && <button type="button" className="settings-terminate-button" onClick={actions.logoutOthers}>{labels.terminateOthers}</button>}
       </SettingsSection>
       <SettingsSection title={labels.activeSessions}>
         {others.length === 0 && <div className="settings-muted-text">{labels.noOtherDevices}</div>}
@@ -22,12 +22,19 @@ function DeviceRow({ session, labels, onRevoke }) {
   return (
     <div className="settings-device-row">
       <div className="settings-device-main">
-        <div className="settings-device-name">{session.deviceName || labels.unknownDevice}{session.current ? ` • ${labels.current}` : ""}</div>
+        <div className="settings-device-name">{formatDeviceName(session.deviceName, labels)}{session.current ? ` • ${labels.current}` : ""}</div>
         <div className="settings-device-meta">{labels.lastActive}: {formatSessionTime(session.lastSeenAt)}</div>
       </div>
       {onRevoke && <button type="button" className="settings-mini-danger" onClick={onRevoke}>{labels.disconnect}</button>}
     </div>
   );
+}
+
+function formatDeviceName(value, labels) {
+  const name = String(value || "").trim();
+  if (!name) return labels.unknownDevice;
+  if (/^ios device$/i.test(name)) return "iPhone / iPad iOS";
+  return name;
 }
 
 function formatSessionTime(value) {
