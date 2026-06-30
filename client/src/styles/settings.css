@@ -686,3 +686,159 @@
     height:86px;
   }
 }
+
+/* v43 settings pages */
+.settings-page-section{
+  overflow:hidden;
+}
+
+.settings-item{
+  min-height:50px;
+}
+
+.settings-item-icon{
+  width:26px !important;
+  min-width:26px !important;
+  color:#9fb0c1;
+  text-align:center;
+  font-size:15px;
+}
+
+.settings-check-row{
+  min-height:46px;
+  padding:8px 14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+  color:#d7dde5;
+}
+
+.settings-check-row input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.settings-check-box{
+  width:18px;
+  height:18px;
+  border-radius:5px;
+  border:2px solid #6f8295;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+
+.settings-check-row input:checked + .settings-check-box{
+  border-color:#8774e1;
+  background:#8774e1;
+}
+
+.settings-check-row input:checked + .settings-check-box::after{
+  content:"";
+  width:8px;
+  height:4px;
+  border-left:2px solid #fff;
+  border-bottom:2px solid #fff;
+  transform:rotate(-45deg) translateY(-1px);
+}
+
+.settings-check-text{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.settings-check-text b,
+.settings-radio-row b{
+  color:#fff;
+  font-size:14px;
+  font-weight:600;
+}
+
+.settings-check-text small,
+.settings-radio-row small{
+  color:#8da2b5;
+  font-size:12px;
+}
+
+.settings-slider-row{
+  padding:10px 14px 16px;
+}
+
+.settings-slider-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  color:#d7dde5;
+  font-size:14px;
+  margin-bottom:8px;
+}
+
+.settings-slider-head b{
+  color:#8da2b5;
+  font-weight:600;
+}
+
+.settings-slider-row input[type="range"]{
+  width:100%;
+  accent-color:#8774e1;
+}
+
+.settings-radio-row{
+  width:100%;
+  min-height:48px;
+  border:none;
+  background:transparent;
+  color:#d7dde5;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:8px 14px;
+  cursor:pointer;
+  font-family:inherit;
+  text-align:left;
+}
+
+.settings-radio-row:hover,
+.settings-check-row:hover{
+  background:#243342;
+}
+
+.settings-radio-dot{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:2px solid #6f8295;
+  flex-shrink:0;
+}
+
+.settings-radio-dot.active{
+  border-color:#8774e1;
+  box-shadow:inset 0 0 0 4px #202b36;
+  background:#8774e1;
+}
+
+.settings-relay-label{
+  padding:0 16px 14px;
+}
+
+@media (max-width:768px){
+  .settings-drawer{
+    width:100vw !important;
+  }
+
+  .settings-card,
+  .profile-info-card{
+    margin-left:10px;
+    margin-right:10px;
+  }
+
+  .settings-overflow-menu{
+    right:4px;
+    top:44px;
+  }
+}

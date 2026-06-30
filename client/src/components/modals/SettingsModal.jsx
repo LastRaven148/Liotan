@@ -1,7 +1,20 @@
-import { useEffect, useState } from "react";
-import { avatarUrl } from "../../utils/avatarUrl";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../context/LanguageContext";
-import { getDeviceSessionsApi, revokeSessionApi, logoutOtherSessionsApi, getTransportCapabilitiesApi } from "../../services/api";
+import {
+  getDeviceSessionsApi,
+  getTransportCapabilitiesApi,
+  logoutOtherSessionsApi,
+  revokeSessionApi
+} from "../../services/api";
+import MainSettingsPage from "../settings/pages/MainSettingsPage";
+import EditProfilePage from "../settings/pages/EditProfilePage";
+import NotificationsPage from "../settings/pages/NotificationsPage";
+import PrivacyPage from "../settings/pages/PrivacyPage";
+import GeneralPage from "../settings/pages/GeneralPage";
+import SoundPage from "../settings/pages/SoundPage";
+import DevicesPage from "../settings/pages/DevicesPage";
+import LanguagePage from "../settings/pages/LanguagePage";
+
 export default function SettingsModal({
   username,
   displayName,
@@ -14,208 +27,57 @@ export default function SettingsModal({
   deleteAccount,
   onClose
 }) {
-  const {
-    t,
-    language,
-    setLanguage
-  } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
+  const labels = useMemo(() => getLabels(t), [t]);
+  const [page, setPage] = useState("main");
   const [editing, setEditing] = useState(false);
   const [nameValue, setNameValue] = useState(displayName || "");
   const [bioValue, setBioValue] = useState(bio || "");
   const [previewAvatar, setPreviewAvatar] = useState("");
   const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1);
-  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const [sessions, setSessions] = useState([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [transportInfo, setTransportInfo] = useState(null);
+
+  useEffect(() => setNameValue(displayName || ""), [displayName]);
+  useEffect(() => setBioValue(bio || ""), [bio]);
+  useEffect(() => () => previewAvatar && URL.revokeObjectURL(previewAvatar), [previewAvatar]);
+
   useEffect(() => {
     let alive = true;
-    async function loadSecurityState() {
-      setSessionsLoading(true);
+    async function load() {
       try {
-        const [sessionData, transportData] = await Promise.all([getDeviceSessionsApi(), getTransportCapabilitiesApi().catch(() => null)]);
-        if (!alive) {
-          return;
-        }
+        const [sessionData, transportData] = await Promise.all([
+          getDeviceSessionsApi(),
+          getTransportCapabilitiesApi().catch(() => null)
+        ]);
+        if (!alive) return;
         setSessions(Array.isArray(sessionData?.sessions) ? sessionData.sessions : []);
         setTransportInfo(transportData || null);
       } catch {
-        if (alive) {
-          setSessions([]);
-        }
-      } finally {
-        if (alive) {
-          setSessionsLoading(false);
-        }
+        if (alive) setSessions([]);
       }
     }
-    loadSecurityState();
-    return () => {
-      alive = false;
-    };
+    load();
+    return () => { alive = false; };
   }, []);
-  useEffect(() => {
-    setNameValue(displayName || "");
-  }, [displayName]);
-  useEffect(() => {
-    setBioValue(bio || "");
-  }, [bio]);
-  useEffect(() => {
-    return () => {
-      if (previewAvatar) {
-        URL.revokeObjectURL(previewAvatar);
-      }
-    };
-  }, [previewAvatar]);
-  const shownName = displayName?.trim() || username;
-  const shownAvatar = previewAvatar || avatarUrl(avatar);
-  function closeEdit() {
-    if (previewAvatar) {
-      URL.revokeObjectURL(previewAvatar);
-    }
-    setPreviewAvatar("");
-    setPendingAvatarFile(null);
-    setNameValue(displayName || "");
-    setBioValue(bio || "");
-    setEditing(false);
-  }
-  function handleAvatarSelect(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) {
-      return;
-    }
-    if (previewAvatar) {
-      URL.revokeObjectURL(previewAvatar);
-    }
-    setPendingAvatarFile(file);
-    setPreviewAvatar(URL.createObjectURL(file));
-  }
-  async function handleSave() {
-    if (saving) {
-      return;
-    }
-    setSaving(true);
-    try {
-      const saved = await saveProfile?.({
-        bio: bioValue,
-        displayName: nameValue
-      });
-      if (!saved) {
-        return;
-      }
-      if (saved.displayName !== undefined) {
-        setDisplayName?.(saved.displayName || "");
-      }
-      if (pendingAvatarFile) {
-        await uploadAvatar?.(pendingAvatarFile);
-      }
-      if (previewAvatar) {
-        URL.revokeObjectURL(previewAvatar);
-      }
-      setPreviewAvatar("");
-      setPendingAvatarFile(null);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function handleRevokeSession(id) {
-    await revokeSessionApi(id);
-    setSessions(prev => prev.filter(item => item.id !== id));
-  }
-  async function handleLogoutOtherSessions() {
-    await logoutOtherSessionsApi();
-    setSessions(prev => prev.filter(item => item.current));
-  }
-  function formatSessionTime(value) {
-    if (!value) {
-      return "—";
-    }
-    try {
-      return new Date(value).toLocaleString();
-    } catch {
-      return "—";
-    }
-  }
-  function selectLanguage(nextLanguage) {
-    if (nextLanguage === language) {
-      setLanguagePickerOpen(false);
-      return;
-    }
 
-    setLanguage(nextLanguage);
-    setLanguagePickerOpen(false);
-    window.location.reload();
-  }
-
-  function getSessionTitle(session) {
-    const name = session.deviceName || "Устройство";
-    return session.current ? `${name} • текущее` : name;
-  }
-  function openDeleteConfirm() {
-    setDeleteStep(1);
-    setDeleteConfirmOpen(true);
-  }
-  function closeDeleteConfirm() {
-    if (deleting) {
-      return;
-    }
-    setDeleteConfirmOpen(false);
-    setDeleteStep(1);
-  }
-  async function handleDeleteAccount() {
-    if (deleting) {
-      return;
-    }
-    if (deleteStep === 1) {
-      setDeleteStep(2);
-      return;
-    }
-    setDeleting(true);
-    try {
-      const ok = await deleteAccount?.();
-      if (ok !== false) {
-        setDeleteConfirmOpen(false);
-        setDeleteStep(1);
-        onClose?.();
-      }
-    } finally {
-      setDeleting(false);
-    }
-  }
-  function closeLogoutConfirm() {
-    setLogoutConfirmOpen(false);
-  }
-  function confirmLogout() {
-    setLogoutConfirmOpen(false);
-    logout?.();
-  }
   useEffect(() => {
-    const hasBlockingModal = logoutConfirmOpen || deleteConfirmOpen;
-    if (!hasBlockingModal) {
-      return undefined;
-    }
+    if (!deleteOpen && !logoutOpen) return undefined;
     document.body.classList.add("liotan-delete-modal-open");
     function handleEscape(e) {
-      if (e.key !== "Escape") {
-        return;
-      }
+      if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
       window.__liotanModalEscHandledAt = Date.now();
-      if (logoutConfirmOpen) {
-        setLogoutConfirmOpen(false);
-        return;
-      }
-      if (deleteConfirmOpen && !deleting) {
-        setDeleteConfirmOpen(false);
+      setLogoutOpen(false);
+      if (!deleting) {
+        setDeleteOpen(false);
         setDeleteStep(1);
       }
     }
@@ -224,270 +86,240 @@ export default function SettingsModal({
       window.removeEventListener("keydown", handleEscape, true);
       document.body.classList.remove("liotan-delete-modal-open");
     };
-  }, [logoutConfirmOpen, deleteConfirmOpen, deleting]);
-  if (editing) {
-    return <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
-        <aside className="settings-drawer" onClick={e => e.stopPropagation()}>
-          <div className="drawer-topbar">
-            <button type="button" className="drawer-icon-button" onClick={closeEdit}>
-              ←
-            </button>
+  }, [deleteOpen, logoutOpen, deleting]);
 
-            <div className="drawer-title">
-              {t.editProfile || "Изменить профиль"}
-            </div>
-
-            <button type="button" className="drawer-save-button" onClick={handleSave} disabled={saving}>
-              {saving ? "..." : t.save || "Сохранить"}
-            </button>
-          </div>
-
-          <label className="edit-avatar">
-            <div className="settings-avatar large">
-              {shownAvatar ? <img src={shownAvatar} alt="" className="avatar-image" /> : username.charAt(0).toUpperCase()}
-            </div>
-
-            <input type="file" hidden accept="image/*" onChange={handleAvatarSelect} />
-          </label>
-
-          <div className="settings-card">
-            <div className="settings-field-label">
-              Имя
-            </div>
-
-            <input className="settings-name-input" value={nameValue} onChange={e => setNameValue(e.target.value)} placeholder="Имя" maxLength={20} />
-
-            <div className="settings-field-label">
-              {t.username || "Имя пользователя"}
-            </div>
-
-            <div className="settings-readonly">
-              @{username}
-            </div>
-
-            <div className="settings-field-label">
-              {t.bio || "О себе"}
-            </div>
-
-            <textarea className="settings-bio-input" value={bioValue} onChange={e => setBioValue(e.target.value)} placeholder={t.aboutYou || "О себе"} maxLength={50} />
-          </div>
-        </aside>
-      </div>;
+  function closeEdit() {
+    if (previewAvatar) URL.revokeObjectURL(previewAvatar);
+    setPreviewAvatar("");
+    setPendingAvatarFile(null);
+    setNameValue(displayName || "");
+    setBioValue(bio || "");
+    setEditing(false);
   }
-  return <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
-      <aside className="settings-drawer" onClick={e => e.stopPropagation()}>
-        <div className="drawer-topbar settings-topbar">
-          <button type="button" className="drawer-icon-button" onClick={onClose}>
-            ←
-          </button>
 
-          <div className="drawer-title">
-            {t.settings || "Настройки"}
-          </div>
+  function selectAvatar(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (previewAvatar) URL.revokeObjectURL(previewAvatar);
+    setPendingAvatarFile(file);
+    setPreviewAvatar(URL.createObjectURL(file));
+  }
 
-          <div className="settings-topbar-actions">
-            <button type="button" className="drawer-icon-button" onClick={() => setEditing(true)} aria-label="Изменить">
-              ✎
-            </button>
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await saveProfile?.({ bio: bioValue, displayName: nameValue });
+      if (!saved) return;
+      if (saved.displayName !== undefined) setDisplayName?.(saved.displayName || "");
+      if (pendingAvatarFile) await uploadAvatar?.(pendingAvatarFile);
+      if (previewAvatar) URL.revokeObjectURL(previewAvatar);
+      setPreviewAvatar("");
+      setPendingAvatarFile(null);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
 
-            <button type="button" className="drawer-icon-button" onClick={() => setSettingsMenuOpen(value => !value)} aria-label="Ещё">
-              ⋮
-            </button>
+  async function revoke(id) {
+    await revokeSessionApi(id);
+    setSessions((prev) => prev.filter((item) => item.id !== id));
+  }
 
-            {settingsMenuOpen && <div className="settings-overflow-menu">
-                {logout && <button type="button" onClick={() => { setSettingsMenuOpen(false); setLogoutConfirmOpen(true); }}>
-                    <span>×</span>
-                    {t.logout || "Выйти"}
-                  </button>}
+  async function logoutOthers() {
+    await logoutOtherSessionsApi();
+    setSessions((prev) => prev.filter((item) => item.current));
+  }
 
-                {deleteAccount && <button type="button" className="danger" onClick={() => { setSettingsMenuOpen(false); openDeleteConfirm(); }}>
-                    <span>!</span>
-                    Удалить аккаунт
-                  </button>}
-              </div>}
-          </div>
-        </div>
+  function askDelete() {
+    setMenuOpen(false);
+    setDeleteStep(1);
+    setDeleteOpen(true);
+  }
 
-        <div className="settings-profile-hero">
-          <button type="button" className="settings-avatar settings-avatar-hero" onClick={() => setEditing(true)}>
-            {avatar ? <img src={avatarUrl(avatar)} alt="" className="avatar-image" /> : username.charAt(0).toUpperCase()}
-          </button>
+  async function confirmDelete() {
+    if (deleting) return;
+    if (deleteStep === 1) {
+      setDeleteStep(2);
+      return;
+    }
+    setDeleting(true);
+    try {
+      const ok = await deleteAccount?.();
+      if (ok !== false) onClose?.();
+    } finally {
+      setDeleting(false);
+    }
+  }
 
-          <div className="settings-name settings-name-hero">
-            {shownName}
-          </div>
+  function closeDelete() {
+    if (deleting) return;
+    setDeleteOpen(false);
+    setDeleteStep(1);
+  }
 
-          <div className="settings-online">
-            {t.online || "онлайн"}
-          </div>
-        </div>
+  const commonState = {
+    username,
+    displayName,
+    avatar,
+    bio,
+    language,
+    sessions,
+    transportInfo,
+    menuOpen
+  };
+  const commonActions = {
+    close: onClose,
+    openEdit: () => setEditing(true),
+    openPage: setPage,
+    toggleMenu: () => setMenuOpen((value) => !value),
+    askDelete,
+    askLogout: () => { setMenuOpen(false); setLogoutOpen(true); }
+  };
 
-        <div className="settings-card">
-          <div className="settings-info-row">
-            <span className="settings-info-icon">@</span>
-            <div>
-              <div className="settings-info-value">@{username}</div>
-              <div className="settings-info-label">{t.username || "Имя пользователя"}</div>
-            </div>
-          </div>
+  return (
+    <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
+      <aside className="settings-drawer" onClick={(e) => e.stopPropagation()}>
+        {editing ? (
+          <EditProfilePage
+            labels={labels}
+            state={{ username, avatar, previewAvatar, nameValue, bioValue, saving }}
+            actions={{ closeEdit, save, selectAvatar, setName: setNameValue, setBio: setBioValue }}
+          />
+        ) : page === "notifications" ? (
+          <NotificationsPage back={() => setPage("main")} labels={labels} />
+        ) : page === "privacy" ? (
+          <PrivacyPage back={() => setPage("main")} labels={labels} />
+        ) : page === "general" ? (
+          <GeneralPage back={() => setPage("main")} labels={labels} />
+        ) : page === "sound" ? (
+          <SoundPage back={() => setPage("main")} labels={labels} />
+        ) : page === "devices" ? (
+          <DevicesPage back={() => setPage("main")} labels={labels} state={{ sessions }} actions={{ revoke, logoutOthers }} />
+        ) : page === "language" ? (
+          <LanguagePage back={() => setPage("main")} labels={labels} language={language} setLanguage={setLanguage} />
+        ) : (
+          <MainSettingsPage labels={labels} state={commonState} actions={commonActions} />
+        )}
 
-          <div className="settings-info-row">
-            <span className="settings-info-icon">i</span>
-            <div>
-              <div className="settings-info-value">{bio || "—"}</div>
-              <div className="settings-info-label">{t.bio || "О себе"}</div>
-            </div>
-          </div>
-        </div>
+        {logoutOpen && <ConfirmModal
+          title={labels.logoutTitle}
+          text={labels.logoutText}
+          cancel={labels.cancel}
+          action={labels.continue}
+          onClose={() => setLogoutOpen(false)}
+          onAction={() => { setLogoutOpen(false); logout?.(); }}
+        />}
 
-        <div className="settings-card">
-          <button type="button" className="settings-row button-row">
-            <span>🔔</span>
-            <div className="settings-row-main">Уведомления и звук</div>
-          </button>
-
-          <button type="button" className="settings-row button-row">
-            <span>▣</span>
-            <div className="settings-row-main">Данные и память</div>
-          </button>
-
-          <button type="button" className="settings-row button-row">
-            <span>🔒</span>
-            <div className="settings-row-main">Конфиденциальность</div>
-          </button>
-
-          <button type="button" className="settings-row button-row">
-            <span>⚙</span>
-            <div className="settings-row-main">Общие настройки</div>
-          </button>
-
-          <button type="button" className="settings-row button-row">
-            <span>▣</span>
-            <div className="settings-row-main">Звук и камера</div>
-          </button>
-
-          <button type="button" className="settings-row button-row" onClick={() => setLanguagePickerOpen(true)}>
-            <span>文</span>
-            <div className="settings-row-main">{t.language || "Язык"}</div>
-            <div className="settings-row-value">{language === "en" ? t.english || "English" : t.russian || "Русский"}</div>
-          </button>
-        </div>
-
-        <div className="settings-card settings-security-card">
-          <div className="settings-section-title">
-            Устройства
-          </div>
-
-          {sessionsLoading && <div className="settings-muted-text">
-              Загрузка...
-            </div>}
-
-          {!sessionsLoading && sessions.length === 0 && <div className="settings-muted-text">
-              Активные устройства не найдены
-            </div>}
-
-          {sessions.map(session => <div key={session.id} className="settings-device-row">
-              <div className="settings-device-main">
-                <div className="settings-device-name">
-                  {getSessionTitle(session)}
-                </div>
-
-                <div className="settings-device-meta">
-                  Последняя активность: {formatSessionTime(session.lastSeenAt)}
-                </div>
-
-              </div>
-
-              {!session.current && <button type="button" className="settings-mini-danger" onClick={() => handleRevokeSession(session.id)}>
-                  Отключить
-                </button>}
-            </div>)}
-
-          {sessions.some(item => !item.current) && <button type="button" className="settings-row button-row danger-row" onClick={handleLogoutOtherSessions}>
-              <span>×</span>
-
-              <div className="settings-row-main">
-                Завершить все другие сеансы
-              </div>
-            </button>}
-        </div>
-
-        <div className="settings-card settings-security-card">
-          <div className="settings-section-title">
-            Приватность соединения
-          </div>
-
-          <div className="settings-muted-text">
-            Сейчас используется прямое защищённое соединение. Relay-режим подготовлен как запасной маршрут для зашифрованного трафика.
-          </div>
-
-          <div className="settings-device-meta">
-            Relay: {transportInfo?.enabled ? "доступен" : "не включён"}
-          </div>
-        </div>
-
-
-
-
-        {languagePickerOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={() => setLanguagePickerOpen(false)}>
-            <div className="dialog-delete-modal settings-language-modal" onClick={e => e.stopPropagation()}>
-              <div className="dialog-delete-modal-title">
-                {t.language || "Язык"}
-              </div>
-
-              <button type="button" className={language === "ru" ? "settings-language-option active" : "settings-language-option"} onClick={() => selectLanguage("ru")}>
-                Русский
-              </button>
-
-              <button type="button" className={language === "en" ? "settings-language-option active" : "settings-language-option"} onClick={() => selectLanguage("en")}>
-                English
-              </button>
-            </div>
-          </div>}
-
-        {logoutConfirmOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={closeLogoutConfirm}>
-            <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
-              <div className="dialog-delete-modal-title">
-                Выйти из аккаунта
-              </div>
-
-              <div className="dialog-delete-modal-text">
-                Подтверждаете свои действия?
-              </div>
-
-              <div className="dialog-delete-modal-actions">
-                <button type="button" className="dialog-delete-modal-cancel" onClick={closeLogoutConfirm}>
-                  Отмена
-                </button>
-
-                <button type="button" className="dialog-delete-modal-danger" onClick={confirmLogout}>
-                  Продолжить
-                </button>
-              </div>
-            </div>
-          </div>}
-
-        {deleteConfirmOpen && <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={closeDeleteConfirm}>
-            <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
-              <div className="dialog-delete-modal-title">
-                Удалить аккаунт
-              </div>
-
-              <div className="dialog-delete-modal-text">
-                {deleteStep === 1 ? "Все ваши данные будут удалены без возможности восстановления" : "Вы точно уверены что хотите полностью удалить аккаунт?"}
-              </div>
-
-              <div className="dialog-delete-modal-actions">
-                <button type="button" className="dialog-delete-modal-cancel" onClick={closeDeleteConfirm} disabled={deleting}>
-                  Отмена
-                </button>
-
-                <button type="button" className="dialog-delete-modal-danger" onClick={handleDeleteAccount} disabled={deleting}>
-                  {deleting ? "..." : deleteStep === 1 ? "Продолжить" : "Принять"}
-                </button>
-              </div>
-            </div>
-          </div>}
+        {deleteOpen && <ConfirmModal
+          title={labels.deleteAccount}
+          text={deleteStep === 1 ? labels.deleteStepOne : labels.deleteStepTwo}
+          cancel={labels.cancel}
+          action={deleting ? "..." : deleteStep === 1 ? labels.continue : labels.accept}
+          danger
+          disabled={deleting}
+          onClose={closeDelete}
+          onAction={confirmDelete}
+        />}
       </aside>
-    </div>;
+    </div>
+  );
+}
+
+function ConfirmModal({ title, text, cancel, action, onClose, onAction, disabled }) {
+  return (
+    <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
+      <div className="dialog-delete-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-delete-modal-title">{title}</div>
+        <div className="dialog-delete-modal-text">{text}</div>
+        <div className="dialog-delete-modal-actions">
+          <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={disabled}>{cancel}</button>
+          <button type="button" className="dialog-delete-modal-danger" onClick={onAction} disabled={disabled}>{action}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getLabels(t) {
+  return {
+    settings: t.settings || "Настройки",
+    editProfile: t.editProfile || "Изменить профиль",
+    save: t.save || "Сохранить",
+    name: t.name || "Имя",
+    username: t.username || "Имя пользователя",
+    bio: t.bio || "О себе",
+    online: t.online || "онлайн",
+    logout: t.logout || "Выйти",
+    logoutTitle: t.logoutTitle || "Выйти из аккаунта",
+    logoutText: t.logoutText || "Подтверждаете свои действия?",
+    deleteAccount: t.deleteAccount || "Удалить аккаунт",
+    deleteStepOne: t.deleteStepOne || "Все ваши данные будут удалены без возможности восстановления",
+    deleteStepTwo: t.deleteStepTwo || "Вы точно уверены что хотите полностью удалить аккаунт?",
+    cancel: t.cancel || "Отмена",
+    continue: t.continue || "Продолжить",
+    accept: t.accept || "Принять",
+    notifications: t.notifications || "Уведомления и звук",
+    privacy: t.privacy || "Конфиденциальность",
+    general: t.general || "Общие настройки",
+    sound: t.sound || "Звук и камера",
+    devices: t.devices || "Устройства",
+    language: t.language || "Язык",
+    connectionPrivacy: t.connectionPrivacy || "Приватность соединения",
+    connectionPrivacyText: t.connectionPrivacyText || "Сейчас используется прямое защищённое соединение. Relay-режим подготовлен как запасной маршрут для зашифрованного трафика.",
+    available: t.available || "доступен",
+    off: t.off || "не включён",
+    showNotifications: t.showNotifications || "Показывать уведомления",
+    enableNotifications: t.enableNotifications || "Включить уведомления",
+    notificationsAllowed: t.notificationsAllowed || "Разрешено отправлять уведомления. Если уведомления не приходят — обновите страницу.",
+    notificationsHelp: t.notificationsHelp || "Разрешите Liotan отправлять вам уведомления. Возможно, потребуется обновить страницу, чтобы увидеть изменения.",
+    soundBlock: t.soundBlock || "Звук",
+    notificationSound: t.notificationSound || "Звук уведомлений",
+    volume: t.volume || "Громкость",
+    volumeHelp: t.volumeHelp || "Перетяните и отпустите или нажмите, чтобы проверить громкость.",
+    soundEffects: t.soundEffects || "Звуковые эффекты",
+    sentSound: t.sentSound || "Звук отправки",
+    receivedSound: t.receivedSound || "Звук получения",
+    chatTypes: t.chatTypes || "Чаты",
+    privateChats: t.privateChats || "Личные чаты",
+    groups: t.groups || "Группы",
+    channels: t.channels || "Каналы",
+    blacklist: t.blacklist || "Чёрный список",
+    loginEmail: t.loginEmail || "Почта для входа",
+    lastSeen: t.lastSeen || "Кто видит последнее посещение",
+    profilePhoto: t.profilePhoto || "Кто видит фото в моём профиле",
+    about: t.about || "Кто видит мой раздел «О себе»",
+    calls: t.calls || "Кто может звонить",
+    invites: t.invites || "Кто может приглашать меня",
+    forwardLinks: t.forwardLinks || "Кто может ссылаться на мой аккаунт при пересылке сообщений",
+    everybody: t.everybody || "Все",
+    nobody: t.nobody || "Никто",
+    textSize: t.textSize || "Размер текста",
+    messageTextSize: t.messageTextSize || "Текст сообщений",
+    theme: t.theme || "Тема",
+    dark: t.dark || "Тёмная",
+    light: t.light || "Светлая",
+    system: t.system || "По системе",
+    wallpaper: t.wallpaper || "Обои для чатов",
+    defaultWallpaper: t.defaultWallpaper || "Встроенные обои Liotan",
+    wallpaperLater: t.wallpaperLater || "Выбор набора обоев будет добавлен отдельно",
+    timeFormat: t.timeFormat || "Формат времени",
+    time24: t.time24 || "24-часовой",
+    time12: t.time12 || "12-часовой",
+    microphone: t.microphone || "Микрофон",
+    speaker: t.speaker || "Динамик",
+    defaultDevice: t.defaultDevice || "По умолчанию",
+    acceptCalls: t.acceptCalls || "Принимать звонки на этом устройстве",
+    thisDevice: t.thisDevice || "Это устройство",
+    activeSessions: t.activeSessions || "Активные сеансы",
+    noDevices: t.noDevices || "Активные устройства не найдены",
+    noOtherDevices: t.noOtherDevices || "Других активных сеансов нет",
+    terminateOthers: t.terminateOthers || "Завершить все другие сеансы",
+    unknownDevice: t.unknownDevice || "Устройство",
+    current: t.current || "текущее",
+    lastActive: t.lastActive || "Последняя активность",
+    disconnect: t.disconnect || "Отключить"
+  };
 }

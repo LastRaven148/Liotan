@@ -7,13 +7,15 @@ import {
 
 import en from "../locales/en";
 import ru from "../locales/ru";
+import uk from "../locales/uk";
 
 const LanguageContext =
   createContext(null);
 
 const dictionaries = {
   en,
-  ru
+  ru,
+  uk
 };
 
 export function LanguageProvider({
