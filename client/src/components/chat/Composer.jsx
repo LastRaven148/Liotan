@@ -1,4 +1,9 @@
 import {
+  useEffect,
+  useRef
+} from "react";
+
+import {
   getMessagePreview
 } from "./chatUtils";
 
@@ -96,6 +101,8 @@ export default function Composer({
   onKeyDown,
   onSendVoice
 }) {
+  const attachWrapperRef = useRef(null);
+
   const {
     isRecording,
     recordingSeconds,
@@ -107,6 +114,30 @@ export default function Composer({
   } = useVoiceRecorder({
     onSendVoice
   });
+
+  useEffect(() => {
+    if (!attachMenuOpen) return undefined;
+
+    function handlePointerDown(e) {
+      if (attachWrapperRef.current?.contains(e.target)) return;
+      setAttachMenuOpen(false);
+    }
+
+    function handleKeyDown(e) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setAttachMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [attachMenuOpen, setAttachMenuOpen]);
 
   function handleTextChange(e) {
     setText(e.target.value);
@@ -159,7 +190,7 @@ export default function Composer({
           </div>
         )}
 
-        <div className="attach-wrapper">
+        <div className="attach-wrapper" ref={attachWrapperRef}>
           <button type="button" className="attach-button" onClick={() => setAttachMenuOpen(prev => !prev)}>+</button>
           {attachMenuOpen && <AttachMenu t={t} photoInputRef={photoInputRef} fileInputRef={fileInputRef} closeMenu={() => setAttachMenuOpen(false)} />}
           <input ref={photoInputRef} type="file" hidden multiple accept="image/*,video/*" onChange={onPhotoChange} />

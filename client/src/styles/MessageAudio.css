@@ -782,3 +782,57 @@
   border-right:0;
   box-shadow:-12px 12px 0 -2px currentColor;
 }
+
+/* v43.9 top audio icons: clean Telegram-like SVG controls */
+.audio-topbar-button{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+}
+
+.audio-topbar-button svg{
+  width:20px;
+  height:20px;
+  display:block;
+  pointer-events:none;
+}
+
+.audio-topbar-prev::before,
+.audio-topbar-prev::after,
+.audio-topbar-next::before,
+.audio-topbar-next::after,
+.audio-topbar-play::before,
+.audio-topbar-play::after,
+.audio-topbar-mute::before,
+.audio-topbar-mute::after,
+.audio-topbar-repeat::before,
+.audio-topbar-repeat::after,
+.audio-topbar-close::before,
+.audio-topbar-close::after{
+  content:none !important;
+  display:none !important;
+}
+
+.audio-topbar-play svg{
+  width:21px;
+  height:21px;
+  transform:translateX(0);
+}
+
+.audio-topbar-prev svg,
+.audio-topbar-next svg{
+  width:19px;
+  height:19px;
+}
+
+.audio-topbar-mute svg,
+.audio-topbar-repeat svg{
+  width:21px;
+  height:21px;
+}
+
+.audio-topbar-repeat.is-active,
+.audio-topbar-mute.is-active{
+  color:#8774e1;
+}

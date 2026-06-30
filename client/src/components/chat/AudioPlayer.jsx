@@ -23,6 +23,79 @@ function formatDuration(value) {
   return `${minutes}:${seconds}`;
 }
 
+
+function PrevIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12.7 7.1v9.8L7.2 12l5.5-4.9Z" fill="currentColor" />
+      <path d="M18.1 7.1v9.8L12.6 12l5.5-4.9Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function NextIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M11.3 7.1v9.8L16.8 12l-5.5-4.9Z" fill="currentColor" />
+      <path d="M5.9 7.1v9.8L11.4 12 5.9 7.1Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 7.35v9.3c0 .55.62.87 1.07.55l6.43-4.65a.68.68 0 0 0 0-1.1L10.07 6.8A.66.66 0 0 0 9 7.35Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="8" y="6.5" width="3" height="11" rx="1" fill="currentColor" />
+      <rect x="13" y="6.5" width="3" height="11" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function VolumeIcon({ muted }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4.5 9.3v5.4h3.1l4.7 3.7V5.6L7.6 9.3H4.5Z" fill="currentColor" />
+      {muted ? (
+        <>
+          <path d="M16 9l4 4m0-4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <path d="M15.2 9.2c.8.8 1.2 1.8 1.2 2.8s-.4 2-1.2 2.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M17.6 6.8a7.2 7.2 0 0 1 0 10.4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function RepeatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M7.2 7.5h8.1c2 0 3.7 1.6 3.7 3.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M15.4 4.9 18.2 7.5l-2.8 2.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16.8 16.5H8.7c-2 0-3.7-1.6-3.7-3.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.6 19.1 5.8 16.5l2.8-2.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M7.5 7.5 16.5 16.5M16.5 7.5 7.5 16.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function normalizeSpeed(value) {
   if (value === 1) return "1x";
   return `${String(value).replace(".", ",")}x`;
@@ -242,14 +315,16 @@ export default function AudioPlayer() {
     return createPortal(
       <div className="audio-topbar">
         <div className="audio-topbar-controls">
-          <button type="button" className="audio-topbar-button audio-topbar-prev" onClick={() => playByOffset(-1)} aria-label="Предыдущий" />
+          <button type="button" className="audio-topbar-button audio-topbar-prev" onClick={() => playByOffset(-1)} aria-label="Предыдущий"><PrevIcon /></button>
           <button
             type="button"
             className={["audio-topbar-button", "audio-topbar-play", playing ? "is-playing" : ""].join(" ")}
             onClick={togglePlay}
             aria-label={playing ? "Пауза" : "Воспроизвести"}
-          />
-          <button type="button" className="audio-topbar-button audio-topbar-next" onClick={() => playByOffset(1)} aria-label="Следующий" />
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+          </button>
+          <button type="button" className="audio-topbar-button audio-topbar-next" onClick={() => playByOffset(1)} aria-label="Следующий"><NextIcon /></button>
         </div>
 
         <div className="audio-topbar-main">
@@ -266,15 +341,19 @@ export default function AudioPlayer() {
             className={["audio-topbar-button", "audio-topbar-mute", muted ? "is-active" : ""].join(" ")}
             onClick={() => setMuted(value => !value)}
             aria-label={muted ? "Включить звук" : "Выключить звук"}
-          />
+          >
+            <VolumeIcon muted={muted} />
+          </button>
           <button type="button" className="audio-topbar-speed" onClick={toggleSpeed}>{normalizeSpeed(speed)}</button>
           <button
             type="button"
             className={["audio-topbar-button", "audio-topbar-repeat", repeat ? "is-active" : ""].join(" ")}
             onClick={() => setRepeat(value => !value)}
             aria-label="Повтор"
-          />
-          <button type="button" className="audio-topbar-button audio-topbar-close" onClick={closePlayer} aria-label="Закрыть" />
+          >
+            <RepeatIcon />
+          </button>
+          <button type="button" className="audio-topbar-button audio-topbar-close" onClick={closePlayer} aria-label="Закрыть"><CloseIcon /></button>
         </div>
       </div>,
       document.body

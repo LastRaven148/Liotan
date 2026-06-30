@@ -954,3 +954,23 @@
 .settings-slider-row.is-disabled input{
   cursor:default;
 }
+
+/* v43.9 notification button alignment */
+.settings-notifications-web .settings-section-title{
+  padding-bottom:6px;
+}
+
+.settings-notifications-web .settings-primary-button-compact{
+  margin:4px 16px 8px;
+  min-width:184px;
+  height:34px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:0 22px;
+}
+
+.settings-notifications-web .settings-muted-text{
+  padding-top:0;
+}

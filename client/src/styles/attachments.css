@@ -469,3 +469,23 @@
 .attachment-preview-file-remove:hover{
   background:rgba(255,90,90,.16);
 }
+
+/* v43.9 attachment menu final sizing and stable closing target */
+.attach-menu{
+  width:252px;
+  left:0;
+  bottom:44px;
+  padding:4px;
+  overflow:visible;
+}
+
+.attach-menu button{
+  min-height:46px;
+  padding:12px 14px;
+  border-radius:9px;
+}
+
+.attach-menu-label{
+  overflow:visible;
+  text-overflow:clip;
+}
