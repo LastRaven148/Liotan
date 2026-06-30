@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import io from "socket.io-client";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
-import { unlockNotificationSound, playNotificationSound } from "../utils/notificationSound";
+import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
 function statusRank(status) {
   if (status === "read") {
     return 3;
@@ -91,13 +91,15 @@ export default function useSocket({
       if (!msg || msg.from === username || activeChatRef.current === chatKey) {
         return;
       }
-      playNotificationSound();
+      if (receivedSoundEnabled()) {
+        playNotificationSound();
+      }
       const oldTitle = document.title;
       document.title = `Новое сообщение от ${msg.from}`;
       setTimeout(() => {
         document.title = oldTitle;
       }, 2500);
-      if ("Notification" in window && Notification.permission === "granted") {
+      if (notificationsEnabled() && "Notification" in window && Notification.permission === "granted") {
         new Notification(msg.from || "Liotan", {
           body: msg.text || msg.attachment?.name || "Новое сообщение",
           icon: "/android-chrome-192x192.png?v=5"

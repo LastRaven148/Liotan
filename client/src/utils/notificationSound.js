@@ -1,64 +1,73 @@
 let audioContext = null;
 let unlocked = false;
 
+function getAudioContext() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  audioContext = audioContext || new AudioContext();
+  return audioContext;
+}
+
+function getVolume() {
+  const value = Number(localStorage.getItem("liotan_notify_volume") || 50);
+  return Math.max(0, Math.min(100, value)) / 100;
+}
+
+export function notificationsEnabled() {
+  return localStorage.getItem("liotan_notify_show") !== "0";
+}
+
+export function notificationSoundEnabled() {
+  return localStorage.getItem("liotan_notify_sound") !== "0";
+}
+
+export function receivedSoundEnabled() {
+  return notificationSoundEnabled() && localStorage.getItem("liotan_sound_received") !== "0";
+}
+
+export function sentSoundEnabled() {
+  return notificationSoundEnabled() && localStorage.getItem("liotan_sound_sent") !== "0";
+}
+
 export function unlockNotificationSound() {
-  if (unlocked) {
-    return;
-  }
-
+  if (unlocked) return;
   try {
-    audioContext =
-      audioContext ||
-      new AudioContext();
-
-    if (audioContext.state === "suspended") {
-      audioContext.resume();
-    }
-
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") ctx.resume();
     unlocked = true;
   } catch {
     unlocked = false;
   }
 }
 
-export function playNotificationSound() {
+export function playTone({ frequency = 740, duration = 0.18, gainValue = 0.12 } = {}) {
   try {
-    audioContext =
-      audioContext ||
-      new AudioContext();
+    const ctx = getAudioContext();
+    if (!ctx) return;
 
-    const oscillator =
-      audioContext.createOscillator();
-
-    const gain =
-      audioContext.createGain();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const volume = getVolume();
 
     oscillator.type = "sine";
-    oscillator.frequency.value = 740;
-
-    gain.gain.setValueAtTime(
-      0.0001,
-      audioContext.currentTime
-    );
-
-    gain.gain.exponentialRampToValueAtTime(
-      0.12,
-      audioContext.currentTime + 0.01
-    );
-
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      audioContext.currentTime + 0.18
-    );
-
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainValue * volume), ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
     oscillator.connect(gain);
-    gain.connect(audioContext.destination);
-
+    gain.connect(ctx.destination);
     oscillator.start();
-    oscillator.stop(
-      audioContext.currentTime + 0.2
-    );
-  } catch {
-    // ignore
-  }
+    oscillator.stop(ctx.currentTime + duration + 0.02);
+  } catch {}
+}
+
+export function playNotificationSound() {
+  if (!receivedSoundEnabled()) return;
+  playTone({ frequency: 740, duration: 0.18, gainValue: 0.12 });
+}
+
+export function playSentSound() {
+  if (!sentSoundEnabled()) return;
+  playTone({ frequency: 920, duration: 0.1, gainValue: 0.075 });
 }

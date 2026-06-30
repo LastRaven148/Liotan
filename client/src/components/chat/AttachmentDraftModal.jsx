@@ -29,22 +29,11 @@ function getExtension(name = "") {
 }
 
 function getItemClass(item) {
-  const base = [
-    "attachment-preview-item"
-  ];
-
-  if (item.type === "video") {
-    base.push(
-      "attachment-preview-video-item"
-    );
-  }
-
-  if (item.orientation) {
-    base.push(
-      `attachment-preview-${item.orientation}`
-    );
-  }
-
+  const base = ["attachment-preview-item"];
+  if (item.type === "video") base.push("attachment-preview-video-item");
+  if (item.type === "photo") base.push("attachment-preview-photo-item");
+  if (["audio", "file"].includes(item.type)) base.push("attachment-preview-file-item");
+  if (item.orientation) base.push(`attachment-preview-${item.orientation}`);
   return base.join(" ");
 }
 
@@ -59,122 +48,51 @@ export default function AttachmentDraftModal({
   onAddMore,
   onMediaMeta
 }) {
-
-  const [
-    menuOpen,
-    setMenuOpen
-  ] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-
     function handleKeyDown(e) {
-      if (!attachmentDraft.length) {
-        return;
-      }
+      if (!attachmentDraft.length || e.key !== "Escape") return;
 
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        window.__liotanModalEscHandledAt = Date.now();
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+      window.__liotanModalEscHandledAt = Date.now();
 
-        if (!sendingDraft) {
-          onClose?.();
-        }
-      }
-
+      if (!sendingDraft) onClose?.();
     }
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown,
-      true
-    );
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [attachmentDraft.length, sendingDraft, onClose]);
 
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown,
-        true
-      );
-    };
+  if (!attachmentDraft.length) return null;
 
-  }, [
-    attachmentDraft.length,
-    sendingDraft,
-    onClose
-  ]);
-
-  if (!attachmentDraft.length) {
-    return null;
-  }
+  const onlyFiles = attachmentDraft.every(item => !["photo", "video"].includes(item.type));
 
   return (
     <div
       className="attachment-preview-overlay"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !sendingDraft) {
-          onClose?.();
-        }
+        if (e.target === e.currentTarget && !sendingDraft) onClose?.();
       }}
     >
-      <div className="attachment-preview-modal">
-
+      <div className={["attachment-preview-modal", onlyFiles ? "is-file-preview" : "is-media-preview"].join(" ")}>
         <div className="attachment-preview-header">
-          <button
-            type="button"
-            className="attachment-preview-close"
-            onClick={onClose}
-          >
-            ×
-          </button>
-
-          <div className="attachment-preview-title">
-            {getDraftTitle(attachmentDraft)}
-          </div>
-
+          <button type="button" className="attachment-preview-close" onClick={onClose}>×</button>
+          <div className="attachment-preview-title">{getDraftTitle(attachmentDraft)}</div>
           <div className="attachment-preview-menu-wrap">
-            <button
-              type="button"
-              className="attachment-preview-more"
-              onClick={() =>
-                setMenuOpen(prev => !prev)
-              }
-            >
-              ⋮
-            </button>
+            <button type="button" className="attachment-preview-more" onClick={() => setMenuOpen(prev => !prev)}>⋮</button>
 
             {menuOpen && (
               <div className="attachment-preview-menu">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onAddMore?.();
-                  }}
-                >
-                  <span className="attachment-preview-menu-icon">
-                    +
-                  </span>
-
-                  <span>
-                    Добавить
-                  </span>
+                <button type="button" onClick={() => { setMenuOpen(false); onAddMore?.(); }}>
+                  <span className="attachment-preview-menu-icon">+</span>
+                  <span>Добавить</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMenuOpen(false)
-                  }
-                >
-                  <span className="attachment-preview-menu-icon">
-                    ✓
-                  </span>
-
-                  <span>
-                    Отправить без сжатия
-                  </span>
+                <button type="button" onClick={() => setMenuOpen(false)}>
+                  <span className="attachment-preview-menu-icon">✓</span>
+                  <span>Отправить без сжатия</span>
                 </button>
               </div>
             )}
@@ -186,13 +104,7 @@ export default function AttachmentDraftModal({
             <div
               key={item.url}
               className={getItemClass(item)}
-              style={
-                item.ratio
-                  ? {
-                      "--draft-media-ratio": item.ratio
-                    }
-                  : undefined
-              }
+              style={item.ratio ? { "--draft-media-ratio": item.ratio } : undefined}
             >
               {item.type === "video" ? (
                 <video
@@ -203,9 +115,7 @@ export default function AttachmentDraftModal({
                   className="attachment-preview-video"
                   onLoadedMetadata={(e) => {
                     const video = e.currentTarget;
-                    if (video.videoWidth && video.videoHeight) {
-                      onMediaMeta?.(index, { width: video.videoWidth, height: video.videoHeight });
-                    }
+                    if (video.videoWidth && video.videoHeight) onMediaMeta?.(index, { width: video.videoWidth, height: video.videoHeight });
                   }}
                 />
               ) : item.type === "photo" ? (
@@ -214,30 +124,28 @@ export default function AttachmentDraftModal({
                   alt=""
                   onLoad={(e) => {
                     const img = e.currentTarget;
-                    if (img.naturalWidth && img.naturalHeight) {
-                      onMediaMeta?.(index, { width: img.naturalWidth, height: img.naturalHeight });
-                    }
+                    if (img.naturalWidth && img.naturalHeight) onMediaMeta?.(index, { width: img.naturalWidth, height: img.naturalHeight });
                   }}
                 />
               ) : (
                 <div className="attachment-preview-file-card">
-                  <div className="attachment-preview-file-icon">{getExtension(item.name)}</div>
+                  <div className={`attachment-preview-file-icon ext-${getExtension(item.name).toLowerCase()}`}>{getExtension(item.name)}</div>
                   <div className="attachment-preview-file-main">
                     <div className="attachment-preview-file-name">{item.name || "Файл"}</div>
                     <div className="attachment-preview-file-meta">{item.mimeType || "Файл"} · {formatFileSize(item.size)}</div>
                   </div>
+                  <button
+                    type="button"
+                    className="attachment-preview-file-remove"
+                    onClick={() => onRemove(index)}
+                    aria-label="Удалить файл"
+                  />
                 </div>
               )}
 
-              <button
-                type="button"
-                className="attachment-preview-remove"
-                onClick={() =>
-                  onRemove(index)
-                }
-              >
-                ×
-              </button>
+              {["photo", "video"].includes(item.type) && (
+                <button type="button" className="attachment-preview-remove" onClick={() => onRemove(index)}>×</button>
+              )}
             </div>
           ))}
         </div>
@@ -245,36 +153,18 @@ export default function AttachmentDraftModal({
         <div className="attachment-preview-caption">
           <input
             value={attachmentCaption}
-            onChange={(e) =>
-              setAttachmentCaption(e.target.value)
-            }
+            onChange={(e) => setAttachmentCaption(e.target.value)}
             onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey
-              ) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-
-                if (!sendingDraft) {
-                  onSend?.();
-                }
+                if (!sendingDraft) onSend?.();
               }
             }}
             placeholder="Добавить подпись..."
           />
-
-          <button
-            type="button"
-            className="attachment-preview-send"
-            onClick={onSend}
-            disabled={sendingDraft}
-          >
-            {sendingDraft ? "…" : "➤"}
-          </button>
+          <button type="button" className="attachment-preview-send" onClick={onSend} disabled={sendingDraft}>{sendingDraft ? "…" : "➤"}</button>
         </div>
-
       </div>
     </div>
   );
-
 }

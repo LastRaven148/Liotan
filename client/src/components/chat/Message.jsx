@@ -259,13 +259,17 @@ function Message({
     if ((!isAudio && !isVoice) || !attachment?.url) {
       return;
     }
-    const playlist = audioMessages.map(item => ({
-      messageId: item._id,
-      url: item.attachment.url,
-      name: item.attachment.type === "voice" ? t.voiceMessage || "Голосовое сообщение" : item.attachment.name || t.audio || "Аудио",
-      duration: Number(item.attachment.duration) || 0,
-      size: item.attachment.size || 0
-    }));
+    const currentAudioType = isVoice ? "voice" : "audio";
+    const playlist = audioMessages
+      .filter(item => item.attachment?.type === currentAudioType)
+      .map(item => ({
+        messageId: item._id,
+        url: item.attachment.url,
+        name: item.attachment.type === "voice" ? t.voiceMessage || "Голосовое сообщение" : item.attachment.name || t.audio || "Аудио",
+        duration: Number(item.attachment.duration) || 0,
+        size: item.attachment.size || 0,
+        type: item.attachment.type
+      }));
     window.dispatchEvent(new CustomEvent("liotan:play-audio", {
       detail: {
         messageId: message._id,
@@ -273,6 +277,7 @@ function Message({
         name: isVoice ? t.voiceMessage || "Голосовое сообщение" : attachment.name || t.audio || "Аудио",
         duration: audioDuration || attachmentDuration,
         size: attachment.size || 0,
+        type: isVoice ? "voice" : "audio",
         playlist
       }
     }));

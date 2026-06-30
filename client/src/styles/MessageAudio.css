@@ -565,3 +565,90 @@
 .audio-topbar-repeat::after{
   transform:none;
 }
+
+/* v43.7 compact Telegram-like top audio bar */
+.audio-topbar{
+  top:72px;
+  left:max(338px, calc(320px + (100vw - 1000px) / 2));
+  width:min(520px, calc(100vw - 320px - 36px));
+  min-height:38px;
+  padding:4px 7px;
+  gap:7px;
+  border-radius:9px;
+  background:#17212b;
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.audio-topbar-controls,
+.audio-topbar-actions{
+  gap:0;
+}
+
+.audio-topbar-button{
+  width:26px;
+  height:26px;
+  border-radius:7px;
+  color:#dce5ee;
+}
+
+.audio-topbar-main{
+  gap:0;
+}
+
+.audio-topbar-title{
+  font-size:12px;
+  line-height:14px;
+  font-weight:700;
+  letter-spacing:.01em;
+  text-transform:none;
+}
+
+.audio-topbar-subtitle{
+  color:#8da2b5;
+  font-size:11px;
+  line-height:13px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.audio-topbar-progress-row,
+.audio-topbar-range,
+.audio-topbar-time{
+  display:none !important;
+}
+
+.audio-topbar-speed{
+  height:26px;
+  min-width:31px;
+  border-radius:7px;
+  font-size:11px;
+  padding:0 4px;
+}
+
+.audio-topbar-repeat::before{
+  left:6px;
+  top:8px;
+  width:13px;
+  height:8px;
+  border:2px solid currentColor;
+  border-left:none;
+  border-radius:0 7px 7px 0;
+}
+
+.audio-topbar-repeat::after{
+  left:4px;
+  top:12px;
+  border-top:4px solid transparent;
+  border-bottom:4px solid transparent;
+  border-right:6px solid currentColor;
+}
+
+@media (max-width:768px){
+  .audio-topbar{
+    top:56px;
+    left:8px;
+    right:8px;
+    width:auto;
+  }
+}

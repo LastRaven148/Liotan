@@ -1,3 +1,4 @@
+import { playSentSound } from "../utils/notificationSound";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
@@ -212,6 +213,7 @@ export default function useChat({
         attachment
       });
       if (!ok) return false;
+      playSentSound();
       stopTyping(activeChat);
       setReplyMessage(null);
       setTextState("");

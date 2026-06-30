@@ -1,5 +1,4 @@
-import { createPortal }
-from "react-dom";
+import { createPortal } from "react-dom";
 
 export default function MessageViewer({
   open,
@@ -12,54 +11,25 @@ export default function MessageViewer({
   onDownload,
   onVideoMetadata
 }) {
-  if (!open) {
-    return null;
-  }
+  if (!open) return null;
 
   return createPortal(
-    <div
-      className="media-viewer"
-      onClick={onClose}
-    >
-      <div className="media-viewer-top">
-        <div className="media-viewer-title">
-          {attachment.name || ""}
-        </div>
-
+    <div className="media-viewer" onClick={onClose}>
+      <div className="media-viewer-top" onClick={(e) => e.stopPropagation()}>
+        <div className="media-viewer-title">{attachment.name || ""}</div>
         <div className="media-viewer-actions">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDownload();
-            }}
-          >
-            ↓
-          </button>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-          >
-            ×
-          </button>
+          <button type="button" onClick={onDownload}>↓</button>
+          <button type="button" onClick={onClose}>×</button>
         </div>
       </div>
 
-      <div
-        className="media-viewer-body"
-        onClick={(e) =>
-          e.stopPropagation()
-        }
-      >
+      <div className="media-viewer-body">
         {isPhoto && (
           <img
             src={fileUrl}
             alt={attachment.name || ""}
             className="media-viewer-img"
+            onClick={(e) => e.stopPropagation()}
           />
         )}
 
@@ -71,10 +41,9 @@ export default function MessageViewer({
             autoPlay
             playsInline
             loop
-            style={{
-              "--video-ratio": videoRatio
-            }}
+            style={{ "--video-ratio": videoRatio }}
             onLoadedMetadata={onVideoMetadata}
+            onClick={(e) => e.stopPropagation()}
           />
         )}
       </div>
