@@ -21,7 +21,7 @@ async function start() {
     server.listen(env.PORT, () => {
       logger.info("SERVER READY", {
         port: env.PORT,
-        version: "47.0"
+        version: "47.1"
       });
       if (env.NODE_ENV !== "production") {
         logger.info("ALLOWED ORIGINS", { allowedOrigins });

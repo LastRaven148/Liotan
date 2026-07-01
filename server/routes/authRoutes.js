@@ -20,6 +20,8 @@ const {
   logoutCurrentSession,
   revokeOneSession,
   logoutOtherSessions,
+  logoutAllSessions,
+  updateCurrentSessionDeviceKey,
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
@@ -101,6 +103,13 @@ router.get(
   listSessions
 );
 
+router.patch(
+  "/auth/session/device-key",
+  authLimiter,
+  authMiddleware,
+  updateCurrentSessionDeviceKey
+);
+
 router.post(
   "/auth/logout",
   authMiddleware,
@@ -117,6 +126,12 @@ router.post(
   "/auth/sessions/logout-others",
   authMiddleware,
   logoutOtherSessions
+);
+
+router.post(
+  "/auth/sessions/logout-all",
+  authMiddleware,
+  logoutAllSessions
 );
 
 

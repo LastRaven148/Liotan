@@ -67,6 +67,12 @@ const sessionSchema =
         default: Date.now
       },
 
+      expiresAt: {
+        type: Date,
+        required: true,
+        index: true
+      },
+
       revokedAt: {
         type: Date,
         default: null
@@ -80,7 +86,13 @@ const sessionSchema =
 sessionSchema.index({
   userId: 1,
   revokedAt: 1,
+  expiresAt: 1,
   lastSeenAt: -1
+});
+
+sessionSchema.index({
+  expiresAt: 1,
+  revokedAt: 1
 });
 
 sessionSchema.index({

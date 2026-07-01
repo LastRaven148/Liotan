@@ -13,6 +13,7 @@ const {
 const {
   createUserSession,
   hashSessionId,
+  updateSessionDeviceKey,
   revokeSession,
   revokeAllUserSessions
 } = require("../utils/sessionSecurity");
@@ -421,6 +422,9 @@ async function resetPassword(req, res, next) {
     }
     user.password = await bcrypt.hash(password, 12);
     await user.save();
+    await revokeAllUserSessions({
+      userId: user._id
+    });
     res.json({
       ok: true
     });
@@ -554,7 +558,7 @@ async function listSessions(req, res, next) {
     const sessions = await Session.find({
       userId: req.user.userId,
       revokedAt: null
-    }).select("sessionIdHash deviceName createdAt lastSeenAt transportMode").sort({
+    }).select("sessionIdHash deviceName createdAt lastSeenAt expiresAt transportMode devicePublicKey deviceKeyFingerprint").sort({
       lastSeenAt: -1
     }).lean();
     const currentHash = hashSessionId(req.user.sid);
@@ -564,7 +568,10 @@ async function listSessions(req, res, next) {
         deviceName: session.deviceName,
         createdAt: session.createdAt,
         lastSeenAt: session.lastSeenAt,
+        expiresAt: session.expiresAt,
         transportMode: session.transportMode || "auto",
+        hasDevicePublicKey: Boolean(session.devicePublicKey),
+        deviceKeyFingerprint: session.deviceKeyFingerprint || "",
         current: session.sessionIdHash === currentHash
       }))
     });
@@ -572,6 +579,45 @@ async function listSessions(req, res, next) {
     next(err);
   }
 }
+
+async function updateCurrentSessionDeviceKey(req, res, next) {
+  try {
+    const ok =
+      await updateSessionDeviceKey({
+        userId: req.user.userId,
+        sessionId: req.user.sid,
+        devicePublicKey: req.body?.devicePublicKey,
+        deviceKeyFingerprint: req.body?.deviceKeyFingerprint
+      });
+
+    if (!ok) {
+      return res.status(400).json({
+        error: "invalid device key"
+      });
+    }
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function logoutAllSessions(req, res, next) {
+  try {
+    await revokeAllUserSessions({
+      userId: req.user.userId
+    });
+
+    res.json({
+      ok: true
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function logoutCurrentSession(req, res, next) {
   try {
     await revokeSession({
@@ -628,6 +674,8 @@ module.exports = {
   logoutCurrentSession,
   revokeOneSession,
   logoutOtherSessions,
+  logoutAllSessions,
+  updateCurrentSessionDeviceKey,
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,

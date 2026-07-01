@@ -259,6 +259,31 @@ export async function logoutOtherSessionsApi() {
   });
 }
 
+export async function logoutAllSessionsApi() {
+  return apiRequest(`${API}/auth/sessions/logout-all`, {
+    method: "POST"
+  });
+}
+
+export async function updateCurrentSessionDeviceKeyApi() {
+  const devicePublicKey =
+    await getDevicePublicKey();
+
+  const deviceKeyFingerprint =
+    await getDeviceKeyFingerprint();
+
+  return apiRequest(`${API}/auth/session/device-key`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      devicePublicKey,
+      deviceKeyFingerprint
+    })
+  });
+}
+
 export async function getDeviceSessionsApi() {
   return getSessionsApi();
 }

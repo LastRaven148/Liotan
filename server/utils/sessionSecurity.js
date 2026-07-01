@@ -7,6 +7,9 @@ const Session =
 const privacy =
   require("../config/privacy");
 
+const sessionConfig =
+  require("../config/sessions");
+
 const {
   hmac
 } = require("./privacy");
@@ -19,6 +22,12 @@ function createSessionId() {
 
 function hashSessionId(sessionId) {
   return hmac(String(sessionId || ""));
+}
+
+function getSessionExpiryDate() {
+  return new Date(
+    Date.now() + sessionConfig.ttlDays * 24 * 60 * 60 * 1000
+  );
 }
 
 function isValidDevicePublicKey(value) {
@@ -53,7 +62,7 @@ function sanitizeDeviceName(value) {
       .trim();
 
   if (!raw) {
-    return "Unknown device";
+    return "Web device";
   }
 
   return raw.slice(0, 80);
@@ -108,6 +117,81 @@ function detectDeviceName(req) {
   );
 }
 
+function getDeviceKeyPayload(req) {
+  const devicePublicKey =
+    isValidDevicePublicKey(req.body?.devicePublicKey)
+      ? req.body.devicePublicKey
+      : null;
+
+  return {
+    devicePublicKey,
+    deviceKeyFingerprint: sanitizeFingerprint(
+      req.body?.deviceKeyFingerprint
+    )
+  };
+}
+
+async function cleanupExpiredSessionsForUser(userId) {
+  await Session.updateMany(
+    {
+      userId,
+      revokedAt: null,
+      expiresAt: {
+        $lte: new Date()
+      }
+    },
+    {
+      $set: {
+        revokedAt: new Date()
+      }
+    }
+  );
+}
+
+async function enforceSessionLimit(userId) {
+  const maxActive =
+    sessionConfig.maxActiveSessionsPerUser;
+
+  if (!maxActive) {
+    return;
+  }
+
+  const activeSessions =
+    await Session.find(
+      {
+        userId,
+        revokedAt: null,
+        expiresAt: {
+          $gt: new Date()
+        }
+      },
+      "_id"
+    )
+      .sort({
+        lastSeenAt: -1,
+        createdAt: -1
+      })
+      .skip(maxActive)
+      .lean();
+
+  if (!activeSessions.length) {
+    return;
+  }
+
+  await Session.updateMany(
+    {
+      _id: {
+        $in: activeSessions.map(session => session._id)
+      }
+    },
+    {
+      $set: {
+        revokedAt: new Date()
+      }
+    }
+  );
+}
+
 async function createUserSession({
   req,
   user
@@ -120,10 +204,12 @@ async function createUserSession({
     req.headers["x-liotan-device-id"] ||
     "";
 
-  const devicePublicKey =
-    isValidDevicePublicKey(req.body?.devicePublicKey)
-      ? req.body.devicePublicKey
-      : null;
+  const {
+    devicePublicKey,
+    deviceKeyFingerprint
+  } = getDeviceKeyPayload(req);
+
+  await cleanupExpiredSessionsForUser(user._id);
 
   await Session.create({
     userId: user._id,
@@ -135,17 +221,18 @@ async function createUserSession({
         : "",
     deviceName: detectDeviceName(req),
     devicePublicKey,
-    deviceKeyFingerprint: sanitizeFingerprint(
-      req.body?.deviceKeyFingerprint
-    ),
+    deviceKeyFingerprint,
     transportMode: sanitizeTransportMode(
       req.body?.transportMode ||
       req.headers["x-liotan-transport-mode"]
     ),
     userAgentHash: privacy.storeUserAgentHash
       ? hmac(String(req.headers["user-agent"] || ""))
-      : ""
+      : "",
+    expiresAt: getSessionExpiryDate()
   });
+
+  await enforceSessionLimit(user._id);
 
   return sessionId;
 }
@@ -155,21 +242,54 @@ async function touchSession(sessionId) {
     return false;
   }
 
+  const now = new Date();
+  const minLastSeenAt = new Date(
+    Date.now() - sessionConfig.touchThrottleMs
+  );
+
   const result =
     await Session.updateOne(
       {
         sessionIdHash: hashSessionId(sessionId),
-        revokedAt: null
+        revokedAt: null,
+        expiresAt: {
+          $gt: now
+        },
+        $or: [
+          {
+            lastSeenAt: {
+              $lte: minLastSeenAt
+            }
+          },
+          {
+            expiresAt: {
+              $lte: new Date(Date.now() + 24 * 60 * 60 * 1000)
+            }
+          }
+        ]
       },
       {
         $set: {
-          lastSeenAt: new Date()
+          lastSeenAt: now,
+          expiresAt: getSessionExpiryDate()
         }
       }
     );
 
-  return result.modifiedCount > 0 ||
-    result.matchedCount > 0;
+  if (result.modifiedCount > 0 || result.matchedCount > 0) {
+    return true;
+  }
+
+  const active =
+    await Session.exists({
+      sessionIdHash: hashSessionId(sessionId),
+      revokedAt: null,
+      expiresAt: {
+        $gt: now
+      }
+    });
+
+  return Boolean(active);
 }
 
 async function isSessionActive({
@@ -186,10 +306,45 @@ async function isSessionActive({
       userId,
       username,
       sessionIdHash: hashSessionId(sessionId),
-      revokedAt: null
+      revokedAt: null,
+      expiresAt: {
+        $gt: new Date()
+      }
     }).select("_id").lean();
 
   return Boolean(session);
+}
+
+async function updateSessionDeviceKey({
+  userId,
+  sessionId,
+  devicePublicKey,
+  deviceKeyFingerprint
+}) {
+  if (!isValidDevicePublicKey(devicePublicKey)) {
+    return false;
+  }
+
+  const result =
+    await Session.updateOne(
+      {
+        userId,
+        sessionIdHash: hashSessionId(sessionId),
+        revokedAt: null,
+        expiresAt: {
+          $gt: new Date()
+        }
+      },
+      {
+        $set: {
+          devicePublicKey,
+          deviceKeyFingerprint: sanitizeFingerprint(deviceKeyFingerprint)
+        }
+      }
+    );
+
+  return result.modifiedCount > 0 ||
+    result.matchedCount > 0;
 }
 
 async function revokeSession({
@@ -235,13 +390,34 @@ async function revokeAllUserSessions({
   );
 }
 
+async function cleanupExpiredSessions() {
+  const result =
+    await Session.updateMany(
+      {
+        revokedAt: null,
+        expiresAt: {
+          $lte: new Date()
+        }
+      },
+      {
+        $set: {
+          revokedAt: new Date()
+        }
+      }
+    );
+
+  return result.modifiedCount || 0;
+}
+
 module.exports = {
   createUserSession,
   hashSessionId,
   touchSession,
   isSessionActive,
+  updateSessionDeviceKey,
   revokeSession,
   revokeAllUserSessions,
+  cleanupExpiredSessions,
   isValidDevicePublicKey,
   sanitizeFingerprint,
   sanitizeTransportMode
