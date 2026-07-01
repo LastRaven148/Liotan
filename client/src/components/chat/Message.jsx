@@ -52,7 +52,12 @@ function Message({
   const isAudio = hasAttachment && attachmentType === "audio";
   const isVoice = hasAttachment && attachmentType === "voice";
   const isFile = hasAttachment && attachmentType === "file";
-  const canEdit = isMine && message.text && !isEncryptedText(message.text) && !hasAttachment;
+  const isPendingDecryptionText =
+    decryptedText === "Зашифрованное сообщение. Ключ этого чата ещё не получен." ||
+    decryptedText === "Не удалось расшифровать сообщение." ||
+    decryptedText === "Старое E2EE-сообщение. Оно было создано до авто-ключей.";
+  const hasUsableText = Boolean(decryptedText && !isPendingDecryptionText);
+  const canEdit = isMine && hasUsableText && !hasAttachment;
   const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
   const attachmentDuration = Number(attachment?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachment?.size);
@@ -351,7 +356,7 @@ function Message({
       top: `${menuPos.top}px`,
       left: `${menuPos.left}px`
     }}>
-        <MessageActions t={t} message={message} hasAttachment={hasAttachment} canEdit={canEdit} closeMenus={closeMenus} copyMessage={copyMessage} downloadFile={requestDownloadFile} onReply={onReply} onEdit={onEdit} onDelete={requestDeleteMessage} onPin={onPin} />
+        <MessageActions t={t} message={{ ...message, text: decryptedText || message.text }} hasAttachment={hasAttachment} canEdit={canEdit} canCopy={hasUsableText} closeMenus={closeMenus} copyMessage={copyMessage} downloadFile={requestDownloadFile} onReply={onReply} onEdit={onEdit} onDelete={requestDeleteMessage} onPin={onPin} />
       </div>, document.body);
   }
   function renderPhoto() {
@@ -413,7 +418,7 @@ function Message({
 
       {mobileMenu && <div className="mobile-action-overlay" onClick={closeMenus}>
           <div className="mobile-action-sheet" onClick={e => e.stopPropagation()}>
-            <MessageActions t={t} message={message} hasAttachment={hasAttachment} canEdit={canEdit} closeMenus={closeMenus} copyMessage={copyMessage} downloadFile={requestDownloadFile} onReply={onReply} onEdit={onEdit} onDelete={requestDeleteMessage} onPin={onPin} />
+            <MessageActions t={t} message={{ ...message, text: decryptedText || message.text }} hasAttachment={hasAttachment} canEdit={canEdit} canCopy={hasUsableText} closeMenus={closeMenus} copyMessage={copyMessage} downloadFile={requestDownloadFile} onReply={onReply} onEdit={onEdit} onDelete={requestDeleteMessage} onPin={onPin} />
           </div>
         </div>}
 

@@ -38,13 +38,6 @@ function MenuIcon({ name }) {
           <path d="M5 19H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
-    case "forward":
-      return (
-        <svg {...common}>
-          <path d="M14 7L19 12L14 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M18 12H10C6.7 12 4 14.7 4 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
     case "select":
       return (
         <svg {...common}>
@@ -97,6 +90,7 @@ export default function MessageActions({
   message,
   hasAttachment,
   canEdit,
+  canCopy = Boolean(message.text),
   closeMenus,
   copyMessage,
   downloadFile,
@@ -122,7 +116,7 @@ export default function MessageActions({
         {t.reply || "Ответить"}
       </button>
 
-      {message.text && (
+      {canCopy && (
         <button
           type="button"
           onClick={copyMessage}
@@ -158,13 +152,6 @@ export default function MessageActions({
         </button>
       )}
 
-      <button
-        type="button"
-        onClick={fakeAction}
-      >
-        <IconSlot name="forward" />
-        Переслать
-      </button>
 
       <button
         type="button"

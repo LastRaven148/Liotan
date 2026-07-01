@@ -46,6 +46,9 @@ function getPreview(value) {
   if (value?.text?.trim()) {
     return value.text;
   }
+  if (value?.contentMode === "e2ee" || value?.encryptedContent?.ciphertext) {
+    return "Encrypted message";
+  }
   return getAttachmentPreview(getMessageAttachment(value));
 }
 function applyAttachmentFields(base, attachment) {
@@ -71,6 +74,7 @@ function normalizeGroup(group) {
     description: group.description || "",
     avatar: group.avatar || "",
     lastMessage: group.lastMessage || getAttachmentPreview(attachment) || "Группа создана",
+    lastMessageEncryptedContent: group.lastMessageEncryptedContent || group.encryptedContent || null,
     createdAt: group.updatedAt || group.createdAt,
     members: group.members || [],
     memberUsers: group.memberUsers || [],
@@ -87,13 +91,15 @@ function normalizePrivateDialog(dialog) {
     chatKey: dialog.username,
     title: dialog.username,
     name: dialog.username,
-    lastMessage: dialog.lastMessage || getAttachmentPreview(attachment)
+    lastMessage: dialog.lastMessage || getAttachmentPreview(attachment),
+    lastMessageEncryptedContent: dialog.lastMessageEncryptedContent || dialog.encryptedContent || null
   }, attachment);
 }
 function makeMessageDialogPayload(msg) {
   const attachment = getMessageAttachment(msg);
   return applyAttachmentFields({
     lastMessage: getPreview(msg),
+    lastMessageEncryptedContent: msg.encryptedContent || null,
     createdAt: msg.createdAt
   }, attachment);
 }

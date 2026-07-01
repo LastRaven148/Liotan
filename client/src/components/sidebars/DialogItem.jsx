@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
-import { decryptAttachmentBlobForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
+import { decryptAttachmentBlobForChat, decryptTextForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
 function DialogMenuIcon({
   name
 }) {
@@ -111,7 +111,40 @@ export default function DialogItem({
   const lastAttachmentName = lastAttachment?.name || dialog.lastAttachmentName || dialog.attachmentName || "";
   const lastAttachmentUrl = lastAttachment?.thumbnailUrl || lastAttachment?.previewUrl || lastAttachment?.url || dialog.lastAttachmentThumbnail || dialog.lastAttachmentUrl || "";
   const [decryptedPreviewUrl, setDecryptedPreviewUrl] = useState("");
+  const [decryptedPreviewText, setDecryptedPreviewText] = useState("");
   const previewUrl = decryptedPreviewUrl || lastAttachmentUrl;
+
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadEncryptedTextPreview() {
+      setDecryptedPreviewText("");
+      if (!dialog?.lastMessageEncryptedContent?.ciphertext && !isEncryptedPreviewText(dialog.lastMessage)) {
+        return;
+      }
+      try {
+        const value = await decryptTextForChat({
+          username,
+          chatKey: getEffectiveE2EEChatKey(chatKey, dialog),
+          text: isEncryptedPreviewText(dialog.lastMessage) ? dialog.lastMessage : "",
+          encryptedContent: dialog.lastMessageEncryptedContent || null
+        });
+        if (alive && value && !isEncryptedPreviewText(value) && !value.startsWith("Зашифрованное сообщение") && !value.startsWith("Не удалось")) {
+          setDecryptedPreviewText(value);
+        }
+      } catch {
+        if (alive) setDecryptedPreviewText("");
+      }
+    }
+
+    loadEncryptedTextPreview();
+    window.addEventListener("liotan:e2ee-updated", loadEncryptedTextPreview);
+    return () => {
+      alive = false;
+      window.removeEventListener("liotan:e2ee-updated", loadEncryptedTextPreview);
+    };
+  }, [dialog, username, chatKey]);
 
   useEffect(() => {
     let alive = true;
@@ -368,7 +401,7 @@ export default function DialogItem({
       </div>;
     }
     return <div className="dialog-preview">
-      {getSafePreviewText(dialog.lastMessage)}
+      {decryptedPreviewText || getSafePreviewText(dialog.lastMessage)}
     </div>;
   }
   return <div ref={itemRef} className={activeChat === chatKey ? "user active" : "user"} onClick={handleOpenChat} onContextMenu={handleContextMenu} onTouchStart={handleTouchStart} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onTouchCancel={clearLongPress}>

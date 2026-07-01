@@ -124,7 +124,7 @@ async function performRequest(url, options = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && !options.suppressUnauthorized) {
       setApiAuthToken("");
       localStorage.removeItem("username");
       window.dispatchEvent(new Event("liotan:session-expired"));

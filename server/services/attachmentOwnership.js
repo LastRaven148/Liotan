@@ -62,13 +62,18 @@ async function resolveOwnedAttachment(input, owner) {
 
   if (!upload) return null;
 
-  if (
-    upload.url !== sanitized.url ||
+  const isEncryptedClientView = Boolean(sanitized.e2eeMedia?.v);
+
+  if (upload.url !== sanitized.url) {
+    return null;
+  }
+
+  if (!isEncryptedClientView && (
     upload.name !== sanitized.name ||
     upload.type !== sanitized.type ||
     upload.mimeType !== sanitized.mimeType ||
     Number(upload.size || 0) !== Number(sanitized.size || 0)
-  ) {
+  )) {
     return null;
   }
 

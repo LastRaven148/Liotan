@@ -64,14 +64,13 @@ export default function useSocket({
     if (!token) {
       return;
     }
-    function requestNotifications() {
+    function unlockSoundOnUserGesture() {
       unlockNotificationSound();
-      if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-      window.removeEventListener("click", requestNotifications);
+      window.removeEventListener("click", unlockSoundOnUserGesture);
+      window.removeEventListener("keydown", unlockSoundOnUserGesture);
     }
-    window.addEventListener("click", requestNotifications);
+    window.addEventListener("click", unlockSoundOnUserGesture);
+    window.addEventListener("keydown", unlockSoundOnUserGesture);
     const socket = io(API, {
       withCredentials: true
     });
@@ -365,7 +364,8 @@ export default function useSocket({
       socket.off(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
       socket.off(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
       socket.off(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
-      window.removeEventListener("click", requestNotifications);
+      window.removeEventListener("click", unlockSoundOnUserGesture);
+      window.removeEventListener("keydown", unlockSoundOnUserGesture);
       socket.disconnect();
     };
   }, [token, username, API, setActiveChat, setChats, setUnread, setOnlineUsers, setTypingUsers, updateDialog, updateUserLastSeen, updateUserProfile, removeDialog, setAvatar, setBio, setProfileUser, updateGroup, setDisplayName, socketRef]);

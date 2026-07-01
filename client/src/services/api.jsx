@@ -23,7 +23,9 @@ export async function getUsers() {
 }
 
 export async function getCurrentSessionApi() {
-  return apiRequest(`${API}/auth/session`);
+  return apiRequest(`${API}/auth/session`, {
+    suppressUnauthorized: true
+  });
 }
 
 export async function getDialogs() {

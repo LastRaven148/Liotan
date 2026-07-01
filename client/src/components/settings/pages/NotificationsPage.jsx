@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SettingsCheck, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
 
 function playVolumePreview(volume) {
@@ -32,16 +32,45 @@ export default function NotificationsPage({ back, labels }) {
     channels: localStorage.getItem("liotan_notify_channels") !== "0",
     volume: Number(localStorage.getItem("liotan_notify_volume") || 50)
   }));
+  useEffect(() => {
+    function syncPermission() {
+      setPermission(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+    }
+    window.addEventListener("focus", syncPermission);
+    return () => window.removeEventListener("focus", syncPermission);
+  }, []);
+
   async function togglePermission() {
     if (typeof Notification === "undefined") {
       setPermission("unsupported");
+      setSettings((prev) => ({ ...prev, enabled: false }));
+      localStorage.setItem("liotan_notify_show", "0");
       return;
     }
-    if (permission !== "granted") {
-      const result = await Notification.requestPermission();
+
+    const currentPermission = Notification.permission;
+    setPermission(currentPermission);
+
+    if (currentPermission === "denied") {
+      setSettings((prev) => ({ ...prev, enabled: false }));
+      localStorage.setItem("liotan_notify_show", "0");
+      return;
+    }
+
+    if (currentPermission === "default") {
+      let result = "default";
+      try {
+        result = await Notification.requestPermission();
+      } catch {
+        result = Notification.permission || "default";
+      }
       setPermission(result);
+      const granted = result === "granted";
+      setSettings((prev) => ({ ...prev, enabled: granted }));
+      localStorage.setItem("liotan_notify_show", granted ? "1" : "0");
       return;
     }
+
     const next = !settings.enabled;
     setSettings((prev) => ({ ...prev, enabled: next }));
     localStorage.setItem("liotan_notify_show", next ? "1" : "0");
@@ -58,12 +87,20 @@ export default function NotificationsPage({ back, labels }) {
   }
   const notificationsActive = permission === "granted" && settings.enabled;
   const controlsDisabled = !notificationsActive;
+  const permissionHelp =
+    permission === "denied"
+      ? (labels.notificationsPermissionBlocked || "Браузер заблокировал запрос уведомлений. Откройте настройки сайта возле адресной строки и разрешите уведомления вручную.")
+      : permission === "unsupported"
+        ? (labels.notificationsUnsupported || "Этот браузер не поддерживает web-уведомления.")
+        : notificationsActive
+          ? labels.notificationsAllowed
+          : (labels.notificationsHelp || labels.notificationsBlocked || "Уведомления выключены.");
   return (
     <>
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.notifications}</div></div>
       <SettingsSection title="Web" className="settings-notifications-web">
         <button type="button" className="settings-primary-button settings-primary-button-compact" onClick={togglePermission}>{notificationsActive ? labels.disableNotifications : labels.enableNotifications}</button>
-        <div className="settings-muted-text">{notificationsActive ? labels.notificationsAllowed : (labels.notificationsBlocked || "Запрещено отправлять уведомления.")}</div>
+        <div className="settings-muted-text">{permissionHelp}</div>
       </SettingsSection>
       <div className={controlsDisabled ? "settings-disabled-area" : ""}>
         <SettingsSection title={labels.soundBlock}>
