@@ -17,7 +17,9 @@ const {
   hashSessionId,
   updateSessionDeviceKey,
   revokeSession,
-  revokeAllUserSessions
+  revokeAllUserSessions,
+  cleanupExpiredSessionsForUser,
+  cleanupDuplicateDeviceSessionsForUser
 } = require("../utils/sessionSecurity");
 const {
   sendEmailCode
@@ -574,9 +576,15 @@ async function getCurrentSession(req, res, next) {
 
 async function listSessions(req, res, next) {
   try {
+    await cleanupExpiredSessionsForUser(req.user.userId);
+    await cleanupDuplicateDeviceSessionsForUser(req.user.userId);
+
     const sessions = await Session.find({
       userId: req.user.userId,
-      revokedAt: null
+      revokedAt: null,
+      expiresAt: {
+        $gt: new Date()
+      }
     }).select("sessionIdHash deviceName createdAt lastSeenAt expiresAt transportMode devicePublicKey deviceKeyFingerprint").sort({
       lastSeenAt: -1
     }).lean();

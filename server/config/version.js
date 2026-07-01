@@ -1,4 +1,4 @@
 module.exports = {
-  version: "48.0",
+  version: "48.2",
   release: "domain migration"
 };

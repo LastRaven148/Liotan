@@ -100,6 +100,13 @@ sessionSchema.index({
   deviceKeyFingerprint: 1
 });
 
+sessionSchema.index({
+  userId: 1,
+  deviceIdHash: 1,
+  revokedAt: 1,
+  lastSeenAt: -1
+});
+
 module.exports =
   mongoose.models.Session ||
   mongoose.model(

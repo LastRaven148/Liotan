@@ -148,6 +148,68 @@ async function cleanupExpiredSessionsForUser(userId) {
   );
 }
 
+async function cleanupDuplicateDeviceSessionsForUser(userId) {
+  const now = new Date();
+
+  const sessions =
+    await Session.find(
+      {
+        userId,
+        revokedAt: null,
+        expiresAt: {
+          $gt: now
+        },
+        deviceIdHash: {
+          $ne: ""
+        }
+      },
+      "_id deviceIdHash lastSeenAt createdAt"
+    )
+      .sort({
+        deviceIdHash: 1,
+        lastSeenAt: -1,
+        createdAt: -1
+      })
+      .lean();
+
+  const seen = new Set();
+  const duplicates = [];
+
+  for (const session of sessions) {
+    if (!session.deviceIdHash) {
+      continue;
+    }
+
+    if (seen.has(session.deviceIdHash)) {
+      duplicates.push(session._id);
+      continue;
+    }
+
+    seen.add(session.deviceIdHash);
+  }
+
+  if (!duplicates.length) {
+    return 0;
+  }
+
+  const result =
+    await Session.updateMany(
+      {
+        _id: {
+          $in: duplicates
+        },
+        revokedAt: null
+      },
+      {
+        $set: {
+          revokedAt: new Date()
+        }
+      }
+    );
+
+  return result.modifiedCount || 0;
+}
+
 async function enforceSessionLimit(userId) {
   const maxActive =
     sessionConfig.maxActiveSessionsPerUser;
@@ -192,6 +254,20 @@ async function enforceSessionLimit(userId) {
   );
 }
 
+function getRequestDeviceId(req) {
+  return String(
+    req.body?.deviceId ||
+    req.headers["x-liotan-device-id"] ||
+    ""
+  )
+    .trim()
+    .slice(0, 200);
+}
+
+function hashDeviceId(deviceId) {
+  return deviceId ? hmac(deviceId) : "";
+}
+
 async function createUserSession({
   req,
   user
@@ -199,29 +275,21 @@ async function createUserSession({
   const sessionId =
     createSessionId();
 
-  const deviceId =
-    req.body?.deviceId ||
-    req.headers["x-liotan-device-id"] ||
-    "";
+  const deviceIdHash =
+    hashDeviceId(getRequestDeviceId(req));
 
   const {
     devicePublicKey,
     deviceKeyFingerprint
   } = getDeviceKeyPayload(req);
 
-  await cleanupExpiredSessionsForUser(user._id);
+  const now =
+    new Date();
 
-  await Session.create({
-    userId: user._id,
+  const nextSession = {
     username: user.username,
     sessionIdHash: hashSessionId(sessionId),
-    deviceIdHash:
-      deviceId
-        ? hmac(String(deviceId).slice(0, 200))
-        : "",
     deviceName: detectDeviceName(req),
-    devicePublicKey,
-    deviceKeyFingerprint,
     transportMode: sanitizeTransportMode(
       req.body?.transportMode ||
       req.headers["x-liotan-transport-mode"]
@@ -229,7 +297,62 @@ async function createUserSession({
     userAgentHash: privacy.storeUserAgentHash
       ? hmac(String(req.headers["user-agent"] || ""))
       : "",
-    expiresAt: getSessionExpiryDate()
+    lastSeenAt: now,
+    expiresAt: getSessionExpiryDate(),
+    revokedAt: null
+  };
+
+  if (devicePublicKey) {
+    nextSession.devicePublicKey = devicePublicKey;
+    nextSession.deviceKeyFingerprint = deviceKeyFingerprint;
+  }
+
+  await cleanupExpiredSessionsForUser(user._id);
+  await cleanupDuplicateDeviceSessionsForUser(user._id);
+
+  if (deviceIdHash) {
+    const reused =
+      await Session.findOneAndUpdate(
+        {
+          userId: user._id,
+          deviceIdHash,
+          revokedAt: null,
+          expiresAt: {
+            $gt: now
+          }
+        },
+        {
+          $set: nextSession,
+          $setOnInsert: {
+            userId: user._id,
+            deviceIdHash,
+            createdAt: now
+          }
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      );
+
+    if (reused) {
+      await enforceSessionLimit(user._id);
+      return sessionId;
+    }
+  }
+
+  await Session.create({
+    userId: user._id,
+    username: user.username,
+    sessionIdHash: hashSessionId(sessionId),
+    deviceIdHash,
+    deviceName: nextSession.deviceName,
+    devicePublicKey,
+    deviceKeyFingerprint,
+    transportMode: nextSession.transportMode,
+    userAgentHash: nextSession.userAgentHash,
+    expiresAt: nextSession.expiresAt
   });
 
   await enforceSessionLimit(user._id);
@@ -418,6 +541,8 @@ module.exports = {
   revokeSession,
   revokeAllUserSessions,
   cleanupExpiredSessions,
+  cleanupExpiredSessionsForUser,
+  cleanupDuplicateDeviceSessionsForUser,
   isValidDevicePublicKey,
   sanitizeFingerprint,
   sanitizeTransportMode
