@@ -1,4 +1,4 @@
 module.exports = {
-  version: "48.7.0",
-  release: "critical security cleanup"
+  version: "48.9.0",
+  release: "dead code cleanup"
 };
