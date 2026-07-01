@@ -10,10 +10,12 @@ const env = require("./config/env");
 const { corsOptions } = require("./config/corsOptions");
 const { apiLimiter } = require("./middleware/rateLimiters");
 const mongoSanitize = require("./middleware/mongoSanitize");
+const requestContext = require("./middleware/requestContext");
 const securityHeaders = require("./middleware/securityHeaders");
 const contentSecurityPolicy = require("./middleware/contentSecurityPolicy");
 const uploadErrorHandler = require("./middleware/uploadErrorHandler");
 const errorHandler = require("./middleware/errorHandler");
+const notFoundHandler = require("./middleware/notFoundHandler");
 const { ensureUploadDirs, uploadsPath } = require("./startup/ensureUploadDirs");
 
 const attachmentRoutes = require("./routes/attachmentRoutes");
@@ -37,7 +39,10 @@ app.set("trust proxy", 1);
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: corsOptions
+  cors: corsOptions,
+  maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE) || 1024 * 1024,
+  pingTimeout: Number(process.env.SOCKET_PING_TIMEOUT_MS) || 20000,
+  pingInterval: Number(process.env.SOCKET_PING_INTERVAL_MS) || 25000
 });
 
 app.set("io", io);
@@ -64,6 +69,7 @@ app.use(
   })
 );
 
+app.use(requestContext);
 app.use(cors(corsOptions));
 app.use(securityHeaders);
 app.use(express.json({ limit: "256kb" }));
@@ -106,6 +112,7 @@ app.use(callRoutes);
 app.use(voiceRoutes);
 app.use(proxyRoutes);
 
+app.use(notFoundHandler);
 app.use(uploadErrorHandler);
 app.use(errorHandler);
 

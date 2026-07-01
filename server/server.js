@@ -5,22 +5,30 @@ const { server } = require("./app");
 const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts");
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
+const {
+  setupGracefulShutdown,
+  setupProcessSafety
+} = require("./utils/shutdown");
+
+setupProcessSafety();
+setupGracefulShutdown(server);
 
 async function start() {
   try {
     await connectDb();
     await cleanupLegacyAccountsOnStartup();
 
-    server.listen(
-      env.PORT,
-      () => {
-        logger.info("SERVER READY", { port: env.PORT });
-        logger.info("ALLOWED ORIGINS", { allowedOrigins });
-        logger.info("MAIL PROVIDER", getMailStatus());
-      }
-    );
+    server.listen(env.PORT, () => {
+      logger.info("SERVER READY", {
+        port: env.PORT,
+        version: "46.0"
+      });
+      logger.info("ALLOWED ORIGINS", { allowedOrigins });
+      logger.info("MAIL PROVIDER", getMailStatus());
+    });
   } catch (err) {
     logger.error("SERVER START ERROR", err);
+    process.exitCode = 1;
   }
 }
 
