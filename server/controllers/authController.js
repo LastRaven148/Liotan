@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { signAuthToken } = require("../utils/authToken");
+const { setAuthCookie, clearAuthCookie } = require("../utils/authCookie");
 const User = require("../models/User");
 const EmailCode = require("../models/EmailCode");
 const E2EEKey = require("../models/E2EEKey");
