@@ -1,4 +1,6 @@
-let memoryAuthToken = "";
+const CSRF_HEADER = "X-Liotan-CSRF";
+const CSRF_VALUE = "liotan-browser-request-v1";
+
 
 const pendingGetRequests = new Map();
 const recentFailedGetRequests = new Map();
@@ -70,23 +72,25 @@ function setCachedResponse(key, data) {
   });
 }
 
-export function setApiAuthToken(token = "") {
-  memoryAuthToken = typeof token === "string" ? token : "";
+export function setApiAuthToken() {
+  // Auth uses httpOnly cookies only. This function is kept as a no-op for older imports.
 }
 
 export function getApiAuthToken() {
-  return memoryAuthToken;
+  return "";
+}
+
+function isStateChangingMethod(method = "GET") {
+  return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
 }
 
 async function performRequest(url, options = {}) {
-  const token = memoryAuthToken;
-
   const headers = {
     ...(options.headers || {})
   };
 
-  if (token && !headers.Authorization) {
-    headers.Authorization = `Bearer ${token}`;
+  if (isStateChangingMethod(options.method) && !headers[CSRF_HEADER]) {
+    headers[CSRF_HEADER] = CSRF_VALUE;
   }
 
   let res;

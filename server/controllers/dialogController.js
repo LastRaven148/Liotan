@@ -29,9 +29,7 @@ function serializeAttachment(attachment) {
     size: attachment.size || 0,
     width: attachment.width || 0,
     height: attachment.height || 0,
-    duration: attachment.duration || 0,
-    publicId: attachment.publicId || "",
-    resourceType: attachment.resourceType || "auto"
+    duration: attachment.duration || 0
   };
 }
 

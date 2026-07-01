@@ -1,5 +1,6 @@
 const { isValidUsername } = require("../../utils/validators");
 const User = require("../../models/User");
+const { usersAreRelated } = require("../../utils/userRelations");
 const {
   typingTimers,
   getTypingKey,
@@ -14,14 +15,22 @@ function emitStopTyping({ io, from, to }) {
   io.to(to).emit("userStoppedTyping", { from });
 }
 
+async function canSendTyping({ from, to }) {
+  if (!isValidUsername(to) || !isValidUsername(from) || from === to) return false;
+
+  const [exists, related] = await Promise.all([
+    User.exists({ username: to, emailVerified: true }),
+    usersAreRelated(from, to)
+  ]);
+
+  return Boolean(exists && related);
+}
+
 function registerTypingHandlers({ io, socket }) {
   socket.on("typing", async ({ to }) => {
     try {
       const from = socket.user.username;
-      if (!isValidUsername(to) || from === to) return;
-
-      const exists = await User.exists({ username: to, emailVerified: true });
-      if (!exists) return;
+      if (!(await canSendTyping({ from, to }))) return;
 
       const key = getTypingKey(from, to);
       clearTypingTimer(from, to);
@@ -36,8 +45,10 @@ function registerTypingHandlers({ io, socket }) {
     } catch {}
   });
 
-  socket.on("stopTyping", ({ to }) => {
-    emitStopTyping({ io, from: socket.user.username, to });
+  socket.on("stopTyping", async ({ to }) => {
+    const from = socket.user.username;
+    if (!(await canSendTyping({ from, to }).catch(() => false))) return;
+    emitStopTyping({ io, from, to });
   });
 }
 

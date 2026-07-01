@@ -60,45 +60,12 @@ function getFolder(type, ownerSegment = "user") {
   return `liotan/u/${safeOwner}/files`;
 }
 
-async function signAttachmentUpload(req, res, next) {
-  try {
-    const mimeType = normalizeMime(typeof req.body.mimeType === "string" ? req.body.mimeType : "");
-    const size = Number(req.body.size) || 0;
-    const fileName = fixFileName(typeof req.body.name === "string" ? req.body.name : "");
-
-    assertAllowedAttachment({ mimeType, fileName, size });
-
-    const type = getAttachmentType(mimeType);
-    const folder = getFolder(type, getUploadOwnerSegment(req));
-    const resourceType = getResourceType(type);
-    const timestamp = Math.round(Date.now() / 1000);
-    const allowedFormats = getCloudinaryAllowedFormats(type);
-    const signaturePayload = {
-      timestamp,
-      folder,
-      overwrite: false,
-      allowed_formats: allowedFormats.join(",")
-    };
-    const signature = cloudinary.utils.api_sign_request(
-      signaturePayload,
-      process.env.CLOUDINARY_API_SECRET
-    );
-
-    res.json({
-      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-      apiKey: process.env.CLOUDINARY_API_KEY,
-      timestamp,
-      signature,
-      folder,
-      resourceType,
-      type,
-      overwrite: false,
-      allowedFormats
-    });
-  } catch (err) {
-    next(err);
-  }
+async function signAttachmentUpload(req, res) {
+  res.status(410).json({
+    error: "direct upload disabled"
+  });
 }
+
 
 async function readMagicBytes(file) {
   if (file.buffer) return file.buffer;

@@ -15,6 +15,8 @@ const {
   isValidUsername
 } = require("../utils/validators");
 
+const { getRelatedUsernames, usersAreRelated } = require("../utils/userRelations");
+
 function isValidDisplayName(value) {
   return (
     typeof value === "string" &&
@@ -22,18 +24,17 @@ function isValidDisplayName(value) {
   );
 }
 
-function emitProfileUpdated(req, profile) {
-  const io =
-    req.app.get("io");
+async function emitProfileUpdated(req, profile) {
+  const io = req.app.get("io");
 
-  if (!io) {
+  if (!io || !profile?.username) {
     return;
   }
 
-  io.emit(
-    "userProfileUpdated",
-    profile
-  );
+  const related = await getRelatedUsernames(profile.username).catch(() => []);
+  [...new Set([profile.username, ...related])].forEach(username => {
+    io.to(username).emit("userProfileUpdated", profile);
+  });
 }
 
 async function getProfile(req, res, next) {
@@ -49,13 +50,26 @@ async function getProfile(req, res, next) {
 
     const user =
       await User.findOne(
-        { username },
+        { username, emailVerified: true },
         "username displayName avatar bio"
       );
 
     if (!user) {
       return res.status(404).json({
         error: "not found"
+      });
+    }
+
+    const requester = req.user.username;
+    const related = requester === username || await usersAreRelated(requester, username);
+
+    if (!related) {
+      return res.json({
+        username: user.username,
+        displayName: user.displayName || "",
+        avatar: "",
+        bio: "",
+        limited: true
       });
     }
 
@@ -134,7 +148,7 @@ async function updateProfile(req, res, next) {
       bio: user.bio || ""
     };
 
-    emitProfileUpdated(req, profile);
+    await emitProfileUpdated(req, profile);
 
     res.json({
       ok: true,
@@ -200,7 +214,7 @@ async function uploadAvatar(req, res, next) {
       bio: user.bio || ""
     };
 
-    emitProfileUpdated(req, profile);
+    await emitProfileUpdated(req, profile);
 
     res.json(profile);
   } catch (err) {
@@ -233,13 +247,13 @@ async function deleteAccount(req, res, next) {
         }
       );
 
-      io.emit(
-        "userDeleted",
-        {
+      const related = await getRelatedUsernames(username).catch(() => []);
+      [...new Set([username, ...related])].forEach(target => {
+        io.to(target).emit("userDeleted", {
           username,
           chatIds: result.chatIds || []
-        }
-      );
+        });
+      });
     }
 
     res.json({

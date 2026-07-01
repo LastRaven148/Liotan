@@ -39,7 +39,7 @@ export default function useAppInitialization({
     }
 
     const bootKey =
-      `${username}:${token.slice(0, 24)}`;
+      `${username}:cookie-session`;
 
     const now =
       Date.now();

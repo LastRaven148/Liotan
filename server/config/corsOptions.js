@@ -32,9 +32,10 @@ const corsOptions = {
   ],
   allowedHeaders: [
     "Content-Type",
-    "Authorization",
     "X-Liotan-Device-Id",
-    "X-Liotan-Device-Name"
+    "X-Liotan-Device-Name",
+    "X-Liotan-CSRF",
+    "X-Requested-With"
   ]
 };
 

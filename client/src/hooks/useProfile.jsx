@@ -74,7 +74,7 @@ export default function useProfile({
 
         return data;
       } catch (err) {
-        console.error(err);
+        if (import.meta.env.DEV) console.warn(err);
         showToast?.("Failed to upload avatar.");
         return null;
       }
@@ -106,7 +106,7 @@ export default function useProfile({
 
         return data;
       } catch (err) {
-        console.error(err);
+        if (import.meta.env.DEV) console.warn(err);
         showToast?.("Failed to save profile.");
         return null;
       }

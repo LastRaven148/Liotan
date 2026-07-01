@@ -25,6 +25,9 @@ export async function getCallRoute(username) {
     `${API}/calls/route`,
     {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ username })
     }
   );

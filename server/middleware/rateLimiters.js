@@ -6,19 +6,24 @@ const {
   hmac
 } = require("../utils/securityIds");
 
+const { normalizeEmail } = require("../utils/privacy");
+
 const createMessage =
   (message) => ({
     error: message
   });
 
 function userOrIpKey(req) {
-  const userKey =
+  const rawUserKey =
     req.user?.userId ||
     req.user?.username ||
     req.body?.email ||
     req.body?.username;
 
-  if (userKey) {
+  if (rawUserKey) {
+    const userKey = String(rawUserKey).includes("@")
+      ? normalizeEmail(rawUserKey)
+      : String(rawUserKey).trim().toLowerCase();
     return hmac(`user:${userKey}`);
   }
 

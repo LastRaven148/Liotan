@@ -58,7 +58,7 @@ export default function useOfflineMedia({
         setLocalUrl(objectUrl);
         setIsOfflineSaved(true);
       } catch (err) {
-        console.error(err);
+        if (import.meta.env.DEV) console.warn(err);
       }
     }
 
@@ -111,7 +111,7 @@ export default function useOfflineMedia({
       setIsOfflineSaved(true);
     } catch (err) {
       if (!options.silent) {
-        console.error(err);
+        if (import.meta.env.DEV) console.warn(err);
       }
     } finally {
       setSavingOffline(false);

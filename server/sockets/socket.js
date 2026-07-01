@@ -45,7 +45,6 @@ function setupSocket(io) {
       }
 
       const decoded = verifyAuthToken(
-        socket.handshake.auth?.token ||
         getAuthCookie(socket.handshake)
       );
 
@@ -139,7 +138,7 @@ function setupSocket(io) {
         io,
         socket,
         clearUserTyping
-      });
+      }).catch(err => logger.error("socket connection end failed", err));
     });
   });
 }

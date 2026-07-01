@@ -266,7 +266,7 @@ export default function useChat({
       setTextState("");
       return true;
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось отправить файл");
       return false;
     } finally {
@@ -310,7 +310,7 @@ export default function useChat({
       }
       return await sendMessage(attachment);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось отправить голосовое сообщение");
       return false;
     }
@@ -336,7 +336,7 @@ export default function useChat({
       }
       return await sendMessage(attachment);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось отправить файл");
       return false;
     }

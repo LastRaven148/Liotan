@@ -12,13 +12,6 @@ function getBearerToken(header) {
 }
 
 function getAuthTokenFromRequest(req) {
-  const bearerToken =
-    getBearerToken(req.headers.authorization);
-
-  if (bearerToken) {
-    return bearerToken;
-  }
-
   try {
     const { getAuthCookie } = require("./authCookie");
     return getAuthCookie(req);

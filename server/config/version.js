@@ -1,4 +1,4 @@
 module.exports = {
-  version: "47.5",
-  release: "fix E2EE"
+  version: "47.6",
+  release: "fix critical security"
 };

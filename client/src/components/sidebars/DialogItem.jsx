@@ -302,7 +302,7 @@ export default function DialogItem({
     rememberChatScroll();
     if (isGroup) {
       if (typeof deleteGroupDialog !== "function") {
-        console.error("deleteGroupDialog is not passed");
+        if (import.meta.env.DEV) console.warn("deleteGroupDialog is not passed");
         return;
       }
       deleteGroupDialog(dialog);

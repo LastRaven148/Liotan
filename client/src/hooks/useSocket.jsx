@@ -73,10 +73,7 @@ export default function useSocket({
     }
     window.addEventListener("click", requestNotifications);
     const socket = io(API, {
-      withCredentials: true,
-      auth: {
-        token
-      }
+      withCredentials: true
     });
     socketRef.current = socket;
     socket.on("connect_error", () => {});

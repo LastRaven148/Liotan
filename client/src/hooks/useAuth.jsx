@@ -85,16 +85,16 @@ export default function useAuth({
         const data =
           await getCurrentSessionApi();
 
-        if (cancelled || !data?.token || !data?.username) {
+        if (cancelled || !data?.username) {
           return;
         }
 
-        setApiAuthToken(data.token);
+        setApiAuthToken("");
         localStorage.setItem(
           "username",
           data.username
         );
-        setToken(data.token);
+        setToken("cookie-session");
         setUsername(data.username);
       } catch {
         setApiAuthToken("");
@@ -113,14 +113,14 @@ export default function useAuth({
     clearApiRequestMemory();
     resetAppBootstrapGuard();
 
-    setApiAuthToken(data.token);
+    setApiAuthToken("");
 
     localStorage.setItem(
       "username",
       data.username
     );
 
-    setToken(data.token);
+    setToken("cookie-session");
     setUsername(data.username);
     setPassword("");
     setEmailCode("");

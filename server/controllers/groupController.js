@@ -14,17 +14,17 @@ function normalizeMembers(members, owner) {
   const list = Array.isArray(members) ? members : [];
   return [...new Set([owner, ...list.filter(isValidUsername)])];
 }
-function sanitizeGroupUser(user) {
+function sanitizeGroupUser(user, { detailed = false } = {}) {
   return {
     username: user.username,
     displayName: user.displayName || "",
-    avatar: user.avatar || "",
-    bio: user.bio || "",
-    lastSeen: user.lastSeen || null
+    avatar: detailed ? user.avatar || "" : "",
+    bio: detailed ? user.bio || "" : "",
+    lastSeen: detailed ? user.lastSeen || null : null
   };
 }
 
-async function serializeGroup(group) {
+async function serializeGroup(group, { detailed = true } = {}) {
   const data =
     group.toObject ? group.toObject() : group;
 
@@ -39,7 +39,7 @@ async function serializeGroup(group) {
     (data.members || [])
       .map(username => users.find(user => user.username === username))
       .filter(Boolean)
-      .map(sanitizeGroupUser);
+      .map(user => sanitizeGroupUser(user, { detailed }));
 
   return {
     _id: data._id,
@@ -275,7 +275,8 @@ async function addGroupMember(req, res, next) {
       });
     }
     const userExists = await User.exists({
-      username: member
+      username: member,
+      emailVerified: true
     });
     if (!userExists) {
       return res.status(404).json({
@@ -345,6 +346,11 @@ async function leaveGroup(req, res, next) {
     if (!group) {
       return res.status(404).json({
         error: "group not found"
+      });
+    }
+    if (!group.members.includes(username)) {
+      return res.status(403).json({
+        error: "access denied"
       });
     }
     if (group.owner === username) {

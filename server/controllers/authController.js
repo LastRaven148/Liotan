@@ -77,7 +77,6 @@ function sendSessionResponse(res, { token, username }) {
 
   res.json({
     ok: true,
-    token,
     username
   });
 }
@@ -448,9 +447,9 @@ function signEmailChangeToken(user, currentEmailHash) {
   });
 }
 
-function verifyEmailChangeToken(token, req) {
+function verifyEmailChangeToken(emailChangeToken, req) {
   try {
-    const payload = jwt.verify(String(token || ""), process.env.JWT_SECRET, {
+    const payload = jwt.verify(String(emailChangeToken || ""), process.env.JWT_SECRET, {
       algorithms: ["HS256"]
     });
     if (payload?.scope !== "email-change" || payload?.userId !== req.user.userId || payload?.username !== req.user.username) {
@@ -498,7 +497,7 @@ async function verifyEmailChangeCurrent(req, res, next) {
     if (!verified) {
       return res.status(400).json({ error: "invalid code" });
     }
-    res.json({ ok: true, token: signEmailChangeToken(user, emailHash) });
+    res.json({ ok: true, emailChangeToken: signEmailChangeToken(user, emailHash) });
   } catch (err) {
     next(err);
   }
@@ -551,6 +550,10 @@ async function confirmEmailChange(req, res, next) {
     user.emailHash = newEmailHash;
     user.emailVerified = true;
     await user.save();
+    await revokeAllUserSessions({
+      userId: user._id,
+      exceptSessionId: req.user.sid
+    });
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -561,7 +564,6 @@ async function getCurrentSession(req, res, next) {
   try {
     res.json({
       ok: true,
-      token: req.token || "",
       username: req.user.username
     });
   } catch (err) {

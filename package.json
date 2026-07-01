@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "1.0.0",
+  "version": "47.6.0",
   "main": "electron/main.js",
   "type": "commonjs",
   "engines": {

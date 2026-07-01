@@ -225,19 +225,19 @@ export async function verifyEmailChangeCurrentApi(currentEmail, code) {
   });
 }
 
-export async function sendEmailChangeNewCodeApi(token, newEmail) {
+export async function sendEmailChangeNewCodeApi(emailChangeToken, newEmail) {
   return apiRequest(`${API}/auth/email-change/new-code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, newEmail })
+    body: JSON.stringify({ token: emailChangeToken, newEmail })
   });
 }
 
-export async function confirmEmailChangeApi(token, newEmail, code) {
+export async function confirmEmailChangeApi(emailChangeToken, newEmail, code) {
   return apiRequest(`${API}/auth/email-change/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, newEmail, code })
+    body: JSON.stringify({ token: emailChangeToken, newEmail, code })
   });
 }
 
@@ -315,84 +315,6 @@ function getAttachmentType(file) {
   return "file";
 }
 
-async function getAttachmentUploadSignature(file) {
-  return apiRequest(`${API}/attachments/sign`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      name:
-        file.name || "file",
-      mimeType:
-        file.type || "application/octet-stream",
-      size:
-        file.size
-    })
-  });
-}
-
-async function uploadSmallAttachmentToCloudinary(
-  file,
-  sign
-) {
-  const form =
-    new FormData();
-
-  form.append(
-    "file",
-    file
-  );
-
-  form.append(
-    "api_key",
-    sign.apiKey
-  );
-
-  form.append(
-    "timestamp",
-    sign.timestamp
-  );
-
-  form.append(
-    "signature",
-    sign.signature
-  );
-
-  form.append(
-    "folder",
-    sign.folder
-  );
-
-  if (Array.isArray(sign.allowedFormats) && sign.allowedFormats.length) {
-    form.append(
-      "allowed_formats",
-      sign.allowedFormats.join(",")
-    );
-  }
-
-  const cloudinaryUrl =
-    `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
-
-  const res =
-    await fetch(cloudinaryUrl, {
-      method: "POST",
-      body: form
-    });
-
-  const data =
-    await res.json();
-
-  if (!res.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "Ошибка загрузки файла"
-    );
-  }
-
-  return data;
-}
-
 export async function uploadAttachmentApi(file) {
   if (!file) {
     throw new Error("Файл не выбран");
@@ -402,43 +324,13 @@ export async function uploadAttachmentApi(file) {
     throw new Error("Файл пустой");
   }
 
-  const sign =
-    await getAttachmentUploadSignature(file);
+  const form = new FormData();
+  form.append("attachment", file);
 
-  const result =
-    await uploadSmallAttachmentToCloudinary(
-      file,
-      sign
-    );
-
-  if (!result?.secure_url) {
-    throw new Error(
-      "Cloudinary не вернул ссылку на файл"
-    );
-  }
-
-  return {
-    url:
-      result.secure_url,
-    name:
-      file.name || "file",
-    type:
-      sign.type || getAttachmentType(file),
-    mimeType:
-      file.type || "application/octet-stream",
-    size:
-      file.size,
-    publicId:
-      result.public_id,
-    resourceType:
-      result.resource_type,
-    width:
-      result.width || 0,
-    height:
-      result.height || 0,
-    duration:
-      result.duration || 0
-  };
+  return apiRequest(`${API}/attachments/upload`, {
+    method: "POST",
+    body: form
+  });
 }
 
 export async function updateBioApi(

@@ -130,7 +130,7 @@ export default function UserProfileModal({
       applyUpdatedGroup(updated);
       setEditing(false);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
     }
   }
   async function uploadAvatar(e) {
@@ -143,7 +143,7 @@ export default function UserProfileModal({
       const updated = await uploadGroupAvatarApi(profile.groupId, file);
       applyUpdatedGroup(updated);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
     }
   }
   async function addMember(targetUsername) {
@@ -157,7 +157,7 @@ export default function UserProfileModal({
       setSearch("");
       setUsers([]);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
     } finally {
       setAdding(false);
     }
@@ -170,7 +170,7 @@ export default function UserProfileModal({
       const updated = await removeGroupMemberApi(profile.groupId, targetUsername);
       applyUpdatedGroup(updated);
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
     }
   }
   async function handleGroupDelete() {

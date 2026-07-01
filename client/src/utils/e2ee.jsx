@@ -5,8 +5,13 @@ const E2EE_ITERATIONS = 200000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const identityCache = new Map();
+const chatSecretMemory = new Map();
 const pendingConversationKeys = new Map();
 const ATTACHMENT_E2EE_PREFIX = "__LIOTAN_E2EE_FILE_V1__";
+const E2EE_DB_NAME = "liotan-e2ee-v2";
+const E2EE_DB_VERSION = 1;
+const IDENTITY_STORE = "identities";
+
 function toBase64(bytes) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -22,6 +27,51 @@ function fromBase64(value) {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+function openE2EEDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB is not available"));
+      return;
+    }
+    const request = indexedDB.open(E2EE_DB_NAME, E2EE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IDENTITY_STORE)) {
+        db.createObjectStore(IDENTITY_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+  });
+}
+async function idbGet(storeName, key) {
+  const db = await openE2EEDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly");
+    const request = tx.objectStore(storeName).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("IndexedDB get failed"));
+    tx.oncomplete = () => db.close();
+  });
+}
+async function idbSet(storeName, key, value) {
+  const db = await openE2EEDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).put(value, key);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error("IndexedDB set failed")); };
+  });
+}
+async function idbDelete(storeName, key) {
+  const db = await openE2EEDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).delete(key);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error("IndexedDB delete failed")); };
+  });
 }
 function getConversationId(username, chatKey) {
   const cleanUsername = String(username || "").trim();
@@ -57,10 +107,22 @@ export function getChatSecret(username, chatKey) {
   if (!username || !chatKey) {
     return "";
   }
-  return localStorage.getItem(getE2EEStorageKey(username, chatKey)) || "";
+  return chatSecretMemory.get(getE2EEStorageKey(username, chatKey)) || "";
+}
+function getLegacyChatSecret(username, chatKey) {
+  try {
+    return localStorage.getItem(getE2EEStorageKey(username, chatKey)) || "";
+  } catch {
+    return "";
+  }
+}
+function removeLegacyChatSecret(username, chatKey) {
+  try {
+    localStorage.removeItem(getE2EEStorageKey(username, chatKey));
+  } catch {}
 }
 export function hasChatSecret(username, chatKey) {
-  return Boolean(getChatSecret(username, chatKey));
+  return Boolean(getChatSecret(username, chatKey) || getLegacyChatSecret(username, chatKey));
 }
 export function setChatSecret(username, chatKey, secret) {
   if (!username || !chatKey) {
@@ -68,10 +130,11 @@ export function setChatSecret(username, chatKey, secret) {
   }
   const key = getE2EEStorageKey(username, chatKey);
   const cleanSecret = String(secret || "").trim();
+  removeLegacyChatSecret(username, chatKey);
   if (!cleanSecret) {
-    localStorage.removeItem(key);
+    chatSecretMemory.delete(key);
   } else {
-    localStorage.setItem(key, cleanSecret);
+    chatSecretMemory.set(key, cleanSecret);
   }
   window.dispatchEvent(new CustomEvent("liotan:e2ee-updated", {
     detail: {
@@ -135,6 +198,34 @@ async function importPrivateKey(jwk) {
     namedCurve: "P-256"
   }, true, ["deriveKey"]);
 }
+async function importNonExtractablePrivateKey(jwk) {
+  return crypto.subtle.importKey("jwk", jwk, {
+    name: "ECDH",
+    namedCurve: "P-256"
+  }, false, ["deriveKey"]);
+}
+async function loadLegacyIdentity(username) {
+  try {
+    const raw = localStorage.getItem(getIdentityStorageKey(username));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.privateKey || !data?.publicKey) return null;
+    const privateKey = await importNonExtractablePrivateKey(data.privateKey);
+    const publicKey = await importPublicKey(data.publicKey);
+    const identity = {
+      privateKey,
+      publicKey,
+      publicJwk: data.publicKey,
+      legacyPrivateJwk: data.privateKey
+    };
+    await saveLocalIdentity(username, data.publicKey, privateKey);
+    localStorage.removeItem(getIdentityStorageKey(username));
+    return identity;
+  } catch {
+    try { localStorage.removeItem(getIdentityStorageKey(username)); } catch {}
+    return null;
+  }
+}
 async function loadLocalIdentity(username) {
   if (!username) {
     return null;
@@ -142,46 +233,51 @@ async function loadLocalIdentity(username) {
   if (identityCache.has(username)) {
     return identityCache.get(username);
   }
-  const raw = localStorage.getItem(getIdentityStorageKey(username));
-  if (!raw) {
-    return null;
-  }
   try {
-    const data = JSON.parse(raw);
-    const privateKey = await importPrivateKey(data.privateKey);
-    const publicKey = await importPublicKey(data.publicKey);
-    const identity = {
-      privateKey,
-      publicKey,
-      publicJwk: data.publicKey
-    };
-    identityCache.set(username, identity);
-    return identity;
-  } catch (err) {
-    console.error("Failed to load E2EE identity", err);
-    localStorage.removeItem(getIdentityStorageKey(username));
-    return null;
+    const stored = await idbGet(IDENTITY_STORE, getIdentityStorageKey(username));
+    if (stored?.privateKey && stored?.publicKey) {
+      const identity = {
+        privateKey: stored.privateKey,
+        publicKey: stored.publicKey,
+        publicJwk: stored.publicJwk
+      };
+      identityCache.set(username, identity);
+      return identity;
+    }
+  } catch {}
+
+  const legacy = await loadLegacyIdentity(username);
+  if (legacy) {
+    identityCache.set(username, legacy);
+    return legacy;
   }
+
+  return null;
 }
 async function createIdentityPair() {
-  const pair = await crypto.subtle.generateKey({
+  const extractablePair = await crypto.subtle.generateKey({
     name: "ECDH",
     namedCurve: "P-256"
   }, true, ["deriveKey"]);
-  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const publicJwk = await crypto.subtle.exportKey("jwk", extractablePair.publicKey);
+  const privateJwk = await crypto.subtle.exportKey("jwk", extractablePair.privateKey);
+  const privateKey = await importNonExtractablePrivateKey(privateJwk);
+  const publicKey = await importPublicKey(publicJwk);
   return {
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
+    privateKey,
+    publicKey,
     publicJwk,
     privateJwk
   };
 }
-function saveLocalIdentity(username, publicJwk, privateJwk) {
-  localStorage.setItem(getIdentityStorageKey(username), JSON.stringify({
-    publicKey: publicJwk,
-    privateKey: privateJwk
-  }));
+async function saveLocalIdentity(username, publicJwk, privateKey) {
+  const publicKey = await importPublicKey(publicJwk);
+  await idbSet(IDENTITY_STORE, getIdentityStorageKey(username), {
+    publicJwk,
+    publicKey,
+    privateKey
+  });
+  try { localStorage.removeItem(getIdentityStorageKey(username)); } catch {}
   identityCache.delete(username);
 }
 async function encryptIdentityBackup({
@@ -239,7 +335,8 @@ export async function initE2EEAccountIdentity({
         backup,
         password
       });
-      saveLocalIdentity(username, backup.publicKey, privateJwk);
+      const privateKey = await importNonExtractablePrivateKey(privateJwk);
+      await saveLocalIdentity(username, backup.publicKey, privateKey);
       const identity = await loadLocalIdentity(username);
       if (identity) {
         await setE2EEIdentityApi(identity.publicJwk);
@@ -253,21 +350,19 @@ export async function initE2EEAccountIdentity({
   }
   const local = await loadLocalIdentity(username);
   if (local) {
-    const raw = localStorage.getItem(getIdentityStorageKey(username));
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.privateKey && parsed?.publicKey) {
+    if (local.legacyPrivateJwk) {
       const nextBackup = await encryptIdentityBackup({
-        publicJwk: parsed.publicKey,
-        privateJwk: parsed.privateKey,
+        publicJwk: local.publicJwk,
+        privateJwk: local.legacyPrivateJwk,
         password
       });
       await setE2EEIdentityBackupApi(nextBackup);
-      await setE2EEIdentityApi(parsed.publicKey);
     }
+    await setE2EEIdentityApi(local.publicJwk);
     return local;
   }
   const created = await createIdentityPair();
-  saveLocalIdentity(username, created.publicJwk, created.privateJwk);
+  await saveLocalIdentity(username, created.publicJwk, created.privateKey);
   const nextBackup = await encryptIdentityBackup({
     publicJwk: created.publicJwk,
     privateJwk: created.privateJwk,
@@ -341,7 +436,10 @@ export async function ensureConversationSecret({
   if (!username || !chatKey) {
     return "";
   }
-  const current = getChatSecret(username, chatKey);
+  const current = getChatSecret(username, chatKey) || getLegacyChatSecret(username, chatKey);
+  if (current) {
+    setChatSecret(username, chatKey, current);
+  }
   const pendingKey = `${username}:${chatKey}`;
   if (pendingConversationKeys.has(pendingKey)) {
     return pendingConversationKeys.get(pendingKey);
@@ -376,7 +474,7 @@ export async function ensureConversationSecret({
         }
       }
     }
-    const secret = getChatSecret(username, chatKey) || randomSecret();
+    const secret = getChatSecret(username, chatKey) || getLegacyChatSecret(username, chatKey) || randomSecret();
     setChatSecret(username, chatKey, secret);
     const safeParticipants = cleanParticipants([username, ...participants]);
     try {
@@ -578,7 +676,9 @@ export async function decryptTextForChat({
     }, key, ct);
     return decoder.decode(decrypted);
   } catch (err) {
-    console.error("E2EE decrypt failed", err);
+    if (import.meta.env.DEV) {
+      console.warn("E2EE decrypt failed", err);
+    }
     return "Не удалось расшифровать сообщение.";
   }
 }

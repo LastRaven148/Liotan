@@ -46,7 +46,7 @@ export default function CreateGroupModal({
 
           setUsers(data || []);
         } catch (err) {
-          console.error(err);
+          if (import.meta.env.DEV) console.warn(err);
           setUsers([]);
         }
       }, 250);
@@ -92,7 +92,7 @@ export default function CreateGroupModal({
       onClose();
 
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) console.warn(err);
     } finally {
       setLoading(false);
     }

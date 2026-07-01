@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
+const PROJECT_ROOT = path.join(ROOT, "..");
 
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -13,38 +14,72 @@ const IGNORED_DIRS = new Set([
 
 const RULES = [
   {
-    id: "direct-console",
-    severity: "medium",
-    pattern: /console\.(log|warn|error|debug)/,
-    allow: /utils[\\/]logger\.js$/,
-    note: "Use utils/logger so sensitive fields are redacted."
+    id: "env-file-present",
+    severity: "critical",
+    filePattern: /(^|\/)\.env$/,
+    note: "Never ship runtime .env files inside project archives."
   },
   {
-    id: "raw-ip",
+    id: "auth-token-response",
+    severity: "critical",
+    pattern: /token:\s*req\.token|setApiAuthToken\([^\)]*data\.token|Authorization:\s*`Bearer/i,
+    allow: /utils[\/]mailer\.js$/,
+    note: "Browser auth must use httpOnly cookies; do not expose auth JWT to JS."
+  },
+  {
+    id: "e2ee-localstorage-secret",
+    severity: "critical",
+    pattern: /localStorage\.setItem\([^\n]*(e2ee|identity|secret)/i,
+    note: "Do not persist E2EE secrets/plain private keys in localStorage."
+  },
+  {
+    id: "global-socket-emit",
     severity: "high",
-    pattern: /req\.ip|x-forwarded-for|remoteAddress/i,
-    note: "Do not store or log raw IP. Hash only when explicitly enabled."
+    pattern: /\bio\.emit\(/,
+    allow: /scripts[\/]privacyAudit\.js$/,
+    note: "Global Socket.IO emit can leak metadata; prefer user/group rooms."
   },
   {
-    id: "raw-user-agent",
+    id: "cookie-state-without-csrf",
+    severity: "high",
+    pattern: /credentials:\s*["']include["']/,
+    allow: /utils[\/]apiRequest\.jsx$/,
+    note: "Cookie-auth state-changing requests must use the central CSRF/header guard."
+  },
+  {
+    id: "direct-cloudinary-signed-upload",
+    severity: "high",
+    pattern: /api_key|apiKey|api_sign_request|cloudName/i,
+    allow: /controllers[\/]attachmentController\.js$|config[\/]cloudinary\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|hooks[\/]useAuth\.jsx$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
+    note: "Prefer server-mediated uploads; direct signed upload exposes provider metadata."
+  },
+  {
+    id: "direct-console-client",
+    severity: "medium",
+    pattern: /console\.(log|error|debug)/,
+    allow: /scripts[\/]|utils[\/]logger\.js$/,
+    note: "Avoid production console output; use dev-only logger/warnings."
+  },
+  {
+    id: "raw-ip-risk",
+    severity: "medium",
+    pattern: /req\.ip|x-forwarded-for|remoteAddress/i,
+    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|scripts[\/]privacyAudit\.js$/,
+    note: "Do not store/log raw IP. Hash only for rate limits."
+  },
+  {
+    id: "raw-user-agent-risk",
     severity: "medium",
     pattern: /user-agent|userAgent/i,
-    allow: /utils[\\/]sessionSecurity\.js$|middleware[\\/]requestContext\.js$|utils[\\/]logger\.js$/,
+    allow: /utils[\/]sessionSecurity\.js$|middleware[\/]requestContext\.js$|utils[\/]logger\.js$|config[\/]privacy\.js$|models[\/]Session\.js$|utils[\/]deviceId\.jsx$|scripts[\/]privacyAudit\.js$/,
     note: "User-Agent is identifying; keep derived storage disabled by default."
   },
   {
-    id: "plaintext-message-risk",
-    severity: "high",
-    pattern: /\btext\b|\bmessage\b/i,
-    allow: /models[\\/]Messages\.js$|utils[\\/]logger\.js$|scripts[\\/]privacyAudit\.js$/,
-    note: "Message text should move to encryptedContent/contentMode=e2ee."
-  },
-  {
-    id: "email-risk",
+    id: "plaintext-message-write",
     severity: "medium",
-    pattern: /email/i,
-    allow: /authController\.js$|EmailCode\.js$|mailer\.js$|emailRisk\.js$|privacy\.js$|validators\.js$|scripts[\\/]privacyAudit\.js$/,
-    note: "Email must remain hashed at rest and neutral in provider payloads."
+    pattern: /\.text\s*=|text:\s*data\.text|text:\s*req\.body/i,
+    allow: /scripts[\/]privacyAudit\.js$/,
+    note: "Plaintext writes must disappear when E2EE becomes mandatory."
   }
 ];
 
@@ -59,7 +94,7 @@ function walk(dir, files = []) {
       continue;
     }
 
-    if (/\.(js|json|env|example)$/.test(entry.name)) {
+    if (/\.(js|jsx|json|env|example|md)$/.test(entry.name) || entry.name === ".env") {
       files.push(fullPath);
     }
   }
@@ -68,18 +103,37 @@ function walk(dir, files = []) {
 }
 
 function relative(file) {
-  return path.relative(ROOT, file).replace(/\\/g, "/");
+  return path.relative(PROJECT_ROOT, file).replace(/\\/g, "/");
 }
 
 function run() {
   const findings = [];
 
-  for (const file of walk(ROOT)) {
+  for (const file of walk(PROJECT_ROOT)) {
     const rel = relative(file);
-    const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+
+    for (const rule of RULES) {
+      if (rule.filePattern && rule.filePattern.test(rel)) {
+        findings.push({
+          rule: rule.id,
+          severity: rule.severity,
+          file: rel,
+          line: 1,
+          note: rule.note
+        });
+      }
+    }
+
+    let lines = [];
+    try {
+      lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
+    } catch {
+      continue;
+    }
 
     lines.forEach((line, index) => {
       for (const rule of RULES) {
+        if (!rule.pattern) continue;
         if (rule.allow && rule.allow.test(rel)) continue;
         if (!rule.pattern.test(line)) continue;
 
@@ -100,7 +154,7 @@ function run() {
   }, {});
 
   console.log(JSON.stringify({
-    ok: true,
+    ok: findings.every(item => item.severity !== "critical"),
     summary,
     findings
   }, null, 2));
