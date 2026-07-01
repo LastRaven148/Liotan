@@ -5,7 +5,6 @@ const authMiddleware =
   require("../middleware/authMiddleware");
 
 const {
-  getUsers,
   searchUsers,
   getPinnedChats,
   togglePinnedChat,
@@ -15,12 +14,6 @@ const {
 
 const router =
   express.Router();
-
-router.get(
-  "/users",
-  authMiddleware,
-  getUsers
-);
 
 router.get(
   "/users/search",

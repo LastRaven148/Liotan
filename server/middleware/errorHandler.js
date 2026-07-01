@@ -14,9 +14,9 @@ function errorHandler(err, req, res, next) {
   logger.error("request failed", err, {
     requestId: req.id,
     method: req.method,
-    path: req.originalUrl || req.path,
+    path: req.safePath || String(req.path || "").slice(0, 300),
     status,
-    user: req.user?.username || null
+    ...(require("../config/privacy").logUserHandle && req.user?.username ? { user: req.user.username } : {})
   });
 
   if (res.headersSent) {

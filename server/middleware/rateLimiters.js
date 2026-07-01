@@ -44,9 +44,6 @@ function isBootstrapPath(req) {
     path === "/me/pinned-chats" ||
     path === "/sessions" ||
     path === "/devices" ||
-    path.startsWith("/e2ee/identity") ||
-    path.startsWith("/e2ee/devices/") ||
-    path.startsWith("/e2ee/conversations/") ||
     path === "/proxy/status" ||
     path === "/voice/policy" ||
     path === "/calls/policy"
@@ -132,8 +129,6 @@ const e2eeLimiter =
         ? 300
         : 5000,
     keyGenerator: userOrIpKey,
-    skip: (req) =>
-      isReadRequest(req) && isBootstrapPath(req),
     message: createMessage("too many key requests"),
     standardHeaders: true,
     legacyHeaders: false

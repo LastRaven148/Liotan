@@ -28,6 +28,7 @@ function requestContext(req, res, next) {
   const startedAt = Date.now();
 
   req.id = String(requestId).slice(0, 80);
+  req.safePath = getSafePath(req);
   res.setHeader("X-Request-Id", req.id);
 
   res.on("finish", () => {
@@ -38,7 +39,7 @@ function requestContext(req, res, next) {
       logger.warn("http request completed", {
         requestId: req.id,
         method: req.method,
-        path: getSafePath(req),
+        path: req.safePath,
         statusCode,
         durationMs,
         ...(privacy.logIpHash ? { ipHash: hashRequestIp(req) } : {}),

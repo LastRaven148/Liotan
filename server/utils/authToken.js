@@ -11,6 +11,22 @@ function getBearerToken(header) {
   return header.slice("Bearer ".length).trim();
 }
 
+function getAuthTokenFromRequest(req) {
+  const bearerToken =
+    getBearerToken(req.headers.authorization);
+
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  try {
+    const { getAuthCookie } = require("./authCookie");
+    return getAuthCookie(req);
+  } catch {
+    return "";
+  }
+}
+
 function isSafeTokenString(token) {
   return Boolean(
     token &&
@@ -77,6 +93,7 @@ module.exports = {
   MAX_TOKEN_LENGTH,
   AUTH_TOKEN_EXPIRES_IN,
   getBearerToken,
+  getAuthTokenFromRequest,
   isSafeTokenString,
   sanitizeDecodedToken,
   signAuthToken,

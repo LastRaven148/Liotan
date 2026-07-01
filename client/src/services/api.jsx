@@ -19,7 +19,11 @@ import {
 } from "./transportPrivacy";
 
 export async function getUsers() {
-  return apiRequest(`${API}/users`);
+  return [];
+}
+
+export async function getCurrentSessionApi() {
+  return apiRequest(`${API}/auth/session`);
 }
 
 export async function getDialogs() {

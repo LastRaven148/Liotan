@@ -33,6 +33,10 @@ const {
   verifyAuthToken
 } = require("../utils/authToken");
 
+const {
+  getAuthCookie
+} = require("../utils/authCookie");
+
 function setupSocket(io) {
   io.use((socket, next) => {
     try {
@@ -40,7 +44,10 @@ function setupSocket(io) {
         return next(new Error("too many socket connections"));
       }
 
-      const decoded = verifyAuthToken(socket.handshake.auth?.token);
+      const decoded = verifyAuthToken(
+        socket.handshake.auth?.token ||
+        getAuthCookie(socket.handshake)
+      );
 
       if (!decoded) {
         return next(new Error("invalid token"));

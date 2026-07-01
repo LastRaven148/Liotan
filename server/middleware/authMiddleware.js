@@ -7,7 +7,7 @@ const {
 } = require("../utils/sessionSecurity");
 
 const {
-  getBearerToken,
+  getAuthTokenFromRequest,
   verifyAuthToken
 } = require("../utils/authToken");
 
@@ -18,7 +18,7 @@ async function authMiddleware(
 ) {
   try {
     const token =
-      getBearerToken(req.headers.authorization);
+      getAuthTokenFromRequest(req);
 
     const decoded =
       verifyAuthToken(token);
@@ -59,6 +59,9 @@ async function authMiddleware(
 
     req.user =
       decoded;
+
+    req.token =
+      token;
 
     next();
   } catch (err) {

@@ -1,3 +1,5 @@
+let memoryAuthToken = "";
+
 const pendingGetRequests = new Map();
 const recentFailedGetRequests = new Map();
 const cachedGetResponses = new Map();
@@ -68,8 +70,16 @@ function setCachedResponse(key, data) {
   });
 }
 
+export function setApiAuthToken(token = "") {
+  memoryAuthToken = typeof token === "string" ? token : "";
+}
+
+export function getApiAuthToken() {
+  return memoryAuthToken;
+}
+
 async function performRequest(url, options = {}) {
-  const token = localStorage.getItem("token");
+  const token = memoryAuthToken;
 
   const headers = {
     ...(options.headers || {})
@@ -84,6 +94,7 @@ async function performRequest(url, options = {}) {
   try {
     res = await fetch(url, {
       ...options,
+      credentials: "include",
       headers
     });
   } catch {
@@ -110,7 +121,7 @@ async function performRequest(url, options = {}) {
 
   if (!res.ok) {
     if (res.status === 401) {
-      localStorage.removeItem("token");
+      setApiAuthToken("");
       localStorage.removeItem("username");
       window.dispatchEvent(new Event("liotan:session-expired"));
     }

@@ -11,7 +11,8 @@ import {
   verifyAuthEmailCode,
   resetPasswordApi,
   deleteAccountApi,
-  logoutCurrentSessionApi
+  logoutCurrentSessionApi,
+  getCurrentSessionApi
 } from "../services/api";
 
 import {
@@ -19,7 +20,8 @@ import {
 } from "../utils/e2ee";
 
 import {
-  clearApiRequestMemory
+  clearApiRequestMemory,
+  setApiAuthToken
 } from "../utils/apiRequest";
 
 import {
@@ -48,14 +50,13 @@ export default function useAuth({
     useState("");
 
   const [token, setToken] =
-    useState(
-      localStorage.getItem("token") || ""
-    );
+    useState("");
 
   useEffect(() => {
     function handleExpiredSession() {
       clearApiRequestMemory();
       resetAppBootstrapGuard();
+      setApiAuthToken("");
       setToken("");
       setUsername("");
       setPassword("");
@@ -76,14 +77,43 @@ export default function useAuth({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        const data =
+          await getCurrentSessionApi();
+
+        if (cancelled || !data?.token || !data?.username) {
+          return;
+        }
+
+        setApiAuthToken(data.token);
+        localStorage.setItem(
+          "username",
+          data.username
+        );
+        setToken(data.token);
+        setUsername(data.username);
+      } catch {
+        setApiAuthToken("");
+        localStorage.removeItem("username");
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function saveSession(data) {
     clearApiRequestMemory();
     resetAppBootstrapGuard();
 
-    localStorage.setItem(
-      "token",
-      data.token
-    );
+    setApiAuthToken(data.token);
 
     localStorage.setItem(
       "username",
@@ -334,7 +364,7 @@ export default function useAuth({
       socketRef.current = null;
     }
 
-    localStorage.removeItem("token");
+    setApiAuthToken("");
     localStorage.removeItem("username");
 
     setToken("");

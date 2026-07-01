@@ -5,6 +5,7 @@ const { server } = require("./app");
 const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts");
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
+const { version } = require("./config/version");
 const {
   setupGracefulShutdown,
   setupProcessSafety
@@ -21,7 +22,7 @@ async function start() {
     server.listen(env.PORT, () => {
       logger.info("SERVER READY", {
         port: env.PORT,
-        version: "47.1"
+        version
       });
       if (env.NODE_ENV !== "production") {
         logger.info("ALLOWED ORIGINS", { allowedOrigins });

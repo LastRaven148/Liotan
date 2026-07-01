@@ -22,19 +22,6 @@ function isValidChatKey(value) {
 
 }
 
-async function getUsers(req, res, next) {
-  try {
-    const users =
-      await User.find({}, "username");
-
-    res.json(
-      users.map(user => user.username).filter(Boolean)
-    );
-  } catch (err) {
-    next(err);
-  }
-}
-
 async function searchUsers(req, res, next) {
   try {
     const currentUsername =
@@ -219,7 +206,6 @@ async function toggleArchivedChat(req, res, next) {
 }
 
 module.exports = {
-  getUsers,
   searchUsers,
   getPinnedChats,
   togglePinnedChat,

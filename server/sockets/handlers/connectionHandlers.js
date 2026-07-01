@@ -1,6 +1,9 @@
 const User =
   require("../../models/User");
 
+const Group =
+  require("../../models/Group");
+
 const logger =
   require("../../utils/logger");
 
@@ -22,6 +25,16 @@ async function handleConnectionStart({
     socket.user.username;
 
   socket.join(username);
+
+  const groups =
+    await Group.find(
+      { members: username },
+      "_id"
+    ).lean();
+
+  groups.forEach(group => {
+    socket.join(`group:${group._id}`);
+  });
 
   await User.updateOne(
     {

@@ -71,6 +71,16 @@ async function signToken(req, user) {
 
   return signAuthToken(user, sessionId);
 }
+
+function sendSessionResponse(res, { token, username }) {
+  setAuthCookie(res, token);
+
+  res.json({
+    ok: true,
+    token,
+    username
+  });
+}
 async function saveEmailCode({
   emailHash,
   purpose,
@@ -325,8 +335,7 @@ async function register(req, res, next) {
       emailVerified: true,
       lastSeen: new Date()
     });
-    res.json({
-      ok: true,
+    sendSessionResponse(res, {
       token: await signToken(req, user),
       username: user.username
     });
@@ -375,7 +384,7 @@ async function login(req, res, next) {
     }
     user.lastSeen = new Date();
     await user.save();
-    res.json({
+    sendSessionResponse(res, {
       token: await signToken(req, user),
       username: user.username
     });
@@ -548,6 +557,18 @@ async function confirmEmailChange(req, res, next) {
   }
 }
 
+async function getCurrentSession(req, res, next) {
+  try {
+    res.json({
+      ok: true,
+      token: req.token || "",
+      username: req.user.username
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listSessions(req, res, next) {
   try {
     const sessions = await Session.find({
@@ -605,6 +626,8 @@ async function logoutAllSessions(req, res, next) {
       userId: req.user.userId
     });
 
+    clearAuthCookie(res);
+
     res.json({
       ok: true
     });
@@ -619,6 +642,9 @@ async function logoutCurrentSession(req, res, next) {
       userId: req.user.userId,
       sessionIdHash: hashSessionId(req.user.sid)
     });
+
+    clearAuthCookie(res);
+
     res.json({
       ok: true
     });
@@ -665,6 +691,7 @@ module.exports = {
   register,
   login,
   resetPassword,
+  getCurrentSession,
   listSessions,
   logoutCurrentSession,
   revokeOneSession,

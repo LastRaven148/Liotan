@@ -16,6 +16,7 @@ const {
   register,
   login,
   resetPassword,
+  getCurrentSession,
   listSessions,
   logoutCurrentSession,
   revokeOneSession,
@@ -95,6 +96,12 @@ router.post(
   authLimiter,
   authMiddleware,
   confirmEmailChange
+);
+
+router.get(
+  "/auth/session",
+  authMiddleware,
+  getCurrentSession
 );
 
 router.get(

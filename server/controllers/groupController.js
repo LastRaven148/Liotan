@@ -7,20 +7,51 @@ const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const {
   isValidUsername
 } = require("../utils/validators");
+
+const emitToGroupMembers =
+  require("../sockets/services/emitToGroupMembers");
 function normalizeMembers(members, owner) {
   const list = Array.isArray(members) ? members : [];
   return [...new Set([owner, ...list.filter(isValidUsername)])];
 }
-async function serializeGroup(group) {
-  const data = group.toObject ? group.toObject() : group;
-  const users = await User.find({
-    username: {
-      $in: data.members || []
-    }
-  }, "username displayName avatar bio lastSeen");
-  const sortedUsers = (data.members || []).map(username => users.find(user => user.username === username)).filter(Boolean);
+function sanitizeGroupUser(user) {
   return {
-    ...data,
+    username: user.username,
+    displayName: user.displayName || "",
+    avatar: user.avatar || "",
+    bio: user.bio || "",
+    lastSeen: user.lastSeen || null
+  };
+}
+
+async function serializeGroup(group) {
+  const data =
+    group.toObject ? group.toObject() : group;
+
+  const users =
+    await User.find({
+      username: {
+        $in: data.members || []
+      }
+    }, "username displayName avatar bio lastSeen").lean();
+
+  const sortedUsers =
+    (data.members || [])
+      .map(username => users.find(user => user.username === username))
+      .filter(Boolean)
+      .map(sanitizeGroupUser);
+
+  return {
+    _id: data._id,
+    name: data.name || "",
+    description: data.description || "",
+    avatar: data.avatar || "",
+    owner: data.owner || "",
+    admins: data.admins || [],
+    members: data.members || [],
+    e2eeVersion: data.e2eeVersion || 1,
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
     memberCount: data.members?.length || 0,
     memberUsers: sortedUsers
   };
@@ -30,15 +61,28 @@ function emitGroupUpdated(req, group) {
   if (!io) {
     return;
   }
-  io.emit("groupUpdated", group);
+
+  emitToGroupMembers({
+    io,
+    members: group.members || [],
+    event: "groupUpdated",
+    payload: group
+  });
 }
-function emitGroupDeleted(req, groupId) {
+
+function emitGroupDeleted(req, group) {
   const io = req.app.get("io");
   if (!io) {
     return;
   }
-  io.emit("groupDeleted", {
-    groupId: String(groupId)
+
+  emitToGroupMembers({
+    io,
+    members: group.members || [],
+    event: "groupDeleted",
+    payload: {
+      groupId: String(group._id)
+    }
   });
 }
 function canManageGroup(group, username) {
@@ -100,7 +144,16 @@ async function getMyGroups(req, res, next) {
       updatedAt: -1
     });
     res.json(groups.map(group => ({
-      ...group.toObject(),
+      _id: group._id,
+      name: group.name || "",
+      description: group.description || "",
+      avatar: group.avatar || "",
+      owner: group.owner || "",
+      admins: group.admins || [],
+      members: group.members || [],
+      e2eeVersion: group.e2eeVersion || 1,
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
       memberCount: group.members?.length || 0
     })));
   } catch (err) {
@@ -121,8 +174,6 @@ async function getGroupById(req, res, next) {
         error: "access denied"
       });
     }
-    const serialized = await serializeGroup(group);
-    emitGroupUpdated(req, serialized);
     res.json(await serializeGroup(group));
   } catch (err) {
     next(err);
@@ -371,7 +422,7 @@ async function deleteGroup(req, res, next) {
         $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
       }
     });
-    emitGroupDeleted(req, group._id);
+    emitGroupDeleted(req, group);
     res.json({
       ok: true
     });
