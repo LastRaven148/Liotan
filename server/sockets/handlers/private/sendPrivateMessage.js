@@ -26,8 +26,13 @@ const {
 } = require("../../state/onlineUsers");
 
 const {
-  sanitizeAttachment
-} = require("../../../utils/attachmentSecurity");
+  resolveOwnedAttachment,
+  markAttachmentUploadUsed
+} = require("../../../services/attachmentOwnership");
+
+const {
+  serializeMessage
+} = require("../../services/serializeMessage");
 
 function isValidEncryptedContent(value) {
   return Boolean(
@@ -104,8 +109,9 @@ function registerSendPrivateMessage({
           );
 
         const safeAttachment =
-          sanitizeAttachment(
-            data.attachment
+          await resolveOwnedAttachment(
+            data.attachment,
+            sender
           );
 
         const hasAttachment =
@@ -214,12 +220,16 @@ function registerSendPrivateMessage({
                 : undefined
           });
 
+        if (hasAttachment) {
+          await markAttachmentUploadUsed(data.attachment, sender);
+        }
+
         emitToChatUsers({
           io,
           sender,
           receiver,
           event: "newMessage",
-          payload: msg
+          payload: serializeMessage(msg)
         });
 
       } catch (err) {

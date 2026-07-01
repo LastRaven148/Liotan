@@ -9,7 +9,11 @@ const {
   hasEncryptedAttachmentExtension
 } = require("../middleware/uploadSecurity");
 const { hmac } = require("../utils/privacy");
-const { sanitizeAttachmentName, getCloudinaryAllowedFormats } = require("../utils/attachmentSafety");
+const { sanitizeAttachmentName } = require("../utils/attachmentSafety");
+const {
+  publicAttachmentView,
+  registerAttachmentUpload
+} = require("../services/attachmentOwnership");
 
 async function removeTempFile(file) {
   if (!file?.path) return;
@@ -101,18 +105,16 @@ async function uploadAttachment(req, res, next) {
       attachmentType: type
     });
 
-    res.json({
-      url: result.secure_url,
+    const upload = await registerAttachmentUpload({
+      owner: req.user.username,
+      result,
       name: fixedName,
       type,
       mimeType,
-      size: req.file.size,
-      publicId: result.public_id,
-      resourceType: result.resource_type,
-      width: result.width || 0,
-      height: result.height || 0,
-      duration: result.duration || 0
+      size: req.file.size
     });
+
+    res.json(publicAttachmentView(upload));
   } catch (err) {
     next(err);
   } finally {

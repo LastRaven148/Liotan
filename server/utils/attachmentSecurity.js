@@ -205,8 +205,9 @@ function sanitizeAttachment(input) {
     waveform: Array.isArray(input.waveform)
       ? input.waveform.slice(0, 64).map(item => safeNumber(item, 0, 1))
       : [],
-    publicId: String(input.publicId || "").slice(0, 300),
-    resourceType: String(input.resourceType || "auto").slice(0, 40),
+    uploadId: String(input.uploadId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
+    publicId: "",
+    resourceType: "auto",
     e2eeMedia: input.e2eeMedia && typeof input.e2eeMedia === "object"
       ? input.e2eeMedia
       : null

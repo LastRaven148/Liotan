@@ -1,5 +1,6 @@
 const Group = require("../models/Group");
 const Message = require("../models/Messages");
+const { serializeMessages } = require("../sockets/services/serializeMessage");
 
 function parseLimit(value) {
   const number = Number(value);
@@ -39,7 +40,7 @@ async function getGroupMessages(req, res, next) {
     const hasMore = messages.length > limit;
     const page = messages.slice(0, limit).reverse();
 
-    res.json({ messages: page, hasMore, nextBefore: hasMore ? page[0]?.createdAt : null });
+    res.json({ messages: serializeMessages(page), hasMore, nextBefore: hasMore ? page[0]?.createdAt : null });
   } catch (err) {
     next(err);
   }

@@ -1,6 +1,7 @@
 const Message = require("../../../models/Messages");
 const getChatId = require("../../../utils/getChatId");
 const { isValidUsername } = require("../../../utils/validators");
+const { serializeMessages } = require("../../services/serializeMessage");
 
 function parseLimit(value) {
   const number = Number(value);
@@ -58,7 +59,7 @@ function registerGetPrivateChat(socket) {
 
       socket.emit("chatHistory", {
         chatId,
-        msgs: page,
+        msgs: serializeMessages(page),
         hasMore,
         nextBefore: hasMore ? page[0]?.createdAt : null
       });

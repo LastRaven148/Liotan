@@ -9,7 +9,8 @@ const IGNORED_DIRS = new Set([
   ".git",
   "uploads",
   "dist",
-  "build"
+  "build",
+  "release"
 ]);
 
 const RULES = [
@@ -20,16 +21,24 @@ const RULES = [
     note: "Never ship runtime .env files inside project archives."
   },
   {
-    id: "auth-token-response",
+    id: "js-readable-auth-token",
     severity: "critical",
-    pattern: /token:\s*req\.token|setApiAuthToken\([^\)]*data\.token|Authorization:\s*`Bearer/i,
-    allow: /utils[\/]mailer\.js$/,
+    pattern: /localStorage\.setItem\([^\n]*(token|jwt)|sessionStorage\.setItem\([^\n]*(token|jwt)|Authorization:\s*`Bearer|auth:\s*\{\s*token/i,
+    allow: /scripts[\/]privacyAudit\.js$|utils[\/]mailer\.js$/,
     note: "Browser auth must use httpOnly cookies; do not expose auth JWT to JS."
+  },
+  {
+    id: "auth-token-json-response",
+    severity: "critical",
+    pattern: /res\.json\s*\(\s*\{[^\n]*(token|jwt)|token:\s*req\.token|token:\s*await\s+signToken/i,
+    allow: /scripts[\/]privacyAudit\.js$|controllers[\/]authController\.js$/,
+    note: "Auth controllers may create tokens only for httpOnly cookies; do not return them in JSON."
   },
   {
     id: "e2ee-localstorage-secret",
     severity: "critical",
-    pattern: /localStorage\.setItem\([^\n]*(e2ee|identity|secret)/i,
+    pattern: /localStorage\.(setItem|getItem)\([^\n]*(e2ee|identity|secret|privateKey|chatKey)/i,
+    allow: /utils[\/]e2ee\.jsx$|services[\/]e2eeStorage\.jsx$|scripts[\/]privacyAudit\.js$/,
     note: "Do not persist E2EE secrets/plain private keys in localStorage."
   },
   {
@@ -40,24 +49,31 @@ const RULES = [
     note: "Global Socket.IO emit can leak metadata; prefer user/group rooms."
   },
   {
-    id: "cookie-state-without-csrf",
+    id: "client-cloudinary-internal-id",
     severity: "high",
-    pattern: /credentials:\s*["']include["']/,
-    allow: /utils[\/]apiRequest\.jsx$/,
-    note: "Cookie-auth state-changing requests must use the central CSRF/header guard."
+    pattern: /publicId|resourceType/i,
+    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]cleanup|scripts[\/]/,
+    note: "Cloudinary publicId/resourceType must stay server-side and must not be accepted from client payloads."
   },
   {
     id: "direct-cloudinary-signed-upload",
     severity: "high",
-    pattern: /api_key|apiKey|api_sign_request|cloudName/i,
-    allow: /controllers[\/]attachmentController\.js$|config[\/]cloudinary\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|hooks[\/]useAuth\.jsx$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
+    pattern: /api_sign_request|cloudName|apiKey/i,
+    allow: /config[\/]cloudinary\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
     note: "Prefer server-mediated uploads; direct signed upload exposes provider metadata."
+  },
+  {
+    id: "cookie-state-without-csrf-central-guard",
+    severity: "high",
+    pattern: /credentials:\s*["']include["']/,
+    allow: /utils[\/]apiRequest\.jsx$|scripts[\/]privacyAudit\.js$/,
+    note: "Cookie-auth state-changing requests must use the central CSRF/header guard."
   },
   {
     id: "direct-console-client",
     severity: "medium",
     pattern: /console\.(log|error|debug)/,
-    allow: /scripts[\/]|utils[\/]logger\.js$/,
+    allow: /scripts[\/]|utils[\/](logger|devLogger)\.(js|jsx)$/,
     note: "Avoid production console output; use dev-only logger/warnings."
   },
   {
@@ -77,7 +93,7 @@ const RULES = [
   {
     id: "plaintext-message-write",
     severity: "medium",
-    pattern: /\.text\s*=|text:\s*data\.text|text:\s*req\.body/i,
+    pattern: /text:\s*data\.text|text:\s*req\.body|\.text\s*=/i,
     allow: /scripts[\/]privacyAudit\.js$/,
     note: "Plaintext writes must disappear when E2EE becomes mandatory."
   }
@@ -114,13 +130,7 @@ function run() {
 
     for (const rule of RULES) {
       if (rule.filePattern && rule.filePattern.test(rel)) {
-        findings.push({
-          rule: rule.id,
-          severity: rule.severity,
-          file: rel,
-          line: 1,
-          note: rule.note
-        });
+        findings.push({ rule: rule.id, severity: rule.severity, file: rel, line: 1, note: rule.note });
       }
     }
 
@@ -136,14 +146,7 @@ function run() {
         if (!rule.pattern) continue;
         if (rule.allow && rule.allow.test(rel)) continue;
         if (!rule.pattern.test(line)) continue;
-
-        findings.push({
-          rule: rule.id,
-          severity: rule.severity,
-          file: rel,
-          line: index + 1,
-          note: rule.note
-        });
+        findings.push({ rule: rule.id, severity: rule.severity, file: rel, line: index + 1, note: rule.note });
       }
     });
   }
@@ -153,11 +156,17 @@ function run() {
     return acc;
   }, {});
 
+  const blocking = findings.some(item => ["critical", "high"].includes(item.severity));
+
   console.log(JSON.stringify({
-    ok: findings.every(item => item.severity !== "critical"),
+    ok: !blocking,
     summary,
     findings
   }, null, 2));
+
+  if (blocking) {
+    process.exitCode = 1;
+  }
 }
 
 run();

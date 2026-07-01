@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "47.7.0",
+  "version": "47.8.0",
   "main": "electron/main.js",
   "type": "commonjs",
   "engines": {
@@ -17,7 +17,8 @@
     "check:client": "cd client && npm run build",
     "check:server": "cd server && npm run check",
     "check": "npm run check:client && npm run check:server",
-    "audit:privacy": "cd server && npm run audit:privacy"
+    "audit:privacy": "cd server && npm run audit:privacy",
+    "make-release": "node scripts/makeRelease.js"
   },
   "build": {
     "appId": "com.Liotan",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "electron": "^30.5.1",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "archiver": "^7.0.1"
   }
 }

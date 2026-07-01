@@ -1,5 +1,6 @@
 const Group = require("../../../models/Group");
 const Message = require("../../../models/Messages");
+const { serializeMessages } = require("../../services/serializeMessage");
 
 function parseLimit(value) {
   const number = Number(value);
@@ -43,7 +44,7 @@ function registerGetGroupChat({ socket }) {
       socket.emit("chatHistory", {
         chatId: `group:${groupId}`,
         groupId,
-        msgs: page,
+        msgs: serializeMessages(page),
         hasMore,
         nextBefore: hasMore ? page[0]?.createdAt : null
       });

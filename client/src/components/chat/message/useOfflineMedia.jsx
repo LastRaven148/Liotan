@@ -11,7 +11,6 @@ import {
 
 export function getMediaKey(attachment) {
   return (
-    attachment?.publicId ||
     attachment?.url ||
     ""
   );

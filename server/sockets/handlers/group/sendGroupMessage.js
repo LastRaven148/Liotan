@@ -19,8 +19,13 @@ const {
 } = require("./joinGroup");
 
 const {
-  sanitizeAttachment
-} = require("../../../utils/attachmentSecurity");
+  resolveOwnedAttachment,
+  markAttachmentUploadUsed
+} = require("../../../services/attachmentOwnership");
+
+const {
+  serializeMessage
+} = require("../../services/serializeMessage");
 
 function isValidEncryptedContent(value) {
   return Boolean(
@@ -115,8 +120,9 @@ function registerSendGroupMessage({
           );
 
         const safeAttachment =
-          sanitizeAttachment(
-            data.attachment
+          await resolveOwnedAttachment(
+            data.attachment,
+            sender
           );
 
         const hasAttachment =
@@ -188,6 +194,10 @@ function registerSendGroupMessage({
                 : undefined
           });
 
+        if (hasAttachment) {
+          await markAttachmentUploadUsed(data.attachment, sender);
+        }
+
         await Group.updateOne(
           {
             _id: groupId
@@ -201,7 +211,7 @@ function registerSendGroupMessage({
           getGroupRoom(groupId)
         ).emit(
           "newMessage",
-          msg
+          serializeMessage(msg)
         );
 
       } catch (err) {
