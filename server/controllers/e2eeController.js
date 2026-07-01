@@ -17,9 +17,61 @@ const {
 function isValidConversationId(value) {
   return (
     isValidUsername(value) ||
-    /^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$/.test(value) ||
-    /^group:[a-fA-F0-9]{24}(?::v\d+)?$/.test(value)
+    /^group:[a-fA-F0-9]{24}(?::v\d+)?$/.test(value) ||
+    getPrivateConversationParticipants(value).length === 2
   );
+}
+
+function getPrivateConversationParticipants(value) {
+  const conversationId =
+    String(value || "").trim();
+
+  if (
+    !conversationId ||
+    conversationId.startsWith("group:")
+  ) {
+    return [];
+  }
+
+  if (conversationId.includes(":")) {
+    const participants =
+      conversationId.split(":");
+
+    if (
+      participants.length === 2 &&
+      participants.every(isValidUsername) &&
+      participants[0] !== participants[1]
+    ) {
+      return participants;
+    }
+
+    return [];
+  }
+
+  const parts =
+    conversationId.split("_");
+
+  if (parts.length < 2) {
+    return [];
+  }
+
+  for (let index = 1; index < parts.length; index += 1) {
+    const left =
+      parts.slice(0, index).join("_");
+
+    const right =
+      parts.slice(index).join("_");
+
+    if (
+      isValidUsername(left) &&
+      isValidUsername(right) &&
+      left !== right
+    ) {
+      return [left, right];
+    }
+  }
+
+  return [];
 }
 
 function isValidPublicKey(value) {
@@ -68,6 +120,10 @@ async function canAccessConversation({
   conversationId,
   username
 }) {
+  if (conversationId === username) {
+    return true;
+  }
+
   if (conversationId.startsWith("group:")) {
     const groupId =
       conversationId
@@ -83,16 +139,51 @@ async function canAccessConversation({
     );
   }
 
-  if (isValidUsername(conversationId)) {
-    return conversationId === username;
-  }
+  const participants =
+    getPrivateConversationParticipants(conversationId);
 
-  const participants = String(conversationId || "").split(":");
-  if (participants.length !== 2 || !participants.every(isValidUsername)) {
+  if (!participants.length) {
     return false;
   }
 
   return participants.includes(username);
+}
+
+async function getAllowedConversationParticipants({
+  conversationId,
+  username
+}) {
+  if (conversationId === username) {
+    return [username];
+  }
+
+  if (conversationId.startsWith("group:")) {
+    const groupId =
+      conversationId
+        .slice("group:".length)
+        .split(":v")[0];
+
+    const group =
+      await Group.findById(groupId, "members").lean();
+
+    if (
+      !group ||
+      !group.members.includes(username)
+    ) {
+      return [];
+    }
+
+    return group.members;
+  }
+
+  const participants =
+    getPrivateConversationParticipants(conversationId);
+
+  if (!participants.includes(username)) {
+    return [];
+  }
+
+  return participants;
 }
 
 async function setIdentity(req, res, next) {
@@ -355,21 +446,30 @@ async function setConversationKeys(req, res, next) {
       });
     }
 
-    const allowed =
-      await canAccessConversation({
+    const allowedParticipants =
+      await getAllowedConversationParticipants({
         conversationId,
         username
       });
 
-    if (!allowed) {
+    if (!allowedParticipants.length) {
       return res.status(403).json({
         error: "access denied"
       });
     }
 
+    const allowedUsers =
+      new Set(allowedParticipants);
+
     const keys =
       Array.isArray(req.body.keys)
-        ? req.body.keys.filter(isValidWrappedKey).slice(0, 100)
+        ? req.body.keys
+            .filter(isValidWrappedKey)
+            .filter(key =>
+              key.sender === username &&
+              allowedUsers.has(key.user)
+            )
+            .slice(0, 100)
         : [];
 
     for (const key of keys) {
