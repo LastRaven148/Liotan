@@ -334,11 +334,13 @@ export default function useAuth({
           emailCode
         );
 
-      await saveSession(data);
-
       if (options?.setupTwoFactor) {
         localStorage.setItem("liotan-open-totp-setup", "1");
+      } else {
+        localStorage.removeItem("liotan-open-totp-setup");
       }
+
+      await saveSession(data);
 
       await initE2EEAccountIdentity({
         username: data.username,

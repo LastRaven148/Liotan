@@ -703,7 +703,7 @@
 
 
 .settings-totp-modal{
-  width:min(520px, calc(100vw - 32px));
+  width:min(500px, calc(100vw - 32px));
   max-height:calc(100svh - 48px);
   overflow:auto;
 }
@@ -715,4 +715,31 @@
 .settings-security-instruction .settings-muted-text{
   white-space:pre-line;
   line-height:1.45;
+}
+
+.settings-totp-steps{
+  margin:8px 0 0 20px;
+  padding:0;
+  color:#9aaabc;
+  line-height:1.45;
+}
+
+.settings-totp-steps li{
+  margin:4px 0;
+}
+
+.settings-support-button{
+  margin-top:14px;
+  width:100%;
+  border:0;
+  border-radius:12px;
+  padding:12px 14px;
+  background:#253241;
+  color:#e7eef7;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.settings-support-button:hover{
+  background:#2f4052;
 }

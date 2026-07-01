@@ -13,7 +13,7 @@ function getEnv(name) {
 function getMailFrom() {
   return (
     getEnv("MAIL_FROM") ||
-    "Liotan <onboarding@resend.dev>"
+    "Liotan <security@liotan.com>"
   );
 }
 
@@ -233,12 +233,21 @@ async function sendEmailCode({
     createHtml(code, purpose);
 
   if (hasResendConfig()) {
-    return sendViaResend({
-      to,
-      subject,
-      text,
-      html
-    });
+    try {
+      return await sendViaResend({
+        to,
+        subject,
+        text,
+        html
+      });
+    } catch (err) {
+      logger.error("Liotan mail provider rejected email", err);
+      return {
+        sent: false,
+        provider: "resend",
+        message: "Email provider rejected this address or sender. Check MAIL_FROM and verified Resend domain on Liotan-api."
+      };
+    }
   }
 
   const smtpResult =
@@ -343,6 +352,26 @@ async function sendRegistrationNotice({ to, username, cancelUrl, expiresAt }) {
   return sendSecurityEmail({ to, subject, text, html });
 }
 
+async function sendLoginNotice({ to, username, at }) {
+  const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan login notice";
+  const safeUsername = String(username || "").replace(/[<>&"]/g, "");
+  const safeAt = new Date(at || Date.now()).toISOString();
+
+  const text = [
+    "A successful login to Liotan was completed.",
+    "",
+    `Username: ${username}`,
+    `Time: ${safeAt}`,
+    "",
+    "If this was you, no action is required.",
+    "If this was not you, change your password, revoke other sessions, and enable 2FA."
+  ].join("\n");
+
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A successful login to Liotan was completed.</p><p><b>Username:</b> ${safeUsername}</p><p><b>Time:</b> ${safeAt}</p><p>If this was you, no action is required.</p><p style="color:#ffb4b4">If this was not you, change your password, revoke other sessions, and enable 2FA.</p></div></body></html>`;
+
+  return sendSecurityEmail({ to, subject, text, html });
+}
+
 function getMailStatus() {
   const withFrom = (status) => privacy.minimalLogs
     ? status
@@ -376,6 +405,7 @@ module.exports = {
   sendSecurityEmail,
   sendEmailChangeCancelNotice,
   sendRegistrationNotice,
+  sendLoginNotice,
   hasMailConfig,
   hasSmtpConfig,
   hasResendConfig,

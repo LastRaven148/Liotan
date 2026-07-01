@@ -27,7 +27,8 @@ const {
 const {
   sendEmailCode,
   sendEmailChangeCancelNotice,
-  sendRegistrationNotice
+  sendRegistrationNotice,
+  sendLoginNotice
 } = require("../utils/mailer");
 const {
   isValidUsername,
@@ -49,6 +50,21 @@ const {
   cancelPendingEmailChange
 } = require("../security/emailChange/emailChangeSecurity");
 function createCode() {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const code = String(crypto.randomInt(10000000, 100000000));
+    const counts = new Map();
+    for (const digit of code) {
+      counts.set(digit, (counts.get(digit) || 0) + 1);
+    }
+
+    const uniqueDigits = counts.size;
+    const maxRepeats = Math.max(...counts.values());
+
+    if (uniqueDigits >= 5 && maxRepeats <= 2) {
+      return code;
+    }
+  }
+
   return String(crypto.randomInt(10000000, 100000000));
 }
 
@@ -528,6 +544,13 @@ async function login(req, res, next) {
     });
     user.lastSeen = new Date();
     await user.save();
+
+    await sendLoginNotice({
+      to: cleanEmail,
+      username: user.username,
+      at: new Date()
+    }).catch(() => null);
+
     sendSessionResponse(res, {
       token: await signToken(req, user),
       username: user.username

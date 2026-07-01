@@ -56,6 +56,13 @@ export default function MainSettingsPage({ state, actions, labels }) {
             {labels.connectionPrivacyAdvice}
           </div>
         )}
+        <button
+          type="button"
+          className="settings-support-button"
+          onClick={actions.openSupport || (() => {})}
+        >
+          {labels.support || "Поддержка"}
+        </button>
       </SettingsSection>
     </>
   );

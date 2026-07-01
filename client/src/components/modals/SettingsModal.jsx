@@ -236,7 +236,10 @@ export default function SettingsModal({
     toggleMenu: () => setMenuOpen((value) => !value),
     askDelete,
     askLogout: () => { setMenuOpen(false); setLogoutOpen(true); },
-    openTotp: () => setTotpOpen(true)
+    openTotp: () => setTotpOpen(true),
+    openSupport: () => {
+      window.location.href = "mailto:support@liotan.com";
+    }
   };
 
   return (
@@ -377,7 +380,7 @@ function getLabels(t) {
     twoFactorSetupText: t.twoFactorSetupText || "2FA добавляет второй код при входе. Используйте Google Authenticator, Microsoft Authenticator, 2FAS или другое приложение для одноразовых кодов.",
     twoFactorManualKey: t.twoFactorManualKey || "Ручной ключ",
     twoFactorInstructionTitle: t.twoFactorInstructionTitle || "Как подключить",
-    twoFactorInstructionText: t.twoFactorInstructionText || "1. Откройте приложение Authenticator. 2. Нажмите добавить аккаунт. 3. Выберите ручной ввод ключа. 4. Введите название Liotan и ключ ниже. 5. Введите 6-значный код из приложения.",
+    twoFactorInstructionText: t.twoFactorInstructionText || "Откройте приложение Authenticator.\nНажмите добавить аккаунт.\nВыберите ручной ввод ключа.\nВведите название Liotan и ручной ключ ниже.\nВведите 6-значный код из приложения.",
     twoFactorBackupCodes: t.twoFactorBackupCodes || "Backup codes",
     twoFactorBackupCodesText: t.twoFactorBackupCodesText || "Сохраните эти backup-коды в безопасном месте. Каждый код одноразовый: он нужен для входа или отключения 2FA, если нет доступа к Authenticator.",
     twoFactorEnabled: t.twoFactorEnabled || "2FA включена",
@@ -387,6 +390,7 @@ function getLabels(t) {
     disable: t.disable || "Отключить",
     close: t.close || "Закрыть",
     backupCode: t.backupCode || "Backup code",
+    support: t.support || "Поддержка",
     lastSeen: t.lastSeenPrivacy || "Кто видит последнее посещение",
     profilePhoto: t.profilePhoto || "Кто видит фото в моём профиле",
     about: t.about || "Кто видит мой раздел «О себе»",
@@ -511,8 +515,12 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
           <>
             <div className="dialog-delete-modal-text">{labels.twoFactorSetupText}</div>
             <div className="settings-security-card settings-security-instruction">
-              <div className="settings-info-label">{labels.twoFactorInstructionTitle}</div>
-              <div className="settings-muted-text">{labels.twoFactorInstructionText}</div>
+              <div className="settings-info-label">{labels.twoFactorInstructionTitle}:</div>
+              <ol className="settings-totp-steps">
+                {String(labels.twoFactorInstructionText || "").split("\n").filter(Boolean).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ol>
             </div>
             <div className="settings-security-card">
               <div className="settings-info-label">{labels.twoFactorManualKey}</div>
