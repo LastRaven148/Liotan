@@ -28,8 +28,30 @@ const {
 const {
   assertAcceptableEmail
 } = require("../utils/emailRisk");
+const privacy = require("../config/privacy");
 function createCode() {
   return String(crypto.randomInt(100000, 1000000));
+}
+
+function shouldExposeDevEmailCode(result) {
+  return (
+    !result.sent &&
+    process.env.NODE_ENV !== "production" &&
+    privacy.exposeDevEmailCodes
+  );
+}
+
+function authLookupError(message) {
+  return privacy.genericAuthErrors ? "invalid credentials" : message;
+}
+
+function emailCodeResponse({ result, cleanEmail, code }) {
+  return {
+    ok: true,
+    sent: result.sent,
+    maskedEmail: maskEmail(cleanEmail),
+    devCode: shouldExposeDevEmailCode(result) ? code : undefined
+  };
 }
 function maskEmail(email) {
   const cleanEmail = normalizeEmail(email);
@@ -119,15 +141,24 @@ async function sendAuthCode(req, res, next) {
     const exists = await User.findOne({
       emailHash
     });
-    if (purpose === "register" && exists) {
-      return res.status(400).json({
-        error: "email already used"
-      });
-    }
-    if (purpose === "reset" && !exists) {
-      return res.status(400).json({
-        error: "email not found"
-      });
+    if (privacy.genericAuthErrors) {
+      if (purpose === "register" && exists) {
+        return res.json({ ok: true, sent: true, maskedEmail: maskEmail(cleanEmail) });
+      }
+      if (purpose === "reset" && !exists) {
+        return res.json({ ok: true, sent: true, maskedEmail: maskEmail(cleanEmail) });
+      }
+    } else {
+      if (purpose === "register" && exists) {
+        return res.status(400).json({
+          error: authLookupError("email already used")
+        });
+      }
+      if (purpose === "reset" && !exists) {
+        return res.status(400).json({
+          error: authLookupError("email not found")
+        });
+      }
     }
     const code = createCode();
     await saveEmailCode({
@@ -140,12 +171,7 @@ async function sendAuthCode(req, res, next) {
       code,
       purpose
     });
-    res.json({
-      ok: true,
-      sent: result.sent,
-      maskedEmail: maskEmail(cleanEmail),
-      devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code
-    });
+    res.json(emailCodeResponse({ result, cleanEmail, code }));
   } catch (err) {
     next(err);
   }
@@ -172,12 +198,12 @@ async function verifyAuthCode(req, res, next) {
     });
     if (purpose === "register" && exists) {
       return res.status(400).json({
-        error: "email already used"
+        error: authLookupError("email already used")
       });
     }
     if (purpose === "reset" && !exists) {
       return res.status(400).json({
-        error: "email not found"
+        error: authLookupError("email not found")
       });
     }
     const record = await EmailCode.findOne({
@@ -251,12 +277,7 @@ async function sendLoginCode(req, res, next) {
       code,
       purpose: "login"
     });
-    res.json({
-      ok: true,
-      sent: result.sent,
-      maskedEmail: maskEmail(cleanEmail),
-      devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code
-    });
+    res.json(emailCodeResponse({ result, cleanEmail, code }));
   } catch (err) {
     next(err);
   }
@@ -287,7 +308,7 @@ async function register(req, res, next) {
     });
     if (exists) {
       return res.status(400).json({
-        error: "exists"
+        error: authLookupError("exists")
       });
     }
     const verified = await verifyEmailCode({
@@ -385,7 +406,7 @@ async function resetPassword(req, res, next) {
     });
     if (!user) {
       return res.status(400).json({
-        error: "email not found"
+        error: authLookupError("email not found")
       });
     }
     const verified = await verifyEmailCode({
@@ -447,7 +468,7 @@ async function startEmailChangeCurrent(req, res, next) {
     const code = createCode();
     await saveEmailCode({ emailHash, purpose: "change_current", code });
     const result = await sendEmailCode({ to: cleanEmail, code, purpose: "change_current" });
-    res.json({ ok: true, sent: result.sent, maskedEmail: maskEmail(cleanEmail), devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code });
+    res.json(emailCodeResponse({ result, cleanEmail, code }));
   } catch (err) {
     next(err);
   }
@@ -486,12 +507,12 @@ async function sendEmailChangeNewCode(req, res, next) {
     const newEmailHash = hashEmail(cleanEmail);
     const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
     if (exists) {
-      return res.status(400).json({ error: "email already used" });
+      return res.status(400).json({ error: authLookupError("email already used") });
     }
     const code = createCode();
     await saveEmailCode({ emailHash: newEmailHash, purpose: "change_new", code });
     const result = await sendEmailCode({ to: cleanEmail, code, purpose: "change_new" });
-    res.json({ ok: true, sent: result.sent, maskedEmail: maskEmail(cleanEmail), devCode: result.sent || process.env.NODE_ENV === "production" ? undefined : code });
+    res.json(emailCodeResponse({ result, cleanEmail, code }));
   } catch (err) {
     next(err);
   }
@@ -513,7 +534,7 @@ async function confirmEmailChange(req, res, next) {
     }
     const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
     if (exists) {
-      return res.status(400).json({ error: "email already used" });
+      return res.status(400).json({ error: authLookupError("email already used") });
     }
     const verified = await verifyEmailCode({ emailHash: newEmailHash, purpose: "change_new", code });
     if (!verified) {

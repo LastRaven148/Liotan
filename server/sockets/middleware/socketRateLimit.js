@@ -4,6 +4,7 @@ const {
 } = require("../../utils/securityIds");
 
 const logger = require("../../utils/logger");
+const privacy = require("../../config/privacy");
 
 const buckets = new Map();
 const connectionBuckets = new Map();
@@ -188,9 +189,9 @@ function attachSocketRateLimit(socket) {
 
       if (isPayloadTooLarge(eventName, args)) {
         logger.warn("socket payload rejected", {
-          username: socket.user?.username || null,
           eventName,
-          socketId: socket.id
+          ...(privacy.logUserHandle && socket.user?.username ? { username: socket.user.username } : {}),
+          ...(privacy.minimalLogs ? {} : { socketId: socket.id })
         });
 
         socket.emit("rateLimited", {
@@ -203,9 +204,9 @@ function attachSocketRateLimit(socket) {
 
       if (isRateLimited({ socket, username, eventName })) {
         logger.warn("socket event rate limited", {
-          username: socket.user?.username || null,
           eventName,
-          socketId: socket.id
+          ...(privacy.logUserHandle && socket.user?.username ? { username: socket.user.username } : {}),
+          ...(privacy.minimalLogs ? {} : { socketId: socket.id })
         });
 
         socket.emit("rateLimited", {
@@ -220,9 +221,9 @@ function attachSocketRateLimit(socket) {
         return await handler(...args);
       } catch (err) {
         logger.error("socket handler failed", err, {
-          username: socket.user?.username || null,
           eventName,
-          socketId: socket.id
+          ...(privacy.logUserHandle && socket.user?.username ? { username: socket.user.username } : {}),
+          ...(privacy.minimalLogs ? {} : { socketId: socket.id })
         });
 
         socket.emit("serverError", {

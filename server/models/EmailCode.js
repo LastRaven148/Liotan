@@ -35,7 +35,7 @@ const emailCodeSchema =
     createdAt: {
       type: Date,
       default: Date.now,
-      expires: 600
+      expires: Number(process.env.EMAIL_CODE_TTL_SECONDS || 600)
     }
   });
 

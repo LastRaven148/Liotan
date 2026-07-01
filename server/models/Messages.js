@@ -34,9 +34,40 @@ const messageSchema =
         default: ""
       },
 
+      // "plain" keeps backward compatibility for old messages.
+      // "e2ee" is the target mode: server stores ciphertext only.
+      contentMode: {
+        type: String,
+        enum: [
+          "plain",
+          "e2ee"
+        ],
+        default: "plain",
+        index: true
+      },
+
       text: {
         type: String,
         default: ""
+      },
+
+      encryptedContent: {
+        ciphertext: {
+          type: String,
+          default: ""
+        },
+        iv: {
+          type: String,
+          default: ""
+        },
+        alg: {
+          type: String,
+          default: ""
+        },
+        version: {
+          type: Number,
+          default: 1
+        }
       },
 
       replyTo: {

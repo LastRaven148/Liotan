@@ -1,6 +1,9 @@
 const logger =
   require("./logger");
 
+const privacy =
+  require("../config/privacy");
+
 function getEnv(name) {
   return String(
     process.env[name] || ""
@@ -37,6 +40,10 @@ function hasMailConfig() {
 }
 
 function getSubject(purpose) {
+  if (privacy.genericEmailSubjects) {
+    return "Liotan security code";
+  }
+
   if (purpose === "reset") {
     return "Liotan password reset code";
   }
@@ -49,6 +56,10 @@ function getSubject(purpose) {
 }
 
 function getTitle(purpose) {
+  if (privacy.genericEmailSubjects) {
+    return "Security code";
+  }
+
   if (purpose === "reset") {
     return "Password reset";
   }
@@ -76,6 +87,10 @@ function createHtml(code, purpose) {
   const title =
     getTitle(purpose);
 
+  const hint = privacy.genericEmailSubjects
+    ? "Use this code to continue in Liotan."
+    : "Use this code to continue in Liotan.";
+
   return `
     <!doctype html>
     <html>
@@ -92,7 +107,7 @@ function createHtml(code, purpose) {
                   <td style="padding:28px 28px 10px;text-align:center">
                     <div style="width:58px;height:58px;border-radius:50%;background:#3390ec;margin:0 auto 18px;line-height:58px;font-size:28px;font-weight:800;color:#ffffff">L</div>
                     <h1 style="margin:0;font-size:24px;line-height:1.2;color:#ffffff">${title}</h1>
-                    <p style="margin:10px 0 0;color:#9aaabc;font-size:14px;line-height:1.5">Use this code to continue in Liotan.</p>
+                    <p style="margin:10px 0 0;color:#9aaabc;font-size:14px;line-height:1.5">${hint}</p>
                   </td>
                 </tr>
                 <tr>
@@ -140,11 +155,10 @@ async function sendViaResend({
     });
 
   if (!response.ok) {
-    const body =
-      await response.text().catch(() => "");
+    await response.text().catch(() => "");
 
     throw new Error(
-      `Resend email failed: ${response.status} ${body}`
+      `Resend email failed: ${response.status}`
     );
   }
 
@@ -255,27 +269,31 @@ async function sendEmailCode({
 }
 
 function getMailStatus() {
+  const withFrom = (status) => privacy.minimalLogs
+    ? status
+    : {
+        ...status,
+        from: getMailFrom()
+      };
+
   if (hasResendConfig()) {
-    return {
+    return withFrom({
       provider: "resend",
-      configured: true,
-      from: getMailFrom()
-    };
+      configured: true
+    });
   }
 
   if (hasSmtpConfig()) {
-    return {
+    return withFrom({
       provider: "smtp",
-      configured: true,
-      from: getMailFrom()
-    };
+      configured: true
+    });
   }
 
-  return {
+  return withFrom({
     provider: "none",
-    configured: false,
-    from: getMailFrom()
-  };
+    configured: false
+  });
 }
 
 module.exports = {

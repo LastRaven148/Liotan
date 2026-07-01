@@ -1,5 +1,63 @@
+const privacy = require("../config/privacy");
+
 const isProduction =
   process.env.NODE_ENV === "production";
+
+const REDACTED_KEYS = new Set([
+  "authorization",
+  "cookie",
+  "token",
+  "password",
+  "code",
+  "email",
+  "to",
+  "from",
+  "text",
+  "html",
+  "body",
+  "message",
+  "attachment",
+  "file",
+  "url",
+  "ip",
+  "userAgent",
+  "user-agent"
+]);
+
+function redact(value, depth = 0) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (depth > 4) {
+    return "[truncated]";
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map(item => redact(item, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    const result = {};
+
+    for (const [key, child] of Object.entries(value)) {
+      if (REDACTED_KEYS.has(String(key).toLowerCase())) {
+        result[key] = "[redacted]";
+        continue;
+      }
+
+      result[key] = redact(child, depth + 1);
+    }
+
+    return result;
+  }
+
+  if (typeof value === "string") {
+    return value.length > 500 ? `${value.slice(0, 500)}…` : value;
+  }
+
+  return value;
+}
 
 function serializeError(err) {
   if (!err) {
@@ -8,9 +66,9 @@ function serializeError(err) {
 
   return {
     name: err.name,
-    message: err.message,
     code: err.code,
-    status: err.status
+    status: err.status,
+    ...(privacy.minimalLogs ? {} : { message: err.message })
   };
 }
 
@@ -26,7 +84,7 @@ function log(level, message, meta) {
     level,
     message,
     time: new Date().toISOString(),
-    ...(meta ? { meta } : {})
+    ...(meta ? { meta: redact(meta) } : {})
   };
 
   const line =

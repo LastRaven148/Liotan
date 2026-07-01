@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const logger = require("../utils/logger");
+const privacy = require("../config/privacy");
 const { hashRequestIp } = require("../utils/securityIds");
 
 const SLOW_REQUEST_MS = Number(process.env.SLOW_REQUEST_MS) || 1500;
@@ -10,6 +11,16 @@ function createRequestId() {
   }
 
   return crypto.randomBytes(16).toString("hex");
+}
+
+function getSafePath(req) {
+  const original = String(req.originalUrl || req.url || "");
+
+  if (privacy.logQueryString) {
+    return original.slice(0, 300);
+  }
+
+  return original.split("?")[0].slice(0, 300);
 }
 
 function requestContext(req, res, next) {
@@ -27,11 +38,11 @@ function requestContext(req, res, next) {
       logger.warn("http request completed", {
         requestId: req.id,
         method: req.method,
-        path: req.originalUrl || req.url,
+        path: getSafePath(req),
         statusCode,
         durationMs,
-        ipHash: hashRequestIp(req),
-        user: req.user?.username || null
+        ...(privacy.logIpHash ? { ipHash: hashRequestIp(req) } : {}),
+        ...(privacy.logUserHandle && req.user?.username ? { user: req.user.username } : {})
       });
     }
   });

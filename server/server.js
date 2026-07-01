@@ -21,9 +21,11 @@ async function start() {
     server.listen(env.PORT, () => {
       logger.info("SERVER READY", {
         port: env.PORT,
-        version: "46.0"
+        version: "47.0"
       });
-      logger.info("ALLOWED ORIGINS", { allowedOrigins });
+      if (env.NODE_ENV !== "production") {
+        logger.info("ALLOWED ORIGINS", { allowedOrigins });
+      }
       logger.info("MAIL PROVIDER", getMailStatus());
     });
   } catch (err) {

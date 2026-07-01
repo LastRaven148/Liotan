@@ -10,6 +10,9 @@ const Group =
 const Session =
   require("../models/Session");
 
+const privacy =
+  require("../config/privacy");
+
 const {
   isValidUsername
 } = require("../utils/validators");
@@ -305,7 +308,7 @@ async function getDeviceIdentities(req, res, next) {
             $ne: null
           }
         },
-        "deviceName devicePublicKey lastSeenAt createdAt"
+        "deviceName devicePublicKey lastSeenAt createdAt deviceKeyFingerprint"
       )
         .sort({
           lastSeenAt: -1
@@ -318,8 +321,8 @@ async function getDeviceIdentities(req, res, next) {
       devices: sessions.map(session => ({
         deviceName: session.deviceName,
         publicKey: session.devicePublicKey,
-        lastSeenAt: session.lastSeenAt,
-        createdAt: session.createdAt
+        fingerprint: session.deviceKeyFingerprint || "",
+        ...(privacy.minimalLogs ? {} : { lastSeenAt: session.lastSeenAt, createdAt: session.createdAt })
       }))
     });
   } catch (err) {

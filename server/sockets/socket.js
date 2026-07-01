@@ -23,6 +23,7 @@ const {
 } = require("./middleware/socketRateLimit");
 
 const logger = require("../utils/logger");
+const privacy = require("../config/privacy");
 const { getCallRoom } = require("../utils/callPrivacy");
 
 const {
@@ -85,8 +86,8 @@ function setupSocket(io) {
       }).catch(next);
     } catch (err) {
       logger.warn("socket auth failed", {
-        message: err.message,
-        socketId: socket.id
+        reason: err.name || "auth_error",
+        ...(privacy.minimalLogs ? {} : { socketId: socket.id })
       });
 
       next(new Error("auth error"));
@@ -103,8 +104,8 @@ function setupSocket(io) {
       });
     } catch (err) {
       logger.error("socket connection start failed", err, {
-        username: socket.user?.username || null,
-        socketId: socket.id
+        ...(privacy.logUserHandle && socket.user?.username ? { username: socket.user.username } : {}),
+        ...(privacy.minimalLogs ? {} : { socketId: socket.id })
       });
 
       socket.disconnect(true);

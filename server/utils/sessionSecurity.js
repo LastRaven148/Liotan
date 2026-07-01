@@ -4,6 +4,9 @@ const crypto =
 const Session =
   require("../models/Session");
 
+const privacy =
+  require("../config/privacy");
+
 const {
   hmac
 } = require("./privacy");
@@ -88,6 +91,10 @@ function detectDeviceName(req) {
     return sanitizeDeviceName(explicit);
   }
 
+  if (!privacy.storeDerivedDeviceName) {
+    return "Web device";
+  }
+
   const ua =
     String(req.headers["user-agent"] || "");
 
@@ -135,9 +142,9 @@ async function createUserSession({
       req.body?.transportMode ||
       req.headers["x-liotan-transport-mode"]
     ),
-    userAgentHash: hmac(
-      String(req.headers["user-agent"] || "")
-    )
+    userAgentHash: privacy.storeUserAgentHash
+      ? hmac(String(req.headers["user-agent"] || ""))
+      : ""
   });
 
   return sessionId;
