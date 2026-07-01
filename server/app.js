@@ -27,6 +27,7 @@ const e2eeRoutes = require("./routes/e2eeRoutes");
 const groupMessageRoutes = require("./routes/groupMessageRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const healthRoutes = require("./routes/healthRoutes");
+const securityRoutes = require("./routes/securityRoutes");
 const profileRoutes = require("./routes/profileRoutes");
 const proxyRoutes = require("./routes/proxyRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -102,6 +103,7 @@ app.use(
 );
 
 app.use(healthRoutes);
+app.use(securityRoutes);
 app.use(authRoutes);
 app.use(profileRoutes);
 app.use(userRoutes);

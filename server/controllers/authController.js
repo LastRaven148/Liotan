@@ -7,6 +7,7 @@ const User = require("../models/User");
 const EmailCode = require("../models/EmailCode");
 const E2EEKey = require("../models/E2EEKey");
 const Session = require("../models/Session");
+const UserSecurity = require("../models/UserSecurity");
 const {
   normalizeEmail,
   hashEmail,
@@ -33,9 +34,44 @@ const {
 const {
   assertAcceptableEmail
 } = require("../utils/emailRisk");
+const { decryptJson } = require("../security/crypto/secureEnvelope");
+const { verifyTotp } = require("../security/totp/totp");
+const { consumeBackupCode } = require("../security/recovery/backupCodes");
 const privacy = require("../config/privacy");
 function createCode() {
   return String(crypto.randomInt(100000, 1000000));
+}
+
+async function verifySecondFactorIfEnabled({ user, code, backupCode }) {
+  const security = await UserSecurity.findOne({ userId: user._id });
+  if (!security?.totp?.enabled) {
+    return { ok: true, required: false };
+  }
+
+  if (code) {
+    try {
+      const { secret } = decryptJson(security.totp.secretEnvelope, `totp:${user._id}`);
+      const verified = verifyTotp(secret, code, { lastUsedStep: security.totp.lastUsedStep });
+      if (verified.ok) {
+        security.totp.lastUsedStep = verified.step;
+        await security.save();
+        return { ok: true, required: true };
+      }
+    } catch {
+      return { ok: false, required: true };
+    }
+  }
+
+  if (backupCode) {
+    const backup = consumeBackupCode(security.totp.backupCodeHashes || [], backupCode);
+    if (backup.ok) {
+      security.totp.backupCodeHashes = backup.hashes;
+      await security.save();
+      return { ok: true, required: true };
+    }
+  }
+
+  return { ok: false, required: true };
 }
 
 function shouldExposeDevEmailCode(result) {
@@ -350,7 +386,9 @@ async function login(req, res, next) {
     const {
       email,
       password,
-      code
+      code,
+      totpCode,
+      backupCode
     } = req.body;
     if (!isValidEmail(email) || !isValidPassword(password) || !isValidEmailCode(code)) {
       return res.status(400).json({
@@ -382,6 +420,17 @@ async function login(req, res, next) {
     if (!verified) {
       return res.status(400).json({
         error: "invalid code"
+      });
+    }
+    const secondFactor = await verifySecondFactorIfEnabled({
+      user,
+      code: totpCode,
+      backupCode
+    });
+    if (!secondFactor.ok) {
+      return res.status(401).json({
+        error: "second factor required",
+        secondFactorRequired: true
       });
     }
     user.lastSeen = new Date();
