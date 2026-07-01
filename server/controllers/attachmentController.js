@@ -9,6 +9,7 @@ const {
   hasEncryptedAttachmentExtension
 } = require("../middleware/uploadSecurity");
 const { hmac } = require("../utils/privacy");
+const { sanitizeAttachmentName, getCloudinaryAllowedFormats } = require("../utils/attachmentSafety");
 
 async function removeTempFile(file) {
   if (!file?.path) return;
@@ -19,9 +20,9 @@ function fixFileName(name) {
   if (!name) return "file";
   try {
     const fixed = Buffer.from(name, "latin1").toString("utf8");
-    return fixed && !fixed.includes("�") ? fixed : name;
+    return sanitizeAttachmentName(fixed && !fixed.includes("�") ? fixed : name);
   } catch {
-    return name;
+    return sanitizeAttachmentName(name);
   }
 }
 
@@ -63,7 +64,7 @@ async function signAttachmentUpload(req, res, next) {
   try {
     const mimeType = normalizeMime(typeof req.body.mimeType === "string" ? req.body.mimeType : "");
     const size = Number(req.body.size) || 0;
-    const fileName = typeof req.body.name === "string" ? req.body.name : "";
+    const fileName = fixFileName(typeof req.body.name === "string" ? req.body.name : "");
 
     assertAllowedAttachment({ mimeType, fileName, size });
 
@@ -71,8 +72,15 @@ async function signAttachmentUpload(req, res, next) {
     const folder = getFolder(type, getUploadOwnerSegment(req));
     const resourceType = getResourceType(type);
     const timestamp = Math.round(Date.now() / 1000);
+    const allowedFormats = getCloudinaryAllowedFormats(type);
+    const signaturePayload = {
+      timestamp,
+      folder,
+      overwrite: false,
+      allowed_formats: allowedFormats.join(",")
+    };
     const signature = cloudinary.utils.api_sign_request(
-      { timestamp, folder, overwrite: false },
+      signaturePayload,
       process.env.CLOUDINARY_API_SECRET
     );
 
@@ -84,7 +92,8 @@ async function signAttachmentUpload(req, res, next) {
       folder,
       resourceType,
       type,
-      overwrite: false
+      overwrite: false,
+      allowedFormats
     });
   } catch (err) {
     next(err);
@@ -121,7 +130,8 @@ async function uploadAttachment(req, res, next) {
     const type = getAttachmentType(mimeType);
     const result = await uploadToCloudinary(req.file, {
       folder: getFolder(type, getUploadOwnerSegment(req)),
-      resourceType: getResourceType(type)
+      resourceType: getResourceType(type),
+      attachmentType: type
     });
 
     res.json({

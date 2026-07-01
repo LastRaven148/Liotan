@@ -360,6 +360,13 @@ async function uploadSmallAttachmentToCloudinary(
     sign.folder
   );
 
+  if (Array.isArray(sign.allowedFormats) && sign.allowedFormats.length) {
+    form.append(
+      "allowed_formats",
+      sign.allowedFormats.join(",")
+    );
+  }
+
   const cloudinaryUrl =
     `https://api.cloudinary.com/v1_1/${sign.cloudName}/${sign.resourceType}/upload`;
 

@@ -15,6 +15,26 @@ const DEFAULT_LIMIT = {
   maxPayloadBytes: 32 * 1024
 };
 
+const ALLOWED_EVENTS = new Set([
+  "sendMessage",
+  "sendGroupMessage",
+  "typing",
+  "stopTyping",
+  "markChatRead",
+  "editMessage",
+  "deleteMessage",
+  "deleteChat",
+  "pinMessage",
+  "joinChat",
+  "getChat",
+  "getGroupChat",
+  "joinGroup",
+  "callOffer",
+  "callAnswer",
+  "callIceCandidate",
+  "callEnd"
+]);
+
 const EVENT_LIMITS = {
   sendMessage: {
     windowMs: 60 * 1000,
@@ -60,6 +80,11 @@ const EVENT_LIMITS = {
     windowMs: 60 * 1000,
     max: 12,
     maxPayloadBytes: 8 * 1024
+  },
+  joinChat: {
+    windowMs: 60 * 1000,
+    max: 40,
+    maxPayloadBytes: 256
   },
   getChat: {
     windowMs: 60 * 1000,
@@ -173,6 +198,16 @@ function isPayloadTooLarge(eventName, args) {
 }
 
 function attachSocketRateLimit(socket) {
+  socket.use((packet, next) => {
+    const eventName = packet?.[0];
+
+    if (typeof eventName !== "string" || !ALLOWED_EVENTS.has(eventName)) {
+      return next(new Error("realtime event rejected"));
+    }
+
+    return next();
+  });
+
   const originalOn = socket.on.bind(socket);
 
   socket.on = (eventName, handler) => {
@@ -238,5 +273,6 @@ function attachSocketRateLimit(socket) {
 module.exports = {
   attachSocketRateLimit,
   isRateLimited,
-  isConnectionRateLimited
+  isConnectionRateLimited,
+  ALLOWED_EVENTS
 };

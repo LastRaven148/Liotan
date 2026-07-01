@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { signAuthToken } = require("../utils/authToken");
 const User = require("../models/User");
 const EmailCode = require("../models/EmailCode");
 const E2EEKey = require("../models/E2EEKey");
@@ -67,14 +68,8 @@ async function signToken(req, user) {
     req,
     user
   });
-  return jwt.sign({
-    userId: user._id.toString(),
-    username: user.username,
-    sid: sessionId
-  }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-    algorithm: "HS256"
-  });
+
+  return signAuthToken(user, sessionId);
 }
 async function saveEmailCode({
   emailHash,

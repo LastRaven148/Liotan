@@ -10,6 +10,9 @@ const Group =
 const Session =
   require("../models/Session");
 
+const Message =
+  require("../models/Messages");
+
 const privacy =
   require("../config/privacy");
 
@@ -100,6 +103,47 @@ function getSafeDeviceName(session, requester, targetUser) {
   return "Device";
 }
 
+async function hasSharedPrivateConversation(requester, targetUser) {
+  if (!requester || !targetUser || requester === targetUser) {
+    return requester === targetUser;
+  }
+
+  const message =
+    await Message.exists({
+      chatType: "private",
+      $or: [
+        { from: requester, to: targetUser },
+        { from: targetUser, to: requester }
+      ]
+    });
+
+  return Boolean(message);
+}
+
+async function canReadTargetDevices(requester, targetUser) {
+  if (requester === targetUser) {
+    return true;
+  }
+
+  return hasSharedPrivateConversation(requester, targetUser);
+}
+
+function emptyDeviceList(username = "") {
+  return {
+    username: privacy.exposeE2eeUserEnumeration ? username : "",
+    devices: []
+  };
+}
+
+function cleanWrappedKey(key) {
+  return {
+    user: key.user,
+    sender: key.sender,
+    wrappedKey: key.wrappedKey,
+    iv: key.iv,
+    alg: String(key.alg || "ECDH-P256-AES-GCM").slice(0, 100)
+  };
+}
 
 function isValidIdentityBackup(value) {
   return Boolean(
@@ -298,17 +342,11 @@ async function getDeviceIdentities(req, res, next) {
     const requester =
       req.user.username;
 
-    if (username !== requester) {
-      // Only expose active device keys to users who already share a conversation.
-      // Full contact graph checks can be tightened later per conversation.
-      const hasPrivateAccess =
-        username && requester && username !== requester;
+    const canReadDevices =
+      await canReadTargetDevices(requester, username);
 
-      if (!hasPrivateAccess) {
-        return res.status(403).json({
-          error: "access denied"
-        });
-      }
+    if (!canReadDevices) {
+      return res.json(emptyDeviceList(username));
     }
 
     const sessions =
@@ -450,7 +488,7 @@ async function getConversationKey(req, res, next) {
       await E2EEKey.findOne({
         conversationId,
         user: username
-      }).lean();
+      }, "conversationId user sender wrappedKey iv alg version updatedAt").lean();
 
     res.json({
       key: key || null
@@ -498,6 +536,7 @@ async function setConversationKeys(req, res, next) {
               allowedUsers.has(key.user)
             )
             .slice(0, 100)
+            .map(cleanWrappedKey)
         : [];
 
     for (const key of keys) {

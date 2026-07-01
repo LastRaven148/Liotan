@@ -1,5 +1,3 @@
-const jwt = require("jsonwebtoken");
-
 const User = require("../models/User");
 
 const {
@@ -31,6 +29,10 @@ const {
   touchSession
 } = require("../utils/sessionSecurity");
 
+const {
+  verifyAuthToken
+} = require("../utils/authToken");
+
 function setupSocket(io) {
   io.use((socket, next) => {
     try {
@@ -38,17 +40,9 @@ function setupSocket(io) {
         return next(new Error("too many socket connections"));
       }
 
-      const token = socket.handshake.auth?.token;
+      const decoded = verifyAuthToken(socket.handshake.auth?.token);
 
-      if (!token || String(token).length > 4096) {
-        return next(new Error("invalid token"));
-      }
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-        algorithms: ["HS256"]
-      });
-
-      if (!decoded.userId || !decoded.username || !decoded.sid) {
+      if (!decoded) {
         return next(new Error("invalid token"));
       }
 

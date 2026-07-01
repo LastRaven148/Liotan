@@ -1,5 +1,6 @@
 const fs = require("fs");
 const cloudinary = require("../config/cloudinary");
+const { getCloudinaryAllowedFormats } = require("./attachmentSafety");
 
 const LARGE_FILE_LIMIT = 45 * 1024 * 1024;
 
@@ -20,6 +21,10 @@ function uploadToCloudinary(file, options = {}) {
       unique_filename: true,
       overwrite: false
     };
+
+    if (options.attachmentType) {
+      uploadOptions.allowed_formats = getCloudinaryAllowedFormats(options.attachmentType);
+    }
 
     if (resourceType === "image") {
       uploadOptions.quality = "auto:best";
