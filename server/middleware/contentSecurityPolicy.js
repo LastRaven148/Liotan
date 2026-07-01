@@ -1,15 +1,53 @@
+function normalizeOrigin(origin) {
+  return String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+function splitOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
+function toWebSocketOrigin(origin) {
+  const clean = normalizeOrigin(origin);
+
+  if (clean.startsWith("https://")) {
+    return `wss://${clean.slice("https://".length)}`;
+  }
+
+  if (clean.startsWith("http://")) {
+    return `ws://${clean.slice("http://".length)}`;
+  }
+
+  return "";
+}
+
 function buildConnectSources() {
+  const httpOrigins = Array.from(new Set([
+    "https://liotan.com",
+    "https://www.liotan.com",
+    "https://api.liotan.com",
+    process.env.CLIENT_URL,
+    process.env.PUBLIC_CLIENT_URL,
+    process.env.API_URL,
+    process.env.PUBLIC_API_URL,
+    ...splitOrigins(process.env.ALLOWED_ORIGINS),
+    "https://api.cloudinary.com",
+    "https://res.cloudinary.com"
+  ].map(normalizeOrigin).filter(Boolean)));
+
+  const wsOrigins = httpOrigins
+    .map(toWebSocketOrigin)
+    .filter(Boolean);
+
   return [
     "'self'",
-    "https://liotan.onrender.com",
-    "https://liotan-api.onrender.com",
-    process.env.CLIENT_URL,
-    process.env.API_URL,
-    "https://api.cloudinary.com",
-    "https://res.cloudinary.com",
-    "wss://liotan.onrender.com",
-    "wss://liotan-api.onrender.com"
-  ].filter(Boolean);
+    ...httpOrigins,
+    ...wsOrigins
+  ];
 }
 
 const contentSecurityPolicy = {

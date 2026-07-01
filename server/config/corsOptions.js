@@ -1,22 +1,45 @@
 const env = require("./env");
 
-const allowedOrigins = [
+function normalizeOrigin(origin) {
+  return String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+function splitOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
+const defaultAllowedOrigins = [
   "http://localhost:3000",
-  "https://liotan.onrender.com",
-  "https://liotan-api.onrender.com",
-  env.CLIENT_URL
-].filter(Boolean);
+  "http://localhost:5173",
+  "https://liotan.com",
+  "https://www.liotan.com"
+];
+
+const allowedOrigins = Array.from(new Set([
+  ...defaultAllowedOrigins,
+  normalizeOrigin(env.CLIENT_URL),
+  normalizeOrigin(process.env.PUBLIC_CLIENT_URL),
+  ...splitOrigins(process.env.ALLOWED_ORIGINS),
+  ...splitOrigins(process.env.LEGACY_ALLOWED_ORIGINS)
+].filter(Boolean)));
 
 function corsOrigin(origin, callback) {
   if (!origin) {
     return callback(null, true);
   }
 
-  if (allowedOrigins.includes(origin)) {
+  const cleanOrigin = normalizeOrigin(origin);
+
+  if (allowedOrigins.includes(cleanOrigin)) {
     return callback(null, true);
   }
 
-  return callback(new Error(`CORS blocked: ${origin}`));
+  return callback(new Error(`CORS blocked: ${cleanOrigin}`));
 }
 
 const corsOptions = {
@@ -41,5 +64,7 @@ const corsOptions = {
 
 module.exports = {
   allowedOrigins,
-  corsOptions
+  corsOptions,
+  normalizeOrigin,
+  splitOrigins
 };

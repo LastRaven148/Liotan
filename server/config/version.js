@@ -1,4 +1,4 @@
 module.exports = {
-  version: "47.8",
-  release: "final pre-E2EE cleanup"
+  version: "48.0",
+  release: "domain migration"
 };

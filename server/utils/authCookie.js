@@ -1,4 +1,5 @@
 const COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "liotan_auth";
+const COOKIE_DOMAIN = String(process.env.AUTH_COOKIE_DOMAIN || "").trim();
 const COOKIE_MAX_AGE_MS = Number(process.env.AUTH_COOKIE_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000;
 
 function parseCookies(header = "") {
@@ -36,13 +37,19 @@ function getAuthCookie(req) {
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
 
-  return {
+  const options = {
     httpOnly: true,
     secure: isProduction,
     sameSite: "lax",
     path: "/",
     maxAge: COOKIE_MAX_AGE_MS
   };
+
+  if (COOKIE_DOMAIN) {
+    options.domain = COOKIE_DOMAIN;
+  }
+
+  return options;
 }
 
 function setAuthCookie(res, token) {
