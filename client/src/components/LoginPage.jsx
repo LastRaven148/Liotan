@@ -111,9 +111,7 @@ export default function LoginPage({
     setLanguage(
       language === "ru"
         ? "en"
-        : language === "en"
-          ? "uk"
-          : "ru"
+        : "ru"
     );
   }
 

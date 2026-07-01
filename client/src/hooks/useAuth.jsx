@@ -52,6 +52,9 @@ export default function useAuth({
   const [token, setToken] =
     useState("");
 
+  const [authReady, setAuthReady] =
+    useState(false);
+
   useEffect(() => {
     function handleExpiredSession() {
       clearApiRequestMemory();
@@ -62,6 +65,7 @@ export default function useAuth({
       setPassword("");
       setEmailCode("");
       setMaskedLoginEmail("");
+      setAuthReady(true);
     }
 
     window.addEventListener(
@@ -99,6 +103,10 @@ export default function useAuth({
       } catch {
         setApiAuthToken("");
         localStorage.removeItem("username");
+      } finally {
+        if (!cancelled) {
+          setAuthReady(true);
+        }
       }
     }
 
@@ -122,6 +130,7 @@ export default function useAuth({
 
     setToken("cookie-session");
     setUsername(data.username);
+    setAuthReady(true);
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
@@ -369,6 +378,7 @@ export default function useAuth({
 
     setToken("");
     setUsername("");
+    setAuthReady(true);
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
@@ -402,6 +412,8 @@ export default function useAuth({
 
     token,
     setToken,
+
+    authReady,
 
     sendLoginCode,
     login,

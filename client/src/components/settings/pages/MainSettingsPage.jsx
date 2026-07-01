@@ -4,7 +4,7 @@ import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives"
 export default function MainSettingsPage({ state, actions, labels }) {
   const { username, displayName, avatar, bio, language, sessions } = state;
   const shownName = displayName?.trim() || username;
-  const currentLabel = language === "en" ? "English" : language === "uk" ? "Українська" : "Русский";
+  const currentLabel = language === "en" ? "English" : "Русский";
   const otherCount = sessions.filter((item) => !item.current).length;
   const browserConnectionRisk = getBrowserConnectionRisk();
   const connectionIsSuspicious = browserConnectionRisk !== "secure" || state.transportInfo?.connectionRisk === "suspicious";

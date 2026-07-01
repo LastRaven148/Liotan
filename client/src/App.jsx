@@ -11,6 +11,14 @@ export default function App() {
   const app =
     useAppController();
 
+  if (!app.authReady) {
+
+    return (
+      <div className="app-bootstrap-screen" aria-hidden="true" />
+    );
+
+  }
+
   if (!app.token) {
 
     return (

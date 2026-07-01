@@ -45,8 +45,7 @@ function getPrivateConversationParticipants(value) {
 
     if (
       participants.length === 2 &&
-      participants.every(isValidUsername) &&
-      participants[0] !== participants[1]
+      participants.every(isValidUsername)
     ) {
       return participants;
     }
@@ -70,8 +69,7 @@ function getPrivateConversationParticipants(value) {
 
     if (
       isValidUsername(left) &&
-      isValidUsername(right) &&
-      left !== right
+      isValidUsername(right)
     ) {
       return [left, right];
     }

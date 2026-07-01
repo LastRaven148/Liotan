@@ -1,4 +1,4 @@
 module.exports = {
-  version: "48.2",
-  release: "domain migration"
+  version: "48.3",
+  release: "auth e2ee hotfix"
 };

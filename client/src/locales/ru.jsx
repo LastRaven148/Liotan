@@ -12,10 +12,8 @@ const ru = {
   language: "Язык",
   english: "Английский",
   russian: "Русский",
-  ukrainian: "Украинский",
   languageRussianNative: "Русский",
   languageEnglishNative: "English",
-  languageUkrainianNative: "Українська",
 
   edit: "Изменить",
   delete: "Удалить",

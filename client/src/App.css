@@ -12,3 +12,8 @@
 @import "./styles/composer.css";
 @import "./styles/layout.css";
 @import "./styles/mobile.css";
+
+.app-bootstrap-screen {
+  min-height: 100vh;
+  background: #0e1621;
+}

@@ -7,15 +7,13 @@ import {
 
 import en from "../locales/en";
 import ru from "../locales/ru";
-import uk from "../locales/uk";
 
 const LanguageContext =
   createContext(null);
 
 const dictionaries = {
   en,
-  ru,
-  uk
+  ru
 };
 
 export function LanguageProvider({
@@ -23,19 +21,24 @@ export function LanguageProvider({
 }) {
 
   const [language, setLanguage] =
-    useState(
-      localStorage.getItem("language") ||
-      "en"
-    );
+    useState(() => {
+      const stored = localStorage.getItem("language");
+      return stored === "ru" || stored === "en" ? stored : "en";
+    });
 
   function changeLanguage(lang) {
 
+    const nextLang =
+      lang === "ru" || lang === "en"
+        ? lang
+        : "en";
+
     localStorage.setItem(
       "language",
-      lang
+      nextLang
     );
 
-    setLanguage(lang);
+    setLanguage(nextLang);
 
   }
 

@@ -10,7 +10,6 @@ export default function LanguagePage({ back, language, setLanguage, labels }) {
       <SettingsSection>
         <SettingsRadio active={language === "ru"} title="Russian" subtitle="Русский" stacked onClick={() => choose("ru")} />
         <SettingsRadio active={language === "en"} title="English" subtitle="English" stacked onClick={() => choose("en")} />
-        <SettingsRadio active={language === "uk"} title="Ukrainian" subtitle="Українська" stacked onClick={() => choose("uk")} />
       </SettingsSection>
     </>
   );
