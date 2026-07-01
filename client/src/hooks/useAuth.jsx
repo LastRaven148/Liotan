@@ -228,12 +228,12 @@ export default function useAuth({
         password: loginPassword
       });
 
-      return true;
+      return { ok: true };
     } catch (err) {
       if (err.secondFactorRequired || err.data?.secondFactorRequired) {
         setSecondFactorRequired(true);
         showToast("Введите код двухфакторной аутентификации");
-        return false;
+        return { ok: false, secondFactorRequired: true };
       }
 
       handleAuthError(
@@ -241,7 +241,7 @@ export default function useAuth({
         "Login failed"
       );
 
-      return false;
+      return { ok: false };
     }
   }
 

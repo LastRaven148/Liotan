@@ -374,11 +374,12 @@ function getLabels(t) {
     enabled: t.enabled || "включено",
     disabled: t.disabled || "выключено",
     twoFactorTitle: t.twoFactorTitle || "Двухфакторная аутентификация",
-    twoFactorSetupText: t.twoFactorSetupText || "Добавьте этот ключ в приложение Authenticator и введите 6-значный код.",
+    twoFactorSetupText: t.twoFactorSetupText || "2FA добавляет второй код при входе. Используйте Google Authenticator, Microsoft Authenticator, 2FAS или другое приложение для одноразовых кодов.",
     twoFactorManualKey: t.twoFactorManualKey || "Ручной ключ",
-    twoFactorOtpUrl: t.twoFactorOtpUrl || "otpauth URL",
+    twoFactorInstructionTitle: t.twoFactorInstructionTitle || "Как подключить",
+    twoFactorInstructionText: t.twoFactorInstructionText || "1. Откройте приложение Authenticator. 2. Нажмите добавить аккаунт. 3. Выберите ручной ввод ключа. 4. Введите название Liotan и ключ ниже. 5. Введите 6-значный код из приложения.",
     twoFactorBackupCodes: t.twoFactorBackupCodes || "Backup codes",
-    twoFactorBackupCodesText: t.twoFactorBackupCodesText || "Сохраните эти коды сейчас. Каждый код работает только один раз и больше не будет показан.",
+    twoFactorBackupCodesText: t.twoFactorBackupCodesText || "Сохраните эти backup-коды в безопасном месте. Каждый код одноразовый: он нужен для входа или отключения 2FA, если нет доступа к Authenticator.",
     twoFactorEnabled: t.twoFactorEnabled || "2FA включена",
     twoFactorDisabled: t.twoFactorDisabled || "2FA выключена",
     twoFactorDisableText: t.twoFactorDisableText || "Для отключения введите код Authenticator или backup code.",
@@ -490,7 +491,7 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
 
   return (
     <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
-      <div className="dialog-delete-modal settings-email-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog-delete-modal settings-email-modal settings-totp-modal" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-delete-modal-title">{labels.twoFactorTitle}</div>
 
         {!enabled && !setup && !backupCodes.length && (
@@ -509,13 +510,13 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
         {!enabled && setup && !backupCodes.length && (
           <>
             <div className="dialog-delete-modal-text">{labels.twoFactorSetupText}</div>
+            <div className="settings-security-card settings-security-instruction">
+              <div className="settings-info-label">{labels.twoFactorInstructionTitle}</div>
+              <div className="settings-muted-text">{labels.twoFactorInstructionText}</div>
+            </div>
             <div className="settings-security-card">
               <div className="settings-info-label">{labels.twoFactorManualKey}</div>
               <div className="settings-info-value settings-security-code">{setup.manualKey}</div>
-            </div>
-            <div className="settings-security-card">
-              <div className="settings-info-label">{labels.twoFactorOtpUrl}</div>
-              <div className="settings-muted-text settings-security-url">{setup.otpauthUrl}</div>
             </div>
             <input className="settings-modal-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder={labels.code} inputMode="numeric" maxLength={6} />
             {error && <div className="settings-modal-error">{error}</div>}
@@ -533,7 +534,7 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
               {backupCodes.map((item) => <div key={item} className="settings-security-code">{item}</div>)}
             </div>
             <div className="dialog-delete-modal-actions">
-              <button type="button" className="dialog-delete-modal-danger" onClick={onClose}>{labels.close}</button>
+              <button type="button" className="dialog-delete-modal-danger" onClick={onClose}>Я сохранил коды</button>
             </div>
           </>
         )}

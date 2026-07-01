@@ -86,9 +86,33 @@ async function verifySecondFactorIfEnabled({ user, code, backupCode }) {
 
 
 function getRegistrationCancelUrl(token) {
-  const base = String(process.env.PUBLIC_API_URL || process.env.API_URL || "").replace(/\/$/, "");
-  const path = `/auth/register/cancel/${encodeURIComponent(token)}`;
-  return base ? `${base}${path}` : path;
+  const base = String(
+    process.env.PUBLIC_API_URL ||
+    process.env.API_URL ||
+    "https://api.liotan.com"
+  ).replace(/\/$/, "");
+
+  return `${base}/auth/register/cancel/${encodeURIComponent(token)}`;
+}
+
+function sendRegistrationCancelPage(res, { ok, title, message }) {
+  const safeTitle = String(title || "Liotan").replace(/[<>&"]/g, "");
+  const safeMessage = String(message || "").replace(/[<>&"]/g, "");
+
+  res.status(ok ? 200 : 400).send(`<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${safeTitle}</title>
+  <style>
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif}
+    .card{width:min(420px,calc(100vw - 32px));background:#17212b;border:1px solid #243447;border-radius:18px;padding:28px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
+    h1{margin:0 0 12px;font-size:24px}.text{color:#9aaabc;line-height:1.5}.ok{color:#6ee7a8}.bad{color:#ff8f8f}
+  </style>
+</head>
+<body><main class="card"><h1 class="${ok ? "ok" : "bad"}">${safeTitle}</h1><div class="text">${safeMessage}</div></main></body>
+</html>`);
 }
 
 async function createRegistrationCancelLink(user) {
@@ -738,7 +762,11 @@ async function cancelRegistration(req, res, next) {
     });
 
     if (!record) {
-      return res.status(400).json({ ok: false, error: "invalid or expired link" });
+      return sendRegistrationCancelPage(res, {
+        ok: false,
+        title: "Ссылка недействительна",
+        message: "Эта ссылка отмены регистрации уже использована или истекла."
+      });
     }
 
     record.usedAt = new Date();
@@ -751,9 +779,12 @@ async function cancelRegistration(req, res, next) {
       { $set: { usedAt: new Date() } }
     );
 
-    res.status(result.ok ? 200 : 400).json({
+    return sendRegistrationCancelPage(res, {
       ok: result.ok,
-      cancelled: result.ok
+      title: result.ok ? "Регистрация отменена" : "Не удалось отменить регистрацию",
+      message: result.ok
+        ? "Аккаунт Liotan был удалён. Если это сделали не вы, создайте новый аккаунт и включите 2FA."
+        : "Аккаунт уже не найден или ссылка больше не может быть применена."
     });
   } catch (err) {
     next(err);

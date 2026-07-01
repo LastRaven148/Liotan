@@ -700,3 +700,19 @@
   overflow-wrap:anywhere;
   user-select:text;
 }
+
+
+.settings-totp-modal{
+  width:min(520px, calc(100vw - 32px));
+  max-height:calc(100svh - 48px);
+  overflow:auto;
+}
+
+.settings-totp-modal .dialog-delete-modal-text{
+  line-height:1.45;
+}
+
+.settings-security-instruction .settings-muted-text{
+  white-space:pre-line;
+  line-height:1.45;
+}

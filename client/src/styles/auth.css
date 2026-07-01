@@ -235,3 +235,15 @@
   border-color: #3390ec;
   background: #1f3346;
 }
+
+
+.auth-warning{
+  margin:2px 0 0;
+  padding:10px 12px;
+  border-radius:12px;
+  background:rgba(255,107,107,.10);
+  border:1px solid rgba(255,107,107,.26);
+  color:#ffb2b2;
+  font-size:12px;
+  line-height:1.4;
+}

@@ -50,6 +50,9 @@ export default function LoginPage({
   const [setupTwoFactorAfterRegister, setSetupTwoFactorAfterRegister] =
     useState(false);
 
+  const [confirmSkipTwoFactor, setConfirmSkipTwoFactor] =
+    useState(false);
+
 
   const isLogin =
     mode === "login";
@@ -116,6 +119,7 @@ export default function LoginPage({
     setBackupCode?.("");
     setSecondFactorRequired?.(false);
     setSetupTwoFactorAfterRegister(false);
+    setConfirmSkipTwoFactor(false);
   }
 
   function switchMode(nextMode) {
@@ -146,16 +150,16 @@ export default function LoginPage({
   async function handlePrimary() {
     if (isLogin) {
       if (step === "loginTotp") {
-        const ok = await login({ totpCode, backupCode });
-        if (!ok) {
+        const result = await login({ totpCode, backupCode });
+        if (!result?.ok) {
           setStep("loginTotp");
         }
         return;
       }
 
       if (step === "loginCode") {
-        const ok = await login();
-        if (!ok && secondFactorRequired) {
+        const result = await login();
+        if (result?.secondFactorRequired) {
           setStep("loginTotp");
         }
         return;
@@ -200,6 +204,10 @@ export default function LoginPage({
     }
 
     if (step === "registerSecurity") {
+      if (!setupTwoFactorAfterRegister && !confirmSkipTwoFactor) {
+        setConfirmSkipTwoFactor(true);
+        return;
+      }
       setStep("account");
       return;
     }
@@ -252,6 +260,7 @@ export default function LoginPage({
     }
 
     if (step === "registerSecurity") {
+      setConfirmSkipTwoFactor(false);
       setStep("code");
       return;
     }
@@ -496,7 +505,10 @@ export default function LoginPage({
               "auth-choice-button",
               setupTwoFactorAfterRegister ? "active" : ""
             ].join(" ")}
-            onClick={() => setSetupTwoFactorAfterRegister(true)}
+            onClick={() => {
+              setSetupTwoFactorAfterRegister(true);
+              setConfirmSkipTwoFactor(false);
+            }}
           >
             {text("setupTwoFactorNow", "Да, подключить сразу")}
           </button>
@@ -506,10 +518,18 @@ export default function LoginPage({
               "auth-choice-button",
               !setupTwoFactorAfterRegister ? "active" : ""
             ].join(" ")}
-            onClick={() => setSetupTwoFactorAfterRegister(false)}
+            onClick={() => {
+              setSetupTwoFactorAfterRegister(false);
+              setConfirmSkipTwoFactor(true);
+            }}
           >
             {text("setupTwoFactorLater", "Нет, позже")}
           </button>
+          {confirmSkipTwoFactor && !setupTwoFactorAfterRegister && (
+            <p className="auth-warning">
+              {text("skipTwoFactorWarning", "Вы точно хотите продолжить без 2FA? Это повысит риск для аккаунта, если пароль или почта окажутся скомпрометированы.")}
+            </p>
+          )}
         </div>
       );
     }
