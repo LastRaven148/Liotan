@@ -1,48 +1,24 @@
 {
   "name": "Liotan",
-  "version": "48.7.0",
-  "main": "electron/main.js",
+  "version": "48.8.0",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
     "npm": "10.x"
   },
   "scripts": {
-    "dev": "concurrently \"node server/server.js\" \"cd client && npm start\" \"wait-on http://localhost:3000 && electron .\"",
-    "start": "electron .",
     "server": "node server/server.js",
     "client": "cd client && npm start",
     "build-client": "cd client && npm run build",
-    "dist": "npm run build-client && electron-builder",
     "check:client": "cd client && npm run build",
     "check:server": "cd server && npm run check",
     "check": "npm run check:client && npm run check:server",
     "audit:privacy": "cd server && npm run audit:privacy",
-    "make-release": "node scripts/makeRelease.js"
+    "make-release": "node scripts/makeRelease.js",
+    "release:check": "node scripts/checkRelease.js"
   },
-  "build": {
-    "appId": "com.Liotan",
-    "productName": "Liotan",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "electron/**/*",
-      "server/**/*",
-      "client/build/**/*",
-      "package.json"
-    ],
-    "win": {
-      "target": "nsis"
-    }
-  },
-  "dependencies": {
-    "concurrently": "^10.0.3",
-    "wait-on": "^7.2.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "electron": "^30.5.1",
-    "electron-builder": "^24.13.3",
     "archiver": "^7.0.1"
   }
 }
