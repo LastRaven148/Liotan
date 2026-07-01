@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const emitToChatUsers =
   require("../../services/emitToChatUsers");
 
@@ -219,7 +222,7 @@ function registerDeleteMessage({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("delete message failed", err);
       }
 
     }

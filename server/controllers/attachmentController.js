@@ -1,5 +1,6 @@
 const fs = require("fs").promises;
 const cloudinary = require("../config/cloudinary");
+const privacy = require("../config/privacy");
 const uploadToCloudinary = require("../utils/uploadToCloudinary");
 const {
   normalizeMime,
@@ -7,6 +8,7 @@ const {
   assertSafeFileBuffer,
   hasEncryptedAttachmentExtension
 } = require("../middleware/uploadSecurity");
+const { hmac } = require("../utils/privacy");
 
 async function removeTempFile(file) {
   if (!file?.path) return;
@@ -36,12 +38,25 @@ function getResourceType(type) {
   return "raw";
 }
 
-function getFolder(type, username = "user") {
-  const safeUser = String(username || "user").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-  if (type === "photo") return `liotan/${safeUser}/photos`;
-  if (type === "video") return `liotan/${safeUser}/videos`;
-  if (type === "audio") return `liotan/${safeUser}/audio`;
-  return `liotan/${safeUser}/files`;
+function getUploadOwnerSegment(req) {
+  if (privacy.anonymizeUploadFolders) {
+    return hmac(req.user?.userId || req.user?.username || "user").slice(0, 32);
+  }
+
+  return String(req.user?.username || "user")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 40);
+}
+
+function getFolder(type, ownerSegment = "user") {
+  const safeOwner = String(ownerSegment || "user")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 64);
+
+  if (type === "photo") return `liotan/u/${safeOwner}/photos`;
+  if (type === "video") return `liotan/u/${safeOwner}/videos`;
+  if (type === "audio") return `liotan/u/${safeOwner}/audio`;
+  return `liotan/u/${safeOwner}/files`;
 }
 
 async function signAttachmentUpload(req, res, next) {
@@ -53,7 +68,7 @@ async function signAttachmentUpload(req, res, next) {
     assertAllowedAttachment({ mimeType, fileName, size });
 
     const type = getAttachmentType(mimeType);
-    const folder = getFolder(type, req.user.username);
+    const folder = getFolder(type, getUploadOwnerSegment(req));
     const resourceType = getResourceType(type);
     const timestamp = Math.round(Date.now() / 1000);
     const signature = cloudinary.utils.api_sign_request(
@@ -105,7 +120,7 @@ async function uploadAttachment(req, res, next) {
 
     const type = getAttachmentType(mimeType);
     const result = await uploadToCloudinary(req.file, {
-      folder: getFolder(type, req.user.username),
+      folder: getFolder(type, getUploadOwnerSegment(req)),
       resourceType: getResourceType(type)
     });
 

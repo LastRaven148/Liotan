@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const getChatId =
   require("../../../utils/getChatId");
 
@@ -89,7 +92,7 @@ function registerMarkPrivateChatRead({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("mark private chat read failed", err);
       }
 
     }

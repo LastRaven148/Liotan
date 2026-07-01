@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const {
   isValidMessage
 } = require("../../../utils/validators");
@@ -80,7 +83,7 @@ function registerEditMessage({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("edit message failed", err);
       }
 
     }

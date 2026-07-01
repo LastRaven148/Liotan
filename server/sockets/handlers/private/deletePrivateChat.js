@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const getChatId =
   require("../../../utils/getChatId");
 
@@ -113,7 +116,7 @@ function registerDeletePrivateChat({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("delete private chat failed", err);
       }
 
     }

@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js",
-    "check": "node scripts/checkSyntax.js"
+    "check": "node scripts/checkSyntax.js",
+    "audit:privacy": "node scripts/privacyAudit.js"
   },
   "keywords": [],
   "author": "",

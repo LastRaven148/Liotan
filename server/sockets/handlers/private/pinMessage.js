@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const emitToChatUsers =
   require("../../services/emitToChatUsers");
 
@@ -98,7 +101,7 @@ function registerPinMessage({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("pin message failed", err);
       }
 
     }

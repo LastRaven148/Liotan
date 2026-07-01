@@ -84,8 +84,20 @@ function isValidPublicKey(value) {
     value.kty === "EC" &&
     value.crv === "P-256" &&
     typeof value.x === "string" &&
-    typeof value.y === "string"
+    value.x.length > 20 &&
+    value.x.length < 200 &&
+    typeof value.y === "string" &&
+    value.y.length > 20 &&
+    value.y.length < 200
   );
+}
+
+function getSafeDeviceName(session, requester, targetUser) {
+  if (requester === targetUser || privacy.exposeDeviceNamesToContacts) {
+    return session.deviceName || "Device";
+  }
+
+  return "Device";
 }
 
 
@@ -319,7 +331,7 @@ async function getDeviceIdentities(req, res, next) {
     res.json({
       username,
       devices: sessions.map(session => ({
-        deviceName: session.deviceName,
+        deviceName: getSafeDeviceName(session, requester, username),
         publicKey: session.devicePublicKey,
         fingerprint: session.deviceKeyFingerprint || "",
         ...(privacy.minimalLogs ? {} : { lastSeenAt: session.lastSeenAt, createdAt: session.createdAt })
@@ -348,8 +360,9 @@ async function getIdentity(req, res, next) {
       ).lean();
 
     if (!user) {
-      return res.status(404).json({
-        error: "user not found"
+      return res.json({
+        username: privacy.exposeE2eeUserEnumeration ? username : "",
+        publicKey: null
       });
     }
 
@@ -384,11 +397,23 @@ async function getIdentities(req, res, next) {
         "username e2eePublicKey"
       ).lean();
 
+    const foundMap = new Map(
+      found.map(user => [
+        user.username,
+        user.e2eePublicKey || null
+      ])
+    );
+
     res.json({
-      users: found.map(user => ({
-        username: user.username,
-        publicKey: user.e2eePublicKey || null
-      }))
+      users: privacy.exposeE2eeUserEnumeration
+        ? found.map(user => ({
+            username: user.username,
+            publicKey: user.e2eePublicKey || null
+          }))
+        : uniqueUsers.map(username => ({
+            username,
+            publicKey: foundMap.get(username) || null
+          }))
     });
   } catch (err) {
     next(err);

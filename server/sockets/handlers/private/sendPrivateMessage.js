@@ -1,6 +1,9 @@
 const Message =
   require("../../../models/Messages");
 
+const logger =
+  require("../../../utils/logger");
+
 const User =
   require("../../../models/User");
 
@@ -26,6 +29,37 @@ const {
   sanitizeAttachment
 } = require("../../../utils/attachmentSecurity");
 
+function isValidEncryptedContent(value) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof value.ciphertext === "string" &&
+    value.ciphertext.length > 0 &&
+    value.ciphertext.length <= 100000 &&
+    typeof value.iv === "string" &&
+    value.iv.length > 0 &&
+    value.iv.length <= 500 &&
+    typeof value.alg === "string" &&
+    value.alg.length > 0 &&
+    value.alg.length <= 100
+  );
+}
+
+function normalizeEncryptedContent(value) {
+  if (!isValidEncryptedContent(value)) {
+    return null;
+  }
+
+  return {
+    ciphertext: value.ciphertext,
+    iv: value.iv,
+    alg: value.alg,
+    version: Number.isFinite(Number(value.version))
+      ? Math.max(1, Math.floor(Number(value.version)))
+      : 1
+  };
+}
+
 function registerSendPrivateMessage({
   io,
   socket,
@@ -44,7 +78,14 @@ function registerSendPrivateMessage({
         const receiver =
           data.to;
 
+        const encryptedContent =
+          normalizeEncryptedContent(data.encryptedContent);
+
+        const hasEncryptedContent =
+          Boolean(encryptedContent);
+
         const hasText =
+          !hasEncryptedContent &&
           isValidMessage(
             data.text
           );
@@ -61,7 +102,8 @@ function registerSendPrivateMessage({
           !isValidUsername(receiver) ||
           (
             !hasText &&
-            !hasAttachment
+            !hasAttachment &&
+            !hasEncryptedContent
           )
         ) {
           return;
@@ -87,6 +129,11 @@ function registerSendPrivateMessage({
           hasText
             ? data.text.trim()
             : "";
+
+        const contentMode =
+          hasEncryptedContent
+            ? "e2ee"
+            : "plain";
 
         const chatId =
           getChatId(
@@ -115,7 +162,12 @@ function registerSendPrivateMessage({
             chatId,
             from: sender,
             to: receiver,
+            contentMode,
             text,
+            encryptedContent:
+              hasEncryptedContent
+                ? encryptedContent
+                : undefined,
             replyTo,
             status:
               isSavedMessages
@@ -147,7 +199,7 @@ function registerSendPrivateMessage({
         });
 
       } catch (err) {
-        console.error(err);
+        logger.error("send private message failed", err);
       }
 
     }

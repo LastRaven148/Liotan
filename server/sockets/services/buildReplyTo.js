@@ -36,7 +36,9 @@ async function buildReplyTo({
     from:
       original.from,
     text:
-      original.text || "",
+      original.contentMode === "e2ee"
+        ? ""
+        : original.text || "",
     attachmentType:
       original.attachment?.type || "",
     attachmentName:

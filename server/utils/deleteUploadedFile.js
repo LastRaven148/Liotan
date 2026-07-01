@@ -7,6 +7,9 @@ const fs =
 const cloudinary =
   require("../config/cloudinary");
 
+const logger =
+  require("./logger");
+
 const uploadsDir =
   path.resolve(
     __dirname,
@@ -52,10 +55,7 @@ async function deleteLocalFile(
   } catch (err) {
 
     if (err.code !== "ENOENT") {
-      console.error(
-        "DELETE LOCAL FILE ERROR:",
-        err.message
-      );
+      logger.warn("delete local file failed", { code: err.code });
     }
 
   }
@@ -83,10 +83,7 @@ async function deleteCloudinaryFile({
 
   } catch (err) {
 
-    console.error(
-      "DELETE CLOUDINARY FILE ERROR:",
-      err.message
-    );
+    logger.warn("delete cloudinary file failed", { code: err.code });
 
   }
 

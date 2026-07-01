@@ -1,6 +1,9 @@
 const Group =
   require("../../../models/Group");
 
+const logger =
+  require("../../../utils/logger");
+
 const Message =
   require("../../../models/Messages");
 
@@ -18,6 +21,37 @@ const {
 const {
   sanitizeAttachment
 } = require("../../../utils/attachmentSecurity");
+
+function isValidEncryptedContent(value) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof value.ciphertext === "string" &&
+    value.ciphertext.length > 0 &&
+    value.ciphertext.length <= 100000 &&
+    typeof value.iv === "string" &&
+    value.iv.length > 0 &&
+    value.iv.length <= 500 &&
+    typeof value.alg === "string" &&
+    value.alg.length > 0 &&
+    value.alg.length <= 100
+  );
+}
+
+function normalizeEncryptedContent(value) {
+  if (!isValidEncryptedContent(value)) {
+    return null;
+  }
+
+  return {
+    ciphertext: value.ciphertext,
+    iv: value.iv,
+    alg: value.alg,
+    version: Number.isFinite(Number(value.version))
+      ? Math.max(1, Math.floor(Number(value.version)))
+      : 1
+  };
+}
 
 function registerSendGroupMessage({
   io,
@@ -55,7 +89,14 @@ function registerSendGroupMessage({
           return;
         }
 
+        const encryptedContent =
+          normalizeEncryptedContent(data.encryptedContent);
+
+        const hasEncryptedContent =
+          Boolean(encryptedContent);
+
         const hasText =
+          !hasEncryptedContent &&
           isValidMessage(
             data.text
           );
@@ -70,7 +111,8 @@ function registerSendGroupMessage({
 
         if (
           !hasText &&
-          !hasAttachment
+          !hasAttachment &&
+          !hasEncryptedContent
         ) {
           return;
         }
@@ -79,6 +121,11 @@ function registerSendGroupMessage({
           hasText
             ? data.text.trim()
             : "";
+
+        const contentMode =
+          hasEncryptedContent
+            ? "e2ee"
+            : "plain";
 
         const replyTo =
           await buildReplyTo({
@@ -93,7 +140,12 @@ function registerSendGroupMessage({
             groupId,
             from: sender,
             to: "",
+            contentMode,
             text,
+            encryptedContent:
+              hasEncryptedContent
+                ? encryptedContent
+                : undefined,
             replyTo,
             status: "delivered",
             deliveredTo:
@@ -129,7 +181,7 @@ function registerSendGroupMessage({
         );
 
       } catch (err) {
-        console.error(err);
+        logger.error("send group message failed", err);
       }
 
     }

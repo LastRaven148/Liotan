@@ -1,6 +1,9 @@
 const Group =
   require("../../../models/Group");
 
+const logger =
+  require("../../../utils/logger");
+
 function getGroupRoom(
   groupId
 ) {
@@ -45,7 +48,7 @@ function registerJoinGroup({
         );
 
       } catch (err) {
-        console.error(err);
+        logger.error("join group failed", err);
       }
 
     }

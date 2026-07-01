@@ -74,10 +74,18 @@ function getTitle(purpose) {
 function createText(code, purpose) {
   return (
     `${getTitle(purpose)}\n\n` +
-    `Your Liotan code: ${code}\n\n` +
-    "The code expires in 10 minutes.\n\n" +
+    `Code: ${code}\n\n` +
+    "This code expires in 10 minutes.\n\n" +
     "If you did not request this code, ignore this email."
   );
+}
+
+function createPrivacyHeaders() {
+  return {
+    "X-Liotan-Mail": "security-code",
+    "X-Auto-Response-Suppress": "All",
+    "Auto-Submitted": "auto-generated"
+  };
 }
 
 function createHtml(code, purpose) {
@@ -149,6 +157,7 @@ async function sendViaResend({
         subject,
         text,
         html,
+        headers: createPrivacyHeaders(),
         reply_to:
           getEnv("MAIL_REPLY_TO") || undefined
       })
@@ -198,6 +207,7 @@ async function sendViaSmtp({
     subject,
     text,
     html,
+    headers: createPrivacyHeaders(),
     replyTo:
       getEnv("MAIL_REPLY_TO") || undefined
   });

@@ -1,6 +1,14 @@
 const User = require("../models/User");
 const Message = require("../models/Messages");
 
+function getMessagePreview(msg, attachment) {
+  if (msg?.contentMode === "e2ee") {
+    return "Encrypted message";
+  }
+
+  return msg?.text || getAttachmentPreview(attachment);
+}
+
 function getAttachmentPreview(attachment) {
   if (!attachment?.url) return "";
   if (attachment.type === "photo") return "Фото";
@@ -76,7 +84,7 @@ async function getDialogs(req, res, next) {
         const attachment = serializeAttachment(msg.attachment);
         return {
           username: msg.otherUser,
-          lastMessage: msg.text || getAttachmentPreview(attachment),
+          lastMessage: getMessagePreview(msg, attachment),
           attachment,
           lastMessageAttachment: attachment,
           lastAttachment: attachment,
