@@ -42,7 +42,7 @@ function Message({
   const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
-  const [decryptedText, setDecryptedText] = useState(isEncryptedText(message.text) ? "" : message.text || "");
+  const [decryptedText, setDecryptedText] = useState(isEncryptedText(message.text) || message.encryptedContent?.ciphertext ? "" : message.text || "");
   const isMine = message.from === username;
   const attachment = message.attachment;
   const hasAttachment = attachment && attachment.url;
@@ -108,7 +108,8 @@ function Message({
       const value = await decryptTextForChat({
         username,
         chatKey: activeChat,
-        text: message.text || ""
+        text: message.text || "",
+        encryptedContent: message.encryptedContent || null
       });
       if (!cancelled) {
         setDecryptedText(value);
@@ -118,7 +119,7 @@ function Message({
     return () => {
       cancelled = true;
     };
-  }, [username, activeChat, message.text, e2eeRevision]);
+  }, [username, activeChat, message.text, message.encryptedContent, e2eeRevision]);
   useEffect(() => {
     if (attachment?.width && attachment?.height) {
       setVideoRatio(`${attachment.width} / ${attachment.height}`);

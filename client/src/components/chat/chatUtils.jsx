@@ -114,6 +114,10 @@ export function getMessagePreview(
     return message.text;
   }
 
+  if (message.contentMode === "e2ee" || message.encryptedContent?.ciphertext) {
+    return t.encryptedMessage || "Encrypted message";
+  }
+
   if (message.attachment?.type === "photo") {
     return t.photo || "Фото";
   }

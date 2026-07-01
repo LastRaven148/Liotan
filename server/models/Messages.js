@@ -60,6 +60,27 @@ const messageSchema =
           type: String,
           default: ""
         },
+        salt: {
+          type: String,
+          default: ""
+        },
+        kdf: {
+          type: String,
+          default: ""
+        },
+        iter: {
+          type: Number,
+          default: 0
+        },
+        kid: {
+          type: String,
+          default: ""
+        },
+        nonce: {
+          type: String,
+          default: "",
+          index: true
+        },
         alg: {
           type: String,
           default: ""
@@ -247,6 +268,22 @@ messageSchema.index({
   status: 1,
   createdAt: -1
 });
+
+messageSchema.index(
+  {
+    from: 1,
+    "encryptedContent.nonce": 1
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "encryptedContent.nonce": {
+        $type: "string",
+        $gt: ""
+      }
+    }
+  }
+);
 
 module.exports =
   mongoose.model(

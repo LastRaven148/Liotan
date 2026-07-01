@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "../../config/api";
+import { devWarn } from "../../utils/devLogger";
 
 import {
   ensureE2EEIdentity
@@ -142,7 +143,7 @@ export default function useAppController() {
     }
 
     ensureE2EEIdentity(username).catch(err => {
-      console.warn("E2EE identity init failed", err);
+      devWarn("E2EE identity init failed", err);
     });
   }, [
     token,

@@ -9,8 +9,9 @@ const chatSecretMemory = new Map();
 const pendingConversationKeys = new Map();
 const ATTACHMENT_E2EE_PREFIX = "__LIOTAN_E2EE_FILE_V1__";
 const E2EE_DB_NAME = "liotan-e2ee-v2";
-const E2EE_DB_VERSION = 1;
+const E2EE_DB_VERSION = 2;
 const IDENTITY_STORE = "identities";
+const TRUST_STORE = "trusted-public-keys";
 
 function toBase64(bytes) {
   let binary = "";
@@ -28,6 +29,48 @@ function fromBase64(value) {
   }
   return bytes;
 }
+function normalizePublicJwk(jwk = {}) {
+  return JSON.stringify({
+    crv: jwk.crv || "",
+    kty: jwk.kty || "",
+    x: jwk.x || "",
+    y: jwk.y || ""
+  });
+}
+async function sha256Base64Url(value) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(value || "")));
+  return toBase64(new Uint8Array(digest))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+async function fingerprintPublicJwk(jwk) {
+  return sha256Base64Url(normalizePublicJwk(jwk));
+}
+function getTrustedKeyStoreKey(username) {
+  return `trusted:${encodeURIComponent(username || "")}`;
+}
+async function assertTrustedPublicKey(username, publicJwk) {
+  if (!username || !publicJwk || !crypto?.subtle) {
+    return "";
+  }
+  const fingerprint = await fingerprintPublicJwk(publicJwk);
+  const key = getTrustedKeyStoreKey(username);
+  const existing = await idbGet(TRUST_STORE, key);
+  if (existing?.fingerprint && existing.fingerprint !== fingerprint) {
+    throw new Error("E2EE identity key changed for this user");
+  }
+  if (!existing?.fingerprint) {
+    await idbSet(TRUST_STORE, key, {
+      fingerprint,
+      trustedAt: new Date().toISOString()
+    });
+  }
+  return fingerprint;
+}
+function randomNonce() {
+  return toBase64(crypto.getRandomValues(new Uint8Array(24)));
+}
 function openE2EEDb() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
@@ -39,6 +82,9 @@ function openE2EEDb() {
       const db = request.result;
       if (!db.objectStoreNames.contains(IDENTITY_STORE)) {
         db.createObjectStore(IDENTITY_STORE);
+      }
+      if (!db.objectStoreNames.contains(TRUST_STORE)) {
+        db.createObjectStore(TRUST_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -390,6 +436,7 @@ async function wrapSecretForUser({
   recipientPublicJwk,
   secret
 }) {
+  await assertTrustedPublicKey(recipient, recipientPublicJwk);
   const recipientPublicKey = await importPublicKey(recipientPublicJwk);
   const wrapKey = await deriveWrapKey({
     privateKey: identity.privateKey,
@@ -410,10 +457,12 @@ async function wrapSecretForUser({
 }
 async function unwrapSecret({
   identity,
+  sender,
   senderPublicJwk,
   wrappedKey,
   iv
 }) {
+  await assertTrustedPublicKey(sender, senderPublicJwk);
   const senderPublicKey = await importPublicKey(senderPublicJwk);
   const wrapKey = await deriveWrapKey({
     privateKey: identity.privateKey,
@@ -460,6 +509,7 @@ export async function ensureConversationSecret({
           if (sender?.publicKey) {
             const unlockedSecret = await unwrapSecret({
               identity,
+              sender: sender.username,
               senderPublicJwk: sender.publicKey,
               wrappedKey: wrapped.wrappedKey,
               iv: wrapped.iv
@@ -642,18 +692,63 @@ export async function encryptTextForChat({
     kid: chatKey,
     salt: toBase64(salt),
     iv: toBase64(iv),
-    ct: toBase64(new Uint8Array(encrypted))
+    ct: toBase64(new Uint8Array(encrypted)),
+    nonce: randomNonce()
+  };
+  return `${E2EE_PREFIX}${btoa(JSON.stringify(payload))}`;
+}
+export function encryptedTextToTransport(text) {
+  if (!isEncryptedText(text) || text.startsWith(LEGACY_E2EE_PREFIX)) {
+    return { text: text || "", encryptedContent: null };
+  }
+  try {
+    const payload = JSON.parse(atob(text.slice(E2EE_PREFIX.length)));
+    return {
+      text: "",
+      encryptedContent: {
+        ciphertext: payload.ct || "",
+        iv: payload.iv || "",
+        alg: payload.alg || "AES-GCM-256",
+        version: payload.v || 2,
+        salt: payload.salt || "",
+        kdf: payload.kdf || "PBKDF2-SHA256",
+        iter: payload.iter || E2EE_ITERATIONS,
+        kid: payload.kid || "",
+        nonce: payload.nonce || ""
+      }
+    };
+  } catch {
+    return { text: text || "", encryptedContent: null };
+  }
+}
+export function encryptedContentToText(encryptedContent) {
+  if (!encryptedContent?.ciphertext || !encryptedContent?.iv || !encryptedContent?.salt) {
+    return "";
+  }
+  const payload = {
+    v: encryptedContent.version || 2,
+    alg: encryptedContent.alg || "AES-GCM-256",
+    kdf: encryptedContent.kdf || "PBKDF2-SHA256",
+    iter: encryptedContent.iter || E2EE_ITERATIONS,
+    kid: encryptedContent.kid || "",
+    salt: encryptedContent.salt || "",
+    iv: encryptedContent.iv || "",
+    ct: encryptedContent.ciphertext || "",
+    nonce: encryptedContent.nonce || ""
   };
   return `${E2EE_PREFIX}${btoa(JSON.stringify(payload))}`;
 }
 export async function decryptTextForChat({
   username,
   chatKey,
-  text
+  text,
+  encryptedContent = null
 }) {
-  if (!isEncryptedText(text)) {
+  const encryptedText = text || encryptedContentToText(encryptedContent);
+  if (!isEncryptedText(encryptedText)) {
     return text || "";
   }
+  text = encryptedText;
   if (text.startsWith(LEGACY_E2EE_PREFIX)) {
     return "Старое E2EE-сообщение. Оно было создано до авто-ключей.";
   }

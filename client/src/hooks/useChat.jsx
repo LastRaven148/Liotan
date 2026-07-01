@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { uploadAttachmentApi } from "../services/api";
-import { encryptAttachmentFileForChat, encryptTextForChat, getEffectiveE2EEChatKey } from "../utils/e2ee";
+import { encryptedTextToTransport, encryptAttachmentFileForChat, encryptTextForChat, getEffectiveE2EEChatKey } from "../utils/e2ee";
 export default function useChat({
   username,
   socketRef,
@@ -155,10 +155,12 @@ export default function useChat({
       participants: getConversationParticipants(target),
       text: messageText
     });
+    const encryptedPayload = encryptedTextToTransport(encryptedText);
     if (dialog?.type === "group") {
       socketRef.current.emit(SOCKET_EVENTS.SEND_GROUP_MESSAGE, {
         groupId: dialog.groupId,
-        text: encryptedText,
+        text: encryptedPayload.text,
+        encryptedContent: encryptedPayload.encryptedContent,
         attachment,
         replyTo: replyMessage ? {
           messageId: replyMessage._id
@@ -168,7 +170,8 @@ export default function useChat({
     }
     socketRef.current.emit(SOCKET_EVENTS.SEND_MESSAGE, {
       to: target,
-      text: encryptedText,
+      text: encryptedPayload.text,
+      encryptedContent: encryptedPayload.encryptedContent,
       attachment,
       replyTo: replyMessage ? {
         messageId: replyMessage._id
@@ -192,9 +195,11 @@ export default function useChat({
         participants: getConversationParticipants(activeChat),
         text
       });
+      const encryptedEditPayload = encryptedTextToTransport(encryptedEditText);
       socketRef.current.emit(SOCKET_EVENTS.EDIT_MESSAGE, {
         messageId: editingMessage._id,
-        text: encryptedEditText
+        text: encryptedEditPayload.text,
+        encryptedContent: encryptedEditPayload.encryptedContent
       });
       stopTyping(activeChat);
       setEditingMessage(null);

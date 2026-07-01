@@ -12,6 +12,10 @@ function getMessagePreview(
     return message.text;
   }
 
+  if (message.contentMode === "e2ee" || message.encryptedContent?.ciphertext) {
+    return "Encrypted message";
+  }
+
   if (message.attachment?.type === "photo") {
     return t.photo || "Фото";
   }
