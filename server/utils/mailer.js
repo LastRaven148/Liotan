@@ -278,6 +278,47 @@ async function sendEmailCode({
   };
 }
 
+async function sendSecurityEmail({
+  to,
+  subject,
+  text,
+  html
+}) {
+  if (hasResendConfig()) {
+    return sendViaResend({ to, subject, text, html });
+  }
+
+  const smtpResult = await sendViaSmtp({ to, subject, text, html });
+  if (smtpResult) {
+    return smtpResult;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    logger.warn("Security email provider is disabled in development", { subject });
+    return { sent: false, provider: "console" };
+  }
+
+  logger.error("Liotan security mail is disabled", new Error("mail provider missing"));
+  return { sent: false, provider: "disabled" };
+}
+
+async function sendEmailChangeCancelNotice({ to, cancelUrl, applyAfter }) {
+  const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan email change pending";
+  const text = [
+    "A Liotan account email change was requested.",
+    "",
+    `The change will become active after: ${new Date(applyAfter).toISOString()}`,
+    "",
+    "If this was not you, cancel the change here:",
+    cancelUrl,
+    "",
+    "Liotan support cannot manually restore account access. This link is the protected cancellation flow."
+  ].join("\n");
+  const safeUrl = String(cancelUrl || "").replace(/"/g, "&quot;");
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>An account email change was requested.</p><p>The change will become active after:<br><b>${new Date(applyAfter).toISOString()}</b></p><p>If this was not you, cancel the change:</p><p><a style="color:#8bc7ff" href="${safeUrl}">${safeUrl}</a></p><p style="color:#9aaabc;font-size:13px">Liotan support cannot manually restore account access. This link is the protected cancellation flow.</p></div></body></html>`;
+  return sendSecurityEmail({ to, subject, text, html });
+}
+
 function getMailStatus() {
   const withFrom = (status) => privacy.minimalLogs
     ? status
@@ -308,6 +349,8 @@ function getMailStatus() {
 
 module.exports = {
   sendEmailCode,
+  sendSecurityEmail,
+  sendEmailChangeCancelNotice,
   hasMailConfig,
   hasSmtpConfig,
   hasResendConfig,

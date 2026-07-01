@@ -238,11 +238,11 @@ export async function sendEmailChangeNewCodeApi(emailChangeToken, newEmail) {
   });
 }
 
-export async function confirmEmailChangeApi(emailChangeToken, newEmail, code) {
+export async function confirmEmailChangeApi(emailChangeToken, newEmail, code, currentEmail, extra = {}) {
   return apiRequest(`${API}/auth/email-change/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: emailChangeToken, newEmail, code })
+    body: JSON.stringify({ token: emailChangeToken, newEmail, code, currentEmail, ...extra })
   });
 }
 

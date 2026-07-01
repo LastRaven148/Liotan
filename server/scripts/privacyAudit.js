@@ -91,6 +91,46 @@ const RULES = [
     note: "User-Agent is identifying; keep derived storage disabled by default."
   },
   {
+    id: "security-secret-fallback-risk",
+    severity: "high",
+    pattern: /SECURITY_ENCRYPTION_SECRET\s*\|\|\s*process\.env\.JWT_SECRET|JWT_SECRET.*SECURITY_ENCRYPTION_SECRET/i,
+    allow: /scripts[\/]privacyAudit\.js$|security[\/]crypto[\/]secureEnvelope\.js$/,
+    note: "Production security encryption must not silently fall back to JWT_SECRET."
+  },
+  {
+    id: "security-endpoint-without-recent-auth",
+    severity: "high",
+    pattern: /router\.post\(["']\/security\//,
+    allow: /routes[\/]securityRoutes\.js$|scripts[\/]privacyAudit\.js$/,
+    note: "High-risk security endpoints must use recentAuth."
+  },
+  {
+    id: "email-change-instant-apply-risk",
+    severity: "high",
+    pattern: /user\.emailHash\s*=\s*newEmailHash|\$set:\s*\{[^\n]*emailHash:\s*newEmailHash/i,
+    allow: /security[\/]emailChange[\/]emailChangeSecurity\.js$|scripts[\/]privacyAudit\.js$/,
+    note: "Email changes must go through pending security window and cancellation flow."
+  },
+  {
+    id: "e2ee-identity-enumeration-risk",
+    severity: "high",
+    pattern: /res\.json\(\{\s*username:\s*user\.username|username:\s*user\.username,\s*publicKey/i,
+    allow: /scripts[\/]privacyAudit\.js$/,
+    note: "E2EE identity endpoints must not reveal whether unrelated usernames exist."
+  },
+  {
+    id: "uk-locale-remnant",
+    severity: "medium",
+    filePattern: /client\/src\/locales\/uk\.jsx$/,
+    note: "Ukrainian locale should be fully removed from the client."
+  },
+  {
+    id: "mistyped-env-example",
+    severity: "medium",
+    filePattern: /server\/\.evn\.exapmle$/,
+    note: "Remove mistyped env example to avoid configuration mistakes."
+  },
+  {
     id: "plaintext-message-write",
     severity: "medium",
     pattern: /text:\s*data\.text|text:\s*req\.body|\.text\s*=/i,

@@ -389,6 +389,16 @@ async function getIdentity(req, res, next) {
       });
     }
 
+    const requester = req.user.username;
+    const allowed = await canReadTargetDevices(requester, username);
+
+    if (!allowed) {
+      return res.json({
+        username: privacy.exposeE2eeUserEnumeration ? username : "",
+        publicKey: null
+      });
+    }
+
     const user =
       await User.findOne(
         { username },

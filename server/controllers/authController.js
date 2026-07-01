@@ -8,6 +8,7 @@ const EmailCode = require("../models/EmailCode");
 const E2EEKey = require("../models/E2EEKey");
 const Session = require("../models/Session");
 const UserSecurity = require("../models/UserSecurity");
+const PendingEmailChange = require("../models/PendingEmailChange");
 const {
   normalizeEmail,
   hashEmail,
@@ -23,7 +24,8 @@ const {
   cleanupDuplicateDeviceSessionsForUser
 } = require("../utils/sessionSecurity");
 const {
-  sendEmailCode
+  sendEmailCode,
+  sendEmailChangeCancelNotice
 } = require("../utils/mailer");
 const {
   isValidUsername,
@@ -38,6 +40,11 @@ const { decryptJson } = require("../security/crypto/secureEnvelope");
 const { verifyTotp } = require("../security/totp/totp");
 const { consumeBackupCode } = require("../security/recovery/backupCodes");
 const privacy = require("../config/privacy");
+const {
+  createPendingEmailChange,
+  applyEligiblePendingEmailChanges,
+  cancelPendingEmailChange
+} = require("../security/emailChange/emailChangeSecurity");
 function createCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
@@ -192,6 +199,7 @@ async function sendAuthCode(req, res, next) {
       await assertAcceptableEmail(cleanEmail);
     }
     const emailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash });
     const exists = await User.findOne({
       emailHash
     });
@@ -305,6 +313,7 @@ async function sendLoginCode(req, res, next) {
     }
     const cleanEmail = normalizeEmail(email);
     const emailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash });
     const user = await User.findOne({
       emailHash,
       emailVerified: true
@@ -353,6 +362,7 @@ async function register(req, res, next) {
     const cleanEmail = normalizeEmail(email);
     await assertAcceptableEmail(cleanEmail);
     const emailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash });
     const exists = await User.findOne({
       $or: [{
         username: cleanUsername
@@ -407,6 +417,7 @@ async function login(req, res, next) {
     }
     const cleanEmail = normalizeEmail(email);
     const emailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash });
     const user = await User.findOne({
       emailHash,
       emailVerified: true
@@ -472,6 +483,7 @@ async function resetPassword(req, res, next) {
     }
     const cleanEmail = normalizeEmail(email);
     const emailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash });
     const user = await User.findOne({
       emailHash
     });
@@ -488,6 +500,17 @@ async function resetPassword(req, res, next) {
     if (!verified) {
       return res.status(400).json({
         error: "invalid code"
+      });
+    }
+    const secondFactor = await verifySecondFactorIfEnabled({
+      user,
+      code: req.body?.totpCode,
+      backupCode: req.body?.backupCode
+    });
+    if (!secondFactor.ok) {
+      return res.status(401).json({
+        error: "second factor required",
+        secondFactorRequired: true
       });
     }
     user.password = await bcrypt.hash(password, 12);
@@ -579,6 +602,7 @@ async function sendEmailChangeNewCode(req, res, next) {
     }
     await assertAcceptableEmail(cleanEmail);
     const newEmailHash = hashEmail(cleanEmail);
+    await applyEligiblePendingEmailChanges({ emailHash: newEmailHash });
     const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
     if (exists) {
       return res.status(400).json({ error: authLookupError("email already used") });
@@ -596,16 +620,19 @@ async function confirmEmailChange(req, res, next) {
   try {
     const tokenPayload = verifyEmailChangeToken(req.body?.token, req);
     const cleanEmail = normalizeEmail(req.body?.newEmail);
+    const currentEmail = normalizeEmail(req.body?.currentEmail);
     const code = req.body?.code;
-    if (!tokenPayload || !isValidEmail(cleanEmail) || !isValidEmailCode(code)) {
+    if (!tokenPayload || !isValidEmail(cleanEmail) || !isValidEmailCode(code) || !isValidEmail(currentEmail)) {
       return res.status(400).json({ error: "invalid request" });
     }
     await assertAcceptableEmail(cleanEmail);
     const newEmailHash = hashEmail(cleanEmail);
+    const currentEmailHash = hashEmail(currentEmail);
     const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
-    if (!user || user.emailHash !== tokenPayload.emailHash) {
+    if (!user || user.emailHash !== tokenPayload.emailHash || currentEmailHash !== tokenPayload.emailHash) {
       return res.status(400).json({ error: "invalid request" });
     }
+    await applyEligiblePendingEmailChanges({ emailHash: newEmailHash });
     const exists = await User.findOne({ emailHash: newEmailHash, _id: { $ne: req.user.userId } });
     if (exists) {
       return res.status(400).json({ error: authLookupError("email already used") });
@@ -614,14 +641,44 @@ async function confirmEmailChange(req, res, next) {
     if (!verified) {
       return res.status(400).json({ error: "invalid code" });
     }
-    user.emailHash = newEmailHash;
-    user.emailVerified = true;
-    await user.save();
-    await revokeAllUserSessions({
-      userId: user._id,
+    const secondFactor = await verifySecondFactorIfEnabled({
+      user,
+      code: req.body?.totpCode,
+      backupCode: req.body?.backupCode
+    });
+    if (!secondFactor.ok) {
+      return res.status(401).json({
+        error: "second factor required",
+        secondFactorRequired: true
+      });
+    }
+    const { pending, cancelUrl } = await createPendingEmailChange({
+      user,
+      oldEmailHash: tokenPayload.emailHash,
+      newEmail: cleanEmail,
+      newEmailHash,
       exceptSessionId: req.user.sid
     });
-    res.json({ ok: true });
+    await sendEmailChangeCancelNotice({
+      to: currentEmail,
+      cancelUrl,
+      applyAfter: pending.applyAfter
+    }).catch(() => null);
+    res.json({
+      ok: true,
+      pending: true,
+      applyAfter: pending.applyAfter,
+      cancelExpiresAt: pending.cancelExpiresAt
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function cancelEmailChange(req, res, next) {
+  try {
+    const ok = await cancelPendingEmailChange(req.params.token);
+    res.status(ok ? 200 : 400).json({ ok });
   } catch (err) {
     next(err);
   }
@@ -784,5 +841,6 @@ module.exports = {
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
-  confirmEmailChange
+  confirmEmailChange,
+  cancelEmailChange
 };

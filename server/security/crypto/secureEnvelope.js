@@ -4,10 +4,19 @@ const ALGORITHM = "aes-256-gcm";
 const VERSION = "v1";
 
 function getRootKey() {
-  const secret = String(process.env.SECURITY_ENCRYPTION_SECRET || process.env.JWT_SECRET || "");
-  if (secret.length < 32) {
-    throw new Error("SECURITY_ENCRYPTION_SECRET or JWT_SECRET must be at least 32 characters");
+  const securitySecret = String(process.env.SECURITY_ENCRYPTION_SECRET || "");
+  const fallbackSecret = String(process.env.JWT_SECRET || "");
+  const isProduction = process.env.NODE_ENV === "production";
+  const secret = securitySecret || (!isProduction ? fallbackSecret : "");
+
+  if (isProduction && !securitySecret) {
+    throw new Error("SECURITY_ENCRYPTION_SECRET is required in production");
   }
+
+  if (secret.length < 32) {
+    throw new Error("SECURITY_ENCRYPTION_SECRET must be at least 32 characters");
+  }
+
   return crypto.createHash("sha256").update(secret).digest();
 }
 

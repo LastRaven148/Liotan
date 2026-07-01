@@ -416,7 +416,7 @@ function getLabels(t) {
     code: t.code || "Код",
     sendCode: t.sendCode || "Отправить код",
     confirm: t.confirm || "Подтвердить",
-    emailChanged: t.emailChanged || "Почта изменена",
+    emailChanged: t.emailChanged || "Смена почты поставлена в очередь",
     invalidEmailOrCode: t.invalidEmailOrCode || "Проверьте почту или код"
   };
 }
@@ -593,7 +593,7 @@ function EmailChangeModal({ labels, onClose }) {
           {step === "currentEmail" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await startEmailChangeCurrentApi(currentEmail); setStep("currentCode"); })}>{labels.sendCode}</button>}
           {step === "currentCode" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { const data = await verifyEmailChangeCurrentApi(currentEmail, currentCode); setToken(data.emailChangeToken || ""); setStep("newEmail"); })}>{labels.confirm}</button>}
           {step === "newEmail" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await sendEmailChangeNewCodeApi(token, newEmail); setStep("newCode"); })}>{labels.sendCode}</button>}
-          {step === "newCode" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await confirmEmailChangeApi(token, newEmail, newCode); setStep("done"); })}>{labels.confirm}</button>}
+          {step === "newCode" && <button type="button" className="dialog-delete-modal-danger" disabled={busy} onClick={() => run(async () => { await confirmEmailChangeApi(token, newEmail, newCode, currentEmail); setStep("done"); })}>{labels.confirm}</button>}
           {step === "done" && <button type="button" className="dialog-delete-modal-danger" onClick={onClose}>OK</button>}
         </div>
       </div>

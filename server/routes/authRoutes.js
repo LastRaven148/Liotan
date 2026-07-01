@@ -9,6 +9,9 @@ const {
 const authMiddleware =
   require("../middleware/authMiddleware");
 
+const { recentAuth } =
+  require("../middleware/recentAuth");
+
 const {
   sendAuthCode,
   verifyAuthCode,
@@ -26,7 +29,8 @@ const {
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
-  confirmEmailChange
+  confirmEmailChange,
+  cancelEmailChange
 } = require("../controllers/authController");
 
 const router =
@@ -95,7 +99,14 @@ router.post(
   "/auth/email-change/confirm",
   authLimiter,
   authMiddleware,
+  recentAuth,
   confirmEmailChange
+);
+
+router.get(
+  "/auth/email-change/cancel/:token",
+  authLimiter,
+  cancelEmailChange
 );
 
 router.get(
