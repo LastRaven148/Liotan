@@ -4,6 +4,7 @@ export default function PrivacyPage({ back, labels, actions }) {
   const items = [
     { icon: "", title: labels.blacklist, value: "0" },
     { icon: "", title: labels.loginEmail, value: "", onClick: actions?.openEmailChange },
+    { icon: "", title: labels.twoFactorAuth, value: actions?.totpEnabled ? labels.enabled : labels.disabled, onClick: actions?.openTotp },
     { icon: "", title: labels.lastSeenPrivacy || labels.lastSeen, value: labels.everybody },
     { icon: "", title: labels.profilePhoto, value: labels.everybody },
     { icon: "", title: labels.about, value: labels.everybody },

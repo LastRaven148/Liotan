@@ -137,7 +137,8 @@ async function saveEmailCode({
 async function verifyEmailCode({
   emailHash,
   purpose,
-  code
+  code,
+  consume = true
 }) {
   if (!isValidEmailCode(code)) {
     return false;
@@ -161,10 +162,19 @@ async function verifyEmailCode({
     await record.save();
     return false;
   }
-  await EmailCode.deleteOne({
-    _id: record._id
-  });
+  if (consume) {
+    await EmailCode.deleteOne({
+      _id: record._id
+    });
+  }
   return true;
+}
+
+async function consumeEmailCode({ emailHash, purpose }) {
+  await EmailCode.deleteOne({
+    emailHash,
+    purpose
+  });
 }
 async function sendAuthCode(req, res, next) {
   try {
@@ -415,7 +425,8 @@ async function login(req, res, next) {
     const verified = await verifyEmailCode({
       emailHash,
       purpose: "login",
-      code
+      code,
+      consume: false
     });
     if (!verified) {
       return res.status(400).json({
@@ -433,6 +444,10 @@ async function login(req, res, next) {
         secondFactorRequired: true
       });
     }
+    await consumeEmailCode({
+      emailHash,
+      purpose: "login"
+    });
     user.lastSeen = new Date();
     await user.save();
     sendSessionResponse(res, {
@@ -614,9 +629,17 @@ async function confirmEmailChange(req, res, next) {
 
 async function getCurrentSession(req, res, next) {
   try {
+    const security = await UserSecurity.findOne({
+      userId: req.user.userId
+    }).select("totp.enabled totp.backupCodeHashes").lean();
+
     res.json({
       ok: true,
-      username: req.user.username
+      username: req.user.username,
+      security: {
+        totpEnabled: Boolean(security?.totp?.enabled),
+        backupCodesRemaining: security?.totp?.backupCodeHashes?.length || 0
+      }
     });
   } catch (err) {
     next(err);

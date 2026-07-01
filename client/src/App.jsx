@@ -30,6 +30,12 @@ export default function App() {
         emailCode={app.emailCode}
         setEmailCode={app.setEmailCode}
         maskedLoginEmail={app.maskedLoginEmail}
+        secondFactorRequired={app.secondFactorRequired}
+        setSecondFactorRequired={app.setSecondFactorRequired}
+        totpCode={app.totpCode}
+        setTotpCode={app.setTotpCode}
+        backupCode={app.backupCode}
+        setBackupCode={app.setBackupCode}
         password={app.password}
         setPassword={app.setPassword}
         sendLoginCode={app.sendLoginCode}

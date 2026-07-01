@@ -8,6 +8,12 @@ export default function AuthLayout({
   emailCode,
   setEmailCode,
   maskedLoginEmail,
+  secondFactorRequired,
+  setSecondFactorRequired,
+  totpCode,
+  setTotpCode,
+  backupCode,
+  setBackupCode,
   password,
   setPassword,
   sendLoginCode,
@@ -29,6 +35,12 @@ export default function AuthLayout({
       emailCode={emailCode}
       setEmailCode={setEmailCode}
       maskedLoginEmail={maskedLoginEmail}
+      secondFactorRequired={secondFactorRequired}
+      setSecondFactorRequired={setSecondFactorRequired}
+      totpCode={totpCode}
+      setTotpCode={setTotpCode}
+      backupCode={backupCode}
+      setBackupCode={setBackupCode}
       password={password}
       setPassword={setPassword}
       sendLoginCode={sendLoginCode}

@@ -129,7 +129,8 @@ export async function sendLoginEmailCode(
 export async function loginUser(
   email,
   password,
-  code
+  code,
+  secondFactor = {}
 ) {
   const devicePublicKey =
     await getDevicePublicKey();
@@ -146,6 +147,8 @@ export async function loginUser(
       email,
       password,
       code,
+      totpCode: secondFactor.totpCode || "",
+      backupCode: secondFactor.backupCode || "",
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
       transportMode: getTransportMode(),

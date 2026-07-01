@@ -124,25 +124,31 @@ async function performRequest(url, options = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401 && !options.suppressUnauthorized) {
+    if (res.status === 401 && !options.suppressUnauthorized && !data?.secondFactorRequired) {
       setApiAuthToken("");
       localStorage.removeItem("username");
       window.dispatchEvent(new Event("liotan:session-expired"));
     }
 
+    let message = data?.error || "Request failed";
+
     if (res.status === 413) {
-      throw new Error("Файл слишком большой для сервера");
+      message = "Файл слишком большой для сервера";
     }
 
     if (res.status === 408) {
-      throw new Error("Загрузка заняла слишком много времени");
+      message = "Загрузка заняла слишком много времени";
     }
 
     if (res.status >= 500) {
-      throw new Error(data?.error || "Ошибка сервера при загрузке");
+      message = data?.error || "Ошибка сервера при загрузке";
     }
 
-    throw new Error(data?.error || "Request failed");
+    const error = new Error(message);
+    error.status = res.status;
+    error.data = data;
+    error.secondFactorRequired = Boolean(data?.secondFactorRequired);
+    throw error;
   }
 
   return data;

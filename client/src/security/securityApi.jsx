@@ -1,44 +1,50 @@
+import { API } from "../config/api.jsx";
 import { apiRequest } from "../utils/apiRequest.jsx";
 
 export function getSecurityStatus() {
-  return apiRequest("/security/status");
+  return apiRequest(`${API}/security/status`);
 }
 
 export function getSecurityPolicy() {
-  return apiRequest("/security/policy");
+  return apiRequest(`${API}/security/policy`);
 }
 
 export function startTotpSetup() {
-  return apiRequest("/security/totp/setup", {
+  return apiRequest(`${API}/security/totp/setup`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({})
   });
 }
 
 export function enableTotp(code) {
-  return apiRequest("/security/totp/enable", {
+  return apiRequest(`${API}/security/totp/enable`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code })
   });
 }
 
 export function disableTotp({ code, backupCode } = {}) {
-  return apiRequest("/security/totp/disable", {
+  return apiRequest(`${API}/security/totp/disable`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, backupCode })
   });
 }
 
 export function prepareVault() {
-  return apiRequest("/security/vault/prepare", {
+  return apiRequest(`${API}/security/vault/prepare`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({})
   });
 }
 
 export function rotateRecoveryCodes() {
-  return apiRequest("/security/recovery/backup-codes", {
+  return apiRequest(`${API}/security/recovery/backup-codes`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({})
   });
 }

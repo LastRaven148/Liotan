@@ -1,7 +1,7 @@
 const HOURS = 60 * 60 * 1000;
 
 module.exports = Object.freeze({
-  version: "48.5.0",
+  version: "48.6.0",
   principles: Object.freeze({
     serverTrust: "untrusted",
     supportTrust: "untrusted",

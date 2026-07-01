@@ -18,6 +18,12 @@ import GeneralPage from "../settings/pages/GeneralPage";
 import SoundPage from "../settings/pages/SoundPage";
 import DevicesPage from "../settings/pages/DevicesPage";
 import LanguagePage from "../settings/pages/LanguagePage";
+import {
+  getSecurityStatus,
+  startTotpSetup,
+  enableTotp,
+  disableTotp
+} from "../../security/securityApi.jsx";
 
 export default function SettingsModal({
   username,
@@ -46,6 +52,8 @@ export default function SettingsModal({
   const [deleting, setDeleting] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
+  const [totpOpen, setTotpOpen] = useState(false);
+  const [securityStatus, setSecurityStatus] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [transportInfo, setTransportInfo] = useState(null);
 
@@ -57,13 +65,15 @@ export default function SettingsModal({
     let alive = true;
     async function load() {
       try {
-        const [sessionData, transportData] = await Promise.all([
+        const [sessionData, transportData, securityData] = await Promise.all([
           getDeviceSessionsApi(),
-          getTransportCapabilitiesApi().catch(() => null)
+          getTransportCapabilitiesApi().catch(() => null),
+          getSecurityStatus().catch(() => null)
         ]);
         if (!alive) return;
         setSessions(Array.isArray(sessionData?.sessions) ? sessionData.sessions : []);
         setTransportInfo(transportData || null);
+        setSecurityStatus(securityData?.security || null);
       } catch {
         if (alive) setSessions([]);
       }
@@ -107,7 +117,7 @@ export default function SettingsModal({
   useEffect(() => {
     function handleSettingsEscape(e) {
       if (e.key !== "Escape") return;
-      if (deleteOpen || logoutOpen || emailChangeOpen) return;
+      if (deleteOpen || logoutOpen || emailChangeOpen || totpOpen) return;
       if (editing) {
         e.preventDefault();
         e.stopPropagation();
@@ -126,7 +136,7 @@ export default function SettingsModal({
     }
     window.addEventListener("keydown", handleSettingsEscape, true);
     return () => window.removeEventListener("keydown", handleSettingsEscape, true);
-  }, [page, editing, deleteOpen, logoutOpen, emailChangeOpen, closeEdit]);
+  }, [page, editing, deleteOpen, logoutOpen, emailChangeOpen, totpOpen, closeEdit]);
 
   function selectAvatar(e) {
     const file = e.target.files?.[0];
@@ -191,6 +201,12 @@ export default function SettingsModal({
     setDeleteStep(1);
   }
 
+  async function refreshSecurityStatus() {
+    const data = await getSecurityStatus().catch(() => null);
+    setSecurityStatus(data?.security || null);
+    return data?.security || null;
+  }
+
   const commonState = {
     username,
     displayName,
@@ -222,7 +238,15 @@ export default function SettingsModal({
         ) : page === "notifications" ? (
           <NotificationsPage back={() => setPage("main")} labels={labels} />
         ) : page === "privacy" ? (
-          <PrivacyPage back={() => setPage("main")} labels={labels} actions={{ openEmailChange: () => setEmailChangeOpen(true) }} />
+          <PrivacyPage
+            back={() => setPage("main")}
+            labels={labels}
+            actions={{
+              openEmailChange: () => setEmailChangeOpen(true),
+              openTotp: () => setTotpOpen(true),
+              totpEnabled: Boolean(securityStatus?.totp?.enabled)
+            }}
+          />
         ) : page === "general" ? (
           <GeneralPage back={() => setPage("main")} labels={labels} />
         ) : page === "sound" ? (
@@ -245,6 +269,13 @@ export default function SettingsModal({
         />}
 
         {emailChangeOpen && <EmailChangeModal labels={labels} onClose={() => setEmailChangeOpen(false)} />}
+
+        {totpOpen && <TotpModal
+          labels={labels}
+          securityStatus={securityStatus}
+          refreshSecurityStatus={refreshSecurityStatus}
+          onClose={() => setTotpOpen(false)}
+        />}
 
         {deleteOpen && <ConfirmModal
           title={labels.deleteAccount}
@@ -326,6 +357,22 @@ function getLabels(t) {
     channels: t.channels || "Каналы",
     blacklist: t.blacklist || "Чёрный список",
     loginEmail: t.loginEmail || "Почта для входа",
+    twoFactorAuth: t.twoFactorAuth || "Двухфакторная аутентификация",
+    enabled: t.enabled || "включено",
+    disabled: t.disabled || "выключено",
+    twoFactorTitle: t.twoFactorTitle || "Двухфакторная аутентификация",
+    twoFactorSetupText: t.twoFactorSetupText || "Добавьте этот ключ в приложение Authenticator и введите 6-значный код.",
+    twoFactorManualKey: t.twoFactorManualKey || "Ручной ключ",
+    twoFactorOtpUrl: t.twoFactorOtpUrl || "otpauth URL",
+    twoFactorBackupCodes: t.twoFactorBackupCodes || "Backup codes",
+    twoFactorBackupCodesText: t.twoFactorBackupCodesText || "Сохраните эти коды сейчас. Каждый код работает только один раз и больше не будет показан.",
+    twoFactorEnabled: t.twoFactorEnabled || "2FA включена",
+    twoFactorDisabled: t.twoFactorDisabled || "2FA выключена",
+    twoFactorDisableText: t.twoFactorDisableText || "Для отключения введите код Authenticator или backup code.",
+    setup: t.setup || "Настроить",
+    disable: t.disable || "Отключить",
+    close: t.close || "Закрыть",
+    backupCode: t.backupCode || "Backup code",
     lastSeen: t.lastSeenPrivacy || "Кто видит последнее посещение",
     profilePhoto: t.profilePhoto || "Кто видит фото в моём профиле",
     about: t.about || "Кто видит мой раздел «О себе»",
@@ -372,6 +419,129 @@ function getLabels(t) {
     emailChanged: t.emailChanged || "Почта изменена",
     invalidEmailOrCode: t.invalidEmailOrCode || "Проверьте почту или код"
   };
+}
+
+function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
+  const enabled = Boolean(securityStatus?.totp?.enabled);
+  const [setup, setSetup] = useState(null);
+  const [code, setCode] = useState("");
+  const [backupCode, setBackupCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(action) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (err) {
+      setError(err?.message || "Security action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function beginSetup() {
+    await run(async () => {
+      const data = await startTotpSetup();
+      setSetup(data);
+      setCode("");
+      setBackupCodes([]);
+    });
+  }
+
+  async function confirmSetup() {
+    await run(async () => {
+      const data = await enableTotp(code);
+      setBackupCodes(Array.isArray(data?.backupCodes) ? data.backupCodes : []);
+      setSetup(null);
+      setCode("");
+      await refreshSecurityStatus?.();
+    });
+  }
+
+  async function turnOff() {
+    await run(async () => {
+      await disableTotp({ code, backupCode });
+      setCode("");
+      setBackupCode("");
+      await refreshSecurityStatus?.();
+      onClose?.();
+    });
+  }
+
+  const canConfirmSetup = /^\d{6}$/.test(String(code || ""));
+  const canDisable = /^\d{6}$/.test(String(code || "")) || String(backupCode || "").trim().length >= 8;
+
+  return (
+    <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
+      <div className="dialog-delete-modal settings-email-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-delete-modal-title">{labels.twoFactorTitle}</div>
+
+        {!enabled && !setup && !backupCodes.length && (
+          <>
+            <div className="dialog-delete-modal-text">
+              {labels.twoFactorSetupText}
+            </div>
+            {error && <div className="settings-modal-error">{error}</div>}
+            <div className="dialog-delete-modal-actions">
+              <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={busy}>{labels.cancel}</button>
+              <button type="button" className="dialog-delete-modal-danger" onClick={beginSetup} disabled={busy}>{busy ? "..." : labels.setup}</button>
+            </div>
+          </>
+        )}
+
+        {!enabled && setup && !backupCodes.length && (
+          <>
+            <div className="dialog-delete-modal-text">{labels.twoFactorSetupText}</div>
+            <div className="settings-security-card">
+              <div className="settings-info-label">{labels.twoFactorManualKey}</div>
+              <div className="settings-info-value settings-security-code">{setup.manualKey}</div>
+            </div>
+            <div className="settings-security-card">
+              <div className="settings-info-label">{labels.twoFactorOtpUrl}</div>
+              <div className="settings-muted-text settings-security-url">{setup.otpauthUrl}</div>
+            </div>
+            <input className="settings-modal-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder={labels.code} inputMode="numeric" maxLength={6} />
+            {error && <div className="settings-modal-error">{error}</div>}
+            <div className="dialog-delete-modal-actions">
+              <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={busy}>{labels.cancel}</button>
+              <button type="button" className="dialog-delete-modal-danger" onClick={confirmSetup} disabled={busy || !canConfirmSetup}>{busy ? "..." : labels.confirm}</button>
+            </div>
+          </>
+        )}
+
+        {backupCodes.length > 0 && (
+          <>
+            <div className="dialog-delete-modal-text">{labels.twoFactorBackupCodesText}</div>
+            <div className="settings-security-card">
+              {backupCodes.map((item) => <div key={item} className="settings-security-code">{item}</div>)}
+            </div>
+            <div className="dialog-delete-modal-actions">
+              <button type="button" className="dialog-delete-modal-danger" onClick={onClose}>{labels.close}</button>
+            </div>
+          </>
+        )}
+
+        {enabled && (
+          <>
+            <div className="dialog-delete-modal-text">
+              {labels.twoFactorEnabled}. {labels.twoFactorDisableText}
+            </div>
+            <input className="settings-modal-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder={labels.code} inputMode="numeric" maxLength={6} />
+            <input className="settings-modal-input" value={backupCode} onChange={(e) => setBackupCode(e.target.value.toUpperCase())} placeholder={labels.backupCode} />
+            {error && <div className="settings-modal-error">{error}</div>}
+            <div className="dialog-delete-modal-actions">
+              <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={busy}>{labels.cancel}</button>
+              <button type="button" className="dialog-delete-modal-danger" onClick={turnOff} disabled={busy || !canDisable}>{busy ? "..." : labels.disable}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function EmailChangeModal({ labels, onClose }) {

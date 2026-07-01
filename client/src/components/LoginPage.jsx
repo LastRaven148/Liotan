@@ -14,6 +14,12 @@ export default function LoginPage({
   emailCode,
   setEmailCode,
   maskedLoginEmail,
+  secondFactorRequired,
+  setSecondFactorRequired,
+  totpCode,
+  setTotpCode,
+  backupCode,
+  setBackupCode,
   password,
   setPassword,
   sendLoginCode,
@@ -69,6 +75,10 @@ export default function LoginPage({
 
   function subtitle() {
     if (isLogin) {
+      if (step === "loginTotp") {
+        return text("twoFactorSubtitle", "Введите код из приложения Authenticator или одноразовый backup code.");
+      }
+
       if (step === "loginCode") {
         return `${t.emailCodeSentTo || "Введите код из письма. Код отправлен на"} ${maskedLoginEmail || t.yourEmail || "вашу почту"}.`;
       }
@@ -95,6 +105,9 @@ export default function LoginPage({
     setPassword("");
     setConfirmPassword("");
     setEmailCode("");
+    setTotpCode?.("");
+    setBackupCode?.("");
+    setSecondFactorRequired?.(false);
   }
 
   function switchMode(nextMode) {
@@ -124,8 +137,19 @@ export default function LoginPage({
 
   async function handlePrimary() {
     if (isLogin) {
+      if (step === "loginTotp") {
+        const ok = await login({ totpCode, backupCode });
+        if (!ok) {
+          setStep("loginTotp");
+        }
+        return;
+      }
+
       if (step === "loginCode") {
-        await login();
+        const ok = await login();
+        if (!ok && secondFactorRequired) {
+          setStep("loginTotp");
+        }
         return;
       }
 
@@ -187,6 +211,13 @@ export default function LoginPage({
 
   function handleBack() {
     if (isLogin) {
+      if (step === "loginTotp") {
+        setStep("loginCode");
+        setTotpCode?.("");
+        setBackupCode?.("");
+        return;
+      }
+
       if (step === "loginCode") {
         setStep("loginCredentials");
         setEmailCode("");
@@ -218,6 +249,10 @@ export default function LoginPage({
 
   function primaryText() {
     if (isLogin) {
+      if (step === "loginTotp") {
+        return text("confirm", "Подтвердить");
+      }
+
       if (step === "loginCode") {
         return text("login", "Войти");
       }
@@ -330,8 +365,39 @@ export default function LoginPage({
     );
   }
 
+  function renderTotpField() {
+    return (
+      <>
+        <input
+          className="auth-input"
+          placeholder={text("twoFactorCode", "Код Authenticator")}
+          inputMode="numeric"
+          maxLength={6}
+          value={totpCode || ""}
+          autoFocus
+          onChange={(e) => setTotpCode?.(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={handleKeyDown}
+        />
+        <input
+          className="auth-input"
+          placeholder={text("backupCode", "Backup code, если нет доступа к Authenticator")}
+          value={backupCode || ""}
+          onChange={(e) => setBackupCode?.(e.target.value.toUpperCase())}
+          onKeyDown={handleKeyDown}
+        />
+        <p className="auth-hint">
+          {text("twoFactorHelp", "Backup code можно использовать один раз. После входа он будет удалён.")}
+        </p>
+      </>
+    );
+  }
+
   function renderFields() {
     if (isLogin) {
+      if (step === "loginTotp") {
+        return renderTotpField();
+      }
+
       if (step === "loginCode") {
         return renderEmailCodeField();
       }
@@ -414,7 +480,7 @@ export default function LoginPage({
   return (
     <div className="login-page">
       <div className="auth-card">
-        {(!isLogin || step === "loginCode") && (
+        {(!isLogin || step === "loginCode" || step === "loginTotp") && (
           <button
             type="button"
             className="auth-back"

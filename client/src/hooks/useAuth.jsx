@@ -46,6 +46,15 @@ export default function useAuth({
   const [maskedLoginEmail, setMaskedLoginEmail] =
     useState("");
 
+  const [secondFactorRequired, setSecondFactorRequired] =
+    useState(false);
+
+  const [totpCode, setTotpCode] =
+    useState("");
+
+  const [backupCode, setBackupCode] =
+    useState("");
+
   const [password, setPassword] =
     useState("");
 
@@ -65,6 +74,9 @@ export default function useAuth({
       setPassword("");
       setEmailCode("");
       setMaskedLoginEmail("");
+      setSecondFactorRequired(false);
+      setTotpCode("");
+      setBackupCode("");
       setAuthReady(true);
     }
 
@@ -134,6 +146,9 @@ export default function useAuth({
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
+    setSecondFactorRequired(false);
+    setTotpCode("");
+    setBackupCode("");
   }
 
   function handleAuthError(err, fallback) {
@@ -190,7 +205,7 @@ export default function useAuth({
     }
   }
 
-  async function login() {
+  async function login(secondFactor = {}) {
     try {
       const loginPassword =
         password;
@@ -199,7 +214,11 @@ export default function useAuth({
         await loginUser(
           email,
           loginPassword,
-          emailCode
+          emailCode,
+          {
+            totpCode: secondFactor.totpCode ?? totpCode,
+            backupCode: secondFactor.backupCode ?? backupCode
+          }
         );
 
       await saveSession(data);
@@ -211,6 +230,12 @@ export default function useAuth({
 
       return true;
     } catch (err) {
+      if (err.secondFactorRequired || err.data?.secondFactorRequired) {
+        setSecondFactorRequired(true);
+        showToast("Введите код двухфакторной аутентификации");
+        return false;
+      }
+
       handleAuthError(
         err,
         "Login failed"
@@ -382,6 +407,9 @@ export default function useAuth({
     setPassword("");
     setEmailCode("");
     setMaskedLoginEmail("");
+    setSecondFactorRequired(false);
+    setTotpCode("");
+    setBackupCode("");
   }
 
   async function logout(socketRef) {
@@ -406,6 +434,15 @@ export default function useAuth({
 
     maskedLoginEmail,
     setMaskedLoginEmail,
+
+    secondFactorRequired,
+    setSecondFactorRequired,
+
+    totpCode,
+    setTotpCode,
+
+    backupCode,
+    setBackupCode,
 
     password,
     setPassword,
