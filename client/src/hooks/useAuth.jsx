@@ -179,7 +179,7 @@ export default function useAuth({
         ? "Code sent"
         : (
             result?.message ||
-            "Email delivery is not available. Check RESEND_API_KEY on Liotan-api."
+            "Email delivery is not available. Verify Resend domain/sender or SMTP on Liotan-api."
           )
     );
 

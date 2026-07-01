@@ -164,10 +164,14 @@ async function sendViaResend({
     });
 
   if (!response.ok) {
-    await response.text().catch(() => "");
+    const body =
+      await response.text().catch(() => "");
+
+    const safeBody =
+      body.slice(0, 500);
 
     throw new Error(
-      `Resend email failed: ${response.status}`
+      `Resend email failed: ${response.status}${safeBody ? ` ${safeBody}` : ""}`
     );
   }
 
@@ -242,10 +246,23 @@ async function sendEmailCode({
       });
     } catch (err) {
       logger.error("Liotan mail provider rejected email", err);
+
+      const smtpFallback =
+        await sendViaSmtp({
+          to,
+          subject,
+          text,
+          html
+        });
+
+      if (smtpFallback) {
+        return smtpFallback;
+      }
+
       return {
         sent: false,
         provider: "resend",
-        message: "Email provider rejected this address or sender. Check MAIL_FROM and verified Resend domain on Liotan-api."
+        message: "Email delivery was rejected. Verify the Resend domain/sender on Liotan-api or configure SMTP fallback."
       };
     }
   }
@@ -294,7 +311,24 @@ async function sendSecurityEmail({
   html
 }) {
   if (hasResendConfig()) {
-    return sendViaResend({ to, subject, text, html });
+    try {
+      return await sendViaResend({ to, subject, text, html });
+    } catch (err) {
+      logger.error("Liotan security mail provider rejected email", err);
+
+      const smtpFallback =
+        await sendViaSmtp({ to, subject, text, html });
+
+      if (smtpFallback) {
+        return smtpFallback;
+      }
+
+      return {
+        sent: false,
+        provider: "resend",
+        message: "security email rejected"
+      };
+    }
   }
 
   const smtpResult = await sendViaSmtp({ to, subject, text, html });

@@ -237,9 +237,7 @@ export default function SettingsModal({
     askDelete,
     askLogout: () => { setMenuOpen(false); setLogoutOpen(true); },
     openTotp: () => setTotpOpen(true),
-    openSupport: () => {
-      window.location.href = "mailto:support@liotan.com";
-    }
+    openSupport: () => {}
   };
 
   return (
