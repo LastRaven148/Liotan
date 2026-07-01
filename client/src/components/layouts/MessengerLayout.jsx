@@ -1,3 +1,6 @@
+import { useEffect, useState }
+from "react";
+
 import Sidebar
 from "../sidebars/Sidebar";
 
@@ -19,6 +22,9 @@ export default function MessengerLayout({
 
   const viewportMode =
     useViewportMode();
+
+  const [autoOpenTotp, setAutoOpenTotp] =
+    useState(false);
 
   const {
     username,
@@ -58,6 +64,16 @@ export default function MessengerLayout({
     saveProfile,
     deleteGroupDialog
   } = app;
+
+  useEffect(() => {
+    if (localStorage.getItem("liotan-open-totp-setup") !== "1") {
+      return;
+    }
+
+    localStorage.removeItem("liotan-open-totp-setup");
+    setAutoOpenTotp(true);
+    setSettingsOpen(true);
+  }, [setSettingsOpen]);
 
   return (
     <div
@@ -155,6 +171,10 @@ export default function MessengerLayout({
         updateGroup={updateGroup}
         createGroupOpen={createGroupOpen}
         setCreateGroupOpen={setCreateGroupOpen}
+        initialTotpOpen={autoOpenTotp}
+        onInitialTotpConsumed={() =>
+          setAutoOpenTotp(false)
+        }
         onGroupCreated={(group) =>
           addGroup?.(group)
         }

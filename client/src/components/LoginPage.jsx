@@ -47,6 +47,9 @@ export default function LoginPage({
   const [confirmPassword, setConfirmPassword] =
     useState("");
 
+  const [setupTwoFactorAfterRegister, setSetupTwoFactorAfterRegister] =
+    useState(false);
+
 
   const isLogin =
     mode === "login";
@@ -91,7 +94,11 @@ export default function LoginPage({
     }
 
     if (step === "code") {
-      return text("enterCodeFromEmail", "Введите код из письма.");
+      return text("enterCodeFromEmail", "Введите 8-значный код из письма.");
+    }
+
+    if (step === "registerSecurity") {
+      return text("registerSecuritySubtitle", "Можно сразу подключить двухфакторную аутентификацию. Это защитит вход даже если пароль станет известен.");
     }
 
     if (isReset) {
@@ -108,6 +115,7 @@ export default function LoginPage({
     setTotpCode?.("");
     setBackupCode?.("");
     setSecondFactorRequired?.(false);
+    setSetupTwoFactorAfterRegister(false);
   }
 
   function switchMode(nextMode) {
@@ -184,10 +192,15 @@ export default function LoginPage({
         setStep(
           isReset
             ? "newPassword"
-            : "account"
+            : "registerSecurity"
         );
       }
 
+      return;
+    }
+
+    if (step === "registerSecurity") {
+      setStep("account");
       return;
     }
 
@@ -206,7 +219,9 @@ export default function LoginPage({
       return;
     }
 
-    await register();
+    await register({
+      setupTwoFactor: setupTwoFactorAfterRegister
+    });
   }
 
   function handleBack() {
@@ -236,7 +251,16 @@ export default function LoginPage({
       return;
     }
 
-    setStep("code");
+    if (step === "registerSecurity") {
+      setStep("code");
+      return;
+    }
+
+    setStep(
+      isRegister
+        ? "registerSecurity"
+        : "code"
+    );
     setPassword("");
     setConfirmPassword("");
   }
@@ -266,6 +290,10 @@ export default function LoginPage({
 
     if (step === "code") {
       return text("verifyCode", "Проверить код");
+    }
+
+    if (step === "registerSecurity") {
+      return text("continue", "Продолжить");
     }
 
     if (isReset) {
@@ -319,12 +347,12 @@ export default function LoginPage({
         className="auth-input"
         placeholder={text("emailCode", "Код из письма")}
         inputMode="numeric"
-        maxLength={6}
+        maxLength={8}
         value={emailCode}
         autoFocus
         onChange={(e) =>
           setEmailCode(
-            e.target.value.replace(/\D/g, "")
+            e.target.value.replace(/\D/g, "").slice(0, 8)
           )
         }
         onKeyDown={handleKeyDown}
@@ -451,6 +479,39 @@ export default function LoginPage({
 
     if (step === "code") {
       return renderEmailCodeField();
+    }
+
+    if (step === "registerSecurity") {
+      return (
+        <div className="auth-security-choice">
+          <div className="auth-security-title">
+            {text("twoFactorAuth", "Двухфакторная аутентификация")}
+          </div>
+          <p className="auth-hint">
+            {text("registerSecurityText", "Хотите подключить 2FA сразу после создания аккаунта? Мы откроем настройку автоматически после входа.")}
+          </p>
+          <button
+            type="button"
+            className={[
+              "auth-choice-button",
+              setupTwoFactorAfterRegister ? "active" : ""
+            ].join(" ")}
+            onClick={() => setSetupTwoFactorAfterRegister(true)}
+          >
+            {text("setupTwoFactorNow", "Да, подключить сразу")}
+          </button>
+          <button
+            type="button"
+            className={[
+              "auth-choice-button",
+              !setupTwoFactorAfterRegister ? "active" : ""
+            ].join(" ")}
+            onClick={() => setSetupTwoFactorAfterRegister(false)}
+          >
+            {text("setupTwoFactorLater", "Нет, позже")}
+          </button>
+        </div>
+      );
     }
 
     if (isReset) {

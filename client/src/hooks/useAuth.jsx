@@ -321,7 +321,7 @@ export default function useAuth({
     }
   }
 
-  async function register() {
+  async function register(options = {}) {
     try {
       const registerPassword =
         password;
@@ -335,6 +335,10 @@ export default function useAuth({
         );
 
       await saveSession(data);
+
+      if (options?.setupTwoFactor) {
+        localStorage.setItem("liotan-open-totp-setup", "1");
+      }
 
       await initE2EEAccountIdentity({
         username: data.username,

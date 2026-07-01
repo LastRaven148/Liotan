@@ -16,6 +16,12 @@ const E2EEKey =
 const Session =
   require("../models/Session");
 
+const UserSecurity =
+  require("../models/UserSecurity");
+
+const RegistrationCancel =
+  require("../models/RegistrationCancel");
+
 const deleteUploadedFile =
   require("./deleteUploadedFile");
 
@@ -131,6 +137,20 @@ async function deleteAccountData(username) {
   }
 
   await Session.deleteMany({
+    $or: [
+      { userId: user._id },
+      { username }
+    ]
+  });
+
+  await UserSecurity.deleteMany({
+    $or: [
+      { userId: user._id },
+      { username }
+    ]
+  });
+
+  await RegistrationCancel.deleteMany({
     $or: [
       { userId: user._id },
       { username }

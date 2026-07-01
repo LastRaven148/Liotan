@@ -319,6 +319,30 @@ async function sendEmailChangeCancelNotice({ to, cancelUrl, applyAfter }) {
   return sendSecurityEmail({ to, subject, text, html });
 }
 
+
+async function sendRegistrationNotice({ to, username, cancelUrl, expiresAt }) {
+  const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan account registered";
+  const text = [
+    "A Liotan account was registered with this email address.",
+    "",
+    `Username: ${username}`,
+    "",
+    "If this was you, no action is required.",
+    "If this was not you, cancel this registration here:",
+    cancelUrl,
+    "",
+    `This cancellation link expires at: ${new Date(expiresAt).toISOString()}`,
+    "",
+    "Liotan support cannot manually prove ownership or restore access. This link is the protected cancellation flow."
+  ].join("\n");
+
+  const safeUrl = String(cancelUrl || "").replace(/"/g, "&quot;");
+  const safeUsername = String(username || "").replace(/[<>&"]/g, "");
+  const safeExpiresAt = new Date(expiresAt).toISOString();
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A Liotan account was registered with this email address.</p><p><b>Username:</b> ${safeUsername}</p><p>If this was you, no action is required.</p><p>If this was not you, cancel this registration:</p><p><a style="color:#8bc7ff" href="${safeUrl}">${safeUrl}</a></p><p style="color:#9aaabc;font-size:13px">This cancellation link expires at ${safeExpiresAt}. Liotan support cannot manually prove ownership or restore access.</p></div></body></html>`;
+  return sendSecurityEmail({ to, subject, text, html });
+}
+
 function getMailStatus() {
   const withFrom = (status) => privacy.minimalLogs
     ? status
@@ -351,6 +375,7 @@ module.exports = {
   sendEmailCode,
   sendSecurityEmail,
   sendEmailChangeCancelNotice,
+  sendRegistrationNotice,
   hasMailConfig,
   hasSmtpConfig,
   hasResendConfig,

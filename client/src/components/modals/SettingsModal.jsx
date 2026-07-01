@@ -35,6 +35,8 @@ export default function SettingsModal({
   uploadAvatar,
   logout,
   deleteAccount,
+  initialTotpOpen = false,
+  onInitialTotpConsumed,
   onClose
 }) {
   const { t, language, setLanguage } = useLanguage();
@@ -59,6 +61,15 @@ export default function SettingsModal({
 
   useEffect(() => setNameValue(displayName || ""), [displayName]);
   useEffect(() => setBioValue(bio || ""), [bio]);
+
+  useEffect(() => {
+    if (!initialTotpOpen) {
+      return;
+    }
+
+    setTotpOpen(true);
+    onInitialTotpConsumed?.();
+  }, [initialTotpOpen, onInitialTotpConsumed]);
   useEffect(() => () => previewAvatar && URL.revokeObjectURL(previewAvatar), [previewAvatar]);
 
   useEffect(() => {
@@ -215,7 +226,8 @@ export default function SettingsModal({
     language,
     sessions,
     transportInfo,
-    menuOpen
+    menuOpen,
+    securityStatus
   };
   const commonActions = {
     close: onClose,
@@ -223,7 +235,8 @@ export default function SettingsModal({
     openPage: setPage,
     toggleMenu: () => setMenuOpen((value) => !value),
     askDelete,
-    askLogout: () => { setMenuOpen(false); setLogoutOpen(true); }
+    askLogout: () => { setMenuOpen(false); setLogoutOpen(true); },
+    openTotp: () => setTotpOpen(true)
   };
 
   return (

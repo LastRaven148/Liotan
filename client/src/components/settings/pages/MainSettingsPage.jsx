@@ -6,6 +6,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
   const shownName = displayName?.trim() || username;
   const currentLabel = language === "en" ? "English" : "Русский";
   const otherCount = sessions.filter((item) => !item.current).length;
+  const totpEnabled = Boolean(state.securityStatus?.totp?.enabled);
   const browserConnectionRisk = getBrowserConnectionRisk();
   const connectionIsSuspicious = browserConnectionRisk !== "secure" || state.transportInfo?.connectionRisk === "suspicious";
   return (
@@ -38,6 +39,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
 
       <SettingsSection>
         <SettingsItem icon="" title={labels.notifications} onClick={() => actions.openPage("notifications")} />
+        <SettingsItem icon="" title={labels.twoFactorAuth} value={totpEnabled ? labels.enabled : labels.disabled} onClick={actions.openTotp} />
         <SettingsItem icon="" title={labels.privacy} onClick={() => actions.openPage("privacy")} />
         <SettingsItem icon="" title={labels.general} onClick={() => actions.openPage("general")} />
         <SettingsItem icon="" title={labels.sound} onClick={() => actions.openPage("sound")} />

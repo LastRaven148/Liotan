@@ -26,6 +26,8 @@ export default function ModalsLayer({
   deleteAccount,
   deleteGroupDialog,
   updateGroup,
+  initialTotpOpen,
+  onInitialTotpConsumed,
   onGroupCreated
 }) {
 
@@ -58,6 +60,8 @@ export default function ModalsLayer({
           uploadAvatar={uploadAvatar}
           logout={logout}
           deleteAccount={deleteAccount}
+          initialTotpOpen={initialTotpOpen}
+          onInitialTotpConsumed={onInitialTotpConsumed}
           onClose={() =>
             setSettingsOpen(false)
           }

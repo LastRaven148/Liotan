@@ -9,6 +9,7 @@ const E2EEKey = require("../models/E2EEKey");
 const Session = require("../models/Session");
 const UserSecurity = require("../models/UserSecurity");
 const PendingEmailChange = require("../models/PendingEmailChange");
+const RegistrationCancel = require("../models/RegistrationCancel");
 const {
   normalizeEmail,
   hashEmail,
@@ -25,7 +26,8 @@ const {
 } = require("../utils/sessionSecurity");
 const {
   sendEmailCode,
-  sendEmailChangeCancelNotice
+  sendEmailChangeCancelNotice,
+  sendRegistrationNotice
 } = require("../utils/mailer");
 const {
   isValidUsername,
@@ -36,8 +38,9 @@ const {
 const {
   assertAcceptableEmail
 } = require("../utils/emailRisk");
-const { decryptJson } = require("../security/crypto/secureEnvelope");
+const { decryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
 const { verifyTotp } = require("../security/totp/totp");
+const deleteAccountData = require("../utils/deleteAccountData");
 const { consumeBackupCode } = require("../security/recovery/backupCodes");
 const privacy = require("../config/privacy");
 const {
@@ -46,7 +49,7 @@ const {
   cancelPendingEmailChange
 } = require("../security/emailChange/emailChangeSecurity");
 function createCode() {
-  return String(crypto.randomInt(100000, 1000000));
+  return String(crypto.randomInt(10000000, 100000000));
 }
 
 async function verifySecondFactorIfEnabled({ user, code, backupCode }) {
@@ -79,6 +82,37 @@ async function verifySecondFactorIfEnabled({ user, code, backupCode }) {
   }
 
   return { ok: false, required: true };
+}
+
+
+function getRegistrationCancelUrl(token) {
+  const base = String(process.env.PUBLIC_API_URL || process.env.API_URL || "").replace(/\/$/, "");
+  const path = `/auth/register/cancel/${encodeURIComponent(token)}`;
+  return base ? `${base}${path}` : path;
+}
+
+async function createRegistrationCancelLink(user) {
+  const token = randomToken(32);
+  const tokenHash = sha256(token);
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await RegistrationCancel.deleteMany({
+    userId: user._id,
+    usedAt: null
+  });
+
+  await RegistrationCancel.create({
+    userId: user._id,
+    username: user.username,
+    emailHash: user.emailHash,
+    tokenHash,
+    expiresAt
+  });
+
+  return {
+    cancelUrl: getRegistrationCancelUrl(token),
+    expiresAt
+  };
 }
 
 function shouldExposeDevEmailCode(result) {
@@ -393,6 +427,15 @@ async function register(req, res, next) {
       emailVerified: true,
       lastSeen: new Date()
     });
+    const registrationCancel = await createRegistrationCancelLink(user);
+
+    await sendRegistrationNotice({
+      to: cleanEmail,
+      username: user.username,
+      cancelUrl: registrationCancel.cancelUrl,
+      expiresAt: registrationCancel.expiresAt
+    }).catch(() => null);
+
     sendSessionResponse(res, {
       token: await signToken(req, user),
       username: user.username
@@ -684,6 +727,39 @@ async function cancelEmailChange(req, res, next) {
   }
 }
 
+
+async function cancelRegistration(req, res, next) {
+  try {
+    const tokenHash = sha256(req.params.token || "");
+    const record = await RegistrationCancel.findOne({
+      tokenHash,
+      usedAt: null,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!record) {
+      return res.status(400).json({ ok: false, error: "invalid or expired link" });
+    }
+
+    record.usedAt = new Date();
+    await record.save();
+
+    const result = await deleteAccountData(record.username);
+
+    await RegistrationCancel.updateMany(
+      { userId: record.userId, usedAt: null },
+      { $set: { usedAt: new Date() } }
+    );
+
+    res.status(result.ok ? 200 : 400).json({
+      ok: result.ok,
+      cancelled: result.ok
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function getCurrentSession(req, res, next) {
   try {
     const security = await UserSecurity.findOne({
@@ -842,5 +918,6 @@ module.exports = {
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
   confirmEmailChange,
-  cancelEmailChange
+  cancelEmailChange,
+  cancelRegistration
 };

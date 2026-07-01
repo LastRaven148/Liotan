@@ -30,7 +30,8 @@ const {
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
   confirmEmailChange,
-  cancelEmailChange
+  cancelEmailChange,
+  cancelRegistration
 } = require("../controllers/authController");
 
 const router =
@@ -107,6 +108,12 @@ router.get(
   "/auth/email-change/cancel/:token",
   authLimiter,
   cancelEmailChange
+);
+
+router.get(
+  "/auth/register/cancel/:token",
+  authLimiter,
+  cancelRegistration
 );
 
 router.get(

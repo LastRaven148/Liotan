@@ -43,7 +43,7 @@ function isValidEmail(email) {
 function isValidEmailCode(code) {
   return (
     typeof code === "string" &&
-    /^\d{6}$/.test(code.trim())
+    /^\d{8}$/.test(code.trim())
   );
 }
 

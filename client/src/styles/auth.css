@@ -207,3 +207,31 @@
     -webkit-overflow-scrolling:touch;
   }
 }
+
+.auth-security-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-security-title {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.auth-choice-button {
+  width: 100%;
+  border: 1px solid #243447;
+  border-radius: 14px;
+  background: #17212b;
+  color: #ffffff;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.auth-choice-button.active {
+  border-color: #3390ec;
+  background: #1f3346;
+}
