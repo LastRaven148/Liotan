@@ -5,6 +5,7 @@
 @import "./styles/messages.css";
 @import "./styles/menus.css";
 @import "./styles/settings.css";
+@import "./styles/settings-controls.css";
 @import "./styles/modals.css";
 @import "./styles/attachments.css";
 @import "./styles/toast.css";

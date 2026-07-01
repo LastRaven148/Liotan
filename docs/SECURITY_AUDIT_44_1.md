@@ -70,7 +70,7 @@
 ## Что осталось после 44.1
 
 ### Client dependencies
-CRA/react-scripts тянет dev/build-time vulnerabilities через старые зависимости. Production bundle собирается успешно, но стратегически нужно перейти с CRA на Vite.
+CRA/react-scripts был удалён, клиент переведён на Vite. Старые build-time уязвимости CRA больше не актуальны.
 
 ### E2EE key verification
 Сервер уже не должен видеть plaintext в штатном сценарии, но для уровня Signal нужно добавить:

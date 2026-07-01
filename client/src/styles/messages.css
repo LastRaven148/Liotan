@@ -1,5 +1,7 @@
 @import "./MessageMedia.css";
 @import "./MessageAudio.css";
+@import "./MessageAudioTopbar.css";
+@import "./MessageAudioResponsive.css";
 @import "./MessageVoice.css";
 
 .message{

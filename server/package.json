@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js"
+    "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js",
+    "check": "node scripts/checkSyntax.js"
   },
   "keywords": [],
   "author": "",
