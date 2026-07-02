@@ -14,10 +14,6 @@ import {
   getDeviceKeyFingerprint
 } from "../utils/deviceCrypto";
 
-import {
-  getTransportMode
-} from "./transportPrivacy";
-
 async function getOptionalDeviceKeyPayload() {
   try {
     const devicePublicKey =
