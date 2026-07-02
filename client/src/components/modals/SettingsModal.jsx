@@ -18,6 +18,7 @@ import GeneralPage from "../settings/pages/GeneralPage";
 import SoundPage from "../settings/pages/SoundPage";
 import DevicesPage from "../settings/pages/DevicesPage";
 import LanguagePage from "../settings/pages/LanguagePage";
+import TwoFactorPage from "../settings/pages/TwoFactorPage";
 import {
   getSecurityStatus,
   startTotpSetup,
@@ -278,6 +279,13 @@ export default function SettingsModal({
               totpEnabled: Boolean(securityStatus?.totp?.enabled)
             }}
           />
+        ) : page === "twofactor" ? (
+          <TwoFactorPage
+            back={() => setPage("main")}
+            labels={labels}
+            state={{ securityStatus }}
+            actions={{ openTotp: () => setTotpOpen(true) }}
+          />
         ) : page === "general" ? (
           <GeneralPage back={() => setPage("main")} labels={labels} />
         ) : page === "sound" ? (
@@ -396,6 +404,10 @@ function getLabels(t) {
     disabled: t.disabled || "выключено",
     twoFactorTitle: t.twoFactorTitle || "Двухфакторная аутентификация",
     twoFactorSetupText: t.twoFactorSetupText || "2FA добавляет второй код при входе. Используйте Google Authenticator, Microsoft Authenticator, 2FAS или другое приложение для одноразовых кодов.",
+    twoFactorEnabledText: t.twoFactorEnabledText || "Двухфакторная аутентификация защищает вход дополнительным одноразовым кодом.",
+    twoFactorManualSetupHint: t.twoFactorManualSetupHint || "Открыть настройку Authenticator и backup-кодов.",
+    twoFactorManage: t.twoFactorManage || "Управление 2FA",
+    status: t.status || "Статус",
     twoFactorManualKey: t.twoFactorManualKey || "Ручной ключ",
     twoFactorInstructionTitle: t.twoFactorInstructionTitle || "Как подключить",
     twoFactorInstructionText: t.twoFactorInstructionText || "Откройте приложение Authenticator.\nНажмите добавить аккаунт.\nВыберите ручной ввод ключа.\nВведите название Liotan и ручной ключ ниже.\nВведите 6-значный код из приложения.",

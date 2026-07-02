@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.1.7",
+  version: "49.2.1",
   release: "mobile network transport hardening"
 };

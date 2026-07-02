@@ -53,8 +53,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
 <SettingsItem
     icon={<img src={TwoFactorIcon} className="settings-svg-icon" alt="" />}
     title={labels.twoFactorAuth}
-    value={totpEnabled ? labels.enabled : labels.disabled}
-    onClick={actions.openTotp}
+    onClick={() => actions.openPage("twofactor")}
 />
 
 <SettingsItem
