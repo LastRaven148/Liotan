@@ -3,6 +3,7 @@ import PrivacyIcon from "../../../assets/icons/privacy.svg";
 import SettingsIcon from "../../../assets/icons/settings.svg";
 import SoundCameraIcon from "../../../assets/icons/sound-camera.svg";
 import DevicesIcon from "../../../assets/icons/devices.svg";
+import TwoFactorIcon from "../../../assets/icons/twofactor.svg";
 import { avatarUrl } from "../../../utils/avatarUrl";
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
@@ -50,7 +51,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
 />
 
 <SettingsItem
-    icon=""
+    icon={<img src={TwoFactorIcon} className="settings-svg-icon" alt="" />}
     title={labels.twoFactorAuth}
     value={totpEnabled ? labels.enabled : labels.disabled}
     onClick={actions.openTotp}
