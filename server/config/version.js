@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.0.8",
-  release: "security email action hotfix"
+  version: "49.1.0",
+  release: "security action flow stabilization"
 };

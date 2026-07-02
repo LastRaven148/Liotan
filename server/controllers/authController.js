@@ -222,11 +222,11 @@ function securityText(locale) {
       reset2fa: "Сбросить двухфакторную аутентификацию",
       reset2faConfirm: "Уверены, что хотите сбросить 2FA? Backup codes будут удалены, а все сессии завершены.",
       changePassword: "Сменить пароль",
-      changePasswordConfirm: "Мы отправим код восстановления на почту аккаунта. После этого откройте Liotan и задайте новый пароль через «Забыли пароль?». Продолжить?",
+      changePasswordConfirm: "Мы отправим код восстановления на почту аккаунта. После этого вы введёте код и зададите новый пароль прямо здесь. Продолжить?",
       changePasswordSentTitle: "Код восстановления отправлен",
-      changePasswordSentText: "Проверьте почту аккаунта. Затем откройте Liotan, нажмите «Забыли пароль?» и задайте новый пароль с этим кодом.",
+      changePasswordSentText: "Проверьте почту аккаунта, введите код и задайте новый пароль.",
       deleteAccount: "Удалить аккаунт полностью",
-      passwordNote: "Смена пароля выполняется через отдельный защищённый сценарий восстановления по почте.",
+      passwordNote: "",
       confirmTitle: "Подтвердите действие",
       cancel: "Отмена",
       yes: "Да, хочу",
@@ -237,7 +237,7 @@ function securityText(locale) {
       deleteStepOneButton: "Да, хочу удалить аккаунт",
       back: "Назад",
       deleteStepTwoTitle: "Вы точно уверены?",
-      deleteStepTwoText: "После этого действия данные будет невозможно вернуть.",
+      deleteStepTwoText: "После этого действия данные будет невозможно вернуть ни через поддержку, ни другим способом. Мы не сможем восстановить аккаунт.",
       deleteFinalButton: "Да, удалить аккаунт навсегда"
     };
   }
@@ -268,11 +268,11 @@ function securityText(locale) {
     reset2fa: "Reset two-factor authentication",
     reset2faConfirm: "Are you sure you want to reset 2FA? Backup codes will be deleted, and all sessions will be ended.",
     changePassword: "Change password",
-    changePasswordConfirm: "We will send a password recovery code to the account email. Then open Liotan and set a new password through “Forgot password?”. Continue?",
+    changePasswordConfirm: "We will send a recovery code to the account email. Then you will enter the code and set a new password here. Continue?",
     changePasswordSentTitle: "Recovery code sent",
-    changePasswordSentText: "Check the account email. Then open Liotan, press “Forgot password?”, and set a new password with that code.",
+    changePasswordSentText: "Check the account email, enter the code, and set a new password.",
     deleteAccount: "Delete account completely",
-    passwordNote: "Password change uses a separate protected email recovery flow.",
+    passwordNote: "",
     confirmTitle: "Confirm action",
     cancel: "Cancel",
     yes: "Yes, continue",
@@ -283,7 +283,7 @@ function securityText(locale) {
     deleteStepOneButton: "Yes, I want to delete the account",
     back: "Back",
     deleteStepTwoTitle: "Are you absolutely sure?",
-    deleteStepTwoText: "After this action, the data cannot be restored.",
+    deleteStepTwoText: "After this action, the data cannot be restored by support or by any other method. We will not be able to recover the account.",
     deleteFinalButton: "Yes, delete the account forever"
   };
 }
@@ -382,6 +382,24 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
 </html>`);
 }
 
+function securityPageStyle() {
+  return `
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0%,#1b2c3b 0,#0e1621 55%,#09111a 100%);color:#f8fbff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{width:min(590px,100%);background:linear-gradient(180deg,#17212b,#131d27);border:1px solid #2b4056;border-radius:26px;padding:30px;box-shadow:0 28px 90px rgba(0,0,0,.5)}
+    h1{margin:0 0 12px;font-size:28px;line-height:1.12;letter-spacing:-.025em;font-weight:900}
+    .muted{color:#a9bacb;line-height:1.6;font-size:15px;margin:0 0 18px}
+    .actions{display:grid;gap:12px;margin-top:22px}
+    .btn{width:100%;border:0;border-radius:17px;padding:16px 18px;font-size:16px;font-weight:900;letter-spacing:.005em;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.22);transition:transform .12s ease,filter .12s ease,opacity .12s ease;text-align:center}
+    .btn:hover{filter:brightness(1.06)}.btn:active{transform:translateY(1px)}
+    .danger{background:#ef4444;color:#fff}.danger-dark{background:#991b1b;color:#fff}.safe{background:#22c55e;color:#071a0d}.ghost{background:#26384b;color:#e5f0ff}
+    .disabled{background:#334155;color:#91a4b8;cursor:not-allowed;opacity:.68;box-shadow:none}
+    .small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.5}
+    .input{width:100%;border:1px solid #2b4056;background:#0f1a25;color:#fff;border-radius:14px;padding:14px 15px;font-size:15px;margin-top:10px;outline:none}.input:focus{border-color:#3390ec}
+    .error{background:#3b1619;border:1px solid #7f1d1d;color:#fecaca;border-radius:14px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.45}
+  `;
+}
+
 function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
@@ -391,9 +409,7 @@ function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(copy.confirmTitle)}</title>
-  <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #33475f;border-radius:24px;padding:28px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:27px}.muted{color:#b6c4d2;line-height:1.55;font-size:16px}.btn{width:100%;border:0;border-radius:16px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;box-shadow:0 10px 28px rgba(0,0,0,.18);transition:transform .12s ease,filter .12s ease}.btn:hover{filter:brightness(1.06)}.btn:active{transform:translateY(1px)}.danger{background:#ef4444;color:#fff}.ghost{background:#243447;color:#dbeafe}
-  </style>
+  <style>${securityPageStyle()}</style>
 </head>
 <body>
   <main class="card">
@@ -410,36 +426,44 @@ function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
 </html>`);
 }
 
-function sendSuspiciousRegistrationPage(res, { token, req }) {
+async function sendSuspiciousRegistrationPage(res, { token, record, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
+  const security = await UserSecurity.findOne({ userId: record.userId }).lean();
+  const has2fa = Boolean(security?.totp?.enabled);
   const actions = [
     {
       key: "revoke-session",
       title: copy.revokeSession,
-      text: copy.revokeSessionConfirm
+      text: copy.revokeSessionConfirm,
+      enabled: Boolean(record.sessionIdHash)
     },
     {
       key: "logout-all",
       title: copy.logoutAll,
-      text: copy.logoutAllConfirm
+      text: copy.logoutAllConfirm,
+      enabled: true
     },
     {
       key: "change-password",
       title: copy.changePassword,
-      text: copy.changePasswordConfirm
+      text: copy.changePasswordConfirm,
+      enabled: true
     },
     {
       key: "reset-2fa",
       title: copy.reset2fa,
-      text: copy.reset2faConfirm
+      text: copy.reset2faConfirm,
+      enabled: has2fa
     }
   ];
 
-  const buttons = actions.map((item) => `
+  const buttons = actions.map((item) => item.enabled ? `
     <form method="get" action="${getRegistrationActionUrl(token, item.key)}">
       <button class="btn danger" type="submit">${escapeHtml(item.title)}</button>
     </form>
+  ` : `
+    <button class="btn disabled" type="button" aria-disabled="true">${escapeHtml(item.title)}</button>
   `).join("");
 
   res.status(200).send(`<!doctype html>
@@ -448,9 +472,7 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(copy.suspiciousTitle)}</title>
-  <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(640px,100%);background:#17212b;border:1px solid #243447;border-radius:24px;padding:30px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:27px}.muted{color:#9aaabc;line-height:1.55}.actions{display:grid;gap:12px;margin-top:22px}.btn{width:100%;border:0;border-radius:16px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;box-shadow:0 10px 28px rgba(0,0,0,.18);transition:transform .12s ease,filter .12s ease}.btn:hover{filter:brightness(1.06)}.btn:active{transform:translateY(1px)}.danger{background:#ef4444;color:#fff}.dark{background:#991b1b;color:#fff}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}
-  </style>
+  <style>${securityPageStyle()}</style>
 </head>
 <body>
   <main class="card">
@@ -459,10 +481,46 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
     <div class="actions">
       ${buttons}
       <form method="get" action="${getRegistrationActionUrl(token, "delete-step-1")}">
-        <button class="btn dark" type="submit">${escapeHtml(copy.deleteAccount)}</button>
+        <button class="btn danger-dark" type="submit">${escapeHtml(copy.deleteAccount)}</button>
       </form>
     </div>
-    <p class="small">${escapeHtml(copy.passwordNote)}</p>
+  </main>
+</body>
+</html>`);
+}
+
+function sendChangePasswordPage(res, { token, req, error = "" }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
+  const title = copy.changePassword;
+  const lead = copy.changePasswordSentText;
+  const codeLabel = locale === "ru" ? "Код из письма" : "Email code";
+  const passwordLabel = locale === "ru" ? "Новый пароль" : "New password";
+  const repeatLabel = locale === "ru" ? "Повторите новый пароль" : "Repeat new password";
+  const submit = locale === "ru" ? "Сменить пароль" : "Change password";
+
+  res.status(error ? 400 : 200).send(`<!doctype html>
+<html lang="${copy.htmlLang}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>${securityPageStyle()}</style>
+</head>
+<body>
+  <main class="card">
+    <h1>${escapeHtml(title)}</h1>
+    <p class="muted">${escapeHtml(lead)}</p>
+    ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+    <form method="post" action="${getRegistrationActionUrl(token, "change-password-submit")}">
+      <input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="${escapeHtml(codeLabel)}" required />
+      <input class="input" name="password" type="password" autocomplete="new-password" maxlength="64" placeholder="${escapeHtml(passwordLabel)}" required />
+      <input class="input" name="passwordConfirm" type="password" autocomplete="new-password" maxlength="64" placeholder="${escapeHtml(repeatLabel)}" required />
+      <button class="btn danger" type="submit">${escapeHtml(submit)}</button>
+    </form>
+    <form method="get" action="${getRegistrationActionUrl(token, "suspicious")}">
+      <button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button>
+    </form>
   </main>
 </body>
 </html>`);
@@ -1214,12 +1272,14 @@ async function handleRegistrationSecurityAction(req, res, next) {
   try {
     const action = String(req.params.action || "");
     const record = await findRegistrationSecurityRecord(req.params.token);
+    const locale = getSecurityPageLocale(req);
+    const copy = securityText(locale);
 
     if (!record) {
       return sendSimpleSecurityPage(res, {
         ok: false,
-        title: "Ссылка недействительна",
-        message: "Эта ссылка безопасности уже использована или истекла."
+        title: locale === "ru" ? "Ссылка недействительна" : "Invalid link",
+        message: locale === "ru" ? "Эта ссылка безопасности уже использована или истекла." : "This security link has already been used or has expired."
       });
     }
 
@@ -1227,96 +1287,136 @@ async function handleRegistrationSecurityAction(req, res, next) {
       await markRegistrationActionUsed(record, "trusted");
       return sendSimpleSecurityPage(res, {
         ok: true,
-        title: getSecurityPageLocale(req) === "ru" ? "Вход подтверждён" : "Login confirmed",
-        message: getSecurityPageLocale(req) === "ru"
+        title: locale === "ru" ? "Вход подтверждён" : "Login confirmed",
+        message: locale === "ru"
           ? "Спасибо. Никаких действий с аккаунтом не выполнено."
           : "Thanks. No account action was performed."
       });
     }
 
     if (action === "suspicious") {
-      return sendSuspiciousRegistrationPage(res, { token: req.params.token, req });
+      return sendSuspiciousRegistrationPage(res, { token: req.params.token, record, req });
     }
 
     if (action === "revoke-session") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).revokeSession, text: securityText(getSecurityPageLocale(req)).revokeSessionConfirm, req });
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.revokeSession, text: copy.revokeSessionConfirm, req });
       }
-      if (record.sessionIdHash) {
-        await Session.updateOne(
-          { userId: record.userId, sessionIdHash: record.sessionIdHash, revokedAt: null },
-          { $set: { revokedAt: new Date() } }
-        );
-      }
+      const result = record.sessionIdHash
+        ? await Session.updateOne(
+            { userId: record.userId, sessionIdHash: record.sessionIdHash, revokedAt: null },
+            { $set: { revokedAt: new Date() } }
+          )
+        : { modifiedCount: 0 };
       await markRegistrationActionUsed(record, "revoke-session");
       return sendSimpleSecurityPage(res, {
         ok: true,
-        title: "Сессия завершена",
-        message: "Сессия, связанная с этим входом, была завершена."
+        title: locale === "ru" ? "Сессия завершена" : "Session ended",
+        message: locale === "ru"
+          ? `Сессия, связанная с этим входом, была завершена. Изменено сессий: ${result.modifiedCount || 0}.`
+          : `The session linked to this login was ended. Sessions changed: ${result.modifiedCount || 0}.`
       });
     }
 
     if (action === "logout-all") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).logoutAll, text: securityText(getSecurityPageLocale(req)).logoutAllConfirm, req });
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.logoutAll, text: copy.logoutAllConfirm, req });
       }
       await revokeAllUserSessions({ userId: record.userId });
       await markRegistrationActionUsed(record, "logout-all");
       return sendSimpleSecurityPage(res, {
         ok: true,
-        title: "Все сессии завершены",
-        message: "Аккаунт был выведен со всех устройств."
+        title: locale === "ru" ? "Все сессии завершены" : "All sessions ended",
+        message: locale === "ru" ? "Аккаунт был выведен со всех устройств." : "The account was signed out from all devices."
       });
     }
 
     if (action === "change-password") {
-      const copy = securityText(getSecurityPageLocale(req));
       if (!isConfirmedSecurityAction(req)) {
         return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.changePassword, text: copy.changePasswordConfirm, req });
       }
       const email = getRecordEmail(record);
-      if (email) {
-        const code = createCode();
-        await saveEmailCode({
-          emailHash: record.emailHash,
-          purpose: "reset",
-          code
+      if (!email) {
+        return sendSimpleSecurityPage(res, {
+          ok: false,
+          title: locale === "ru" ? "Почта недоступна" : "Email unavailable",
+          message: locale === "ru" ? "Почту аккаунта не удалось восстановить из защищённой записи." : "The account email could not be recovered from the protected record."
         });
-        await sendEmailCode({
-          to: email,
-          code,
-          purpose: "reset"
-        }).catch(() => null);
       }
+      const code = createCode();
+      await saveEmailCode({
+        emailHash: record.emailHash,
+        purpose: "reset",
+        code
+      });
+      await sendEmailCode({
+        to: email,
+        code,
+        purpose: "reset"
+      });
+      return sendChangePasswordPage(res, { token: req.params.token, req });
+    }
+
+    if (action === "change-password-submit") {
+      const emailCode = String(req.body?.code || "").trim();
+      const password = String(req.body?.password || "");
+      const passwordConfirm = String(req.body?.passwordConfirm || "");
+      if (!isValidEmailCode(emailCode)) {
+        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Введите 8-значный код из письма." : "Enter the 8-digit email code." });
+      }
+      if (!isValidPassword(password) || password !== passwordConfirm) {
+        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Пароль должен быть от 8 до 64 символов, оба поля должны совпадать." : "Password must be 8–64 characters, and both fields must match." });
+      }
+      const verified = await verifyEmailCode({
+        emailHash: record.emailHash,
+        purpose: "reset",
+        code: emailCode
+      });
+      if (!verified) {
+        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Код неверный или истёк." : "The code is invalid or expired." });
+      }
+      const user = await User.findOne({ _id: record.userId, username: record.username });
+      if (!user) {
+        return sendSimpleSecurityPage(res, {
+          ok: false,
+          title: locale === "ru" ? "Аккаунт не найден" : "Account not found",
+          message: locale === "ru" ? "Аккаунт уже удалён или недоступен." : "The account is already deleted or unavailable."
+        });
+      }
+      user.password = await bcrypt.hash(password, 12);
+      await user.save();
+      await revokeAllUserSessions({ userId: record.userId });
       await markRegistrationActionUsed(record, "change-password");
       return sendSimpleSecurityPage(res, {
-        ok: Boolean(email),
-        title: copy.changePasswordSentTitle,
-        message: email ? copy.changePasswordSentText : (getSecurityPageLocale(req) === "ru" ? "Почту аккаунта не удалось восстановить из защищённой записи." : "The account email could not be recovered from the protected record.")
+        ok: true,
+        title: locale === "ru" ? "Пароль изменён" : "Password changed",
+        message: locale === "ru" ? "Пароль был изменён, все сессии аккаунта завершены." : "The password was changed, and all account sessions were ended."
       });
     }
 
     if (action === "reset-2fa") {
-      if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).reset2fa, text: securityText(getSecurityPageLocale(req)).reset2faConfirm, req });
+      const security = await UserSecurity.findOne({ userId: record.userId });
+      if (!security?.totp?.enabled) {
+        return sendSimpleSecurityPage(res, {
+          ok: false,
+          title: locale === "ru" ? "2FA не включена" : "2FA is not enabled",
+          message: locale === "ru" ? "Для этого аккаунта двухфакторная аутентификация не включена." : "Two-factor authentication is not enabled for this account."
+        });
       }
-      await UserSecurity.updateOne(
-        { userId: record.userId },
-        {
-          $set: {
-            "totp.enabled": false,
-            "totp.secretEnvelope": null,
-            "totp.backupCodeHashes": [],
-            "totp.lastUsedStep": null
-          }
-        }
-      );
+      if (!isConfirmedSecurityAction(req)) {
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.reset2fa, text: copy.reset2faConfirm, req });
+      }
+      security.totp.enabled = false;
+      security.totp.secretEnvelope = null;
+      security.totp.backupCodeHashes = [];
+      security.totp.lastUsedStep = null;
+      await security.save();
       await revokeAllUserSessions({ userId: record.userId });
       await markRegistrationActionUsed(record, "reset-2fa");
       return sendSimpleSecurityPage(res, {
         ok: true,
-        title: "2FA сброшена",
-        message: "Двухфакторная аутентификация отключена, backup codes удалены, все сессии завершены."
+        title: locale === "ru" ? "2FA сброшена" : "2FA reset",
+        message: locale === "ru" ? "Двухфакторная аутентификация отключена, backup codes удалены, все сессии завершены." : "Two-factor authentication was disabled, backup codes were deleted, and all sessions were ended."
       });
     }
 
@@ -1349,17 +1449,17 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
       return sendSimpleSecurityPage(res, {
         ok: result.ok,
-        title: result.ok ? "Аккаунт удалён" : "Не удалось удалить аккаунт",
+        title: result.ok ? (locale === "ru" ? "Аккаунт удалён" : "Account deleted") : (locale === "ru" ? "Не удалось удалить аккаунт" : "Could not delete account"),
         message: result.ok
-          ? "Аккаунт Liotan и связанные данные были удалены."
-          : "Аккаунт уже не найден или действие больше не может быть применено."
+          ? (locale === "ru" ? "Аккаунт Liotan и связанные данные были удалены." : "The Liotan account and related data were deleted.")
+          : (locale === "ru" ? "Аккаунт уже не найден или действие больше не может быть применено." : "The account was not found, or the action can no longer be applied.")
       });
     }
 
     return sendSimpleSecurityPage(res, {
       ok: false,
-      title: "Неизвестное действие",
-      message: "Выбранное действие не поддерживается."
+      title: locale === "ru" ? "Неизвестное действие" : "Unknown action",
+      message: locale === "ru" ? "Выбранное действие не поддерживается." : "The selected action is not supported."
     });
   } catch (err) {
     return sendSimpleSecurityPage(res, {
