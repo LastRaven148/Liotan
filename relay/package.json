@@ -1,6 +1,6 @@
 {
   "name": "liotan-relay",
-  "version": "49.2.2",
+  "version": "49.2.3",
   "description": "Liotan relay transport service",
   "main": "src/server.js",
   "scripts": {

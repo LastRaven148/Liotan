@@ -1,10 +1,10 @@
 const PRODUCTION_API_URL = "https://api.liotan.com";
 const PRODUCTION_RENDER_API_URL = "https://liotan-api.onrender.com";
 const PRODUCTION_DIRECT_API_URL = "https://direct-api.liotan.com";
-const PRODUCTION_RELAY_1_URL = "https://relay-1.liotan.com";
-const PRODUCTION_RELAY_2_URL = "https://relay-2.liotan.com";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
 const ACTIVE_API_STORAGE_KEY = "liotan.activeApiUrl";
+
+let activeApiMemory = "";
 
 function normalizeApiUrl(url) {
   return String(url || "")
@@ -48,12 +48,15 @@ function resolveApiCandidates() {
     ]);
   }
 
+  // Important:
+  // Relay domains are intentionally NOT hardcoded here. A relay endpoint must be
+  // added via VITE_API_FALLBACK_URLS only after its TLS/custom-domain route is
+  // verified. A broken hardcoded relay can create reconnect storms on mobile
+  // networks before the user can even recover the session.
   return uniqueUrls([
     primary,
     ...envFallbacks,
     PRODUCTION_DIRECT_API_URL,
-    PRODUCTION_RELAY_1_URL,
-    PRODUCTION_RELAY_2_URL,
     PRODUCTION_RENDER_API_URL
   ]);
 }
@@ -62,23 +65,29 @@ export const API = resolvePrimaryApiUrl();
 export const API_CANDIDATES = resolveApiCandidates();
 export const PRODUCTION_CLIENT_URL = "https://liotan.com";
 export const PRODUCTION_API_URL_VALUE = PRODUCTION_API_URL;
-export const PRODUCTION_RELAY_URLS = [PRODUCTION_RELAY_1_URL, PRODUCTION_RELAY_2_URL];
+export const PRODUCTION_RELAY_URLS = [];
 
 export function getApiCandidates() {
   return API_CANDIDATES;
 }
 
 export function getActiveApiUrl() {
+  if (activeApiMemory && API_CANDIDATES.includes(activeApiMemory)) {
+    return activeApiMemory;
+  }
+
   try {
     const stored = normalizeApiUrl(localStorage.getItem(ACTIVE_API_STORAGE_KEY));
 
     if (stored && API_CANDIDATES.includes(stored)) {
+      activeApiMemory = stored;
       return stored;
     }
   } catch {
-    // Ignore blocked localStorage and use the primary endpoint.
+    // Ignore blocked localStorage and use memory/primary endpoint.
   }
 
+  activeApiMemory = API;
   return API;
 }
 
@@ -90,6 +99,7 @@ export function setActiveApiUrl(url) {
   }
 
   const previous = getActiveApiUrl();
+  activeApiMemory = cleanUrl;
 
   try {
     localStorage.setItem(ACTIVE_API_STORAGE_KEY, cleanUrl);

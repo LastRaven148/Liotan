@@ -72,27 +72,47 @@ export default function useSocket({
     }
     window.addEventListener("click", unlockSoundOnUserGesture);
     window.addEventListener("keydown", unlockSoundOnUserGesture);
-    function createSocketConnection() {
-      return io(getActiveApiUrl() || API, {
+    let currentEndpoint = getActiveApiUrl() || API;
+    let reconnectTimer = null;
+
+    function createSocketConnection(endpoint = getActiveApiUrl() || API) {
+      currentEndpoint = endpoint;
+
+      return io(endpoint, {
         withCredentials: true,
         transports: ["websocket", "polling"],
         timeout: 12000,
         reconnection: true,
         reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 10000
+        reconnectionDelay: 1500,
+        reconnectionDelayMax: 15000
       });
     }
 
-    let socket = createSocketConnection();
+    let socket = createSocketConnection(currentEndpoint);
     socketRef.current = socket;
 
-    function reconnectSocketToActiveApi() {
-      const previousSocket = socket;
-      socket = createSocketConnection();
-      socketRef.current = socket;
-      attachSocketHandlers(socket);
-      previousSocket.disconnect();
+    function reconnectSocketToActiveApi(event) {
+      const nextEndpoint = event?.detail?.apiUrl || getActiveApiUrl() || API;
+
+      if (!nextEndpoint || nextEndpoint === currentEndpoint) {
+        return;
+      }
+
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+
+      reconnectTimer = window.setTimeout(() => {
+        const previousSocket = socket;
+
+        previousSocket.removeAllListeners();
+        previousSocket.disconnect();
+
+        socket = createSocketConnection(nextEndpoint);
+        socketRef.current = socket;
+        attachSocketHandlers(socket);
+      }, 300);
     }
 
     window.addEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
@@ -378,6 +398,9 @@ export default function useSocket({
       window.removeEventListener("click", unlockSoundOnUserGesture);
       window.removeEventListener("keydown", unlockSoundOnUserGesture);
       window.removeEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
       socket.removeAllListeners();
       socket.disconnect();
     };
