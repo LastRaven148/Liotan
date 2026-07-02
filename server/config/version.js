@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.0.3",
-  release: "mail delivery and support button hotfix"
+  version: "49.0.7",
+  release: "security audit cleanup"
 };

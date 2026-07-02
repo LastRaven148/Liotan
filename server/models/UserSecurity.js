@@ -10,8 +10,7 @@ const userSecuritySchema = new mongoose.Schema(
     },
     username: {
       type: String,
-      required: true,
-      index: true
+      required: true
     },
     totp: {
       enabled: { type: Boolean, default: false },
