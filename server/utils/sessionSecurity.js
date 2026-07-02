@@ -625,6 +625,5 @@ module.exports = {
   cleanupExpiredSessionsForUser,
   cleanupDuplicateDeviceSessionsForUser,
   isValidDevicePublicKey,
-  sanitizeFingerprint,
-  sanitizeTransportMode
+  sanitizeFingerprint
 };
