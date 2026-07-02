@@ -140,6 +140,35 @@ export default function useChat({
     }
     return [...new Set([username, target].filter(Boolean))];
   }
+
+  function emitWithAck(eventName, payload, timeoutMs = 12000) {
+    const socket = socketRef.current;
+
+    if (!socket || !socket.connected) {
+      return Promise.resolve({ ok: false, error: "socket-disconnected" });
+    }
+
+    return new Promise(resolve => {
+      let done = false;
+      const timer = window.setTimeout(() => {
+        if (done) {
+          return;
+        }
+        done = true;
+        resolve({ ok: false, error: "socket-timeout" });
+      }, timeoutMs);
+
+      socket.emit(eventName, payload, response => {
+        if (done) {
+          return;
+        }
+        done = true;
+        window.clearTimeout(timer);
+        resolve(response || { ok: true });
+      });
+    });
+  }
+
   async function emitMessage({
     target,
     messageText = "",
@@ -157,7 +186,7 @@ export default function useChat({
     });
     const encryptedPayload = encryptedTextToTransport(encryptedText);
     if (dialog?.type === "group") {
-      socketRef.current.emit(SOCKET_EVENTS.SEND_GROUP_MESSAGE, {
+      const result = await emitWithAck(SOCKET_EVENTS.SEND_GROUP_MESSAGE, {
         groupId: dialog.groupId,
         text: encryptedPayload.text,
         encryptedContent: encryptedPayload.encryptedContent,
@@ -166,9 +195,10 @@ export default function useChat({
           messageId: replyMessage._id
         } : null
       });
-      return true;
+      return Boolean(result?.ok);
     }
-    socketRef.current.emit(SOCKET_EVENTS.SEND_MESSAGE, {
+
+    const result = await emitWithAck(SOCKET_EVENTS.SEND_MESSAGE, {
       to: target,
       text: encryptedPayload.text,
       encryptedContent: encryptedPayload.encryptedContent,
@@ -177,7 +207,8 @@ export default function useChat({
         messageId: replyMessage._id
       } : null
     });
-    return true;
+
+    return Boolean(result?.ok);
   }
   async function sendMessage(attachment = null) {
     if (sendingRef.current) {

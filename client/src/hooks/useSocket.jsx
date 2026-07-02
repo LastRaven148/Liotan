@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import io from "socket.io-client";
-import { getActiveApiUrl } from "../config/api";
+import { getActiveApiUrl, getApiCandidates, setActiveApiUrl } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
@@ -74,6 +74,8 @@ export default function useSocket({
     window.addEventListener("keydown", unlockSoundOnUserGesture);
     let activeSocketEndpoint = getActiveApiUrl() || API;
     let reconnectTimer = null;
+    let socketFailoverTimer = null;
+    let connectErrorCount = 0;
 
     function createSocketConnection(endpoint = activeSocketEndpoint) {
       return io(endpoint, {
@@ -82,40 +84,71 @@ export default function useSocket({
         timeout: 12000,
         reconnection: true,
         reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 10000
+        reconnectionDelay: 1200,
+        reconnectionDelayMax: 12000
       });
     }
 
     let socket = createSocketConnection(activeSocketEndpoint);
     socketRef.current = socket;
 
-    function reconnectSocketToActiveApi() {
-      const nextEndpoint = getActiveApiUrl() || API;
-      if (!nextEndpoint || nextEndpoint === activeSocketEndpoint) {
+    function switchSocketEndpoint(endpoint, delay = 250) {
+      if (!endpoint || endpoint === activeSocketEndpoint) {
         return;
       }
 
       window.clearTimeout(reconnectTimer);
       reconnectTimer = window.setTimeout(() => {
-        const endpoint = getActiveApiUrl() || API;
         if (!endpoint || endpoint === activeSocketEndpoint) {
           return;
         }
 
         activeSocketEndpoint = endpoint;
+        setActiveApiUrl(endpoint, { silent: true });
+        connectErrorCount = 0;
         const previousSocket = socket;
         socket = createSocketConnection(endpoint);
         socketRef.current = socket;
         attachSocketHandlers(socket);
         previousSocket.removeAllListeners();
         previousSocket.disconnect();
-      }, 250);
+      }, delay);
+    }
+
+    function reconnectSocketToActiveApi() {
+      switchSocketEndpoint(getActiveApiUrl() || API, 250);
+    }
+
+    function scheduleSocketFailover() {
+      window.clearTimeout(socketFailoverTimer);
+      socketFailoverTimer = window.setTimeout(() => {
+        if (socket.connected) {
+          return;
+        }
+
+        const candidates = getApiCandidates();
+        if (candidates.length < 2) {
+          return;
+        }
+
+        const currentIndex = Math.max(0, candidates.indexOf(activeSocketEndpoint));
+        const nextEndpoint = candidates[(currentIndex + 1) % candidates.length];
+        switchSocketEndpoint(nextEndpoint, 0);
+      }, 1200);
     }
 
     window.addEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
     function attachSocketHandlers(currentSocket) {
-      currentSocket.on("connect_error", () => {});
+      currentSocket.on("connect", () => {
+        connectErrorCount = 0;
+        setActiveApiUrl(activeSocketEndpoint, { silent: true });
+      });
+      currentSocket.on("connect_error", () => {
+        connectErrorCount += 1;
+        if (connectErrorCount >= 2) {
+          scheduleSocketFailover();
+        }
+      });
 
     function markActiveChatRead(user) {
       if (!user || user === username || user.startsWith?.("group:")) {
@@ -397,6 +430,7 @@ export default function useSocket({
       window.removeEventListener("keydown", unlockSoundOnUserGesture);
       window.removeEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
       window.clearTimeout(reconnectTimer);
+      window.clearTimeout(socketFailoverTimer);
       socket.removeAllListeners();
       socket.disconnect();
     };

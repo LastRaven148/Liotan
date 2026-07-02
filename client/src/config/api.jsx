@@ -4,6 +4,8 @@ const PRODUCTION_DIRECT_API_URL = "https://direct-api.liotan.com";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
 const ACTIVE_API_STORAGE_KEY = "liotan.activeApiUrl";
 
+let activeApiUrlMemory = "";
+
 function normalizeApiUrl(url) {
   return String(url || "")
     .trim()
@@ -64,27 +66,34 @@ export function getApiCandidates() {
 }
 
 export function getActiveApiUrl() {
+  if (activeApiUrlMemory && API_CANDIDATES.includes(activeApiUrlMemory)) {
+    return activeApiUrlMemory;
+  }
+
   try {
     const stored = normalizeApiUrl(localStorage.getItem(ACTIVE_API_STORAGE_KEY));
 
     if (stored && API_CANDIDATES.includes(stored)) {
+      activeApiUrlMemory = stored;
       return stored;
     }
   } catch {
-    // Ignore blocked localStorage and use the primary endpoint.
+    // Ignore blocked localStorage and use memory/primary endpoint.
   }
 
+  activeApiUrlMemory = API;
   return API;
 }
 
-export function setActiveApiUrl(url) {
+export function setActiveApiUrl(url, options = {}) {
   const cleanUrl = normalizeApiUrl(url);
 
   if (!cleanUrl || !API_CANDIDATES.includes(cleanUrl)) {
-    return;
+    return false;
   }
 
   const previous = getActiveApiUrl();
+  activeApiUrlMemory = cleanUrl;
 
   try {
     localStorage.setItem(ACTIVE_API_STORAGE_KEY, cleanUrl);
@@ -92,13 +101,15 @@ export function setActiveApiUrl(url) {
     // Endpoint fallback must keep working even when localStorage is blocked.
   }
 
-  if (previous !== cleanUrl && typeof window !== "undefined") {
+  if (!options.silent && previous !== cleanUrl && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("liotan:api-endpoint-changed", {
       detail: {
         apiUrl: cleanUrl
       }
     }));
   }
+
+  return previous !== cleanUrl;
 }
 
 export function buildApiUrlForEndpoint(originalUrl, endpoint) {

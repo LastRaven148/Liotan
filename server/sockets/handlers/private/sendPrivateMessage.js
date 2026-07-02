@@ -45,7 +45,9 @@ function registerSendPrivateMessage({
 
   socket.on(
     "sendMessage",
-    async (data) => {
+    async (data, ack) => {
+
+      const reply = typeof ack === "function" ? ack : () => {};
 
       try {
 
@@ -84,6 +86,7 @@ function registerSendPrivateMessage({
             !hasEncryptedContent
           )
         ) {
+          reply({ ok: false, error: "invalid-message" });
           return;
         }
 
@@ -94,6 +97,7 @@ function registerSendPrivateMessage({
           });
 
         if (!receiverExists) {
+          reply({ ok: false, error: "receiver-not-found" });
           return;
         }
 
@@ -141,6 +145,7 @@ function registerSendPrivateMessage({
           });
 
           if (duplicate) {
+            reply({ ok: true, duplicate: true });
             return;
           }
         }
@@ -183,16 +188,21 @@ function registerSendPrivateMessage({
           await markAttachmentUploadUsed(data.attachment, sender);
         }
 
+        const payload = serializeMessage(msg);
+
         emitToChatUsers({
           io,
           sender,
           receiver,
           event: "newMessage",
-          payload: serializeMessage(msg)
+          payload
         });
+
+        reply({ ok: true, message: payload });
 
       } catch (err) {
         logger.error("send private message failed", err);
+        reply({ ok: false, error: "send-failed" });
       }
 
     }

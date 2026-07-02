@@ -37,7 +37,9 @@ function registerSendGroupMessage({
 
   socket.on(
     "sendGroupMessage",
-    async (data) => {
+    async (data, ack) => {
+
+      const reply = typeof ack === "function" ? ack : () => {};
 
       try {
 
@@ -48,6 +50,7 @@ function registerSendGroupMessage({
           data.groupId;
 
         if (!groupId) {
+          reply({ ok: false, error: "invalid-group" });
           return;
         }
 
@@ -57,12 +60,14 @@ function registerSendGroupMessage({
           );
 
         if (!group) {
+          reply({ ok: false, error: "group-not-found" });
           return;
         }
 
         if (
           !group.members.includes(sender)
         ) {
+          reply({ ok: false, error: "not-member" });
           return;
         }
 
@@ -92,6 +97,7 @@ function registerSendGroupMessage({
           !hasAttachment &&
           !hasEncryptedContent
         ) {
+          reply({ ok: false, error: "invalid-message" });
           return;
         }
 
@@ -118,6 +124,7 @@ function registerSendGroupMessage({
           });
 
           if (duplicate) {
+            reply({ ok: true, duplicate: true });
             return;
           }
         }
@@ -166,15 +173,20 @@ function registerSendGroupMessage({
           }
         );
 
+        const payload = serializeMessage(msg);
+
         io.to(
           getGroupRoom(groupId)
         ).emit(
           "newMessage",
-          serializeMessage(msg)
+          payload
         );
+
+        reply({ ok: true, message: payload });
 
       } catch (err) {
         logger.error("send group message failed", err);
+        reply({ ok: false, error: "send-failed" });
       }
 
     }

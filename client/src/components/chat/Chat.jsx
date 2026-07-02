@@ -135,6 +135,9 @@ const Chat = memo(function Chat({
   const [cachedChat, setCachedChat] =
     useState(null);
 
+  const lastAutoE2EEKeyRef =
+    useRef("");
+
   useEffect(() => {
     if (!activeChat) {
       return;
@@ -242,19 +245,36 @@ const Chat = memo(function Chat({
   }
 
   useEffect(() => {
-    if (!renderedActiveChat || !username) {
+    if (!renderedActiveChat || !username || !renderedE2EEChatKey) {
       return;
     }
+
+    const participants =
+      getConversationParticipants();
+
+    const ensureKey =
+      `${username}|${renderedE2EEChatKey}|${participants.join(",")}`;
+
+    if (lastAutoE2EEKeyRef.current === ensureKey) {
+      return;
+    }
+
+    lastAutoE2EEKeyRef.current =
+      ensureKey;
 
     let cancelled = false;
 
     ensureConversationSecret({
       username,
       chatKey: renderedE2EEChatKey,
-      participants: getConversationParticipants()
+      participants
     }).then(() => {
       if (!cancelled) {
         setE2eeRevision(value => value + 1);
+      }
+    }).catch(() => {
+      if (lastAutoE2EEKeyRef.current === ensureKey) {
+        lastAutoE2EEKeyRef.current = "";
       }
     });
 
@@ -264,7 +284,6 @@ const Chat = memo(function Chat({
   }, [
     username,
     renderedActiveChat,
-    renderedActiveDialog,
     renderedE2EEChatKey,
     getConversationParticipants
   ]);
