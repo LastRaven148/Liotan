@@ -332,7 +332,7 @@ async function createUserSession({
           }
         },
         {
-          new: true,
+          returnDocument: "after",
           upsert: true,
           setDefaultsOnInsert: true
         }

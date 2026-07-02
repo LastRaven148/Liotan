@@ -20,6 +20,10 @@ import {
 } from "../utils/e2ee";
 
 import {
+  devWarn
+} from "../utils/devLogger";
+
+import {
   clearApiRequestMemory,
   setApiAuthToken
 } from "../utils/apiRequest";
@@ -129,6 +133,20 @@ export default function useAuth({
     };
   }, []);
 
+  async function initializeE2EEAfterAuth({
+    username: nextUsername,
+    password: accountPassword
+  }) {
+    try {
+      await initE2EEAccountIdentity({
+        username: nextUsername,
+        password: accountPassword
+      });
+    } catch (err) {
+      devWarn("E2EE identity init failed after auth", err);
+    }
+  }
+
   async function saveSession(data) {
     clearApiRequestMemory();
     resetAppBootstrapGuard();
@@ -223,7 +241,7 @@ export default function useAuth({
 
       await saveSession(data);
 
-      await initE2EEAccountIdentity({
+      await initializeE2EEAfterAuth({
         username: data.username,
         password: loginPassword
       });
@@ -342,7 +360,7 @@ export default function useAuth({
 
       await saveSession(data);
 
-      await initE2EEAccountIdentity({
+      await initializeE2EEAfterAuth({
         username: data.username,
         password: registerPassword
       });

@@ -18,6 +18,26 @@ import {
   getTransportMode
 } from "./transportPrivacy";
 
+async function getOptionalDeviceKeyPayload() {
+  try {
+    const devicePublicKey =
+      await getDevicePublicKey();
+
+    const deviceKeyFingerprint =
+      await getDeviceKeyFingerprint();
+
+    return {
+      devicePublicKey,
+      deviceKeyFingerprint
+    };
+  } catch {
+    return {
+      devicePublicKey: null,
+      deviceKeyFingerprint: ""
+    };
+  }
+}
+
 export async function getUsers() {
   return [];
 }
@@ -132,11 +152,10 @@ export async function loginUser(
   code,
   secondFactor = {}
 ) {
-  const devicePublicKey =
-    await getDevicePublicKey();
-
-  const deviceKeyFingerprint =
-    await getDeviceKeyFingerprint();
+  const {
+    devicePublicKey,
+    deviceKeyFingerprint
+  } = await getOptionalDeviceKeyPayload();
 
   return apiRequest(`${API}/login`, {
     method: "POST",
@@ -164,11 +183,10 @@ export async function registerUser(
   email,
   code
 ) {
-  const devicePublicKey =
-    await getDevicePublicKey();
-
-  const deviceKeyFingerprint =
-    await getDeviceKeyFingerprint();
+  const {
+    devicePublicKey,
+    deviceKeyFingerprint
+  } = await getOptionalDeviceKeyPayload();
 
   return apiRequest(`${API}/register`, {
     method: "POST",
