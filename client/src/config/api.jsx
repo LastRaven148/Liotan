@@ -1,6 +1,8 @@
 const PRODUCTION_API_URL = "https://api.liotan.com";
 const PRODUCTION_RENDER_API_URL = "https://liotan-api.onrender.com";
 const PRODUCTION_DIRECT_API_URL = "https://direct-api.liotan.com";
+const PRODUCTION_RELAY_1_URL = "https://relay-1.liotan.com";
+const PRODUCTION_RELAY_2_URL = "https://relay-2.liotan.com";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
 const ACTIVE_API_STORAGE_KEY = "liotan.activeApiUrl";
 
@@ -49,8 +51,10 @@ function resolveApiCandidates() {
   return uniqueUrls([
     primary,
     ...envFallbacks,
-    PRODUCTION_RENDER_API_URL,
-    PRODUCTION_DIRECT_API_URL
+    PRODUCTION_DIRECT_API_URL,
+    PRODUCTION_RELAY_1_URL,
+    PRODUCTION_RELAY_2_URL,
+    PRODUCTION_RENDER_API_URL
   ]);
 }
 
@@ -58,6 +62,7 @@ export const API = resolvePrimaryApiUrl();
 export const API_CANDIDATES = resolveApiCandidates();
 export const PRODUCTION_CLIENT_URL = "https://liotan.com";
 export const PRODUCTION_API_URL_VALUE = PRODUCTION_API_URL;
+export const PRODUCTION_RELAY_URLS = [PRODUCTION_RELAY_1_URL, PRODUCTION_RELAY_2_URL];
 
 export function getApiCandidates() {
   return API_CANDIDATES;

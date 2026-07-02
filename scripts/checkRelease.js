@@ -61,11 +61,15 @@ function testZip() {
 function main() {
   run("client build", "npm", ["run", "check:client"]);
   run("server syntax check", "npm", ["run", "check:server"]);
+  run("relay syntax check", "npm", ["run", "check:relay"]);
   run("client production audit", "npm", ["audit", "--omit=dev"], {
     cwd: path.join(root, "client")
   });
   run("server production audit", "npm", ["audit", "--omit=dev"], {
     cwd: path.join(root, "server")
+  });
+  run("relay production audit", "npm", ["audit", "--omit=dev"], {
+    cwd: path.join(root, "relay")
   });
   run("privacy audit", "npm", ["run", "audit:privacy"]);
   run("make clean release", "npm", ["run", "make-release"]);

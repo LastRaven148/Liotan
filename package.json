@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "49.1.5",
+  "version": "49.2.0",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
@@ -12,10 +12,12 @@
     "build-client": "cd client && npm run build",
     "check:client": "cd client && npm run build",
     "check:server": "cd server && npm run check",
-    "check": "npm run check:client && npm run check:server",
+    "check": "npm run check:client && npm run check:server && npm run check:relay",
     "audit:privacy": "cd server && npm run audit:privacy",
     "make-release": "node scripts/makeRelease.js",
-    "release:check": "node scripts/checkRelease.js"
+    "release:check": "node scripts/checkRelease.js",
+    "relay": "cd relay && npm start",
+    "check:relay": "cd relay && npm run check"
   },
   "devDependencies": {
     "archiver": "^7.0.1"
