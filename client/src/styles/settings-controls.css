@@ -132,10 +132,6 @@
   background:#8774e1;
 }
 
-.settings-relay-label{
-  padding:0 16px 14px;
-}
-
 @media (max-width:768px){
   .settings-drawer{
     width:100vw !important;

@@ -13,8 +13,7 @@ const realtimeFeatures = {
     recording: "disabled",
     serverMediaAccess: "forbidden",
     keyRotationSeconds: CALL_POLICY.keyRotationSeconds,
-    frameLifetime: CALL_POLICY.frameLifetime,
-    relayMode: "turn-relay-only-optional"
+    frameLifetime: CALL_POLICY.frameLifetime
   },
   voiceMessages: {
     enabled: true,
@@ -24,12 +23,6 @@ const realtimeFeatures = {
     encryption: VOICE_POLICY.encryption,
     serverPlaintextAccess: "forbidden"
   },
-  proxyTransport: {
-    enabled: false,
-    mode: "liotan-relay",
-    messageAccess: "ciphertext-only",
-    publicRelays: []
-  }
 };
 
 module.exports = realtimeFeatures;

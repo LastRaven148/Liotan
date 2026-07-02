@@ -77,12 +77,6 @@ function sanitizeFingerprint(value) {
     .slice(0, 80);
 }
 
-function sanitizeTransportMode(value) {
-  return ["direct", "relay", "auto"].includes(value)
-    ? value
-    : "auto";
-}
-
 function sanitizeDeviceName(value) {
   const raw =
     String(value || "")
@@ -320,10 +314,6 @@ async function createUserSession({
     username: user.username,
     sessionIdHash: hashSessionId(sessionId),
     deviceName: detectDeviceName(req),
-    transportMode: sanitizeTransportMode(
-      req.body?.transportMode ||
-      req.headers["x-liotan-transport-mode"]
-    ),
     userAgentHash: privacy.storeUserAgentHash
       ? hmac(String(req.headers["user-agent"] || ""))
       : "",

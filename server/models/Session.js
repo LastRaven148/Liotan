@@ -48,8 +48,8 @@ const sessionSchema =
 
       transportMode: {
         type: String,
-        enum: ["direct", "relay", "auto"],
-        default: "auto"
+        enum: ["direct"],
+        default: "direct"
       },
 
       userAgentHash: {
