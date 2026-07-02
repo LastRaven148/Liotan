@@ -51,11 +51,13 @@ export default function SettingsModal({
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteStep, setDeleteStep] = useState(1);
+  const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [totpOpen, setTotpOpen] = useState(false);
   const [securityStatus, setSecurityStatus] = useState(null);
+  const [restrictedSession, setRestrictedSession] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [transportInfo, setTransportInfo] = useState(null);
 
@@ -85,6 +87,7 @@ export default function SettingsModal({
         setSessions(Array.isArray(sessionData?.sessions) ? sessionData.sessions : []);
         setTransportInfo(transportData || null);
         setSecurityStatus(securityData?.security || null);
+        setRestrictedSession(securityData?.restrictedSession || null);
       } catch {
         if (alive) setSessions([]);
       }
@@ -188,19 +191,31 @@ export default function SettingsModal({
   function askDelete() {
     setMenuOpen(false);
     setDeleteStep(1);
+    setDeleteError("");
     setDeleteOpen(true);
   }
 
   async function confirmDelete() {
     if (deleting) return;
     if (deleteStep === 1) {
+      if (restrictedSession?.restricted) {
+        setDeleteError(labels.restrictedSessionMessage);
+        return;
+      }
       setDeleteStep(2);
       return;
     }
     setDeleting(true);
     try {
       const ok = await deleteAccount?.();
-      if (ok !== false) onClose?.();
+      if (ok !== false) {
+        onClose?.();
+        return;
+      }
+      if (restrictedSession?.restricted) {
+        setDeleteStep(1);
+        setDeleteError(labels.restrictedSessionMessage);
+      }
     } finally {
       setDeleting(false);
     }
@@ -210,11 +225,13 @@ export default function SettingsModal({
     if (deleting) return;
     setDeleteOpen(false);
     setDeleteStep(1);
+    setDeleteError("");
   }
 
   async function refreshSecurityStatus() {
     const data = await getSecurityStatus().catch(() => null);
     setSecurityStatus(data?.security || null);
+    setRestrictedSession(data?.restrictedSession || null);
     return data?.security || null;
   }
 
@@ -282,11 +299,12 @@ export default function SettingsModal({
           onAction={() => { setLogoutOpen(false); logout?.(); }}
         />}
 
-        {emailChangeOpen && <EmailChangeModal labels={labels} onClose={() => setEmailChangeOpen(false)} />}
+        {emailChangeOpen && <EmailChangeModal labels={labels} restrictedSession={restrictedSession} onClose={() => setEmailChangeOpen(false)} />}
 
         {totpOpen && <TotpModal
           labels={labels}
           securityStatus={securityStatus}
+          restrictedSession={restrictedSession}
           refreshSecurityStatus={refreshSecurityStatus}
           onClose={() => setTotpOpen(false)}
         />}
@@ -294,6 +312,7 @@ export default function SettingsModal({
         {deleteOpen && <ConfirmModal
           title={labels.deleteAccount}
           text={deleteStep === 1 ? labels.deleteStepOne : labels.deleteStepTwo}
+          error={deleteStep === 1 ? deleteError : ""}
           cancel={labels.cancel}
           action={deleting ? "..." : deleteStep === 1 ? labels.continue : labels.accept}
           danger
@@ -306,12 +325,13 @@ export default function SettingsModal({
   );
 }
 
-function ConfirmModal({ title, text, cancel, action, onClose, onAction, disabled }) {
+function ConfirmModal({ title, text, error, cancel, action, onClose, onAction, disabled }) {
   return (
     <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
       <div className="dialog-delete-modal" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-delete-modal-title">{title}</div>
         <div className="dialog-delete-modal-text">{text}</div>
+        {error && <div className="settings-modal-error">{error}</div>}
         <div className="dialog-delete-modal-actions">
           <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={disabled}>{cancel}</button>
           <button type="button" className="dialog-delete-modal-danger" onClick={onAction} disabled={disabled}>{action}</button>
@@ -433,11 +453,12 @@ function getLabels(t) {
     sendCode: t.sendCode || "Отправить код",
     confirm: t.confirm || "Подтвердить",
     emailChanged: t.emailChanged || "Смена почты поставлена в очередь",
-    invalidEmailOrCode: t.invalidEmailOrCode || "Проверьте почту или код"
+    invalidEmailOrCode: t.invalidEmailOrCode || "Проверьте почту или код",
+    restrictedSessionMessage: t.restrictedSessionMessage || "Доступ запрещен на 72 часа в целях безопасности."
   };
 }
 
-function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
+function TotpModal({ labels, securityStatus, restrictedSession, refreshSecurityStatus, onClose }) {
   const enabled = Boolean(securityStatus?.totp?.enabled);
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState("");
@@ -446,8 +467,18 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (restrictedSession?.restricted) {
+      setError(labels.restrictedSessionMessage);
+    }
+  }, [restrictedSession, labels.restrictedSessionMessage]);
+
   async function run(action) {
     if (busy) return;
+    if (restrictedSession?.restricted) {
+      setError(labels.restrictedSessionMessage);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -564,7 +595,7 @@ function TotpModal({ labels, securityStatus, refreshSecurityStatus, onClose }) {
   );
 }
 
-function EmailChangeModal({ labels, onClose }) {
+function EmailChangeModal({ labels, restrictedSession, onClose }) {
   const [step, setStep] = useState("currentEmail");
   const [currentEmail, setCurrentEmail] = useState("");
   const [currentCode, setCurrentCode] = useState("");
@@ -574,8 +605,18 @@ function EmailChangeModal({ labels, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (restrictedSession?.restricted) {
+      setError(labels.restrictedSessionMessage);
+    }
+  }, [restrictedSession, labels.restrictedSessionMessage]);
+
   async function run(action) {
     if (busy) return;
+    if (restrictedSession?.restricted) {
+      setError(labels.restrictedSessionMessage);
+      return;
+    }
     setBusy(true);
     setError("");
     try {

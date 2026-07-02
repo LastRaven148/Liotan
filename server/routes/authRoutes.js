@@ -142,7 +142,6 @@ router.get(
 router.get(
   "/auth/sessions",
   authMiddleware,
-  restrictedSessionGuard,
   listSessions
 );
 
