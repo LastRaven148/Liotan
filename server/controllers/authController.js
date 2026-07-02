@@ -180,6 +180,23 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function formatSecurityDate(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return "Не удалось определить";
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short"
+  }).format(date);
+}
+
 function getRegistrationActionUrl(token, action) {
   return `/auth/register/cancel/${encodeURIComponent(token)}/action/${encodeURIComponent(action)}`;
 }
@@ -205,8 +222,8 @@ function sendSimpleSecurityPage(res, { ok, title, message }) {
 }
 
 function sendRegistrationSecurityPage(res, { token, record }) {
-  const createdAt = record.createdAt ? new Date(record.createdAt).toISOString() : "Не удалось определить";
-  const expiresAt = record.expiresAt ? new Date(record.expiresAt).toISOString() : "Не удалось определить";
+  const createdAt = formatSecurityDate(record.createdAt);
+  const expiresAt = formatSecurityDate(record.expiresAt);
   const deviceName = escapeHtml(record.deviceName || "Unknown device");
   const browserName = escapeHtml(record.browserName || "Browser");
   const osName = escapeHtml(record.osName || "Web");
@@ -248,6 +265,28 @@ function sendRegistrationSecurityPage(res, { token, record }) {
 }
 
 function sendSuspiciousRegistrationPage(res, { token }) {
+  const actions = [
+    {
+      key: "revoke-session",
+      title: "Завершить текущую сессию",
+      text: "Уверены, что хотите завершить сессию, связанную с этим входом?"
+    },
+    {
+      key: "logout-all",
+      title: "Выйти со всех устройств",
+      text: "Уверены, что хотите выйти со всех устройств? Все активные сессии будут завершены."
+    },
+    {
+      key: "reset-2fa",
+      title: "Сбросить двухфакторную аутентификацию",
+      text: "Уверены, что хотите сбросить 2FA? Backup codes будут удалены, а все сессии завершены."
+    }
+  ];
+
+  const buttons = actions.map((item) => `
+    <button class="btn danger" type="button" data-action="${item.key}" data-title="${escapeHtml(item.title)}" data-text="${escapeHtml(item.text)}">${escapeHtml(item.title)}</button>
+  `).join("");
+
   res.status(200).send(`<!doctype html>
 <html lang="ru">
 <head>
@@ -255,17 +294,61 @@ function sendSuspiciousRegistrationPage(res, { token }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Подозрительный вход</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(620px,100%);background:#17212b;border:1px solid #243447;border-radius:22px;padding:28px;box-shadow:0 18px 70px rgba(0,0,0,.38)}h1{margin:0 0 12px;font-size:28px}.muted{color:#9aaabc;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.btn.dark{background:#7f1d1d}.warn{background:#2a1720;border:1px solid #7f1d1d;color:#ffb4b4;border-radius:14px;padding:14px;margin:16px 0;line-height:1.45}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(640px,100%);background:#17212b;border:1px solid #243447;border-radius:24px;padding:30px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:30px}.muted{color:#9aaabc;line-height:1.55}.actions{display:grid;gap:12px;margin-top:22px}.btn{width:100%;border:0;border-radius:15px;padding:16px 18px;font-size:16px;font-weight:900;cursor:pointer}.danger{background:#ef4444;color:#fff}.danger:hover{background:#dc2626}.dark{background:#7f1d1d;color:#fff}.dark:hover{background:#641515}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:18px}.modal.open{display:flex}.dialog{width:min(480px,100%);background:#17212b;border:1px solid #33475f;border-radius:22px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.dialog h2{margin:0 0 10px;font-size:24px}.dialog p{color:#b6c4d2;line-height:1.55}.row{display:flex;gap:10px;margin-top:16px}.row .btn{flex:1}.ghost{background:#243447;color:#dbeafe}
   </style>
 </head>
-<body><main class="card"><h1>Подозрительный вход</h1><p class="muted">Выберите, что сделать с аккаунтом.</p>
-  <form method="post" action="${getRegistrationActionUrl(token, "revoke-session")}"><button class="btn" type="submit">Завершить текущую сессию</button></form>
-  <form method="post" action="${getRegistrationActionUrl(token, "logout-all")}"><button class="btn" type="submit">Выйти со всех устройств</button></form>
-  <form method="post" action="${getRegistrationActionUrl(token, "reset-2fa")}"><button class="btn" type="submit">Сбросить двухфакторную аутентификацию</button></form>
-  <div class="warn">Удаление аккаунта приведёт к полному удалению аккаунта и связанных данных. Используйте это только если аккаунт точно был создан не вами.</div>
-  <form method="post" action="${getRegistrationActionUrl(token, "delete-step-1")}"><button class="btn dark" type="submit">Удалить аккаунт полностью</button></form>
-  <p class="small">Смена пароля будет отдельным защищённым сценарием через восстановление пароля.</p>
-</main></body></html>`);
+<body>
+  <main class="card">
+    <h1>Подозрительный вход</h1>
+    <p class="muted">Выберите действие. Каждое действие потребует отдельного подтверждения.</p>
+    <div class="actions">
+      ${buttons}
+      <button class="btn dark" type="button" data-delete="1">Удалить аккаунт полностью</button>
+    </div>
+    <p class="small">Смена пароля будет отдельным защищённым сценарием через восстановление пароля.</p>
+  </main>
+
+  <div class="modal" id="confirmModal" aria-hidden="true">
+    <div class="dialog">
+      <h2 id="confirmTitle">Подтвердите действие</h2>
+      <p id="confirmText"></p>
+      <form id="confirmForm" method="post" action="">
+        <div class="row">
+          <button class="btn ghost" type="button" data-close="1">Отмена</button>
+          <button class="btn danger" type="submit">Да, хочу</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById('confirmModal');
+    const title = document.getElementById('confirmTitle');
+    const text = document.getElementById('confirmText');
+    const form = document.getElementById('confirmForm');
+    const base = ${JSON.stringify(getRegistrationActionUrl(token, "__ACTION__"))};
+    function openModal(action, modalTitle, modalText) {
+      title.textContent = modalTitle;
+      text.textContent = modalText;
+      form.action = base.replace('__ACTION__', encodeURIComponent(action));
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    document.querySelectorAll('[data-action]').forEach((button) => {
+      button.addEventListener('click', () => openModal(button.dataset.action, button.dataset.title, button.dataset.text));
+    });
+    document.querySelector('[data-delete]').addEventListener('click', () => {
+      openModal('delete-step-1', 'Удалить аккаунт полностью?', 'Удаление аккаунта приведёт к полному удалению профиля, чатов, вложений, сессий и настроек безопасности.');
+    });
+    document.querySelectorAll('[data-close]').forEach((button) => {
+      button.addEventListener('click', () => {
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      });
+    });
+  </script>
+</body>
+</html>`);
 }
 
 function sendDeleteStepOnePage(res, { token }) {
@@ -306,6 +389,15 @@ async function createRegistrationCancelLink({ user, email, req, sessionIdHash })
     cancelUrl: getRegistrationCancelUrl(token),
     expiresAt
   };
+}
+
+async function createLoginSecurityLink({ user, email, req, sessionIdHash }) {
+  return createRegistrationCancelLink({
+    user,
+    email,
+    req,
+    sessionIdHash
+  });
 }
 
 function shouldExposeDevEmailCode(result) {
@@ -705,14 +797,25 @@ async function login(req, res, next) {
     user.lastSeen = new Date();
     await user.save();
 
+    const sessionId = await createUserSession({ req, user });
+    const token = signAuthToken(user, sessionId);
+    const loginSecurity = await createLoginSecurityLink({
+      user,
+      email: cleanEmail,
+      req,
+      sessionIdHash: hashSessionId(sessionId)
+    });
+
     await sendLoginNotice({
       to: cleanEmail,
       username: user.username,
-      at: new Date()
+      at: new Date(),
+      securityUrl: loginSecurity.cancelUrl,
+      expiresAt: loginSecurity.expiresAt
     }).catch(() => null);
 
     sendSessionResponse(res, {
-      token: await signToken(req, user),
+      token,
       username: user.username
     });
   } catch (err) {

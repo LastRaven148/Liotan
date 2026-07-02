@@ -88,6 +88,29 @@ function createPrivacyHeaders() {
   };
 }
 
+function formatEmailDate(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return "unknown time";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short"
+  }).format(date);
+}
+
+function createButtonHtml(label, url, color = "#3390ec") {
+  const safeUrl = String(url || "").replace(/"/g, "&quot;");
+  const safeLabel = String(label || "Open").replace(/[<>&"]/g, "");
+  return `<p style="margin:22px 0"><a href="${safeUrl}" style="display:block;text-align:center;background:${color};color:#ffffff;text-decoration:none;border-radius:14px;padding:15px 18px;font-weight:800">${safeLabel}</a></p>`;
+}
+
 function createHtml(code, purpose) {
   const safeCode =
     String(code).replace(/[^0-9]/g, "");
@@ -365,31 +388,33 @@ async function sendEmailChangeCancelNotice({ to, cancelUrl, applyAfter }) {
 
 async function sendRegistrationNotice({ to, username, cancelUrl, expiresAt }) {
   const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan account registered";
+  const safeExpiresAt = formatEmailDate(expiresAt);
   const text = [
     "A Liotan account was registered with this email address.",
     "",
     `Username: ${username}`,
     "",
     "If this was you, no action is required.",
-    "If this was not you, review this security link:",
+    "If this was not you, open this security page:",
     cancelUrl,
     "",
-    `This cancellation link expires at: ${new Date(expiresAt).toISOString()}`,
+    `This security link expires at: ${safeExpiresAt}`,
     "",
-    "Liotan support cannot manually prove ownership or restore access. This link opens a protected security flow and does not delete the account automatically."
+    "This link opens a protected confirmation page. It does not delete the account automatically."
   ].join("\n");
 
   const safeUrl = String(cancelUrl || "").replace(/"/g, "&quot;");
   const safeUsername = String(username || "").replace(/[<>&"]/g, "");
-  const safeExpiresAt = new Date(expiresAt).toISOString();
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A Liotan account was registered with this email address.</p><p><b>Username:</b> ${safeUsername}</p><p>If this was you, no action is required.</p><p>If this was not you, review this security link:</p><p><a style="color:#8bc7ff" href="${safeUrl}">${safeUrl}</a></p><p style="color:#9aaabc;font-size:13px">This security link expires at ${safeExpiresAt}. It opens a protected confirmation page and does not delete the account automatically.</p></div></body></html>`;
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A Liotan account was registered with this email address.</p><p><b>Username:</b> ${safeUsername}</p><p>If this was you, no action is required.</p><p>If this was not you, open the protected security page:</p>${createButtonHtml("Review security activity", safeUrl, "#ef4444")}<p style="color:#9aaabc;font-size:13px;line-height:1.5">This security link expires at:<br><b>${safeExpiresAt}</b><br><br>It opens a protected confirmation page and does not delete the account automatically.</p></div></body></html>`;
   return sendSecurityEmail({ to, subject, text, html });
 }
 
-async function sendLoginNotice({ to, username, at }) {
+async function sendLoginNotice({ to, username, at, securityUrl, expiresAt }) {
   const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan login notice";
   const safeUsername = String(username || "").replace(/[<>&"]/g, "");
-  const safeAt = new Date(at || Date.now()).toISOString();
+  const safeAt = formatEmailDate(at || Date.now());
+  const safeExpiresAt = expiresAt ? formatEmailDate(expiresAt) : "72 hours";
+  const safeSecurityUrl = String(securityUrl || "").replace(/"/g, "&quot;");
 
   const text = [
     "A successful login to Liotan was completed.",
@@ -398,10 +423,17 @@ async function sendLoginNotice({ to, username, at }) {
     `Time: ${safeAt}`,
     "",
     "If this was you, no action is required.",
-    "If this was not you, change your password, revoke other sessions, and enable 2FA."
+    "If this was not you, open this security page:",
+    securityUrl || "",
+    "",
+    `This security link expires at: ${safeExpiresAt}`
   ].join("\n");
 
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A successful login to Liotan was completed.</p><p><b>Username:</b> ${safeUsername}</p><p><b>Time:</b> ${safeAt}</p><p>If this was you, no action is required.</p><p style="color:#ffb4b4">If this was not you, change your password, revoke other sessions, and enable 2FA.</p></div></body></html>`;
+  const actionBlock = safeSecurityUrl
+    ? `${createButtonHtml("Review login activity", safeSecurityUrl, "#ef4444")}<p style="color:#9aaabc;font-size:13px;line-height:1.5">This security link expires at:<br><b>${safeExpiresAt}</b></p>`
+    : "";
+
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A successful login to Liotan was completed.</p><p><b>Username:</b> ${safeUsername}</p><p><b>Time:</b><br>${safeAt}</p><p>If this was you, no action is required.</p><p style="color:#ffb4b4">If this was not you, open the protected security page below.</p>${actionBlock}</div></body></html>`;
 
   return sendSecurityEmail({ to, subject, text, html });
 }
@@ -409,7 +441,7 @@ async function sendLoginNotice({ to, username, at }) {
 async function sendAccountDeletedNotice({ to, username, at }) {
   const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan account deleted";
   const safeUsername = String(username || "").replace(/[<>&"]/g, "");
-  const safeAt = new Date(at || Date.now()).toISOString();
+  const safeAt = formatEmailDate(at || Date.now());
 
   const text = [
     "Your Liotan account has been fully deleted.",
