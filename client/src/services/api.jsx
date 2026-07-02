@@ -137,7 +137,7 @@ export async function sendLoginEmailCode(
       password,
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
-      transportMode: getTransportMode()
+      transportMode: "direct"
     })
   });
 }

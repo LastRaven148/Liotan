@@ -1,3 +1,8 @@
+import NotificationsIcon from "../../../assets/icons/notifications.svg";
+import PrivacyIcon from "../../../assets/icons/privacy.svg";
+import SettingsIcon from "../../../assets/icons/settings.svg";
+import SoundCameraIcon from "../../../assets/icons/sound-camera.svg";
+import DevicesIcon from "../../../assets/icons/devices.svg";
 import { avatarUrl } from "../../../utils/avatarUrl";
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
@@ -38,13 +43,43 @@ export default function MainSettingsPage({ state, actions, labels }) {
       </SettingsSection>
 
       <SettingsSection>
-        <SettingsItem icon="" title={labels.notifications} onClick={() => actions.openPage("notifications")} />
-        <SettingsItem icon="" title={labels.twoFactorAuth} value={totpEnabled ? labels.enabled : labels.disabled} onClick={actions.openTotp} />
-        <SettingsItem icon="" title={labels.privacy} onClick={() => actions.openPage("privacy")} />
-        <SettingsItem icon="" title={labels.general} onClick={() => actions.openPage("general")} />
-        <SettingsItem icon="" title={labels.sound} onClick={() => actions.openPage("sound")} />
-        <SettingsItem icon="" title={labels.devices} value={otherCount ? String(otherCount + 1) : ""} onClick={() => actions.openPage("devices")} />
-        <SettingsItem icon={<TranslateIcon />} title={labels.language} value={currentLabel} onClick={() => actions.openPage("language")} />
+        <SettingsItem
+    icon={<img src={NotificationsIcon} className="settings-svg-icon" alt="" />}
+    title={labels.notifications}
+    onClick={() => actions.openPage("notifications")}
+/>
+
+<SettingsItem
+    icon=""
+    title={labels.twoFactorAuth}
+    value={totpEnabled ? labels.enabled : labels.disabled}
+    onClick={actions.openTotp}
+/>
+
+<SettingsItem
+    icon={<img src={PrivacyIcon} className="settings-svg-icon" alt="" />}
+    title={labels.privacy}
+    onClick={() => actions.openPage("privacy")}
+/>
+
+<SettingsItem
+    icon={<img src={SettingsIcon} className="settings-svg-icon" alt="" />}
+    title={labels.general}
+    onClick={() => actions.openPage("general")}
+/>
+
+<SettingsItem
+    icon={<img src={SoundCameraIcon} className="settings-svg-icon" alt="" />}
+    title={labels.sound}
+    onClick={() => actions.openPage("sound")}
+/>
+
+<SettingsItem
+    icon={<img src={DevicesIcon} className="settings-svg-icon" alt="" />}
+    title={labels.devices}
+    value={otherCount ? String(otherCount + 1) : ""}
+    onClick={() => actions.openPage("devices")}
+/>
       </SettingsSection>
 
       <SettingsSection title={labels.connectionPrivacy}>

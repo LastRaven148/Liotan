@@ -743,3 +743,11 @@
 .settings-support-button:hover{
   background:#2f4052;
 }
+
+.settings-svg-icon {
+    width: 22px;
+    height: 22px;
+    display: block;
+    color: inherit;
+    flex-shrink: 0;
+}
