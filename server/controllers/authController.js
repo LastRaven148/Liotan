@@ -603,7 +603,7 @@ function maskEmail(email) {
   if (!name || !domain) {
     return "";
   }
-  return `${name[0]}***************@${domain}`;
+  return `${name[0]}********@${domain}`;
 }
 async function signToken(req, user) {
   const sessionId = await createUserSession({
@@ -1234,13 +1234,35 @@ function getRecordEmail(record) {
 }
 
 async function markRegistrationActionUsed(record, action) {
-  record.usedAt = new Date();
-  record.actionTaken = action;
-  record.actionTakenAt = new Date();
-  await record.save();
+  const now = new Date();
+
+  await RegistrationCancel.updateOne(
+    {
+      _id: record._id,
+      usedAt: null
+    },
+    {
+      $set: {
+        usedAt: now,
+        actionTaken: action,
+        actionTakenAt: now
+      }
+    }
+  );
+
   await RegistrationCancel.updateMany(
-    { userId: record.userId, usedAt: null },
-    { $set: { usedAt: new Date(), actionTaken: "expired-by-action", actionTakenAt: new Date() } }
+    {
+      userId: record.userId,
+      usedAt: null,
+      _id: { $ne: record._id }
+    },
+    {
+      $set: {
+        usedAt: now,
+        actionTaken: "expired-by-action",
+        actionTakenAt: now
+      }
+    }
   );
 }
 
@@ -1434,8 +1456,8 @@ async function handleRegistrationSecurityAction(req, res, next) {
         return sendDeleteStepTwoPage(res, { token: req.params.token, req });
       }
       const email = getRecordEmail(record);
-      const result = await deleteAccountData(record.username);
       await markRegistrationActionUsed(record, "delete-final");
+      const result = await deleteAccountData(record.username);
 
       if (email) {
         await sendAccountDeletedNotice({

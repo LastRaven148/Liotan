@@ -97,7 +97,7 @@ export default function LoginPage({
     }
 
     if (step === "code") {
-      return text("enterCodeFromEmail", "Введите 8-значный код из письма.");
+      return `${t.emailCodeSentTo || "Введите код из письма. Код отправлен на"} ${maskedLoginEmail || t.yourEmail || "вашу почту"}.`;
     }
 
     if (step === "registerSecurity") {
