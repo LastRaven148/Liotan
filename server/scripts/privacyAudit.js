@@ -80,15 +80,15 @@ const RULES = [
     id: "raw-ip-risk",
     severity: "medium",
     pattern: /req\.ip|x-forwarded-for|remoteAddress/i,
-    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|scripts[\/]privacyAudit\.js$/,
-    note: "Do not store/log raw IP. Hash only for rate limits."
+    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|controllers[\/]authController\.js$|scripts[\/]privacyAudit\.js$/,
+    note: "Do not store/log raw IP. Hash only for rate limits; authController may derive masked security-notice hints."
   },
   {
     id: "raw-user-agent-risk",
     severity: "medium",
     pattern: /user-agent|userAgent/i,
-    allow: /utils[\/]sessionSecurity\.js$|middleware[\/]requestContext\.js$|utils[\/]logger\.js$|config[\/]privacy\.js$|models[\/]Session\.js$|utils[\/]deviceId\.jsx$|scripts[\/]privacyAudit\.js$/,
-    note: "User-Agent is identifying; keep derived storage disabled by default."
+    allow: /utils[\/]sessionSecurity\.js$|middleware[\/]requestContext\.js$|utils[\/]logger\.js$|config[\/]privacy\.js$|models[\/]Session\.js$|utils[\/]deviceId\.jsx$|controllers[\/]authController\.js$|scripts[\/]privacyAudit\.js$/,
+    note: "User-Agent is identifying; keep derived storage disabled by default; authController may derive browser/OS labels for security notices."
   },
   {
     id: "security-secret-fallback-risk",

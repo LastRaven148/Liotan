@@ -527,7 +527,7 @@ export default function LoginPage({
           </button>
           {confirmSkipTwoFactor && !setupTwoFactorAfterRegister && (
             <p className="auth-warning">
-              {text("skipTwoFactorWarning", "Вы точно хотите продолжить без 2FA? Это повысит риск для аккаунта, если пароль или почта окажутся скомпрометированы.")}
+              {text("skipTwoFactorWarning", "Вы точно хотите продолжить без 2FA? Это повысит риск для аккаунта, если пароль или почта окажутся в руках мошенников, они смогут получить доступ к вашему аккаунту.")}
             </p>
           )}
         </div>

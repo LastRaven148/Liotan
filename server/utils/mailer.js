@@ -371,18 +371,18 @@ async function sendRegistrationNotice({ to, username, cancelUrl, expiresAt }) {
     `Username: ${username}`,
     "",
     "If this was you, no action is required.",
-    "If this was not you, cancel this registration here:",
+    "If this was not you, review this security link:",
     cancelUrl,
     "",
     `This cancellation link expires at: ${new Date(expiresAt).toISOString()}`,
     "",
-    "Liotan support cannot manually prove ownership or restore access. This link is the protected cancellation flow."
+    "Liotan support cannot manually prove ownership or restore access. This link opens a protected security flow and does not delete the account automatically."
   ].join("\n");
 
   const safeUrl = String(cancelUrl || "").replace(/"/g, "&quot;");
   const safeUsername = String(username || "").replace(/[<>&"]/g, "");
   const safeExpiresAt = new Date(expiresAt).toISOString();
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A Liotan account was registered with this email address.</p><p><b>Username:</b> ${safeUsername}</p><p>If this was you, no action is required.</p><p>If this was not you, cancel this registration:</p><p><a style="color:#8bc7ff" href="${safeUrl}">${safeUrl}</a></p><p style="color:#9aaabc;font-size:13px">This cancellation link expires at ${safeExpiresAt}. Liotan support cannot manually prove ownership or restore access.</p></div></body></html>`;
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A Liotan account was registered with this email address.</p><p><b>Username:</b> ${safeUsername}</p><p>If this was you, no action is required.</p><p>If this was not you, review this security link:</p><p><a style="color:#8bc7ff" href="${safeUrl}">${safeUrl}</a></p><p style="color:#9aaabc;font-size:13px">This security link expires at ${safeExpiresAt}. It opens a protected confirmation page and does not delete the account automatically.</p></div></body></html>`;
   return sendSecurityEmail({ to, subject, text, html });
 }
 
@@ -402,6 +402,25 @@ async function sendLoginNotice({ to, username, at }) {
   ].join("\n");
 
   const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>A successful login to Liotan was completed.</p><p><b>Username:</b> ${safeUsername}</p><p><b>Time:</b> ${safeAt}</p><p>If this was you, no action is required.</p><p style="color:#ffb4b4">If this was not you, change your password, revoke other sessions, and enable 2FA.</p></div></body></html>`;
+
+  return sendSecurityEmail({ to, subject, text, html });
+}
+
+async function sendAccountDeletedNotice({ to, username, at }) {
+  const subject = privacy.genericEmailSubjects ? "Liotan security notice" : "Liotan account deleted";
+  const safeUsername = String(username || "").replace(/[<>&"]/g, "");
+  const safeAt = new Date(at || Date.now()).toISOString();
+
+  const text = [
+    "Your Liotan account has been fully deleted.",
+    "",
+    `Username: ${username}`,
+    `Time: ${safeAt}`,
+    "",
+    "This action removed the account and related account data. Liotan support cannot manually restore deleted account data."
+  ].join("\n");
+
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;background:#0e1621;color:#fff;padding:24px"><div style="max-width:520px;margin:auto;background:#17212b;border:1px solid #243447;border-radius:16px;padding:24px"><h2>Liotan security notice</h2><p>Your Liotan account has been fully deleted.</p><p><b>Username:</b> ${safeUsername}</p><p><b>Time:</b> ${safeAt}</p><p style="color:#9aaabc;font-size:13px">This action removed the account and related account data. Liotan support cannot manually restore deleted account data.</p></div></body></html>`;
 
   return sendSecurityEmail({ to, subject, text, html });
 }
@@ -440,6 +459,7 @@ module.exports = {
   sendEmailChangeCancelNotice,
   sendRegistrationNotice,
   sendLoginNotice,
+  sendAccountDeletedNotice,
   hasMailConfig,
   hasSmtpConfig,
   hasResendConfig,

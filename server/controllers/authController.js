@@ -13,7 +13,8 @@ const RegistrationCancel = require("../models/RegistrationCancel");
 const {
   normalizeEmail,
   hashEmail,
-  hmac
+  hmac,
+  hashIp
 } = require("../utils/privacy");
 const {
   createUserSession,
@@ -28,7 +29,8 @@ const {
   sendEmailCode,
   sendEmailChangeCancelNotice,
   sendRegistrationNotice,
-  sendLoginNotice
+  sendLoginNotice,
+  sendAccountDeletedNotice
 } = require("../utils/mailer");
 const {
   isValidUsername,
@@ -39,7 +41,7 @@ const {
 const {
   assertAcceptableEmail
 } = require("../utils/emailRisk");
-const { decryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
+const { encryptJson, decryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
 const { verifyTotp } = require("../security/totp/totp");
 const deleteAccountData = require("../utils/deleteAccountData");
 const { consumeBackupCode } = require("../security/recovery/backupCodes");
@@ -111,9 +113,80 @@ function getRegistrationCancelUrl(token) {
   return `${base}/auth/register/cancel/${encodeURIComponent(token)}`;
 }
 
-function sendRegistrationCancelPage(res, { ok, title, message }) {
-  const safeTitle = String(title || "Liotan").replace(/[<>&"]/g, "");
-  const safeMessage = String(message || "").replace(/[<>&"]/g, "");
+function getPublicClientUrl() {
+  return String(
+    process.env.PUBLIC_CLIENT_URL ||
+    process.env.CLIENT_URL ||
+    "https://liotan.com"
+  ).replace(/\/$/, "");
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || String(req.ip || req.socket?.remoteAddress || "").trim();
+}
+
+function getIpHint(ip) {
+  const value = String(ip || "").trim();
+  if (!value) return "Не удалось определить";
+  if (value.includes(":")) return `${value.split(":").slice(0, 2).join(":")}:…`;
+  const parts = value.split(".");
+  if (parts.length === 4) return `${parts[0]}.${parts[1]}.xxx.xxx`;
+  return "Определён частично";
+}
+
+function detectBrowserFromUa(ua) {
+  const value = String(ua || "");
+  if (/Edg\//i.test(value)) return "Microsoft Edge";
+  if (/CriOS\//i.test(value)) return "Chrome iOS";
+  if (/FxiOS\//i.test(value)) return "Firefox iOS";
+  if (/OPR\//i.test(value)) return "Opera";
+  if (/Firefox\//i.test(value)) return "Firefox";
+  if (/Chrome\//i.test(value) && !/Edg\//i.test(value)) return "Chrome";
+  if (/Safari\//i.test(value) && !/Chrome\//i.test(value)) return "Safari";
+  return "Browser";
+}
+
+function detectOsFromUa(ua) {
+  const value = String(ua || "");
+  if (/iphone/i.test(value)) return "iPhone";
+  if (/ipad/i.test(value)) return "iPad";
+  if (/Android/i.test(value)) return "Android";
+  if (/Windows NT/i.test(value)) return "Windows";
+  if (/Macintosh|Mac OS/i.test(value)) return "macOS";
+  if (/Linux/i.test(value)) return "Linux";
+  return "Web";
+}
+
+function getRequestLoginInfo(req) {
+  const ua = String(req.headers["user-agent"] || "");
+  const ip = getClientIp(req);
+  const osName = detectOsFromUa(ua);
+  const browserName = detectBrowserFromUa(ua);
+  return {
+    deviceName: osName === "Web" ? browserName : `${osName} · ${browserName}`,
+    browserName,
+    osName,
+    ipHint: getIpHint(ip),
+    createdIpHash: ip ? hashIp(ip) : ""
+  };
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function getRegistrationActionUrl(token, action) {
+  return `/auth/register/cancel/${encodeURIComponent(token)}/action/${encodeURIComponent(action)}`;
+}
+
+function sendSimpleSecurityPage(res, { ok, title, message }) {
+  const safeTitle = escapeHtml(title || "Liotan");
+  const safeMessage = escapeHtml(message || "");
 
   res.status(ok ? 200 : 400).send(`<!doctype html>
 <html lang="ru">
@@ -123,18 +196,91 @@ function sendRegistrationCancelPage(res, { ok, title, message }) {
   <title>${safeTitle}</title>
   <style>
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif}
-    .card{width:min(420px,calc(100vw - 32px));background:#17212b;border:1px solid #243447;border-radius:18px;padding:28px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
-    h1{margin:0 0 12px;font-size:24px}.text{color:#9aaabc;line-height:1.5}.ok{color:#6ee7a8}.bad{color:#ff8f8f}
+    .card{width:min(520px,calc(100vw - 32px));background:#17212b;border:1px solid #243447;border-radius:18px;padding:28px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
+    h1{margin:0 0 12px;font-size:26px}.text{color:#9aaabc;line-height:1.55;font-size:16px}.ok{color:#6ee7a8}.bad{color:#ff8f8f}
   </style>
 </head>
 <body><main class="card"><h1 class="${ok ? "ok" : "bad"}">${safeTitle}</h1><div class="text">${safeMessage}</div></main></body>
 </html>`);
 }
 
-async function createRegistrationCancelLink(user) {
+function sendRegistrationSecurityPage(res, { token, record }) {
+  const createdAt = record.createdAt ? new Date(record.createdAt).toISOString() : "Не удалось определить";
+  const expiresAt = record.expiresAt ? new Date(record.expiresAt).toISOString() : "Не удалось определить";
+  const deviceName = escapeHtml(record.deviceName || "Unknown device");
+  const browserName = escapeHtml(record.browserName || "Browser");
+  const osName = escapeHtml(record.osName || "Web");
+  const ipHint = escapeHtml(record.ipHint || "Не удалось определить");
+
+  res.status(200).send(`<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Liotan security notice</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{width:min(620px,100%);background:#17212b;border:1px solid #243447;border-radius:22px;padding:28px;box-shadow:0 18px 70px rgba(0,0,0,.38)}
+    h1{font-size:28px;margin:0 0 12px}.muted{color:#9aaabc;line-height:1.55}.details{margin:20px 0;padding:16px;border-radius:16px;background:#101923;border:1px solid #243447}.row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.row:last-child{border-bottom:0}.label{color:#8da2b5}.value{text-align:right;color:#fff;font-weight:700}.btn{width:100%;border:0;border-radius:14px;padding:16px 18px;font-size:17px;font-weight:800;cursor:pointer;margin-top:12px}.safe{background:#22c55e;color:#06220f}.danger{background:#ef4444;color:#fff}.danger.secondary{background:#7f1d1d}.tiny{font-size:13px;color:#7f93a6;margin-top:16px;line-height:1.45}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Мы обнаружили вход в Liotan</h1>
+    <p class="muted">Проверьте детали. Если это были вы, просто подтвердите это. Если нет — выберите безопасное действие.</p>
+    <section class="details">
+      <div class="row"><span class="label">Время</span><span class="value">${escapeHtml(createdAt)}</span></div>
+      <div class="row"><span class="label">Устройство</span><span class="value">${deviceName}</span></div>
+      <div class="row"><span class="label">ОС</span><span class="value">${osName}</span></div>
+      <div class="row"><span class="label">Браузер</span><span class="value">${browserName}</span></div>
+      <div class="row"><span class="label">IP</span><span class="value">${ipHint}</span></div>
+    </section>
+    <form method="post" action="${getRegistrationActionUrl(token, "trusted")}">
+      <button class="btn safe" type="submit">Это был я</button>
+    </form>
+    <form method="post" action="${getRegistrationActionUrl(token, "suspicious")}">
+      <button class="btn danger" type="submit">Это не я</button>
+    </form>
+    <p class="tiny">Ссылка действует до ${escapeHtml(expiresAt)}. IP и устройство могут определяться неточно.</p>
+  </main>
+</body>
+</html>`);
+}
+
+function sendSuspiciousRegistrationPage(res, { token }) {
+  res.status(200).send(`<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Подозрительный вход</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(620px,100%);background:#17212b;border:1px solid #243447;border-radius:22px;padding:28px;box-shadow:0 18px 70px rgba(0,0,0,.38)}h1{margin:0 0 12px;font-size:28px}.muted{color:#9aaabc;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.btn.dark{background:#7f1d1d}.warn{background:#2a1720;border:1px solid #7f1d1d;color:#ffb4b4;border-radius:14px;padding:14px;margin:16px 0;line-height:1.45}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}
+  </style>
+</head>
+<body><main class="card"><h1>Подозрительный вход</h1><p class="muted">Выберите, что сделать с аккаунтом.</p>
+  <form method="post" action="${getRegistrationActionUrl(token, "revoke-session")}"><button class="btn" type="submit">Завершить текущую сессию</button></form>
+  <form method="post" action="${getRegistrationActionUrl(token, "logout-all")}"><button class="btn" type="submit">Выйти со всех устройств</button></form>
+  <form method="post" action="${getRegistrationActionUrl(token, "reset-2fa")}"><button class="btn" type="submit">Сбросить двухфакторную аутентификацию</button></form>
+  <div class="warn">Удаление аккаунта приведёт к полному удалению аккаунта и связанных данных. Используйте это только если аккаунт точно был создан не вами.</div>
+  <form method="post" action="${getRegistrationActionUrl(token, "delete-step-1")}"><button class="btn dark" type="submit">Удалить аккаунт полностью</button></form>
+  <p class="small">Смена пароля будет отдельным защищённым сценарием через восстановление пароля.</p>
+</main></body></html>`);
+}
+
+function sendDeleteStepOnePage(res, { token }) {
+  res.status(200).send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Удаление аккаунта</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>Удалить аккаунт?</h1><p class="muted">Удаление аккаунта приведёт к полному удалению всех данных: профиля, чатов, вложений, сессий и настроек безопасности.</p><form method="post" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">Да, хочу удалить аккаунт</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">Назад</button></form></main></body></html>`);
+}
+
+function sendDeleteStepTwoPage(res, { token }) {
+  res.status(200).send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Последнее подтверждение</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>Вы точно уверены?</h1><p class="muted">После этого действия данные будет невозможно вернуть.</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><button class="btn" type="submit">Да, удалить аккаунт навсегда</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">Отмена</button></form></main></body></html>`);
+}
+
+async function createRegistrationCancelLink({ user, email, req, sessionIdHash }) {
   const token = randomToken(32);
   const tokenHash = sha256(token);
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const loginInfo = getRequestLoginInfo(req);
 
   await RegistrationCancel.deleteMany({
     userId: user._id,
@@ -145,7 +291,14 @@ async function createRegistrationCancelLink(user) {
     userId: user._id,
     username: user.username,
     emailHash: user.emailHash,
+    emailEnvelope: encryptJson({ email }, `registration-email:${user._id}`),
     tokenHash,
+    sessionIdHash: sessionIdHash || "",
+    deviceName: loginInfo.deviceName,
+    browserName: loginInfo.browserName,
+    osName: loginInfo.osName,
+    ipHint: loginInfo.ipHint,
+    createdIpHash: loginInfo.createdIpHash,
     expiresAt
   });
 
@@ -467,7 +620,14 @@ async function register(req, res, next) {
       emailVerified: true,
       lastSeen: new Date()
     });
-    const registrationCancel = await createRegistrationCancelLink(user);
+    const sessionId = await createUserSession({ req, user });
+    const token = signAuthToken(user, sessionId);
+    const registrationCancel = await createRegistrationCancelLink({
+      user,
+      email: cleanEmail,
+      req,
+      sessionIdHash: hashSessionId(sessionId)
+    });
 
     await sendRegistrationNotice({
       to: cleanEmail,
@@ -477,7 +637,7 @@ async function register(req, res, next) {
     }).catch(() => null);
 
     sendSessionResponse(res, {
-      token: await signToken(req, user),
+      token,
       username: user.username
     });
   } catch (err) {
@@ -775,39 +935,162 @@ async function cancelEmailChange(req, res, next) {
 }
 
 
+async function findRegistrationSecurityRecord(token) {
+  const tokenHash = sha256(token || "");
+  return RegistrationCancel.findOne({
+    tokenHash,
+    usedAt: null,
+    expiresAt: { $gt: new Date() }
+  });
+}
+
+function getRecordEmail(record) {
+  try {
+    const data = decryptJson(record.emailEnvelope, `registration-email:${record.userId}`);
+    return String(data.email || "");
+  } catch {
+    return "";
+  }
+}
+
+async function markRegistrationActionUsed(record, action) {
+  record.usedAt = new Date();
+  record.actionTaken = action;
+  record.actionTakenAt = new Date();
+  await record.save();
+  await RegistrationCancel.updateMany(
+    { userId: record.userId, usedAt: null },
+    { $set: { usedAt: new Date(), actionTaken: "expired-by-action", actionTakenAt: new Date() } }
+  );
+}
+
 async function cancelRegistration(req, res, next) {
   try {
-    const tokenHash = sha256(req.params.token || "");
-    const record = await RegistrationCancel.findOne({
-      tokenHash,
-      usedAt: null,
-      expiresAt: { $gt: new Date() }
-    });
+    const record = await findRegistrationSecurityRecord(req.params.token);
 
     if (!record) {
-      return sendRegistrationCancelPage(res, {
+      return sendSimpleSecurityPage(res, {
         ok: false,
         title: "Ссылка недействительна",
-        message: "Эта ссылка отмены регистрации уже использована или истекла."
+        message: "Эта ссылка безопасности уже использована или истекла."
       });
     }
 
-    record.usedAt = new Date();
-    await record.save();
+    return sendRegistrationSecurityPage(res, {
+      token: req.params.token,
+      record
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
-    const result = await deleteAccountData(record.username);
+async function handleRegistrationSecurityAction(req, res, next) {
+  try {
+    const action = String(req.params.action || "");
+    const record = await findRegistrationSecurityRecord(req.params.token);
 
-    await RegistrationCancel.updateMany(
-      { userId: record.userId, usedAt: null },
-      { $set: { usedAt: new Date() } }
-    );
+    if (!record) {
+      return sendSimpleSecurityPage(res, {
+        ok: false,
+        title: "Ссылка недействительна",
+        message: "Эта ссылка безопасности уже использована или истекла."
+      });
+    }
 
-    return sendRegistrationCancelPage(res, {
-      ok: result.ok,
-      title: result.ok ? "Регистрация отменена" : "Не удалось отменить регистрацию",
-      message: result.ok
-        ? "Аккаунт Liotan был удалён. Если это сделали не вы, создайте новый аккаунт и включите 2FA."
-        : "Аккаунт уже не найден или ссылка больше не может быть применена."
+    if (action === "trusted") {
+      await markRegistrationActionUsed(record, "trusted");
+      return sendSimpleSecurityPage(res, {
+        ok: true,
+        title: "Вход подтверждён",
+        message: "Спасибо. Никаких действий с аккаунтом не выполнено."
+      });
+    }
+
+    if (action === "suspicious") {
+      return sendSuspiciousRegistrationPage(res, { token: req.params.token });
+    }
+
+    if (action === "revoke-session") {
+      if (record.sessionIdHash) {
+        await Session.updateOne(
+          { userId: record.userId, sessionIdHash: record.sessionIdHash, revokedAt: null },
+          { $set: { revokedAt: new Date() } }
+        );
+      }
+      await markRegistrationActionUsed(record, "revoke-session");
+      return sendSimpleSecurityPage(res, {
+        ok: true,
+        title: "Сессия завершена",
+        message: "Сессия, связанная с этим входом, была завершена."
+      });
+    }
+
+    if (action === "logout-all") {
+      await revokeAllUserSessions({ userId: record.userId });
+      await markRegistrationActionUsed(record, "logout-all");
+      return sendSimpleSecurityPage(res, {
+        ok: true,
+        title: "Все сессии завершены",
+        message: "Аккаунт был выведен со всех устройств."
+      });
+    }
+
+    if (action === "reset-2fa") {
+      await UserSecurity.updateOne(
+        { userId: record.userId },
+        {
+          $set: {
+            "totp.enabled": false,
+            "totp.secretEnvelope": null,
+            "totp.backupCodeHashes": [],
+            "totp.lastUsedStep": null
+          }
+        }
+      );
+      await revokeAllUserSessions({ userId: record.userId });
+      await markRegistrationActionUsed(record, "reset-2fa");
+      return sendSimpleSecurityPage(res, {
+        ok: true,
+        title: "2FA сброшена",
+        message: "Двухфакторная аутентификация отключена, backup codes удалены, все сессии завершены."
+      });
+    }
+
+    if (action === "delete-step-1") {
+      return sendDeleteStepOnePage(res, { token: req.params.token });
+    }
+
+    if (action === "delete-step-2") {
+      return sendDeleteStepTwoPage(res, { token: req.params.token });
+    }
+
+    if (action === "delete-final") {
+      const email = getRecordEmail(record);
+      const result = await deleteAccountData(record.username);
+      await markRegistrationActionUsed(record, "delete-final");
+
+      if (email) {
+        await sendAccountDeletedNotice({
+          to: email,
+          username: record.username,
+          at: new Date()
+        }).catch(() => null);
+      }
+
+      return sendSimpleSecurityPage(res, {
+        ok: result.ok,
+        title: result.ok ? "Аккаунт удалён" : "Не удалось удалить аккаунт",
+        message: result.ok
+          ? "Аккаунт Liotan и связанные данные были удалены."
+          : "Аккаунт уже не найден или действие больше не может быть применено."
+      });
+    }
+
+    return sendSimpleSecurityPage(res, {
+      ok: false,
+      title: "Неизвестное действие",
+      message: "Выбранное действие не поддерживается."
     });
   } catch (err) {
     next(err);
@@ -973,5 +1256,6 @@ module.exports = {
   sendEmailChangeNewCode,
   confirmEmailChange,
   cancelEmailChange,
-  cancelRegistration
+  cancelRegistration,
+  handleRegistrationSecurityAction
 };
