@@ -7,14 +7,14 @@ export function getTransportMode() {
       TRANSPORT_MODE_KEY
     );
 
-  return ["auto", "direct", "relay"].includes(value)
+  return ["auto", "direct"].includes(value)
     ? value
     : "auto";
 }
 
 export function setTransportMode(mode) {
   const safeMode =
-    ["auto", "direct", "relay"].includes(mode)
+    ["auto", "direct"].includes(mode)
       ? mode
       : "auto";
 
@@ -38,16 +38,12 @@ export function setTransportMode(mode) {
 }
 
 export function shouldPreferRelay() {
-  return getTransportMode() === "relay";
+  return false;
 }
 
 export function getTransportSecurityLabel() {
   const mode =
     getTransportMode();
-
-  if (mode === "relay") {
-    return "relay ciphertext-only";
-  }
 
   if (mode === "direct") {
     return "direct tls";

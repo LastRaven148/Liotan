@@ -366,7 +366,7 @@ function getLabels(t) {
     devices: t.devices || "Устройства",
     language: t.language || "Язык",
     connectionPrivacy: t.connectionPrivacy || "Приватность соединения",
-    connectionPrivacyText: t.connectionPrivacyText || "Liotan автоматически выбирает безопасный маршрут соединения и при необходимости использует резервный транспорт для зашифрованного трафика.",
+    connectionPrivacyText: t.connectionPrivacyText || "Liotan автоматически выбирает безопасный маршрут соединения и при необходимости использует резервный API-маршрут.",
     connectionSecureText: t.connectionSecureText || "Ваше соединение защищено.",
     connectionUnsafeText: t.connectionUnsafeText || "Ваше соединение небезопасно.",
     connectionPrivacyAdvice: t.connectionPrivacyAdvice || "Если соединение выглядит небезопасным из-за VPN, прокси или сторонних сетевых сервисов, это предупреждение можно игнорировать.",

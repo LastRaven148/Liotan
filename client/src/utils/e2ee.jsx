@@ -172,16 +172,30 @@ export function hasChatSecret(username, chatKey) {
 }
 export function setChatSecret(username, chatKey, secret) {
   if (!username || !chatKey) {
-    return;
+    return false;
   }
+
   const key = getE2EEStorageKey(username, chatKey);
   const cleanSecret = String(secret || "").trim();
+  const previousSecret = chatSecretMemory.get(key) || getLegacyChatSecret(username, chatKey) || "";
+
+  if (previousSecret === cleanSecret) {
+    removeLegacyChatSecret(username, chatKey);
+    if (cleanSecret) {
+      chatSecretMemory.set(key, cleanSecret);
+    } else {
+      chatSecretMemory.delete(key);
+    }
+    return false;
+  }
+
   removeLegacyChatSecret(username, chatKey);
   if (!cleanSecret) {
     chatSecretMemory.delete(key);
   } else {
     chatSecretMemory.set(key, cleanSecret);
   }
+
   window.dispatchEvent(new CustomEvent("liotan:e2ee-updated", {
     detail: {
       username,
@@ -189,6 +203,8 @@ export function setChatSecret(username, chatKey, secret) {
       enabled: Boolean(cleanSecret)
     }
   }));
+
+  return true;
 }
 export function isEncryptedText(value) {
   return typeof value === "string" && (value.startsWith(E2EE_PREFIX) || value.startsWith(LEGACY_E2EE_PREFIX));
@@ -527,7 +543,9 @@ export async function ensureConversationSecret({
   const current = getChatSecret(username, chatKey) || getLegacyChatSecret(username, chatKey);
   if (current) {
     setChatSecret(username, chatKey, current);
+    return current;
   }
+
   const pendingKey = `${username}:${chatKey}`;
   if (pendingConversationKeys.has(pendingKey)) {
     return pendingConversationKeys.get(pendingKey);
@@ -796,9 +814,10 @@ export async function decryptTextForChat({
     if (payload?.v !== 2) {
       throw new Error("Unsupported E2EE version");
     }
-    const secret = getChatSecret(username, payload.kid || chatKey) || getLegacyChatSecret(username, payload.kid || chatKey);
+    const secretKey = payload.kid || chatKey;
+    const secret = getChatSecret(username, secretKey) || getLegacyChatSecret(username, secretKey);
     if (secret) {
-      setChatSecret(username, payload.kid || chatKey, secret);
+      setChatSecret(username, secretKey, secret);
     }
     if (!secret) {
       return "Зашифрованное сообщение. Ключ этого чата ещё не получен.";

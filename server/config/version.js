@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.1.5",
+  version: "49.1.6",
   release: "new session restricted mode"
 };

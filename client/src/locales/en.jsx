@@ -90,7 +90,7 @@ const en = {
   connectionPrivacy: "Connection privacy",
   connectionSecureText: "Your connection is secure.",
   connectionUnsafeText: "Your connection is not secure.",
-  connectionPrivacyText: "A direct secure connection is currently used. Relay mode is prepared as a fallback route for encrypted traffic.",
+  connectionPrivacyText: "A direct secure connection is currently used. A backup API route is used only when the network route fails.",
   available: "available",
   off: "off",
 

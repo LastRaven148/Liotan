@@ -47,7 +47,7 @@ function getPreview(value) {
     return value.text;
   }
   if (value?.contentMode === "e2ee" || value?.encryptedContent?.ciphertext) {
-    return "Encrypted message";
+    return "Зашифрованное сообщение";
   }
   return getAttachmentPreview(getMessageAttachment(value));
 }

@@ -72,8 +72,11 @@ export default function useSocket({
     }
     window.addEventListener("click", unlockSoundOnUserGesture);
     window.addEventListener("keydown", unlockSoundOnUserGesture);
-    function createSocketConnection() {
-      return io(getActiveApiUrl() || API, {
+    let activeSocketEndpoint = getActiveApiUrl() || API;
+    let reconnectTimer = null;
+
+    function createSocketConnection(endpoint = activeSocketEndpoint) {
+      return io(endpoint, {
         withCredentials: true,
         transports: ["websocket", "polling"],
         timeout: 12000,
@@ -84,15 +87,30 @@ export default function useSocket({
       });
     }
 
-    let socket = createSocketConnection();
+    let socket = createSocketConnection(activeSocketEndpoint);
     socketRef.current = socket;
 
     function reconnectSocketToActiveApi() {
-      const previousSocket = socket;
-      socket = createSocketConnection();
-      socketRef.current = socket;
-      attachSocketHandlers(socket);
-      previousSocket.disconnect();
+      const nextEndpoint = getActiveApiUrl() || API;
+      if (!nextEndpoint || nextEndpoint === activeSocketEndpoint) {
+        return;
+      }
+
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = window.setTimeout(() => {
+        const endpoint = getActiveApiUrl() || API;
+        if (!endpoint || endpoint === activeSocketEndpoint) {
+          return;
+        }
+
+        activeSocketEndpoint = endpoint;
+        const previousSocket = socket;
+        socket = createSocketConnection(endpoint);
+        socketRef.current = socket;
+        attachSocketHandlers(socket);
+        previousSocket.removeAllListeners();
+        previousSocket.disconnect();
+      }, 250);
     }
 
     window.addEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
@@ -378,6 +396,7 @@ export default function useSocket({
       window.removeEventListener("click", unlockSoundOnUserGesture);
       window.removeEventListener("keydown", unlockSoundOnUserGesture);
       window.removeEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
+      window.clearTimeout(reconnectTimer);
       socket.removeAllListeners();
       socket.disconnect();
     };

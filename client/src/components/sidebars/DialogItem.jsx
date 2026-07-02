@@ -117,34 +117,56 @@ export default function DialogItem({
 
   useEffect(() => {
     let alive = true;
+    let timer = null;
+    const hasEncryptedPreview = Boolean(dialog?.lastMessageEncryptedContent?.ciphertext || isEncryptedPreviewText(dialog.lastMessage));
+    const effectiveChatKey = getEffectiveE2EEChatKey(chatKey, dialog);
+    const encryptedContent = dialog.lastMessageEncryptedContent || null;
+    const encryptedText = isEncryptedPreviewText(dialog.lastMessage) ? dialog.lastMessage : "";
 
     async function loadEncryptedTextPreview() {
-      setDecryptedPreviewText("");
-      if (!dialog?.lastMessageEncryptedContent?.ciphertext && !isEncryptedPreviewText(dialog.lastMessage)) {
+      if (!hasEncryptedPreview) {
+        if (alive) setDecryptedPreviewText("");
         return;
       }
+
       try {
         const value = await decryptTextForChat({
           username,
-          chatKey: getEffectiveE2EEChatKey(chatKey, dialog),
-          text: isEncryptedPreviewText(dialog.lastMessage) ? dialog.lastMessage : "",
-          encryptedContent: dialog.lastMessageEncryptedContent || null
+          chatKey: effectiveChatKey,
+          text: encryptedText,
+          encryptedContent
         });
-        if (alive && value && !isEncryptedPreviewText(value) && !value.startsWith("Зашифрованное сообщение") && !value.startsWith("Не удалось")) {
-          setDecryptedPreviewText(value);
+        if (!alive) {
+          return;
+        }
+        if (value && !isEncryptedPreviewText(value) && !value.startsWith("Зашифрованное сообщение") && !value.startsWith("Не удалось")) {
+          setDecryptedPreviewText(previous => previous === value ? previous : value);
         }
       } catch {
         if (alive) setDecryptedPreviewText("");
       }
     }
 
+    function schedulePreviewReload(event) {
+      const detail = event?.detail || {};
+      if (detail.username && detail.username !== username) {
+        return;
+      }
+      if (detail.chatKey && detail.chatKey !== effectiveChatKey && detail.chatKey !== chatKey) {
+        return;
+      }
+      window.clearTimeout(timer);
+      timer = window.setTimeout(loadEncryptedTextPreview, 80);
+    }
+
     loadEncryptedTextPreview();
-    window.addEventListener("liotan:e2ee-updated", loadEncryptedTextPreview);
+    window.addEventListener("liotan:e2ee-updated", schedulePreviewReload);
     return () => {
       alive = false;
-      window.removeEventListener("liotan:e2ee-updated", loadEncryptedTextPreview);
+      window.clearTimeout(timer);
+      window.removeEventListener("liotan:e2ee-updated", schedulePreviewReload);
     };
-  }, [dialog, username, chatKey]);
+  }, [dialog?.lastMessage, dialog?.lastMessageEncryptedContent, dialog?.e2eeVersion, username, chatKey]);
 
   useEffect(() => {
     let alive = true;
@@ -400,8 +422,10 @@ export default function DialogItem({
         </span>
       </div>;
     }
+    const fallbackPreview = getSafePreviewText(dialog.lastMessage);
+    const previewText = decryptedPreviewText || (fallbackPreview === "Encrypted message" ? t.encryptedMessage || "Зашифрованное сообщение" : fallbackPreview);
     return <div className="dialog-preview">
-      {decryptedPreviewText || getSafePreviewText(dialog.lastMessage)}
+      {previewText}
     </div>;
   }
   return <div ref={itemRef} className={activeChat === chatKey ? "user active" : "user"} onClick={handleOpenChat} onContextMenu={handleContextMenu} onTouchStart={handleTouchStart} onTouchEnd={clearLongPress} onTouchMove={clearLongPress} onTouchCancel={clearLongPress}>
