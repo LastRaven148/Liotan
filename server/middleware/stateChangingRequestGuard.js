@@ -6,8 +6,16 @@ function hasValidStateHeader(req) {
   return typeof value === "string" && value.length >= 8 && value.length <= 128;
 }
 
+function isTokenProtectedBrowserAction(req) {
+  return /^\/auth\/register\/cancel\/[^/]+\/action\/[^/]+$/.test(req.path || "");
+}
+
 function stateChangingRequestGuard(req, res, next) {
   if (SAFE_METHODS.has(req.method)) {
+    return next();
+  }
+
+  if (isTokenProtectedBrowserAction(req)) {
     return next();
   }
 

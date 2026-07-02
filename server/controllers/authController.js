@@ -180,13 +180,113 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function formatSecurityDate(value) {
-  const date = value ? new Date(value) : new Date();
-  if (Number.isNaN(date.getTime())) {
-    return "Не удалось определить";
+function getSecurityPageLocale(req) {
+  const header = String(req?.headers?.["accept-language"] || "").toLowerCase();
+  if (!header) {
+    return "en";
   }
 
-  return new Intl.DateTimeFormat("ru-RU", {
+  const first = header.split(",")[0] || "";
+  if (first.startsWith("ru")) {
+    return "ru";
+  }
+
+  return "en";
+}
+
+function securityText(locale) {
+  if (locale === "ru") {
+    return {
+      htmlLang: "ru",
+      unknown: "Не удалось определить",
+      unknownDevice: "Неизвестное устройство",
+      browser: "Браузер",
+      web: "Web",
+      loginTitle: "Мы обнаружили вход в Liotan",
+      loginLead: "Проверьте детали. Если это были вы, просто подтвердите это. Если нет — выберите безопасное действие.",
+      time: "Время",
+      device: "Устройство",
+      os: "ОС",
+      browserLabel: "Браузер",
+      ip: "IP",
+      trusted: "Это был я",
+      suspicious: "Это не я",
+      expiresPrefix: "Ссылка действует до",
+      accuracyHint: "IP и устройство могут определяться неточно.",
+      suspiciousTitle: "Подозрительный вход",
+      suspiciousLead: "Выберите действие. Каждое действие потребует отдельного подтверждения.",
+      revokeSession: "Завершить текущую сессию",
+      revokeSessionConfirm: "Уверены, что хотите завершить сессию, связанную с этим входом?",
+      logoutAll: "Выйти со всех устройств",
+      logoutAllConfirm: "Уверены, что хотите выйти со всех устройств? Все активные сессии будут завершены.",
+      reset2fa: "Сбросить двухфакторную аутентификацию",
+      reset2faConfirm: "Уверены, что хотите сбросить 2FA? Backup codes будут удалены, а все сессии завершены.",
+      deleteAccount: "Удалить аккаунт полностью",
+      passwordNote: "Смена пароля будет отдельным защищённым сценарием через восстановление пароля.",
+      confirmTitle: "Подтвердите действие",
+      cancel: "Отмена",
+      yes: "Да, хочу",
+      deleteTitle: "Удалить аккаунт полностью?",
+      deleteConfirm: "Удаление аккаунта приведёт к полному удалению профиля, чатов, вложений, сессий и настроек безопасности.",
+      deleteStepOneTitle: "Удалить аккаунт?",
+      deleteStepOneText: "Удаление аккаунта приведёт к полному удалению всех данных: профиля, чатов, вложений, сессий и настроек безопасности.",
+      deleteStepOneButton: "Да, хочу удалить аккаунт",
+      back: "Назад",
+      deleteStepTwoTitle: "Вы точно уверены?",
+      deleteStepTwoText: "После этого действия данные будет невозможно вернуть.",
+      deleteFinalButton: "Да, удалить аккаунт навсегда"
+    };
+  }
+
+  return {
+    htmlLang: "en",
+    unknown: "Could not determine",
+    unknownDevice: "Unknown device",
+    browser: "Browser",
+    web: "Web",
+    loginTitle: "We detected a Liotan login",
+    loginLead: "Review the details. If this was you, confirm it. If not, choose a safe action.",
+    time: "Time",
+    device: "Device",
+    os: "OS",
+    browserLabel: "Browser",
+    ip: "IP",
+    trusted: "This was me",
+    suspicious: "This was not me",
+    expiresPrefix: "This link expires at",
+    accuracyHint: "IP address and device details may be approximate.",
+    suspiciousTitle: "Suspicious login",
+    suspiciousLead: "Choose an action. Each action requires separate confirmation.",
+    revokeSession: "End this session",
+    revokeSessionConfirm: "Are you sure you want to end the session linked to this login?",
+    logoutAll: "Sign out of all devices",
+    logoutAllConfirm: "Are you sure you want to sign out of all devices? All active sessions will be ended.",
+    reset2fa: "Reset two-factor authentication",
+    reset2faConfirm: "Are you sure you want to reset 2FA? Backup codes will be deleted, and all sessions will be ended.",
+    deleteAccount: "Delete account completely",
+    passwordNote: "Password change will be handled by a separate protected password recovery flow.",
+    confirmTitle: "Confirm action",
+    cancel: "Cancel",
+    yes: "Yes, continue",
+    deleteTitle: "Delete account completely?",
+    deleteConfirm: "Deleting the account will permanently delete the profile, chats, attachments, sessions, and security settings.",
+    deleteStepOneTitle: "Delete account?",
+    deleteStepOneText: "Deleting the account will permanently delete all data: profile, chats, attachments, sessions, and security settings.",
+    deleteStepOneButton: "Yes, I want to delete the account",
+    back: "Back",
+    deleteStepTwoTitle: "Are you absolutely sure?",
+    deleteStepTwoText: "After this action, the data cannot be restored.",
+    deleteFinalButton: "Yes, delete the account forever"
+  };
+}
+
+function formatSecurityDate(value, locale = "en") {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return securityText(locale).unknown;
+  }
+
+  return new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -221,16 +321,18 @@ function sendSimpleSecurityPage(res, { ok, title, message }) {
 </html>`);
 }
 
-function sendRegistrationSecurityPage(res, { token, record }) {
-  const createdAt = formatSecurityDate(record.createdAt);
-  const expiresAt = formatSecurityDate(record.expiresAt);
-  const deviceName = escapeHtml(record.deviceName || "Unknown device");
-  const browserName = escapeHtml(record.browserName || "Browser");
-  const osName = escapeHtml(record.osName || "Web");
-  const ipHint = escapeHtml(record.ipHint || "Не удалось определить");
+function sendRegistrationSecurityPage(res, { token, record, req }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
+  const createdAt = formatSecurityDate(record.createdAt, locale);
+  const expiresAt = formatSecurityDate(record.expiresAt, locale);
+  const deviceName = escapeHtml(record.deviceName || copy.unknownDevice);
+  const browserName = escapeHtml(record.browserName || copy.browser);
+  const osName = escapeHtml(record.osName || copy.web);
+  const ipHint = escapeHtml(record.ipHint || copy.unknown);
 
   res.status(200).send(`<!doctype html>
-<html lang="ru">
+<html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -243,43 +345,45 @@ function sendRegistrationSecurityPage(res, { token, record }) {
 </head>
 <body>
   <main class="card">
-    <h1>Мы обнаружили вход в Liotan</h1>
-    <p class="muted">Проверьте детали. Если это были вы, просто подтвердите это. Если нет — выберите безопасное действие.</p>
+    <h1>${escapeHtml(copy.loginTitle)}</h1>
+    <p class="muted">${escapeHtml(copy.loginLead)}</p>
     <section class="details">
-      <div class="row"><span class="label">Время</span><span class="value">${escapeHtml(createdAt)}</span></div>
-      <div class="row"><span class="label">Устройство</span><span class="value">${deviceName}</span></div>
-      <div class="row"><span class="label">ОС</span><span class="value">${osName}</span></div>
-      <div class="row"><span class="label">Браузер</span><span class="value">${browserName}</span></div>
-      <div class="row"><span class="label">IP</span><span class="value">${ipHint}</span></div>
+      <div class="row"><span class="label">${escapeHtml(copy.time)}</span><span class="value">${escapeHtml(createdAt)}</span></div>
+      <div class="row"><span class="label">${escapeHtml(copy.device)}</span><span class="value">${deviceName}</span></div>
+      <div class="row"><span class="label">${escapeHtml(copy.os)}</span><span class="value">${osName}</span></div>
+      <div class="row"><span class="label">${escapeHtml(copy.browserLabel)}</span><span class="value">${browserName}</span></div>
+      <div class="row"><span class="label">${escapeHtml(copy.ip)}</span><span class="value">${ipHint}</span></div>
     </section>
     <form method="post" action="${getRegistrationActionUrl(token, "trusted")}">
-      <button class="btn safe" type="submit">Это был я</button>
+      <button class="btn safe" type="submit">${escapeHtml(copy.trusted)}</button>
     </form>
     <form method="post" action="${getRegistrationActionUrl(token, "suspicious")}">
-      <button class="btn danger" type="submit">Это не я</button>
+      <button class="btn danger" type="submit">${escapeHtml(copy.suspicious)}</button>
     </form>
-    <p class="tiny">Ссылка действует до ${escapeHtml(expiresAt)}. IP и устройство могут определяться неточно.</p>
+    <p class="tiny">${escapeHtml(copy.expiresPrefix)} ${escapeHtml(expiresAt)}. ${escapeHtml(copy.accuracyHint)}</p>
   </main>
 </body>
 </html>`);
 }
 
-function sendSuspiciousRegistrationPage(res, { token }) {
+function sendSuspiciousRegistrationPage(res, { token, req }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
   const actions = [
     {
       key: "revoke-session",
-      title: "Завершить текущую сессию",
-      text: "Уверены, что хотите завершить сессию, связанную с этим входом?"
+      title: copy.revokeSession,
+      text: copy.revokeSessionConfirm
     },
     {
       key: "logout-all",
-      title: "Выйти со всех устройств",
-      text: "Уверены, что хотите выйти со всех устройств? Все активные сессии будут завершены."
+      title: copy.logoutAll,
+      text: copy.logoutAllConfirm
     },
     {
       key: "reset-2fa",
-      title: "Сбросить двухфакторную аутентификацию",
-      text: "Уверены, что хотите сбросить 2FA? Backup codes будут удалены, а все сессии завершены."
+      title: copy.reset2fa,
+      text: copy.reset2faConfirm
     }
   ];
 
@@ -288,34 +392,34 @@ function sendSuspiciousRegistrationPage(res, { token }) {
   `).join("");
 
   res.status(200).send(`<!doctype html>
-<html lang="ru">
+<html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Подозрительный вход</title>
+  <title>${escapeHtml(copy.suspiciousTitle)}</title>
   <style>
     *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(640px,100%);background:#17212b;border:1px solid #243447;border-radius:24px;padding:30px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:30px}.muted{color:#9aaabc;line-height:1.55}.actions{display:grid;gap:12px;margin-top:22px}.btn{width:100%;border:0;border-radius:15px;padding:16px 18px;font-size:16px;font-weight:900;cursor:pointer}.danger{background:#ef4444;color:#fff}.danger:hover{background:#dc2626}.dark{background:#7f1d1d;color:#fff}.dark:hover{background:#641515}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:18px}.modal.open{display:flex}.dialog{width:min(480px,100%);background:#17212b;border:1px solid #33475f;border-radius:22px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.dialog h2{margin:0 0 10px;font-size:24px}.dialog p{color:#b6c4d2;line-height:1.55}.row{display:flex;gap:10px;margin-top:16px}.row .btn{flex:1}.ghost{background:#243447;color:#dbeafe}
   </style>
 </head>
 <body>
   <main class="card">
-    <h1>Подозрительный вход</h1>
-    <p class="muted">Выберите действие. Каждое действие потребует отдельного подтверждения.</p>
+    <h1>${escapeHtml(copy.suspiciousTitle)}</h1>
+    <p class="muted">${escapeHtml(copy.suspiciousLead)}</p>
     <div class="actions">
       ${buttons}
-      <button class="btn dark" type="button" data-delete="1">Удалить аккаунт полностью</button>
+      <button class="btn dark" type="button" data-delete="1">${escapeHtml(copy.deleteAccount)}</button>
     </div>
-    <p class="small">Смена пароля будет отдельным защищённым сценарием через восстановление пароля.</p>
+    <p class="small">${escapeHtml(copy.passwordNote)}</p>
   </main>
 
   <div class="modal" id="confirmModal" aria-hidden="true">
     <div class="dialog">
-      <h2 id="confirmTitle">Подтвердите действие</h2>
+      <h2 id="confirmTitle">${escapeHtml(copy.confirmTitle)}</h2>
       <p id="confirmText"></p>
       <form id="confirmForm" method="post" action="">
         <div class="row">
-          <button class="btn ghost" type="button" data-close="1">Отмена</button>
-          <button class="btn danger" type="submit">Да, хочу</button>
+          <button class="btn ghost" type="button" data-close="1">${escapeHtml(copy.cancel)}</button>
+          <button class="btn danger" type="submit">${escapeHtml(copy.yes)}</button>
         </div>
       </form>
     </div>
@@ -338,7 +442,7 @@ function sendSuspiciousRegistrationPage(res, { token }) {
       button.addEventListener('click', () => openModal(button.dataset.action, button.dataset.title, button.dataset.text));
     });
     document.querySelector('[data-delete]').addEventListener('click', () => {
-      openModal('delete-step-1', 'Удалить аккаунт полностью?', 'Удаление аккаунта приведёт к полному удалению профиля, чатов, вложений, сессий и настроек безопасности.');
+      openModal('delete-step-1', ${JSON.stringify(copy.deleteTitle)}, ${JSON.stringify(copy.deleteConfirm)});
     });
     document.querySelectorAll('[data-close]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -351,12 +455,16 @@ function sendSuspiciousRegistrationPage(res, { token }) {
 </html>`);
 }
 
-function sendDeleteStepOnePage(res, { token }) {
-  res.status(200).send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Удаление аккаунта</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>Удалить аккаунт?</h1><p class="muted">Удаление аккаунта приведёт к полному удалению всех данных: профиля, чатов, вложений, сессий и настроек безопасности.</p><form method="post" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">Да, хочу удалить аккаунт</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">Назад</button></form></main></body></html>`);
+function sendDeleteStepOnePage(res, { token, req }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
+  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
 }
 
-function sendDeleteStepTwoPage(res, { token }) {
-  res.status(200).send(`<!doctype html><html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Последнее подтверждение</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>Вы точно уверены?</h1><p class="muted">После этого действия данные будет невозможно вернуть.</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><button class="btn" type="submit">Да, удалить аккаунт навсегда</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">Отмена</button></form></main></body></html>`);
+function sendDeleteStepTwoPage(res, { token, req }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
+  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:16px;font-weight:800;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="post" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
 }
 
 async function createRegistrationCancelLink({ user, email, req, sessionIdHash }) {
@@ -1081,7 +1189,8 @@ async function cancelRegistration(req, res, next) {
 
     return sendRegistrationSecurityPage(res, {
       token: req.params.token,
-      record
+      record,
+      req
     });
   } catch (err) {
     next(err);
@@ -1111,7 +1220,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "suspicious") {
-      return sendSuspiciousRegistrationPage(res, { token: req.params.token });
+      return sendSuspiciousRegistrationPage(res, { token: req.params.token, req });
     }
 
     if (action === "revoke-session") {
@@ -1161,11 +1270,11 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "delete-step-1") {
-      return sendDeleteStepOnePage(res, { token: req.params.token });
+      return sendDeleteStepOnePage(res, { token: req.params.token, req });
     }
 
     if (action === "delete-step-2") {
-      return sendDeleteStepTwoPage(res, { token: req.params.token });
+      return sendDeleteStepTwoPage(res, { token: req.params.token, req });
     }
 
     if (action === "delete-final") {

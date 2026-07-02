@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "49.0.5",
+  "version": "49.0.6",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
@@ -17,7 +17,6 @@
     "make-release": "node scripts/makeRelease.js",
     "release:check": "node scripts/checkRelease.js"
   },
-  "dependencies": {},
   "devDependencies": {
     "archiver": "^7.0.1"
   }
