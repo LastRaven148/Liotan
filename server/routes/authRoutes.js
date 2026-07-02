@@ -117,6 +117,12 @@ router.get(
   cancelRegistration
 );
 
+router.get(
+  "/auth/register/cancel/:token/action/:action",
+  authLimiter,
+  handleRegistrationSecurityAction
+);
+
 router.post(
   "/auth/register/cancel/:token/action/:action",
   authLimiter,

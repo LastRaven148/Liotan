@@ -75,6 +75,7 @@ app.use(requestContext);
 app.use(cors(corsOptions));
 app.use(securityHeaders);
 app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use(stateChangingRequestGuard);
 app.use(mongoSanitize);
 app.use(hpp());
