@@ -232,6 +232,18 @@ async function deriveWrapKey({
 function randomSecret() {
   return toBase64(crypto.getRandomValues(new Uint8Array(32)));
 }
+
+async function syncE2EEServerState(action, label = "E2EE sync") {
+  try {
+    await action();
+    return true;
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn(`${label} failed`, err);
+    }
+    return false;
+  }
+}
 async function importPublicKey(jwk) {
   return crypto.subtle.importKey("jwk", jwk, {
     name: "ECDH",
@@ -375,6 +387,8 @@ export async function initE2EEAccountIdentity({
       console.warn("E2EE backup fetch failed", err);
     }
   }
+  let backupDecryptFailed = false;
+
   if (backup?.publicKey && backup?.encryptedPrivateKey) {
     try {
       const privateJwk = await decryptIdentityBackup({
@@ -385,15 +399,20 @@ export async function initE2EEAccountIdentity({
       await saveLocalIdentity(username, backup.publicKey, privateKey);
       const identity = await loadLocalIdentity(username);
       if (identity) {
-        await setE2EEIdentityApi(identity.publicJwk);
+        await syncE2EEServerState(
+          () => setE2EEIdentityApi(identity.publicJwk),
+          "E2EE identity publish"
+        );
       }
       return identity;
     } catch (err) {
+      backupDecryptFailed = true;
       if (import.meta.env.DEV) {
-        console.warn("E2EE backup decrypt failed; creating a new identity", err);
+        console.warn("E2EE backup decrypt failed; preserving existing server identity", err);
       }
     }
   }
+
   const local = await loadLocalIdentity(username);
   if (local) {
     if (local.legacyPrivateJwk) {
@@ -402,11 +421,22 @@ export async function initE2EEAccountIdentity({
         privateJwk: local.legacyPrivateJwk,
         password
       });
-      await setE2EEIdentityBackupApi(nextBackup);
+      await syncE2EEServerState(
+        () => setE2EEIdentityBackupApi(nextBackup),
+        "E2EE identity backup publish"
+      );
     }
-    await setE2EEIdentityApi(local.publicJwk);
+    await syncE2EEServerState(
+      () => setE2EEIdentityApi(local.publicJwk),
+      "E2EE identity publish"
+    );
     return local;
   }
+
+  if (backupDecryptFailed) {
+    return null;
+  }
+
   const created = await createIdentityPair();
   await saveLocalIdentity(username, created.publicJwk, created.privateKey);
   const nextBackup = await encryptIdentityBackup({
@@ -414,8 +444,14 @@ export async function initE2EEAccountIdentity({
     privateJwk: created.privateJwk,
     password
   });
-  await setE2EEIdentityBackupApi(nextBackup);
-  await setE2EEIdentityApi(created.publicJwk);
+  await syncE2EEServerState(
+    () => setE2EEIdentityBackupApi(nextBackup),
+    "E2EE identity backup publish"
+  );
+  await syncE2EEServerState(
+    () => setE2EEIdentityApi(created.publicJwk),
+    "E2EE identity publish"
+  );
   return loadLocalIdentity(username);
 }
 export async function ensureE2EEIdentity(username) {
@@ -424,7 +460,10 @@ export async function ensureE2EEIdentity(username) {
   }
   const existing = await loadLocalIdentity(username);
   if (existing) {
-    await setE2EEIdentityApi(existing.publicJwk);
+    await syncE2EEServerState(
+      () => setE2EEIdentityApi(existing.publicJwk),
+      "E2EE identity publish"
+    );
     return existing;
   }
   return null;
@@ -757,7 +796,10 @@ export async function decryptTextForChat({
     if (payload?.v !== 2) {
       throw new Error("Unsupported E2EE version");
     }
-    const secret = getChatSecret(username, payload.kid || chatKey);
+    const secret = getChatSecret(username, payload.kid || chatKey) || getLegacyChatSecret(username, payload.kid || chatKey);
+    if (secret) {
+      setChatSecret(username, payload.kid || chatKey, secret);
+    }
     if (!secret) {
       return "Зашифрованное сообщение. Ключ этого чата ещё не получен.";
     }
