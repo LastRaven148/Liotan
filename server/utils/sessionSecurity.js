@@ -10,6 +10,9 @@ const privacy =
 const sessionConfig =
   require("../config/sessions");
 
+const securityPolicy =
+  require("../security/policies/securityPolicy");
+
 const {
   hmac
 } = require("./privacy");
@@ -22,6 +25,31 @@ function createSessionId() {
 
 function hashSessionId(sessionId) {
   return hmac(String(sessionId || ""));
+}
+
+
+function getNewSessionRestrictionMs() {
+  return Number(securityPolicy?.devices?.newSessionRestrictionMs || 0);
+}
+
+function getNewSessionRestrictionHours() {
+  return Math.ceil(getNewSessionRestrictionMs() / (60 * 60 * 1000));
+}
+
+function getRestrictedUntil(createdAt) {
+  const createdTime = new Date(createdAt || 0).getTime();
+  const restrictionMs = getNewSessionRestrictionMs();
+
+  if (!createdTime || !restrictionMs) {
+    return null;
+  }
+
+  return new Date(createdTime + restrictionMs);
+}
+
+function isSessionRestrictedByAge(session) {
+  const restrictedUntil = getRestrictedUntil(session?.createdAt);
+  return Boolean(restrictedUntil && restrictedUntil.getTime() > Date.now());
 }
 
 function getSessionExpiryDate() {
@@ -440,6 +468,65 @@ async function isSessionActive({
   return Boolean(session);
 }
 
+
+async function getSessionRestrictionState({
+  userId,
+  username,
+  sessionId
+}) {
+  if (!sessionId) {
+    return {
+      restricted: false,
+      restrictedUntil: null,
+      restrictedForHours: getNewSessionRestrictionHours()
+    };
+  }
+
+  const session =
+    await Session.findOne({
+      userId,
+      username,
+      sessionIdHash: hashSessionId(sessionId),
+      revokedAt: null,
+      expiresAt: {
+        $gt: new Date()
+      }
+    })
+      .select("createdAt")
+      .lean();
+
+  const restrictedUntil = getRestrictedUntil(session?.createdAt);
+
+  return {
+    restricted: Boolean(restrictedUntil && restrictedUntil.getTime() > Date.now()),
+    restrictedUntil,
+    restrictedForHours: getNewSessionRestrictionHours()
+  };
+}
+
+async function isSessionHashRestricted({
+  userId,
+  sessionIdHash
+}) {
+  if (!sessionIdHash) {
+    return false;
+  }
+
+  const session =
+    await Session.findOne({
+      userId,
+      sessionIdHash,
+      revokedAt: null,
+      expiresAt: {
+        $gt: new Date()
+      }
+    })
+      .select("createdAt")
+      .lean();
+
+  return isSessionRestrictedByAge(session);
+}
+
 async function updateSessionDeviceKey({
   userId,
   sessionId,
@@ -540,6 +627,8 @@ module.exports = {
   touchSession,
   isSessionActive,
   updateSessionDeviceKey,
+  getSessionRestrictionState,
+  isSessionHashRestricted,
   revokeSession,
   revokeAllUserSessions,
   cleanupExpiredSessions,

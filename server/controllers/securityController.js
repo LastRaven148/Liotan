@@ -6,6 +6,7 @@ const { getOrCreateUserSecurity, publicSecurityState } = require("../security/se
 const { encryptJson, decryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
 const { generateSecret, verifyTotp, otpauthUrl } = require("../security/totp/totp");
 const { generateBackupCodes, consumeBackupCode } = require("../security/recovery/backupCodes");
+const { getSessionRestrictionState } = require("../utils/sessionSecurity");
 
 async function getCurrentUser(req) {
   return User.findOne({ _id: req.user.userId, username: req.user.username });
@@ -16,10 +17,17 @@ async function getSecurityStatus(req, res, next) {
     const user = await getCurrentUser(req);
     if (!user) return res.status(401).json({ error: "unauthorized" });
     const state = await getOrCreateUserSecurity(user);
+    const sessionRestriction = await getSessionRestrictionState({
+      userId: req.user.userId,
+      username: req.user.username,
+      sessionId: req.user.sid
+    });
+
     res.json({
       ok: true,
       policyVersion: securityPolicy.version,
       security: publicSecurityState(state),
+      restrictedSession: sessionRestriction,
       support: getSupportPolicy()
     });
   } catch (err) {

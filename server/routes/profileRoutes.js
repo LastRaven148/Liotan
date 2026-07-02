@@ -7,6 +7,9 @@ const authMiddleware =
 const upload =
   require("../config/upload");
 
+const { restrictedSessionGuard } =
+  require("../middleware/restrictedSession");
+
 const {
   getProfile,
   updateProfile,
@@ -26,12 +29,14 @@ router.get(
 router.post(
   "/profile/update",
   authMiddleware,
+  restrictedSessionGuard,
   updateProfile
 );
 
 router.post(
   "/upload-avatar",
   authMiddleware,
+  restrictedSessionGuard,
   upload.single("avatar"),
   uploadAvatar
 );
@@ -39,6 +44,7 @@ router.post(
 router.delete(
   "/me/account",
   authMiddleware,
+  restrictedSessionGuard,
   deleteAccount
 );
 

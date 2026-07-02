@@ -12,6 +12,9 @@ const authMiddleware =
 const { recentAuth } =
   require("../middleware/recentAuth");
 
+const { restrictedSessionGuard } =
+  require("../middleware/restrictedSession");
+
 const {
   sendAuthCode,
   verifyAuthCode,
@@ -80,6 +83,7 @@ router.post(
   "/auth/email-change/current",
   authLimiter,
   authMiddleware,
+  restrictedSessionGuard,
   startEmailChangeCurrent
 );
 
@@ -87,6 +91,7 @@ router.post(
   "/auth/email-change/verify-current",
   authLimiter,
   authMiddleware,
+  restrictedSessionGuard,
   verifyEmailChangeCurrent
 );
 
@@ -94,6 +99,7 @@ router.post(
   "/auth/email-change/new-code",
   codeLimiter,
   authMiddleware,
+  restrictedSessionGuard,
   sendEmailChangeNewCode
 );
 
@@ -101,6 +107,7 @@ router.post(
   "/auth/email-change/confirm",
   authLimiter,
   authMiddleware,
+  restrictedSessionGuard,
   recentAuth,
   confirmEmailChange
 );
@@ -135,6 +142,7 @@ router.get(
 router.get(
   "/auth/sessions",
   authMiddleware,
+  restrictedSessionGuard,
   listSessions
 );
 
@@ -154,18 +162,21 @@ router.post(
 router.delete(
   "/auth/sessions/:id",
   authMiddleware,
+  restrictedSessionGuard,
   revokeOneSession
 );
 
 router.post(
   "/auth/sessions/logout-others",
   authMiddleware,
+  restrictedSessionGuard,
   logoutOtherSessions
 );
 
 router.post(
   "/auth/sessions/logout-all",
   authMiddleware,
+  restrictedSessionGuard,
   logoutAllSessions
 );
 

@@ -23,7 +23,9 @@ const {
   revokeSession,
   revokeAllUserSessions,
   cleanupExpiredSessionsForUser,
-  cleanupDuplicateDeviceSessionsForUser
+  cleanupDuplicateDeviceSessionsForUser,
+  getSessionRestrictionState,
+  isSessionHashRestricted
 } = require("../utils/sessionSecurity");
 const {
   sendEmailCode,
@@ -46,6 +48,7 @@ const { verifyTotp } = require("../security/totp/totp");
 const deleteAccountData = require("../utils/deleteAccountData");
 const { consumeBackupCode } = require("../security/recovery/backupCodes");
 const privacy = require("../config/privacy");
+const { getRestrictedMessage } = require("../middleware/restrictedSession");
 const {
   createPendingEmailChange,
   applyEligiblePendingEmailChanges,
@@ -1288,6 +1291,42 @@ async function cancelRegistration(req, res, next) {
   }
 }
 
+
+function isSecurityPageActionBlockedByRestrictedSession(action) {
+  return action !== "";
+}
+
+async function sendRestrictedSecurityActionPageIfNeeded({
+  req,
+  res,
+  record,
+  action
+}) {
+  if (!isSecurityPageActionBlockedByRestrictedSession(action)) {
+    return false;
+  }
+
+  const restricted =
+    await isSessionHashRestricted({
+      userId: record.userId,
+      sessionIdHash: record.sessionIdHash
+    });
+
+  if (!restricted) {
+    return false;
+  }
+
+  const locale = getSecurityPageLocale(req);
+
+  sendSimpleSecurityPage(res, {
+    ok: false,
+    title: locale === "ru" ? "Доступ запрещен" : "Access blocked",
+    message: getRestrictedMessage(req)
+  });
+
+  return true;
+}
+
 async function handleRegistrationSecurityAction(req, res, next) {
   try {
     const action = String(req.params.action || "");
@@ -1301,6 +1340,10 @@ async function handleRegistrationSecurityAction(req, res, next) {
         title: locale === "ru" ? "Ссылка недействительна" : "Invalid link",
         message: locale === "ru" ? "Эта ссылка безопасности уже использована или истекла." : "This security link has already been used or has expired."
       });
+    }
+
+    if (await sendRestrictedSecurityActionPageIfNeeded({ req, res, record, action })) {
+      return;
     }
 
     if (action === "trusted") {
@@ -1498,13 +1541,21 @@ async function getCurrentSession(req, res, next) {
       userId: req.user.userId
     }).select("totp.enabled totp.backupCodeHashes").lean();
 
+    const sessionRestriction =
+      await getSessionRestrictionState({
+        userId: req.user.userId,
+        username: req.user.username,
+        sessionId: req.user.sid
+      });
+
     res.json({
       ok: true,
       username: req.user.username,
       security: {
         totpEnabled: Boolean(security?.totp?.enabled),
         backupCodesRemaining: security?.totp?.backupCodeHashes?.length || 0
-      }
+      },
+      restrictedSession: sessionRestriction
     });
   } catch (err) {
     next(err);

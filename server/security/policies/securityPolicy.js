@@ -1,7 +1,7 @@
 const HOURS = 60 * 60 * 1000;
 
 module.exports = Object.freeze({
-  version: "49.0.0",
+  version: "49.1.3",
   principles: Object.freeze({
     serverTrust: "untrusted",
     supportTrust: "untrusted",
@@ -43,6 +43,8 @@ module.exports = Object.freeze({
     newDeviceApprovalRequiredWhenAvailable: true,
     supportCanApproveDevice: false,
     qrChallengeTtlSeconds: Number(process.env.DEVICE_QR_CHALLENGE_TTL_SECONDS || 120),
-    trustChallengeTtlSeconds: Number(process.env.DEVICE_TRUST_CHALLENGE_TTL_SECONDS || 600)
+    trustChallengeTtlSeconds: Number(process.env.DEVICE_TRUST_CHALLENGE_TTL_SECONDS || 600),
+    newSessionRestrictionHours: Number(process.env.NEW_SESSION_RESTRICTION_HOURS || 72),
+    newSessionRestrictionMs: Number(process.env.NEW_SESSION_RESTRICTION_HOURS || 72) * HOURS
   })
 });
