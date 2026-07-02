@@ -309,12 +309,8 @@ function getRegistrationActionUrl(token, action) {
   return `/auth/register/cancel/${encodeURIComponent(token)}/action/${encodeURIComponent(action)}`;
 }
 
-function getRegistrationConfirmUrl(token, action) {
-  return `${getRegistrationActionUrl(token, action)}?confirm=1`;
-}
-
 function isConfirmedSecurityAction(req) {
-  return req.method === "POST" || String(req.query?.confirm || "") === "1";
+  return req.method === "POST" && String(req.body?.confirm || "") === "1";
 }
 
 function sendSimpleSecurityPage(res, { ok, title, message }) {
@@ -370,7 +366,8 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
       <div class="row"><span class="label">${escapeHtml(copy.browserLabel)}</span><span class="value">${browserName}</span></div>
       <div class="row"><span class="label">${escapeHtml(copy.ip)}</span><span class="value">${ipHint}</span></div>
     </section>
-    <form method="get" action="${getRegistrationActionUrl(token, "trusted")}">
+    <form method="post" action="${getRegistrationActionUrl(token, "trusted")}">
+      <input type="hidden" name="confirm" value="1" />
       <button class="btn safe" type="submit">${escapeHtml(copy.trusted)}</button>
     </form>
     <form method="get" action="${getRegistrationActionUrl(token, "suspicious")}">
@@ -415,7 +412,8 @@ function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
   <main class="card">
     <h1>${escapeHtml(title || copy.confirmTitle)}</h1>
     <p class="muted">${escapeHtml(text || "")}</p>
-    <form method="get" action="${getRegistrationConfirmUrl(token, action)}">
+    <form method="post" action="${getRegistrationActionUrl(token, action)}">
+      <input type="hidden" name="confirm" value="1" />
       <button class="btn danger" type="submit">${escapeHtml(copy.yes)}</button>
     </form>
     <form method="get" action="${getRegistrationActionUrl(token, "suspicious")}">
@@ -529,13 +527,13 @@ function sendChangePasswordPage(res, { token, req, error = "" }) {
 function sendDeleteStepOnePage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationConfirmUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
+  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
 }
 
 function sendDeleteStepTwoPage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="get" action="${getRegistrationConfirmUrl(token, "delete-final")}"><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
+  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><input type="hidden" name="confirm" value="1" /><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
 }
 
 async function createRegistrationCancelLink({ user, email, req, sessionIdHash }) {
@@ -1284,6 +1282,9 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "trusted") {
+      if (!isConfirmedSecurityAction(req)) {
+        return sendRegistrationSecurityPage(res, { token: req.params.token, record, req });
+      }
       await markRegistrationActionUsed(record, "trusted");
       return sendSimpleSecurityPage(res, {
         ok: true,
@@ -1425,9 +1426,6 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "delete-step-2") {
-      if (!isConfirmedSecurityAction(req)) {
-        return sendDeleteStepOnePage(res, { token: req.params.token, req });
-      }
       return sendDeleteStepTwoPage(res, { token: req.params.token, req });
     }
 

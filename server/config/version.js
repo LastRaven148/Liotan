@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.1.0",
-  release: "security action flow stabilization"
+  version: "49.1.1",
+  release: "security audit hardening"
 };
