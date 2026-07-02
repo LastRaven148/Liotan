@@ -221,8 +221,12 @@ function securityText(locale) {
       logoutAllConfirm: "Уверены, что хотите выйти со всех устройств? Все активные сессии будут завершены.",
       reset2fa: "Сбросить двухфакторную аутентификацию",
       reset2faConfirm: "Уверены, что хотите сбросить 2FA? Backup codes будут удалены, а все сессии завершены.",
+      changePassword: "Сменить пароль",
+      changePasswordConfirm: "Мы отправим код восстановления на почту аккаунта. После этого откройте Liotan и задайте новый пароль через «Забыли пароль?». Продолжить?",
+      changePasswordSentTitle: "Код восстановления отправлен",
+      changePasswordSentText: "Проверьте почту аккаунта. Затем откройте Liotan, нажмите «Забыли пароль?» и задайте новый пароль с этим кодом.",
       deleteAccount: "Удалить аккаунт полностью",
-      passwordNote: "Смена пароля будет отдельным защищённым сценарием через восстановление пароля.",
+      passwordNote: "Смена пароля выполняется через отдельный защищённый сценарий восстановления по почте.",
       confirmTitle: "Подтвердите действие",
       cancel: "Отмена",
       yes: "Да, хочу",
@@ -263,8 +267,12 @@ function securityText(locale) {
     logoutAllConfirm: "Are you sure you want to sign out of all devices? All active sessions will be ended.",
     reset2fa: "Reset two-factor authentication",
     reset2faConfirm: "Are you sure you want to reset 2FA? Backup codes will be deleted, and all sessions will be ended.",
+    changePassword: "Change password",
+    changePasswordConfirm: "We will send a password recovery code to the account email. Then open Liotan and set a new password through “Forgot password?”. Continue?",
+    changePasswordSentTitle: "Recovery code sent",
+    changePasswordSentText: "Check the account email. Then open Liotan, press “Forgot password?”, and set a new password with that code.",
     deleteAccount: "Delete account completely",
-    passwordNote: "Password change will be handled by a separate protected password recovery flow.",
+    passwordNote: "Password change uses a separate protected email recovery flow.",
     confirmTitle: "Confirm action",
     cancel: "Cancel",
     yes: "Yes, continue",
@@ -374,6 +382,34 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
 </html>`);
 }
 
+function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
+  const locale = getSecurityPageLocale(req);
+  const copy = securityText(locale);
+  res.status(200).send(`<!doctype html>
+<html lang="${copy.htmlLang}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(copy.confirmTitle)}</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #33475f;border-radius:24px;padding:28px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:28px}.muted{color:#b6c4d2;line-height:1.55;font-size:16px}.btn{width:100%;border:0;border-radius:15px;padding:16px 18px;font-size:16px;font-weight:900;cursor:pointer;margin-top:12px}.danger{background:#ef4444;color:#fff}.ghost{background:#243447;color:#dbeafe}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>${escapeHtml(title || copy.confirmTitle)}</h1>
+    <p class="muted">${escapeHtml(text || "")}</p>
+    <form method="get" action="${getRegistrationConfirmUrl(token, action)}">
+      <button class="btn danger" type="submit">${escapeHtml(copy.yes)}</button>
+    </form>
+    <form method="get" action="${getRegistrationActionUrl(token, "suspicious")}">
+      <button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button>
+    </form>
+  </main>
+</body>
+</html>`);
+}
+
 function sendSuspiciousRegistrationPage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
@@ -389,6 +425,11 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
       text: copy.logoutAllConfirm
     },
     {
+      key: "change-password",
+      title: copy.changePassword,
+      text: copy.changePasswordConfirm
+    },
+    {
       key: "reset-2fa",
       title: copy.reset2fa,
       text: copy.reset2faConfirm
@@ -396,7 +437,9 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
   ];
 
   const buttons = actions.map((item) => `
-    <button class="btn danger" type="button" data-action="${item.key}" data-title="${escapeHtml(item.title)}" data-text="${escapeHtml(item.text)}">${escapeHtml(item.title)}</button>
+    <form method="get" action="${getRegistrationActionUrl(token, item.key)}">
+      <button class="btn danger" type="submit">${escapeHtml(item.title)}</button>
+    </form>
   `).join("");
 
   res.status(200).send(`<!doctype html>
@@ -406,7 +449,7 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(copy.suspiciousTitle)}</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(640px,100%);background:#17212b;border:1px solid #243447;border-radius:24px;padding:30px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:30px}.muted{color:#9aaabc;line-height:1.55}.actions{display:grid;gap:12px;margin-top:22px}.btn{width:100%;border:0;border-radius:15px;padding:16px 18px;font-size:16px;font-weight:900;cursor:pointer}.danger{background:#ef4444;color:#fff}.danger:hover{background:#dc2626}.dark{background:#7f1d1d;color:#fff}.dark:hover{background:#641515}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:18px}.modal.open{display:flex}.dialog{width:min(480px,100%);background:#17212b;border:1px solid #33475f;border-radius:22px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.dialog h2{margin:0 0 10px;font-size:24px}.dialog p{color:#b6c4d2;line-height:1.55}.row{display:flex;gap:10px;margin-top:16px}.row .btn{flex:1}.ghost{background:#243447;color:#dbeafe}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#17212b,#0e1621 58%);color:#fff;font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(640px,100%);background:#17212b;border:1px solid #243447;border-radius:24px;padding:30px;box-shadow:0 22px 80px rgba(0,0,0,.45)}h1{margin:0 0 10px;font-size:30px}.muted{color:#9aaabc;line-height:1.55}.actions{display:grid;gap:12px;margin-top:22px}.btn{width:100%;border:0;border-radius:15px;padding:16px 18px;font-size:16px;font-weight:900;cursor:pointer}.danger{background:#ef4444;color:#fff}.danger:hover{background:#dc2626}.dark{background:#7f1d1d;color:#fff}.dark:hover{background:#641515}.small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.45}
   </style>
 </head>
 <body>
@@ -415,50 +458,12 @@ function sendSuspiciousRegistrationPage(res, { token, req }) {
     <p class="muted">${escapeHtml(copy.suspiciousLead)}</p>
     <div class="actions">
       ${buttons}
-      <button class="btn dark" type="button" data-delete="1">${escapeHtml(copy.deleteAccount)}</button>
+      <form method="get" action="${getRegistrationActionUrl(token, "delete-step-1")}">
+        <button class="btn dark" type="submit">${escapeHtml(copy.deleteAccount)}</button>
+      </form>
     </div>
     <p class="small">${escapeHtml(copy.passwordNote)}</p>
   </main>
-
-  <div class="modal" id="confirmModal" aria-hidden="true">
-    <div class="dialog">
-      <h2 id="confirmTitle">${escapeHtml(copy.confirmTitle)}</h2>
-      <p id="confirmText"></p>
-      <form id="confirmForm" method="get" action="">
-        <div class="row">
-          <button class="btn ghost" type="button" data-close="1">${escapeHtml(copy.cancel)}</button>
-          <button class="btn danger" type="submit">${escapeHtml(copy.yes)}</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script>
-    const modal = document.getElementById('confirmModal');
-    const title = document.getElementById('confirmTitle');
-    const text = document.getElementById('confirmText');
-    const form = document.getElementById('confirmForm');
-    const base = ${JSON.stringify(getRegistrationActionUrl(token, "__ACTION__"))};
-    function openModal(action, modalTitle, modalText) {
-      title.textContent = modalTitle;
-      text.textContent = modalText;
-      form.action = base.replace('__ACTION__', encodeURIComponent(action)) + '?confirm=1';
-      modal.classList.add('open');
-      modal.setAttribute('aria-hidden', 'false');
-    }
-    document.querySelectorAll('[data-action]').forEach((button) => {
-      button.addEventListener('click', () => openModal(button.dataset.action, button.dataset.title, button.dataset.text));
-    });
-    document.querySelector('[data-delete]').addEventListener('click', () => {
-      openModal('delete-step-1', ${JSON.stringify(copy.deleteTitle)}, ${JSON.stringify(copy.deleteConfirm)});
-    });
-    document.querySelectorAll('[data-close]').forEach((button) => {
-      button.addEventListener('click', () => {
-        modal.classList.remove('open');
-        modal.setAttribute('aria-hidden', 'true');
-      });
-    });
-  </script>
 </body>
 </html>`);
 }
@@ -1235,7 +1240,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
     if (action === "revoke-session") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSuspiciousRegistrationPage(res, { token: req.params.token, req });
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).revokeSession, text: securityText(getSecurityPageLocale(req)).revokeSessionConfirm, req });
       }
       if (record.sessionIdHash) {
         await Session.updateOne(
@@ -1253,7 +1258,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
     if (action === "logout-all") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSuspiciousRegistrationPage(res, { token: req.params.token, req });
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).logoutAll, text: securityText(getSecurityPageLocale(req)).logoutAllConfirm, req });
       }
       await revokeAllUserSessions({ userId: record.userId });
       await markRegistrationActionUsed(record, "logout-all");
@@ -1264,9 +1269,36 @@ async function handleRegistrationSecurityAction(req, res, next) {
       });
     }
 
+    if (action === "change-password") {
+      const copy = securityText(getSecurityPageLocale(req));
+      if (!isConfirmedSecurityAction(req)) {
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.changePassword, text: copy.changePasswordConfirm, req });
+      }
+      const email = getRecordEmail(record);
+      if (email) {
+        const code = createCode();
+        await saveEmailCode({
+          emailHash: record.emailHash,
+          purpose: "reset",
+          code
+        });
+        await sendEmailCode({
+          to: email,
+          code,
+          purpose: "reset"
+        }).catch(() => null);
+      }
+      await markRegistrationActionUsed(record, "change-password");
+      return sendSimpleSecurityPage(res, {
+        ok: Boolean(email),
+        title: copy.changePasswordSentTitle,
+        message: email ? copy.changePasswordSentText : (getSecurityPageLocale(req) === "ru" ? "Почту аккаунта не удалось восстановить из защищённой записи." : "The account email could not be recovered from the protected record.")
+      });
+    }
+
     if (action === "reset-2fa") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSuspiciousRegistrationPage(res, { token: req.params.token, req });
+        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: securityText(getSecurityPageLocale(req)).reset2fa, text: securityText(getSecurityPageLocale(req)).reset2faConfirm, req });
       }
       await UserSecurity.updateOne(
         { userId: record.userId },
