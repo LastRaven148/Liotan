@@ -1,9 +1,34 @@
 const DEVICE_ID_KEY =
   "liotan_device_id";
 
+function safeGetLocalStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return "";
+  }
+}
+
+function safeSetLocalStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+function createRandomDeviceId() {
+  const bytes =
+    new Uint8Array(16);
+
+  crypto.getRandomValues(bytes);
+
+  return Array.from(bytes)
+    .map(byte => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function getDeviceId() {
   let value =
-    localStorage.getItem(
+    safeGetLocalStorage(
       DEVICE_ID_KEY
     );
 
@@ -11,17 +36,10 @@ export function getDeviceId() {
     return value;
   }
 
-  const bytes =
-    new Uint8Array(16);
-
-  crypto.getRandomValues(bytes);
-
   value =
-    Array.from(bytes)
-      .map(byte => byte.toString(16).padStart(2, "0"))
-      .join("");
+    createRandomDeviceId();
 
-  localStorage.setItem(
+  safeSetLocalStorage(
     DEVICE_ID_KEY,
     value
   );
@@ -41,15 +59,16 @@ function getBrowserName(ua) {
 }
 
 function getOsName(ua) {
-  const ios = ua.match(/(?:iPhone OS|CPU OS) ([0-9_]+)/i);
-  if (/iPhone/i.test(ua)) return `iPhone${ios ? ` iOS ${ios[1].replace(/_/g, ".")}` : ""}`;
-  if (/iPad/i.test(ua)) return `iPad${ios ? ` iPadOS ${ios[1].replace(/_/g, ".")}` : ""}`;
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+
   const android = ua.match(/Android ([0-9.]+)/i);
   if (android) return `Android ${android[1]}`;
-  const windows = ua.match(/Windows NT ([0-9.]+)/i);
-  if (windows) return "Windows";
+
+  if (/Windows NT/i.test(ua)) return "Windows";
   if (/Macintosh|Mac OS X/i.test(ua)) return "macOS";
   if (/Linux/i.test(ua)) return "Linux";
+
   return "Web";
 }
 

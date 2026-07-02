@@ -223,10 +223,14 @@ export default function useAuth({
 
       await saveSession(data);
 
-      await initE2EEAccountIdentity({
-        username: data.username,
-        password: loginPassword
-      });
+      try {
+        await initE2EEAccountIdentity({
+          username: data.username,
+          password: loginPassword
+        });
+      } catch {
+        showToast("Вход выполнен. Локальное E2EE-хранилище недоступно на этом устройстве.");
+      }
 
       return { ok: true };
     } catch (err) {
@@ -342,10 +346,14 @@ export default function useAuth({
 
       await saveSession(data);
 
-      await initE2EEAccountIdentity({
-        username: data.username,
-        password: registerPassword
-      });
+      try {
+        await initE2EEAccountIdentity({
+          username: data.username,
+          password: registerPassword
+        });
+      } catch {
+        showToast("Аккаунт создан. Локальное E2EE-хранилище недоступно на этом устройстве.");
+      }
 
       showToast("Registered");
       return true;
