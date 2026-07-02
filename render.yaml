@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: liotan-relay
+    env: node
+    rootDir: relay
+    plan: free
+    buildCommand: npm install --registry=https://registry.npmjs.org/ --no-audit --no-fund
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3002
+      - key: RELAY_UPSTREAM_URL
+        value: https://api.liotan.com
+      - key: RELAY_ALLOWED_ORIGINS
+        value: https://liotan.com,https://www.liotan.com
+      - key: RELAY_NAME
+        value: relay-1
