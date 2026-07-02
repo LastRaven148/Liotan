@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import io from "socket.io-client";
+import { getActiveApiUrl } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
@@ -71,16 +72,38 @@ export default function useSocket({
     }
     window.addEventListener("click", unlockSoundOnUserGesture);
     window.addEventListener("keydown", unlockSoundOnUserGesture);
-    const socket = io(API, {
-      withCredentials: true
-    });
+    function createSocketConnection() {
+      return io(getActiveApiUrl() || API, {
+        withCredentials: true,
+        transports: ["websocket", "polling"],
+        timeout: 12000,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000
+      });
+    }
+
+    let socket = createSocketConnection();
     socketRef.current = socket;
-    socket.on("connect_error", () => {});
+
+    function reconnectSocketToActiveApi() {
+      const previousSocket = socket;
+      socket = createSocketConnection();
+      socketRef.current = socket;
+      attachSocketHandlers(socket);
+      previousSocket.disconnect();
+    }
+
+    window.addEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
+    function attachSocketHandlers(currentSocket) {
+      currentSocket.on("connect_error", () => {});
+
     function markActiveChatRead(user) {
       if (!user || user === username || user.startsWith?.("group:")) {
         return;
       }
-      socket.emit(SOCKET_EVENTS.MARK_CHAT_READ, {
+      currentSocket.emit(SOCKET_EVENTS.MARK_CHAT_READ, {
         user2: user
       });
     }
@@ -331,41 +354,31 @@ export default function useSocket({
         setActiveChat(null);
       }
     }
-    socket.on(SOCKET_EVENTS.NEW_MESSAGE, handleNewMessage);
-    socket.on(SOCKET_EVENTS.MESSAGE_EDITED, handleMessageEdited);
-    socket.on(SOCKET_EVENTS.MESSAGE_DELETED, handleMessageDeleted);
-    socket.on(SOCKET_EVENTS.CHAT_DELETED, handleChatDeleted);
-    socket.on(SOCKET_EVENTS.MESSAGE_DELIVERED, handleMessageDelivered);
-    socket.on(SOCKET_EVENTS.MESSAGE_READ, handleMessageRead);
-    socket.on(SOCKET_EVENTS.USER_TYPING, handleUserTyping);
-    socket.on(SOCKET_EVENTS.USER_STOPPED_TYPING, handleUserStoppedTyping);
-    socket.on(SOCKET_EVENTS.CHAT_HISTORY, handleChatHistory);
-    socket.on(SOCKET_EVENTS.ONLINE_USERS, handleOnlineUsers);
-    socket.on(SOCKET_EVENTS.USER_LAST_SEEN, handleUserLastSeen);
-    socket.on(SOCKET_EVENTS.MESSAGE_PINNED, handleMessagePinned);
-    socket.on(SOCKET_EVENTS.USER_PROFILE_UPDATED, handleUserProfileUpdated);
-    socket.on(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
-    socket.on(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
-    socket.on(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
+    currentSocket.on(SOCKET_EVENTS.NEW_MESSAGE, handleNewMessage);
+    currentSocket.on(SOCKET_EVENTS.MESSAGE_EDITED, handleMessageEdited);
+    currentSocket.on(SOCKET_EVENTS.MESSAGE_DELETED, handleMessageDeleted);
+    currentSocket.on(SOCKET_EVENTS.CHAT_DELETED, handleChatDeleted);
+    currentSocket.on(SOCKET_EVENTS.MESSAGE_DELIVERED, handleMessageDelivered);
+    currentSocket.on(SOCKET_EVENTS.MESSAGE_READ, handleMessageRead);
+    currentSocket.on(SOCKET_EVENTS.USER_TYPING, handleUserTyping);
+    currentSocket.on(SOCKET_EVENTS.USER_STOPPED_TYPING, handleUserStoppedTyping);
+    currentSocket.on(SOCKET_EVENTS.CHAT_HISTORY, handleChatHistory);
+    currentSocket.on(SOCKET_EVENTS.ONLINE_USERS, handleOnlineUsers);
+    currentSocket.on(SOCKET_EVENTS.USER_LAST_SEEN, handleUserLastSeen);
+    currentSocket.on(SOCKET_EVENTS.MESSAGE_PINNED, handleMessagePinned);
+    currentSocket.on(SOCKET_EVENTS.USER_PROFILE_UPDATED, handleUserProfileUpdated);
+    currentSocket.on(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
+    currentSocket.on(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
+    currentSocket.on(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
+    }
+
+    attachSocketHandlers(socket);
+
     return () => {
-      socket.off(SOCKET_EVENTS.NEW_MESSAGE, handleNewMessage);
-      socket.off(SOCKET_EVENTS.MESSAGE_EDITED, handleMessageEdited);
-      socket.off(SOCKET_EVENTS.MESSAGE_DELETED, handleMessageDeleted);
-      socket.off(SOCKET_EVENTS.CHAT_DELETED, handleChatDeleted);
-      socket.off(SOCKET_EVENTS.MESSAGE_DELIVERED, handleMessageDelivered);
-      socket.off(SOCKET_EVENTS.MESSAGE_READ, handleMessageRead);
-      socket.off(SOCKET_EVENTS.USER_TYPING, handleUserTyping);
-      socket.off(SOCKET_EVENTS.USER_STOPPED_TYPING, handleUserStoppedTyping);
-      socket.off(SOCKET_EVENTS.CHAT_HISTORY, handleChatHistory);
-      socket.off(SOCKET_EVENTS.ONLINE_USERS, handleOnlineUsers);
-      socket.off(SOCKET_EVENTS.USER_LAST_SEEN, handleUserLastSeen);
-      socket.off(SOCKET_EVENTS.MESSAGE_PINNED, handleMessagePinned);
-      socket.off(SOCKET_EVENTS.USER_PROFILE_UPDATED, handleUserProfileUpdated);
-      socket.off(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
-      socket.off(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
-      socket.off(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
       window.removeEventListener("click", unlockSoundOnUserGesture);
       window.removeEventListener("keydown", unlockSoundOnUserGesture);
+      window.removeEventListener("liotan:api-endpoint-changed", reconnectSocketToActiveApi);
+      socket.removeAllListeners();
       socket.disconnect();
     };
   }, [token, username, API, setActiveChat, setChats, setUnread, setOnlineUsers, setTypingUsers, updateDialog, updateUserLastSeen, updateUserProfile, removeDialog, setAvatar, setBio, setProfileUser, updateGroup, setDisplayName, socketRef]);

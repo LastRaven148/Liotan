@@ -1,3 +1,4 @@
+import { API, buildApiUrlForEndpoint, getActiveApiUrl, getApiCandidates, setActiveApiUrl } from "../config/api";
 const CSRF_HEADER = "X-Liotan-CSRF";
 const CSRF_VALUE = "liotan-browser-request-v1";
 
@@ -9,6 +10,7 @@ const cachedGetResponses = new Map();
 const GET_FAIL_COOLDOWN_MS = 15000;
 const GET_CACHE_TTL_MS = 15000;
 const MAX_PARALLEL_GETS = 4;
+const REQUEST_TIMEOUT_MS = 12000;
 
 let activeGetCount = 0;
 const getQueue = [];
@@ -84,6 +86,35 @@ function isStateChangingMethod(method = "GET") {
   return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
 }
 
+function createTimeoutSignal(options = {}) {
+  if (options.signal) {
+    return {
+      signal: options.signal,
+      cancel: () => {}
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  return {
+    signal: controller.signal,
+    cancel: () => clearTimeout(timer)
+  };
+}
+
+function getEndpointOrder() {
+  const active = getActiveApiUrl();
+  return [
+    active,
+    ...getApiCandidates().filter(url => url !== active)
+  ];
+}
+
+function shouldUseEndpointFallback(url) {
+  return String(url || "").startsWith(`${API}/`);
+}
+
 async function performRequest(url, options = {}) {
   const headers = {
     ...(options.headers || {})
@@ -94,15 +125,19 @@ async function performRequest(url, options = {}) {
   }
 
   let res;
+  const timeout = createTimeoutSignal(options);
 
   try {
     res = await fetch(url, {
       ...options,
       credentials: "include",
-      headers
+      headers,
+      signal: timeout.signal
     });
   } catch {
     throw new Error("Нет соединения с сервером или запрос был прерван");
+  } finally {
+    timeout.cancel();
   }
 
   const contentType = res.headers.get("content-type") || "";
@@ -162,11 +197,37 @@ export function clearApiRequestMemory() {
   getQueue.splice(0).forEach(resolve => resolve());
 }
 
+async function performRequestWithEndpointFallback(url, options = {}) {
+  if (!shouldUseEndpointFallback(url)) {
+    return performRequest(url, options);
+  }
+
+  let lastError = null;
+
+  for (const endpoint of getEndpointOrder()) {
+    const endpointUrl = buildApiUrlForEndpoint(url, endpoint);
+
+    try {
+      const data = await performRequest(endpointUrl, options);
+      setActiveApiUrl(endpoint);
+      return data;
+    } catch (err) {
+      lastError = err;
+
+      if (err?.status) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError || new Error("Нет соединения с сервером");
+}
+
 export async function apiRequest(url, options = {}) {
   const isGet = isGetRequest(options);
 
   if (!isGet) {
-    return performRequest(url, options);
+    return performRequestWithEndpointFallback(url, options);
   }
 
   const key = makeRequestKey(url, options);
@@ -192,7 +253,7 @@ export async function apiRequest(url, options = {}) {
     await waitForGetSlot();
 
     try {
-      const data = await performRequest(url, options);
+      const data = await performRequestWithEndpointFallback(url, options);
       recentFailedGetRequests.delete(key);
       setCachedResponse(key, data);
       return cloneData(data);

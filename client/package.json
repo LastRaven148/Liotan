@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "49.1.4",
+  "version": "49.1.5",
   "private": true,
   "dependencies": {
     "react": "^19.2.7",
