@@ -1,3 +1,4 @@
+import LiotanIcon from "../../common/LiotanIcon";
 export default function TwoFactorPage({ back, labels, state, actions }) {
   const enabled = Boolean(state?.securityStatus?.totp?.enabled);
   const statusLabel = enabled ? labels.twoFactorEnabled : labels.twoFactorDisabled;
@@ -15,7 +16,7 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
   return (
     <>
       <div className="drawer-topbar settings-topbar">
-        <button type="button" className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button>
+        <button type="button" className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button>
         <div className="drawer-title">{labels.twoFactorTitle}</div>
       </div>
 

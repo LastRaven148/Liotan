@@ -1,9 +1,3 @@
-import NotificationsIcon from "../../../assets/icons/notifications.svg";
-import PrivacyIcon from "../../../assets/icons/privacy.svg";
-import SettingsIcon from "../../../assets/icons/settings.svg";
-import SoundCameraIcon from "../../../assets/icons/sound-camera.svg";
-import DevicesIcon from "../../../assets/icons/devices.svg";
-import TwoFactorIcon from "../../../assets/icons/twofactor.svg";
 import { avatarUrl } from "../../../utils/avatarUrl";
 import LiotanIcon from "../../common/LiotanIcon";
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
@@ -19,7 +13,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
   return (
     <>
       <div className="drawer-topbar settings-topbar">
-        <button type="button" className="drawer-icon-button" onClick={actions.close}><span className="liotan-back-icon" aria-hidden="true" /></button>
+        <button type="button" className="drawer-icon-button" onClick={actions.close}><LiotanIcon name="back" size={22} /></button>
         <div className="drawer-title">{labels.settings}</div>
         <div className="settings-topbar-actions">
           <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}><LiotanIcon name="edit" size={22} /></button>
@@ -46,37 +40,37 @@ export default function MainSettingsPage({ state, actions, labels }) {
 
       <SettingsSection>
         <SettingsItem
-    icon={<img src={NotificationsIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="bell" size={23} />}
     title={labels.notifications}
     onClick={() => actions.openPage("notifications")}
 />
 
 <SettingsItem
-    icon={<img src={TwoFactorIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="shield2" size={23} />}
     title={labels.twoFactorAuth}
     onClick={() => actions.openPage("twofactor")}
 />
 
 <SettingsItem
-    icon={<img src={PrivacyIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="lock" size={23} />}
     title={labels.privacy}
     onClick={() => actions.openPage("privacy")}
 />
 
 <SettingsItem
-    icon={<img src={SettingsIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="settings" size={23} />}
     title={labels.general}
     onClick={() => actions.openPage("general")}
 />
 
 <SettingsItem
-    icon={<img src={SoundCameraIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="camera" size={23} />}
     title={labels.sound}
     onClick={() => actions.openPage("sound")}
 />
 
 <SettingsItem
-    icon={<img src={DevicesIcon} className="settings-svg-icon" alt="" />}
+    icon={<LiotanIcon name="devices" size={23} />}
     title={labels.devices}
     value={otherCount ? String(otherCount + 1) : ""}
     onClick={() => actions.openPage("devices")}
@@ -103,20 +97,6 @@ export default function MainSettingsPage({ state, actions, labels }) {
         </button>
       </SettingsSection>
     </>
-  );
-}
-
-
-function TranslateIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-      <path d="M4 5.5H13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M8.75 3.5V5.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M6 9.5C7.15 12.15 9.4 14.1 12.2 15.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M12.8 7.5C11.75 10.45 9.4 13.25 5 15.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M14.5 20.5L18 12.5L21.5 20.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M15.6 18H20.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
   );
 }
 

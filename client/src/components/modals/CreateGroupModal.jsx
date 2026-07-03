@@ -15,7 +15,7 @@ function BackIcon() {
 }
 
 function GroupAvatarIcon() {
-  return <LiotanIcon name="group" size={46} />;
+  return <LiotanIcon name="group" size={58} />;
 }
 
 export default function CreateGroupModal({
@@ -273,7 +273,7 @@ export default function CreateGroupModal({
           onClick={continueFlow}
           aria-label="Продолжить"
         >
-          <LiotanIcon name="back" size={24} className="create-group-next-icon" />
+          <LiotanIcon name="arrowRight" size={25} className="create-group-next-icon" />
         </button>
       </aside>
     </div>

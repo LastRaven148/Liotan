@@ -1,5 +1,6 @@
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
+import LiotanIcon from "../../common/LiotanIcon";
 export default function PrivacyPage({ back, labels, actions }) {
   const items = [
     { icon: "", title: labels.blacklist, value: "0" },
@@ -14,7 +15,7 @@ export default function PrivacyPage({ back, labels, actions }) {
 
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.privacy}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.privacy}</div></div>
       <SettingsSection>
         {items.map((item) => <SettingsItem key={item.title} icon={item.icon} title={item.title} value={item.value} onClick={item.onClick} />)}
       </SettingsSection>

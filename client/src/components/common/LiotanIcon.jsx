@@ -1,4 +1,4 @@
-const ICON_STROKE = 1.72;
+const ICON_STROKE = 1.62;
 
 function Svg({ children, size = 22, className = "", title }) {
   return (
@@ -88,33 +88,33 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
     case "archive":
       return (
         <Svg size={size} className={className} title={title}>
-          <path d="M5.25 8.15h13.5" />
-          <path d="M6.7 8.15h10.6v9.9c0 1.12-.83 1.95-1.95 1.95h-6.7c-1.12 0-1.95-.83-1.95-1.95v-9.9Z" />
-          <path d="M6.2 4.4h11.6l.95 3.75H5.25L6.2 4.4Z" />
-          <path d="M12 11.1v4.65" />
-          <path d="m9.85 13.75 2.15 2.15 2.15-2.15" />
+          <path d="M5.25 8.35h13.5" />
+          <path d="M6.55 8.35h10.9v9.65c0 1.22-.88 2.1-2.1 2.1h-6.7c-1.22 0-2.1-.88-2.1-2.1V8.35Z" />
+          <path d="M6.25 4.45h11.5l1 3.9H5.25l1-3.9Z" />
+          <path d="M12 11.3v4.7" />
+          <path d="m9.65 13.95 2.35 2.35 2.35-2.35" />
         </Svg>
       );
 
     case "unarchive":
       return (
         <Svg size={size} className={className} title={title}>
-          <path d="M5.25 8.15h13.5" />
-          <path d="M6.7 8.15h10.6v9.9c0 1.12-.83 1.95-1.95 1.95h-6.7c-1.12 0-1.95-.83-1.95-1.95v-9.9Z" />
-          <path d="M6.2 4.4h11.6l.95 3.75H5.25L6.2 4.4Z" />
-          <path d="M12 15.9v-4.65" />
-          <path d="m9.85 13.25 2.15-2.15 2.15 2.15" />
+          <path d="M5.25 8.35h13.5" />
+          <path d="M6.55 8.35h10.9v9.65c0 1.22-.88 2.1-2.1 2.1h-6.7c-1.22 0-2.1-.88-2.1-2.1V8.35Z" />
+          <path d="M6.25 4.45h11.5l1 3.9H5.25l1-3.9Z" />
+          <path d="M12 16.2v-4.7" />
+          <path d="m9.65 13.85 2.35-2.35 2.35 2.35" />
         </Svg>
       );
 
     case "trash":
       return (
         <Svg size={size} className={className} title={title}>
-          <path d="M7.2 8.05h9.6" />
-          <path d="M8.35 8.05v10.05c0 1.2.8 2.05 2 2.05h3.3c1.2 0 2-.85 2-2.05V8.05" />
-          <path d="M10.1 8.05V6.45c0-1 .78-1.65 1.75-1.65h.3c.97 0 1.75.65 1.75 1.65v1.6" />
-          <path d="M10.7 11.25v5.35" />
-          <path d="M13.3 11.25v5.35" />
+          <path d="M6.35 7.65h11.3" />
+          <path d="M8.05 7.65v10.15c0 1.35.9 2.25 2.25 2.25h3.4c1.35 0 2.25-.9 2.25-2.25V7.65" />
+          <path d="M9.75 7.65V6.1c0-1.08.82-1.82 1.9-1.82h.7c1.08 0 1.9.74 1.9 1.82v1.55" />
+          <path d="M10.2 11.15v5.7" />
+          <path d="M13.8 11.15v5.7" />
         </Svg>
       );
 
@@ -140,20 +140,72 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
     case "group":
       return (
         <Svg size={size} className={className} title={title}>
-          <circle cx="12" cy="8.7" r="3.35" />
-          <path d="M6.2 19.35c.6-3.15 2.8-5 5.8-5s5.2 1.85 5.8 5" />
-          <circle cx="5.9" cy="10" r="2.35" />
-          <path d="M2.8 18.2c.35-2.25 1.55-3.75 3.45-4.35" />
-          <circle cx="18.1" cy="10" r="2.35" />
-          <path d="M21.2 18.2c-.35-2.25-1.55-3.75-3.45-4.35" />
+          <circle cx="12" cy="7.65" r="3.25" />
+          <path d="M7.1 20.15v-1.4c0-2.58 1.95-4.5 4.9-4.5s4.9 1.92 4.9 4.5v1.4" />
+          <circle cx="5.95" cy="9.35" r="2.45" />
+          <path d="M2.65 17.75v-.75c0-1.8 1.25-3.18 3.25-3.62" />
+          <circle cx="18.05" cy="9.35" r="2.45" />
+          <path d="M21.35 17.75v-.75c0-1.8-1.25-3.18-3.25-3.62" />
         </Svg>
       );
 
     case "settings":
       return (
         <Svg size={size} className={className} title={title}>
-          <circle cx="12" cy="12" r="2.75" />
-          <path d="M12 3.35 12.72 5.35c.66.14 1.28.4 1.84.76l1.94-.9 1.52 1.52-.9 1.94c.36.56.62 1.18.76 1.84l2 .72v2.14l-2 .72a6.6 6.6 0 0 1-.76 1.84l.9 1.94-1.52 1.52-1.94-.9a6.6 6.6 0 0 1-1.84.76L12 20.65H9.86l-.72-2a6.6 6.6 0 0 1-1.84-.76l-1.94.9-1.52-1.52.9-1.94a6.6 6.6 0 0 1-.76-1.84l-2-.72v-2.14l2-.72c.14-.66.4-1.28.76-1.84l-.9-1.94 1.52-1.52 1.94.9c.56-.36 1.18-.62 1.84-.76l.72-2H12Z" />
+          <circle cx="12" cy="12" r="2.95" />
+          <path d="M12 3.35h.02l.74 2.08c.62.15 1.21.39 1.74.72l2.02-.94 1.5 1.5-.94 2.02c.33.53.57 1.12.72 1.74l2.08.74v2.12l-2.08.74a6.07 6.07 0 0 1-.72 1.74l.94 2.02-1.5 1.5-2.02-.94c-.53.33-1.12.57-1.74.72L12.02 20.65h-2.14l-.74-2.08a6.07 6.07 0 0 1-1.74-.72l-2.02.94-1.5-1.5.94-2.02a6.07 6.07 0 0 1-.72-1.74l-2.08-.74v-2.12l2.08-.74c.15-.62.39-1.21.72-1.74l-.94-2.02 1.5-1.5 2.02.94c.53-.33 1.12-.57 1.74-.72l.74-2.08H12Z" />
+        </Svg>
+      );
+
+    case "bell":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <path d="M6.15 10.2c0-3.55 2.25-5.85 5.85-5.85s5.85 2.3 5.85 5.85v2.65l1.25 2.15c.42.72-.08 1.6-.92 1.6H5.82c-.84 0-1.34-.88-.92-1.6l1.25-2.15V10.2Z" />
+          <path d="M9.7 18.55c.42.85 1.18 1.3 2.3 1.3s1.88-.45 2.3-1.3" />
+        </Svg>
+      );
+
+    case "lock":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <rect x="6.1" y="10.1" width="11.8" height="9.4" rx="2.15" />
+          <path d="M8.55 10.1V7.85c0-2.1 1.36-3.45 3.45-3.45s3.45 1.35 3.45 3.45v2.25" />
+          <path d="M12 13.35v2.65" />
+        </Svg>
+      );
+
+    case "camera":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <rect x="4.2" y="7.1" width="12.25" height="9.8" rx="2.15" />
+          <path d="m16.45 10.15 3.35-2.05v7.8l-3.35-2.05" />
+        </Svg>
+      );
+
+    case "devices":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <rect x="3.9" y="5.15" width="10.75" height="8.35" rx="1.55" />
+          <path d="M7.1 16.45h5.25" />
+          <path d="M9.72 13.5v2.95" />
+          <rect x="15.65" y="10.35" width="4.45" height="8.5" rx="1.25" />
+          <path d="M17.25 16.9h1.25" />
+        </Svg>
+      );
+
+    case "shield2":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <path d="M12 3.75 18.15 6.2v4.8c0 4.05-2.35 6.95-6.15 9.25C8.2 17.95 5.85 15.05 5.85 11V6.2L12 3.75Z" />
+          <path d="M10.15 9.95c.15-1.1.9-1.75 1.98-1.75 1.18 0 1.92.72 1.92 1.72 0 .68-.32 1.18-1.12 1.72l-1.12.76c-.75.5-1.18 1.08-1.18 1.9h3.55" />
+        </Svg>
+      );
+
+    case "arrowRight":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <path d="M9.2 6.2 15 12l-5.8 5.8" />
+          <path d="M4.8 12h9.8" />
         </Svg>
       );
 

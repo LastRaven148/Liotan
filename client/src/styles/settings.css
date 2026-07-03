@@ -1097,3 +1097,22 @@
   object-fit:contain !important;
   object-position:center !important;
 }
+
+/* 49.2.9 force settings pages to use unified LiotanIcon sizing */
+.settings-item-icon svg,
+.settings-row span svg,
+.drawer-icon-button svg{
+  width:24px !important;
+  height:24px !important;
+  display:block !important;
+  color:currentColor !important;
+}
+
+.drawer-icon-button svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+.settings-item-icon{
+  color:#d7dde5 !important;
+}

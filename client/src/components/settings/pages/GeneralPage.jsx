@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SettingsRadio, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
 
+import LiotanIcon from "../../common/LiotanIcon";
 export default function GeneralPage({ back, labels }) {
   const [textSize, setTextSize] = useState(() => Math.min(150, Math.max(50, Number(localStorage.getItem("liotan_text_size") || 100))));
   const [theme, setTheme] = useState(localStorage.getItem("liotan_theme") || "dark");
@@ -26,7 +27,7 @@ export default function GeneralPage({ back, labels }) {
   }
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.general}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.general}</div></div>
       <SettingsSection title={labels.textSize}>
         <SettingsSlider label={labels.messageTextSize} value={textSize} min={50} max={150} suffix="%" onChange={saveTextSize} />
       </SettingsSection>

@@ -1,11 +1,12 @@
 import { SettingsSection } from "../components/SettingsPrimitives";
 
+import LiotanIcon from "../../common/LiotanIcon";
 export default function DevicesPage({ back, state, actions, labels }) {
   const current = state.sessions.find((item) => item.current);
   const others = state.sessions.filter((item) => !item.current);
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.devices}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.devices}</div></div>
       <SettingsSection title={labels.thisDevice}>
         {current ? <DeviceRow session={current} labels={labels} /> : <div className="settings-muted-text">{labels.noDevices}</div>}
         {others.length > 0 && <button type="button" className="settings-terminate-button" onClick={actions.logoutOthers}>{labels.terminateOthers}</button>}

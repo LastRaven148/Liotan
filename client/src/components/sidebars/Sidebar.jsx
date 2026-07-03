@@ -107,7 +107,7 @@ export default function Sidebar({
             }}
           >
             <span className="sidebar-create-menu-icon" aria-hidden="true">
-              <LiotanIcon name="group" size={22} />
+              <LiotanIcon name="group" size={23} />
             </span>
             Создать группу
           </button>

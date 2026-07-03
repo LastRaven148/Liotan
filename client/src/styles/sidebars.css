@@ -1128,3 +1128,201 @@
 .dialog-context-menu.telegram-action-menu button.danger .menu-icon{
   color:#ff6b6b !important;
 }
+
+/* 49.2.9 unified icon and create-group correction */
+:root{
+  --liotan-sidebar-width:360px;
+  --liotan-action-icon-size:24px;
+  --liotan-action-icon-stroke:1.62;
+}
+
+.liotan-icon-button svg,
+.drawer-icon-button svg,
+.telegram-menu-icon svg,
+.menu-icon svg,
+.sidebar-search-icon svg,
+.create-group-search-icon svg,
+.sidebar-create-menu-icon svg,
+.sidebar-create-button svg,
+.create-group-next-button svg,
+.create-group-avatar-preview svg{
+  width:var(--liotan-action-icon-size) !important;
+  height:var(--liotan-action-icon-size) !important;
+  display:block !important;
+  overflow:visible !important;
+  color:currentColor !important;
+  fill:none !important;
+  stroke:none !important;
+  flex-shrink:0 !important;
+}
+
+.burger-button svg{
+  width:23px !important;
+  height:23px !important;
+}
+
+.drawer-icon-button svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+.sidebar-search-icon svg,
+.create-group-search-icon svg{
+  width:23px !important;
+  height:23px !important;
+}
+
+.sidebar-search-icon,
+.create-group-search-icon{
+  user-select:none !important;
+  -webkit-user-select:none !important;
+  pointer-events:none !important;
+}
+
+.telegram-menu.compact-menu{
+  width:226px !important;
+  max-width:calc(var(--liotan-sidebar-width) - 24px) !important;
+}
+
+.telegram-menu-icon,
+.menu-icon,
+.sidebar-create-menu-icon{
+  width:26px !important;
+  min-width:26px !important;
+  height:26px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  color:#d7dde5 !important;
+}
+
+.dialog-context-menu.telegram-action-menu,
+.message-menu.telegram-action-menu{
+  min-width:250px !important;
+  padding:7px !important;
+  border-radius:13px !important;
+}
+
+.dialog-context-menu.telegram-action-menu button,
+.message-menu.telegram-action-menu button{
+  min-height:44px !important;
+  height:44px !important;
+  gap:13px !important;
+  padding:0 13px !important;
+  font-size:14.5px !important;
+  font-weight:500 !important;
+}
+
+.dialog-context-menu.telegram-action-menu button.danger .menu-icon,
+.message-menu.telegram-action-menu button.danger .menu-icon{
+  color:#ff6b6b !important;
+}
+
+.sidebar-create-menu{
+  left:auto !important;
+  right:18px !important;
+  bottom:84px !important;
+  width:248px !important;
+  max-width:calc(var(--liotan-sidebar-width) - 36px) !important;
+  padding:7px !important;
+  border-radius:14px !important;
+  box-sizing:border-box !important;
+}
+
+.sidebar-create-menu-item{
+  height:46px !important;
+  min-height:46px !important;
+  padding:0 13px !important;
+  gap:13px !important;
+  font-size:14.5px !important;
+  font-weight:500 !important;
+}
+
+.sidebar-create-button,
+.create-group-next-button{
+  width:54px !important;
+  height:54px !important;
+}
+
+.sidebar-create-button svg,
+.create-group-next-button svg{
+  width:25px !important;
+  height:25px !important;
+}
+
+.sidebar-create-button.active svg{
+  transform:none !important;
+}
+
+.create-group-overlay{
+  width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+  background:transparent !important;
+  overflow:hidden !important;
+}
+
+.create-group-drawer{
+  width:var(--liotan-sidebar-width) !important;
+  min-width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+}
+
+.create-group-topbar{
+  width:100% !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-form-panel{
+  width:100% !important;
+  max-width:100% !important;
+  padding:0 16px 92px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-search-wrap{
+  width:100% !important;
+  height:46px !important;
+  margin:6px 0 14px !important;
+  padding:0 16px !important;
+  box-sizing:border-box !important;
+  border-radius:23px !important;
+  gap:11px !important;
+}
+
+.create-group-search{
+  width:100% !important;
+  min-width:0 !important;
+  padding:0 !important;
+  font-size:15px !important;
+  line-height:46px !important;
+  user-select:text !important;
+  -webkit-user-select:text !important;
+}
+
+.create-group-users-panel{
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-user{
+  min-height:60px !important;
+  padding:8px 9px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-avatar-preview{
+  width:90px !important;
+  height:90px !important;
+}
+
+.create-group-avatar-preview svg{
+  width:62px !important;
+  height:62px !important;
+}
+
+.create-group-next-icon{
+  transform:none !important;
+}

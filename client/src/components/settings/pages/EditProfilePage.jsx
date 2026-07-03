@@ -1,6 +1,7 @@
 import { avatarUrl } from "../../../utils/avatarUrl";
 import { SettingsSection } from "../components/SettingsPrimitives";
 
+import LiotanIcon from "../../common/LiotanIcon";
 export default function EditProfilePage({ state, actions, labels }) {
   const {
     username,
@@ -14,7 +15,7 @@ export default function EditProfilePage({ state, actions, labels }) {
   return (
     <>
       <div className="drawer-topbar">
-        <button type="button" className="drawer-icon-button" onClick={actions.closeEdit}><span className="liotan-back-icon" aria-hidden="true" /></button>
+        <button type="button" className="drawer-icon-button" onClick={actions.closeEdit}><LiotanIcon name="back" size={22} /></button>
         <div className="drawer-title">{labels.editProfile}</div>
         <button type="button" className="drawer-save-button" onClick={actions.save} disabled={saving}>
           {saving ? "..." : labels.save}
