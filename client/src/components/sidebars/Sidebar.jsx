@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import useOutsideClick
 from "../../hooks/ui/useOutsideClick";
@@ -37,11 +37,18 @@ export default function Sidebar({
   const menuRef =
     useRef(null);
 
+  const [createMenuOpen, setCreateMenuOpen] =
+    useState(false);
+
   useOutsideClick(
     menuRef,
     () => {
       if (profileMenu) {
         closeProfileMenu();
+      }
+
+      if (createMenuOpen) {
+        setCreateMenuOpen(false);
       }
     }
   );
@@ -88,11 +95,37 @@ export default function Sidebar({
         deleteGroupDialog={deleteGroupDialog}
       />
 
+      {createMenuOpen && (
+        <div className="sidebar-create-menu" ref={menuRef}>
+          <button
+            type="button"
+            className="sidebar-create-menu-item"
+            onClick={() => {
+              setCreateMenuOpen(false);
+              openCreateGroup();
+            }}
+          >
+            <span className="sidebar-create-menu-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M8.6 10.8a3.4 3.4 0 1 1 6.8 0 3.4 3.4 0 0 1-6.8 0Z" />
+                <path d="M4.2 18.8c.7-3.1 3.4-5.1 7.8-5.1s7.1 2 7.8 5.1" />
+                <path d="M4.1 14.6c.45-2 1.95-3.35 4-3.8" />
+                <path d="M19.9 14.6c-.45-2-1.95-3.35-4-3.8" />
+              </svg>
+            </span>
+            Создать группу
+          </button>
+        </div>
+      )}
+
       <button
         type="button"
-        className="sidebar-create-button"
-        onClick={openCreateGroup}
-        aria-label="Создать группу"
+        className={createMenuOpen ? "sidebar-create-button active" : "sidebar-create-button"}
+        onClick={() => {
+          closeProfileMenu();
+          setCreateMenuOpen(prev => !prev);
+        }}
+        aria-label="Создать"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4.8 19.2 6 14.6 15.6 5a2.2 2.2 0 0 1 3.1 3.1L9.1 17.7 4.8 19.2Z" />

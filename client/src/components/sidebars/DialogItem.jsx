@@ -31,27 +31,28 @@ function DialogMenuIcon({
         </svg>;
     case "archive":
       return <svg {...common}>
-          <path d="M5 8H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M7 8L8 20H16L17 8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M6 4H18L19 8H5L6 4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M12 11V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M9.5 13.5L12 16L14.5 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5.3 8.1H18.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M6.7 8.1H17.3V18.3C17.3 19.3 16.5 20.1 15.5 20.1H8.5C7.5 20.1 6.7 19.3 6.7 18.3V8.1Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+          <path d="M6.2 4.4H17.8L18.7 8.1H5.3L6.2 4.4Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+          <path d="M12 11.3V15.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M9.9 13.7L12 15.8L14.1 13.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
         </svg>;
     case "unarchive":
       return <svg {...common}>
-          <path d="M5 8H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M7 8L8 20H16L17 8" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M6 4H18L19 8H5L6 4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M12 17V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M9.5 14.5L12 12L14.5 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5.3 8.1H18.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M6.7 8.1H17.3V18.3C17.3 19.3 16.5 20.1 15.5 20.1H8.5C7.5 20.1 6.7 19.3 6.7 18.3V8.1Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+          <path d="M6.2 4.4H17.8L18.7 8.1H5.3L6.2 4.4Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+          <path d="M12 15.8V11.6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M9.9 13.7L12 11.6L14.1 13.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
         </svg>;
     case "delete":
       return <svg {...common}>
-          <path d="M5 7H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M10 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M14 11V17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M8 7L8.7 19C8.8 20.1 9.7 21 10.8 21H13.2C14.3 21 15.2 20.1 15.3 19L16 7" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M9.5 7V5.5C9.5 4.7 10.2 4 11 4H13C13.8 4 14.5 4.7 14.5 5.5V7" stroke="currentColor" strokeWidth="2" />
+          <path d="M8.2 8.2H17.2" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M9.2 8.2V18C9.2 19.2 10 20.1 11.2 20.1H15.2C16.4 20.1 17.2 19.2 17.2 18V8.2" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+          <path d="M11 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M14.9 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+          <path d="M10.6 8.1L13.9 4.8C14.5 4.2 15.5 4.2 16.1 4.8L17.9 6.6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M6 4.6L12.5 11.1" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
         </svg>;
     default:
       return null;

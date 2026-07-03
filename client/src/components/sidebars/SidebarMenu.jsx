@@ -24,7 +24,7 @@ function MenuIcon({ name }) {
   if (name === "saved") {
     return (
       <svg {...common}>
-        <path d="M7.2 5.2c0-.9.72-1.6 1.6-1.6h6.4c.88 0 1.6.7 1.6 1.6v15l-4.8-3-4.8 3v-15z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M12 3.9 14.45 8.85 19.9 9.65 15.95 13.5 16.9 18.9 12 16.35 7.1 18.9 8.05 13.5 4.1 9.65 9.55 8.85 12 3.9Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -32,10 +32,11 @@ function MenuIcon({ name }) {
   if (name === "archive") {
     return (
       <svg {...common}>
-        <path d="M5.2 8.2h13.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M6.4 8.2l.75 10.1c.08 1.05.95 1.9 2 1.9h5.7c1.05 0 1.92-.85 2-1.9l.75-10.1" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-        <path d="M6.2 4.3h11.6l1 3.9H5.2l1-3.9z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-        <path d="M12 11.2v4.7m0 0 2.05-2.05M12 15.9l-2.05-2.05" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5.3 8.1h13.4" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+        <path d="M6.7 8.1h10.6v10.2c0 1-.8 1.8-1.8 1.8h-7c-1 0-1.8-.8-1.8-1.8V8.1Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+        <path d="M6.2 4.4h11.6l.9 3.7H5.3l.9-3.7Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
+        <path d="M12 11.3v4.2" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
+        <path d="M9.9 13.7 12 15.8l2.1-2.1" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }

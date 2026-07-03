@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "49.2.6",
+  "version": "49.2.7",
   "description": "",
   "main": "server.js",
   "scripts": {

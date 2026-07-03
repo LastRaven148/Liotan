@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "49.2.6",
+  "version": "49.2.7",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
