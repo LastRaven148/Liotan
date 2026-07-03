@@ -252,6 +252,7 @@ export default function SettingsModal({
     openEdit: () => setEditing(true),
     openPage: setPage,
     toggleMenu: () => setMenuOpen((value) => !value),
+    closeMenu: () => setMenuOpen(false),
     askDelete,
     askLogout: () => { setMenuOpen(false); setLogoutOpen(true); },
     openTotp: () => setTotpOpen(true),

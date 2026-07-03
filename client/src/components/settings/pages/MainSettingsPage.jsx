@@ -18,7 +18,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <div className="settings-topbar-actions">
           <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}><LiotanIcon name="edit" size={22} /></button>
           <button type="button" className="drawer-icon-button" onClick={actions.toggleMenu} aria-label={labels.more || "More"}><LiotanIcon name="moreVertical" size={22} /></button>
-          {state.menuOpen && <div className="settings-overflow-menu">
+          {state.menuOpen && <div className="settings-overflow-menu" onMouseLeave={actions.closeMenu}>
             <button type="button" onClick={actions.askLogout}>{labels.logout}</button>
             <button type="button" className="danger" onClick={actions.askDelete}>{labels.deleteAccount}</button>
           </div>}

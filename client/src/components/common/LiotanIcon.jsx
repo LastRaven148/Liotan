@@ -51,8 +51,8 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
     case "back":
       return (
         <Svg size={size} className={className} title={title}>
-          <path d="M10.9 6.15 5.05 12l5.85 5.85" />
-          <path d="M5.45 12h14.05" />
+          <path d="M10.35 6.65 5 12l5.35 5.35" />
+          <path d="M5.25 12h13.5" />
         </Svg>
       );
 

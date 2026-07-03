@@ -206,13 +206,12 @@ function securityText(locale) {
       browser: "Браузер",
       web: "Web",
       loginTitle: "Мы обнаружили вход в Liotan",
-      loginLead: "Проверьте детали. Если это были вы, просто подтвердите это. Если нет — выберите безопасное действие.",
+      loginLead: "Проверьте детали входа. Если это были не вы — выберите безопасное действие.",
       time: "Время",
       device: "Устройство",
       os: "ОС",
       browserLabel: "Браузер",
       ip: "IP",
-      trusted: "Это был я",
       suspicious: "Это не я",
       expiresPrefix: "Ссылка действует до",
       accuracyHint: "IP и устройство могут определяться неточно.",
@@ -252,13 +251,12 @@ function securityText(locale) {
     browser: "Browser",
     web: "Web",
     loginTitle: "We detected a Liotan login",
-    loginLead: "Review the details. If this was you, confirm it. If not, choose a safe action.",
+    loginLead: "Review the login details. If this was not you, choose a safe action.",
     time: "Time",
     device: "Device",
     os: "OS",
     browserLabel: "Browser",
     ip: "IP",
-    trusted: "This was me",
     suspicious: "This was not me",
     expiresPrefix: "This link expires at",
     accuracyHint: "IP address and device details may be approximate.",
@@ -369,10 +367,6 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
       <div class="row"><span class="label">${escapeHtml(copy.browserLabel)}</span><span class="value">${browserName}</span></div>
       <div class="row"><span class="label">${escapeHtml(copy.ip)}</span><span class="value">${ipHint}</span></div>
     </section>
-    <form method="post" action="${getRegistrationActionUrl(token, "trusted")}">
-      <input type="hidden" name="confirm" value="1" />
-      <button class="btn safe" type="submit">${escapeHtml(copy.trusted)}</button>
-    </form>
     <form method="get" action="${getRegistrationActionUrl(token, "suspicious")}">
       <button class="btn danger" type="submit">${escapeHtml(copy.suspicious)}</button>
     </form>
@@ -1344,20 +1338,6 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
     if (await sendRestrictedSecurityActionPageIfNeeded({ req, res, record, action })) {
       return;
-    }
-
-    if (action === "trusted") {
-      if (!isConfirmedSecurityAction(req)) {
-        return sendRegistrationSecurityPage(res, { token: req.params.token, record, req });
-      }
-      await markRegistrationActionUsed(record, "trusted");
-      return sendSimpleSecurityPage(res, {
-        ok: true,
-        title: locale === "ru" ? "Вход подтверждён" : "Login confirmed",
-        message: locale === "ru"
-          ? "Спасибо. Никаких действий с аккаунтом не выполнено."
-          : "Thanks. No account action was performed."
-      });
     }
 
     if (action === "suspicious") {
