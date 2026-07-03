@@ -1,3 +1,27 @@
+const itemStyles = {
+  row: {
+    minHeight: 54,
+    padding: "0 8px",
+    gap: 15
+  },
+  icon: {
+    width: 28,
+    minWidth: 28
+  },
+  main: {
+    fontSize: 14.5,
+    lineHeight: 1.35,
+    fontWeight: 600
+  },
+  sub: {
+    fontSize: 13,
+    lineHeight: 1.3
+  },
+  value: {
+    fontSize: 13.5
+  }
+};
+
 export function SettingsSection({ title, children, className = "" }) {
   return (
     <section className={`settings-card settings-page-section ${className}`.trim()}>
@@ -13,14 +37,17 @@ export function SettingsItem({ icon, title, subtitle, value, danger, onClick, ch
     <Tag
       type={onClick ? "button" : undefined}
       className={`settings-row settings-item ${onClick ? "button-row" : ""} ${danger ? "danger-row" : ""}`.trim()}
+      style={itemStyles.row}
       onClick={onClick}
     >
-      {icon && <span className="settings-item-icon">{icon}</span>}
-      <div className="settings-row-main">
+      {icon && <span className="settings-item-icon" style={itemStyles.icon}>{icon}</span>}
+      <div className="settings-row-main" style={itemStyles.main}>
         <div>{title}</div>
-        {subtitle && <div className="settings-row-sub">{subtitle}</div>}
+        {subtitle && <div className="settings-row-sub" style={itemStyles.sub}>{subtitle}</div>}
       </div>
-      {value !== undefined && value !== null && String(value) !== "" && <div className="settings-row-value">{value}</div>}
+      {value !== undefined && value !== null && String(value) !== "" && (
+        <div className="settings-row-value" style={itemStyles.value}>{value}</div>
+      )}
       {children}
     </Tag>
   );

@@ -4,11 +4,13 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
   const statusText = enabled ? labels.twoFactorEnabledText : labels.twoFactorSetupText;
   const actionLabel = enabled ? labels.disable || "Отключить" : labels.setup || "Подключить";
 
-  const statusColor = enabled ? "#35c979" : "#ff8b8b";
-  const statusBg = enabled ? "rgba(53,201,121,.14)" : "rgba(255,107,107,.14)";
-  const actionBg = enabled ? "rgba(255,107,107,.14)" : "rgba(53,201,121,.16)";
-  const actionHoverBg = enabled ? "rgba(255,107,107,.2)" : "rgba(53,201,121,.22)";
+  const statusColor = enabled ? "#35d984" : "#ff8b8b";
+  const statusBg = enabled ? "rgba(53,217,132,.14)" : "rgba(255,107,107,.14)";
+  const statusBorder = enabled ? "rgba(53,217,132,.28)" : "rgba(255,107,107,.28)";
+  const actionBg = enabled ? "rgba(255,107,107,.14)" : "rgba(53,217,132,.16)";
+  const actionHoverBg = enabled ? "rgba(255,107,107,.2)" : "rgba(53,217,132,.22)";
   const actionColor = enabled ? "#ff8b8b" : "#35d984";
+  const actionBorder = enabled ? "rgba(255,107,107,.28)" : "rgba(53,217,132,.3)";
 
   return (
     <>
@@ -21,16 +23,19 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
         <div style={styles.sectionTitle}>{labels.status || "Статус"}</div>
         <div
           style={{
-            ...styles.statusBadge,
-            color: statusColor,
+            ...styles.statusPanel,
             background: statusBg,
-            borderColor: enabled ? "rgba(53,201,121,.28)" : "rgba(255,107,107,.28)"
+            borderColor: statusBorder
           }}
         >
-          <span style={{ ...styles.statusDot, background: statusColor }} />
-          {statusLabel}
+          <div style={styles.statusTopLine}>
+            <span style={{ ...styles.statusDot, background: statusColor }} />
+            <span style={{ ...styles.statusLabel, color: statusColor }}>
+              {statusLabel}
+            </span>
+          </div>
+          <div style={styles.statusText}>{statusText}</div>
         </div>
-        <div style={styles.statusText}>{statusText}</div>
       </section>
 
       <section style={styles.card}>
@@ -45,7 +50,7 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
             ...styles.actionButton,
             color: actionColor,
             background: actionBg,
-            borderColor: enabled ? "rgba(255,107,107,.28)" : "rgba(53,201,121,.3)"
+            borderColor: actionBorder
           }}
           onMouseEnter={(event) => {
             event.currentTarget.style.background = actionHoverBg;
@@ -78,58 +83,65 @@ const styles = {
     letterSpacing: ".04em",
     textTransform: "uppercase"
   },
-  statusBadge: {
+  statusPanel: {
     width: "100%",
-    minHeight: "38px",
+    minHeight: "92px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: "10px",
+    padding: "14px 15px",
+    border: "1px solid transparent",
+    borderRadius: "13px",
+    boxSizing: "border-box"
+  },
+  statusTopLine: {
     display: "flex",
     alignItems: "center",
-    gap: "9px",
-    padding: "0 12px",
-    border: "1px solid transparent",
-    borderRadius: "11px",
-    boxSizing: "border-box",
-    fontSize: "14px",
-    lineHeight: "1.2",
-    fontWeight: 800
+    gap: "10px"
   },
   statusDot: {
-    width: "8px",
-    height: "8px",
+    width: "10px",
+    height: "10px",
     borderRadius: "50%",
     flexShrink: 0
   },
+  statusLabel: {
+    fontSize: "15px",
+    lineHeight: "1.2",
+    fontWeight: 850
+  },
   statusText: {
-    marginTop: "12px",
-    color: "#c3ced9",
+    color: "#d5dee8",
     fontSize: "14px",
     lineHeight: "1.45",
-    fontWeight: 500
+    fontWeight: 550
   },
   manageTitle: {
     color: "#ffffff",
-    fontSize: "15px",
+    fontSize: "15.5px",
     lineHeight: "1.25",
-    fontWeight: 800,
+    fontWeight: 850,
     textAlign: "left"
   },
   manageHint: {
-    marginTop: "7px",
-    color: "#8da2b5",
-    fontSize: "13px",
-    lineHeight: "1.35",
+    marginTop: "8px",
+    color: "#9fb0c1",
+    fontSize: "13.5px",
+    lineHeight: "1.4",
     fontWeight: 500,
     textAlign: "left"
   },
   actionButton: {
     width: "100%",
-    minHeight: "42px",
-    marginTop: "14px",
+    minHeight: "46px",
+    marginTop: "15px",
     border: "1px solid transparent",
-    borderRadius: "11px",
+    borderRadius: "12px",
     fontFamily: "inherit",
-    fontSize: "14px",
+    fontSize: "15px",
     lineHeight: "1.2",
-    fontWeight: 800,
+    fontWeight: 850,
     cursor: "pointer",
     transition: "background .15s ease, border-color .15s ease, color .15s ease"
   }

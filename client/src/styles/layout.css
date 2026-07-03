@@ -2,21 +2,21 @@
   width:100vw !important;
   height:100vh !important;
   display:grid !important;
-  grid-template-columns:320px minmax(0, 1fr) 0 !important;
+  grid-template-columns:335px minmax(0, 1fr) 0 !important;
   background:#0e1621;
   overflow:hidden;
 }
 
 .app.has-profile-drawer{
-  grid-template-columns:320px minmax(0, 1fr) 360px !important;
+  grid-template-columns:335px minmax(0, 1fr) 360px !important;
 }
 
 .app > .sidebar{
   grid-column:1 !important;
   grid-row:1 !important;
-  width:320px !important;
-  min-width:320px !important;
-  max-width:320px !important;
+  width:335px !important;
+  min-width:335px !important;
+  max-width:335px !important;
   height:100vh !important;
   position:relative !important;
   inset:auto !important;
@@ -56,11 +56,11 @@
 
 @media (max-width:1180px) and (min-width:769px){
   .app{
-    grid-template-columns:320px minmax(0, 1fr) 0 !important;
+    grid-template-columns:335px minmax(0, 1fr) 0 !important;
   }
 
   .app.has-profile-drawer{
-    grid-template-columns:320px minmax(0, 1fr) !important;
+    grid-template-columns:335px minmax(0, 1fr) !important;
   }
 
   .app > .profile-drawer{
