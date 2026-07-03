@@ -1,44 +1,23 @@
-const multer =
-  require("multer");
+const multer = require("multer");
+const { MAX_AVATAR_SIZE, isAllowedAvatar } = require("../middleware/uploadSecurity");
 
-const upload =
-  multer({
-    storage:
-      multer.memoryStorage(),
-
-    limits: {
-      fileSize:
-        2 * 1024 * 1024
-    },
-
-    fileFilter: (
-      req,
-      file,
-      cb
-    ) => {
-
-      const allowedTypes = [
-        "image/jpeg",
-        "image/png",
-        "image/webp"
-      ];
-
-      if (
-        !allowedTypes.includes(
-          file.mimetype
-        )
-      ) {
-        return cb(
-          new Error(
-            "Invalid file type"
-          )
-        );
-      }
-
-      cb(null, true);
-
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_AVATAR_SIZE,
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    if (!isAllowedAvatar({
+      mimeType: file.mimetype,
+      fileName: file.originalname,
+      size: 0
+    })) {
+      return cb(new Error("avatar is not allowed"));
     }
-  });
 
-module.exports =
-  upload;
+    cb(null, true);
+  }
+});
+
+module.exports = upload;

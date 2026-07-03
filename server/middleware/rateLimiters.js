@@ -115,10 +115,10 @@ const codeLimiter =
 
 const uploadLimiter =
   rateLimit({
-    windowMs: 15 * 60 * 1000,
+    windowMs: 60 * 1000,
     max:
       process.env.NODE_ENV === "production"
-        ? 12
+        ? 30
         : 300,
     keyGenerator: userOrIpKey,
     message: createMessage("too many upload attempts"),

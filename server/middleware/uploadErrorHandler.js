@@ -22,7 +22,7 @@ function uploadErrorHandler(err, req, res, next) {
     });
   }
 
-  if (err.message === "Invalid file type" || err.message === "attachment is not allowed") {
+  if (err.message === "Invalid file type" || err.message === "attachment is not allowed" || err.message === "avatar is not allowed" || err.message === "file content does not match declared type") {
     return res.status(400).json({
       error: "invalid file type",
       requestId: req.id

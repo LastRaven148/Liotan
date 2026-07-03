@@ -5,6 +5,11 @@ const E2EEKey = require("../models/E2EEKey");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const {
+  normalizeMime,
+  assertAllowedAvatar,
+  assertSafeFileBuffer
+} = require("../middleware/uploadSecurity");
+const {
   isValidUsername
 } = require("../utils/validators");
 
@@ -234,6 +239,17 @@ async function uploadGroupAvatar(req, res, next) {
         error: "no file"
       });
     }
+    const mimeType = normalizeMime(req.file.mimetype);
+    assertAllowedAvatar({
+      mimeType,
+      fileName: req.file.originalname,
+      size: req.file.size
+    });
+    assertSafeFileBuffer({
+      buffer: req.file.buffer,
+      mimeType
+    });
+
     await deleteUploadedFile({
       url: group.avatar,
       storageKey: group.avatarStorageKey,
@@ -241,7 +257,7 @@ async function uploadGroupAvatar(req, res, next) {
     });
     const result = await uploadToR2(req.file, {
       folder: "liotan/groups",
-      mimeType: req.file.mimetype
+      mimeType
     });
     group.avatar = result.url;
     group.avatarStorageKey = result.key;
@@ -408,6 +424,17 @@ async function deleteGroup(req, res, next) {
       chatType: "group",
       groupId: group._id
     });
+    const mimeType = normalizeMime(req.file.mimetype);
+    assertAllowedAvatar({
+      mimeType,
+      fileName: req.file.originalname,
+      size: req.file.size
+    });
+    assertSafeFileBuffer({
+      buffer: req.file.buffer,
+      mimeType
+    });
+
     await deleteUploadedFile({
       url: group.avatar,
       storageKey: group.avatarStorageKey,

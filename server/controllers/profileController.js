@@ -11,6 +11,12 @@ const deleteAccountData =
   require("../utils/deleteAccountData");
 
 const {
+  normalizeMime,
+  assertAllowedAvatar,
+  assertSafeFileBuffer
+} = require("../middleware/uploadSecurity");
+
+const {
   isValidBio,
   isValidUsername
 } = require("../utils/validators");
@@ -170,6 +176,17 @@ async function uploadAvatar(req, res, next) {
       });
     }
 
+    const mimeType = normalizeMime(req.file.mimetype);
+    assertAllowedAvatar({
+      mimeType,
+      fileName: req.file.originalname,
+      size: req.file.size
+    });
+    assertSafeFileBuffer({
+      buffer: req.file.buffer,
+      mimeType
+    });
+
     const user =
       await User.findOne({
         username
@@ -192,7 +209,7 @@ async function uploadAvatar(req, res, next) {
         req.file,
         {
           folder: "liotan/avatars",
-          mimeType: req.file.mimetype
+          mimeType
         }
       );
 
