@@ -18,6 +18,57 @@ function GroupAvatarIcon() {
   return <LiotanIcon name="group" size={58} />;
 }
 
+const panelControlStyle = {
+  width: "calc(100% - 28px)",
+  maxWidth: "calc(100% - 28px)",
+  marginLeft: 14,
+  marginRight: 14,
+  boxSizing: "border-box"
+};
+
+const searchWrapStyle = {
+  ...panelControlStyle,
+  height: 44,
+  minHeight: 44,
+  padding: "0 14px",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  borderRadius: 22
+};
+
+const searchInputStyle = {
+  flex: "1 1 auto",
+  width: "auto",
+  minWidth: 0,
+  height: "100%",
+  padding: 0,
+  margin: 0,
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  boxSizing: "border-box"
+};
+
+const nameInputStyle = {
+  ...panelControlStyle,
+  height: 44,
+  minHeight: 44
+};
+
+const nextButtonStyle = {
+  position: "absolute",
+  right: 16,
+  bottom: 18,
+  width: 48,
+  height: 48,
+  minWidth: 48,
+  minHeight: 48,
+  maxWidth: 48,
+  maxHeight: 48,
+  borderRadius: "50%"
+};
+
 export default function CreateGroupModal({
   onClose,
   onCreated
@@ -180,8 +231,8 @@ export default function CreateGroupModal({
 
         {step === "members" ? (
           <div className="create-group-form create-group-form-panel">
-            <div className="create-group-search-wrap">
-              <span className="create-group-search-icon" aria-hidden="true"><LiotanIcon name="search" size={20} /></span>
+            <div className="create-group-search-wrap" style={searchWrapStyle}>
+              <span className="create-group-search-icon" aria-hidden="true"><LiotanIcon name="search" size={21} /></span>
               <input
                 value={search}
                 onChange={(e) =>
@@ -189,6 +240,7 @@ export default function CreateGroupModal({
                 }
                 placeholder="Поиск"
                 className="create-group-search"
+                style={searchInputStyle}
               />
             </div>
 
@@ -272,6 +324,7 @@ export default function CreateGroupModal({
                 maxLength={40}
                 placeholder="Название группы"
                 className="create-group-name-input"
+                style={nameInputStyle}
                 autoFocus
               />
               <div className="create-group-name-hint">
@@ -284,6 +337,7 @@ export default function CreateGroupModal({
         <button
           type="button"
           className="create-group-next-button"
+          style={nextButtonStyle}
           disabled={!canContinue}
           onClick={continueFlow}
           aria-label="Продолжить"

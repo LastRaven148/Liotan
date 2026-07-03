@@ -8,6 +8,27 @@ import SidebarMenu from "./SidebarMenu";
 import DialogList from "./DialogList";
 import LiotanIcon from "../common/LiotanIcon";
 
+const createMenuStyle = {
+  right: 18,
+  left: "auto",
+  bottom: 78,
+  width: 212,
+  maxWidth: "calc(100% - 36px)"
+};
+
+const createButtonStyle = {
+  right: 18,
+  left: "auto",
+  bottom: 18,
+  width: 52,
+  height: 52,
+  minWidth: 52,
+  minHeight: 52,
+  maxWidth: 52,
+  maxHeight: 52,
+  borderRadius: "50%"
+};
+
 export default function Sidebar({
   username,
   avatar,
@@ -114,7 +135,7 @@ export default function Sidebar({
       />
 
       {createMenuOpen && (
-        <div className="sidebar-create-menu" ref={menuRef}>
+        <div className="sidebar-create-menu" ref={menuRef} style={createMenuStyle}>
           <button
             type="button"
             className="sidebar-create-menu-item"
@@ -134,13 +155,14 @@ export default function Sidebar({
       <button
         type="button"
         className={createMenuOpen ? "sidebar-create-button active" : "sidebar-create-button"}
+        style={createButtonStyle}
         onClick={() => {
           closeProfileMenu();
           setCreateMenuOpen(prev => !prev);
         }}
         aria-label="Создать"
       >
-        <LiotanIcon name="edit" size={24} />
+        <LiotanIcon name="edit" size={25} />
       </button>
 
     </aside>

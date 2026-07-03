@@ -1866,3 +1866,130 @@
 .create-group-next-icon{
   transform:none !important;
 }
+
+
+/* 49.2.15 final hard-lock for create group controls.
+   Previous rules changed the inner icon/text but old duplicated 49.2.x blocks
+   still controlled the outer boxes. These selectors are intentionally last. */
+.sidebar{
+  position:relative !important;
+}
+
+.sidebar-create-button{
+  position:absolute !important;
+  left:auto !important;
+  right:18px !important;
+  bottom:18px !important;
+  width:52px !important;
+  height:52px !important;
+  min-width:52px !important;
+  min-height:52px !important;
+  max-width:52px !important;
+  max-height:52px !important;
+  border-radius:50% !important;
+}
+
+.sidebar-create-button svg{
+  width:25px !important;
+  height:25px !important;
+}
+
+.sidebar-create-menu{
+  position:absolute !important;
+  left:auto !important;
+  right:18px !important;
+  bottom:78px !important;
+  width:212px !important;
+  max-width:calc(100% - 36px) !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-overlay{
+  width:var(--liotan-sidebar-width, 360px) !important;
+  max-width:var(--liotan-sidebar-width, 360px) !important;
+  overflow:hidden !important;
+}
+
+.create-group-drawer{
+  position:relative !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-form-panel{
+  width:100% !important;
+  max-width:100% !important;
+  padding:0 0 92px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-search-wrap{
+  width:calc(100% - 28px) !important;
+  max-width:calc(100% - 28px) !important;
+  margin:6px 14px 14px !important;
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 14px !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-search-icon{
+  position:static !important;
+  width:21px !important;
+  min-width:21px !important;
+  height:21px !important;
+  transform:none !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+
+.create-group-search-icon svg{
+  width:21px !important;
+  height:21px !important;
+}
+
+.create-group-search{
+  flex:1 1 auto !important;
+  width:auto !important;
+  min-width:0 !important;
+  height:100% !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-name-input{
+  width:calc(100% - 28px) !important;
+  max-width:calc(100% - 28px) !important;
+  margin-left:14px !important;
+  margin-right:14px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-next-button{
+  position:absolute !important;
+  left:auto !important;
+  right:16px !important;
+  bottom:18px !important;
+  width:48px !important;
+  height:48px !important;
+  min-width:48px !important;
+  min-height:48px !important;
+  max-width:48px !important;
+  max-height:48px !important;
+  border-radius:50% !important;
+}
+
+.create-group-next-button svg{
+  width:24px !important;
+  height:24px !important;
+}
