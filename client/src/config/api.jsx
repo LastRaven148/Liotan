@@ -1,9 +1,6 @@
 const PRODUCTION_API_URL = "https://api.liotan.com";
-const PRODUCTION_RENDER_API_URL = "https://liotan-api.onrender.com";
-const PRODUCTION_DIRECT_API_URL = "https://direct-api.liotan.com";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
 const ACTIVE_API_STORAGE_KEY = "liotan.activeApiUrl";
-
 let activeApiUrlMemory = "";
 
 function normalizeApiUrl(url) {
@@ -50,9 +47,7 @@ function resolveApiCandidates() {
 
   return uniqueUrls([
     primary,
-    ...envFallbacks,
-    PRODUCTION_RENDER_API_URL,
-    PRODUCTION_DIRECT_API_URL
+    ...envFallbacks
   ]);
 }
 
