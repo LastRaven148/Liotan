@@ -5,6 +5,7 @@ import SoundCameraIcon from "../../../assets/icons/sound-camera.svg";
 import DevicesIcon from "../../../assets/icons/devices.svg";
 import TwoFactorIcon from "../../../assets/icons/twofactor.svg";
 import { avatarUrl } from "../../../utils/avatarUrl";
+import LiotanIcon from "../../common/LiotanIcon";
 import { SettingsItem, SettingsSection } from "../components/SettingsPrimitives";
 
 export default function MainSettingsPage({ state, actions, labels }) {
@@ -21,8 +22,8 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <button type="button" className="drawer-icon-button" onClick={actions.close}><span className="liotan-back-icon" aria-hidden="true" /></button>
         <div className="drawer-title">{labels.settings}</div>
         <div className="settings-topbar-actions">
-          <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}>✎</button>
-          <button type="button" className="drawer-icon-button" onClick={actions.toggleMenu} aria-label={labels.more || "More"}>⋮</button>
+          <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}><LiotanIcon name="edit" size={22} /></button>
+          <button type="button" className="drawer-icon-button" onClick={actions.toggleMenu} aria-label={labels.more || "More"}><LiotanIcon name="moreVertical" size={22} /></button>
           {state.menuOpen && <div className="settings-overflow-menu">
             <button type="button" onClick={actions.askLogout}>{labels.logout}</button>
             <button type="button" className="danger" onClick={actions.askDelete}>{labels.deleteAccount}</button>

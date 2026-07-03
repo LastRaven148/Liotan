@@ -1,83 +1,9 @@
+import LiotanIcon from "../../common/LiotanIcon";
+
 function MenuIcon({ name }) {
-  const common = {
-    width: "18",
-    height: "18",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    xmlns: "http://www.w3.org/2000/svg",
-    "aria-hidden": "true"
-  };
-
-  switch (name) {
-    case "reply":
-      return (
-        <svg {...common}>
-          <path d="M10 7L5 12L10 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M6 12H14.5C17.6 12 20 14.4 20 17.5V18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "copy":
-      return (
-        <svg {...common}>
-          <rect x="9" y="8" width="10" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
-          <path d="M6 16H5.5C4.7 16 4 15.3 4 14.5V5.5C4 4.7 4.7 4 5.5 4H14.5C15.3 4 16 4.7 16 5.5V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "edit":
-      return (
-        <svg {...common}>
-          <path d="M4 20H8.5L18.7 9.8C19.6 8.9 19.6 7.5 18.7 6.6L17.4 5.3C16.5 4.4 15.1 4.4 14.2 5.3L4 15.5V20Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M13.5 6L18 10.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "download":
-      return (
-        <svg {...common}>
-          <path d="M12 4V14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M8 10L12 14L16 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M5 19H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "select":
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
-          <path d="M8.5 12.2L10.8 14.5L15.8 9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-    case "pin":
-      return (
-        <svg {...common}>
-          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "unpin":
-      return (
-        <svg {...common}>
-          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M4 4L20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      );
-    case "delete":
-      return (
-        <svg {...common}>
-          <path d="M8.2 8.2H17.2" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M9.2 8.2V18C9.2 19.2 10 20.1 11.2 20.1H15.2C16.4 20.1 17.2 19.2 17.2 18V8.2" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M11 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M14.9 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M10.6 8.1L13.9 4.8C14.5 4.2 15.5 4.2 16.1 4.8L17.9 6.6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M6 4.6L12.5 11.1" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-        </svg>
-      );
-    default:
-      return null;
-  }
+  const iconName = name === "delete" ? "trash" : name;
+  return <LiotanIcon name={iconName} size={21} />;
 }
-
 function IconSlot({ name }) {
   return (
     <span className="menu-icon" aria-hidden="true">

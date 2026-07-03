@@ -8,21 +8,14 @@ import {
   searchUsers
 } from "../../services/api";
 
+import LiotanIcon from "../common/LiotanIcon";
+
 function BackIcon() {
-  return (
-    <span className="liotan-back-icon" aria-hidden="true" />
-  );
+  return <LiotanIcon name="back" size={22} />;
 }
 
 function GroupAvatarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="9" cy="8.2" r="3" />
-      <path d="M3.8 19c.65-3.25 2.5-5 5.2-5s4.55 1.75 5.2 5" />
-      <circle cx="16.5" cy="9.2" r="2.35" />
-      <path d="M14.4 15.2c2.4.2 4.05 1.45 4.8 3.8" />
-    </svg>
-  );
+  return <LiotanIcon name="group" size={46} />;
 }
 
 export default function CreateGroupModal({
@@ -173,7 +166,7 @@ export default function CreateGroupModal({
         {step === "members" ? (
           <div className="create-group-form create-group-form-panel">
             <div className="create-group-search-wrap">
-              <span aria-hidden="true">⌕</span>
+              <span className="create-group-search-icon" aria-hidden="true"><LiotanIcon name="search" size={20} /></span>
               <input
                 value={search}
                 onChange={(e) =>
@@ -280,10 +273,7 @@ export default function CreateGroupModal({
           onClick={continueFlow}
           aria-label="Продолжить"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 12h13" />
-            <path d="m13 6 6 6-6 6" />
-          </svg>
+          <LiotanIcon name="back" size={24} className="create-group-next-icon" />
         </button>
       </aside>
     </div>

@@ -3,60 +3,11 @@ import { createPortal } from "react-dom";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
+import LiotanIcon from "../common/LiotanIcon";
 import { decryptAttachmentBlobForChat, decryptTextForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
-function DialogMenuIcon({
-  name
-}) {
-  const common = {
-    width: "18",
-    height: "18",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    xmlns: "http://www.w3.org/2000/svg",
-    "aria-hidden": "true"
-  };
-  switch (name) {
-    case "pin":
-      return <svg {...common}>
-          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>;
-    case "unpin":
-      return <svg {...common}>
-          <path d="M15.5 4.5L19.5 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M14.8 5.2L9.8 10.2L7 10.6L6.2 11.4L12.6 17.8L13.4 17L13.8 14.2L18.8 9.2L14.8 5.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-          <path d="M10.5 15.5L5 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M4 4L20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>;
-    case "archive":
-      return <svg {...common}>
-          <path d="M5.3 8.1H18.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M6.7 8.1H17.3V18.3C17.3 19.3 16.5 20.1 15.5 20.1H8.5C7.5 20.1 6.7 19.3 6.7 18.3V8.1Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M6.2 4.4H17.8L18.7 8.1H5.3L6.2 4.4Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M12 11.3V15.5" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M9.9 13.7L12 15.8L14.1 13.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>;
-    case "unarchive":
-      return <svg {...common}>
-          <path d="M5.3 8.1H18.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M6.7 8.1H17.3V18.3C17.3 19.3 16.5 20.1 15.5 20.1H8.5C7.5 20.1 6.7 19.3 6.7 18.3V8.1Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M6.2 4.4H17.8L18.7 8.1H5.3L6.2 4.4Z" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M12 15.8V11.6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M9.9 13.7L12 11.6L14.1 13.7" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>;
-    case "delete":
-      return <svg {...common}>
-          <path d="M8.2 8.2H17.2" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M9.2 8.2V18C9.2 19.2 10 20.1 11.2 20.1H15.2C16.4 20.1 17.2 19.2 17.2 18V8.2" stroke="currentColor" strokeWidth="1.65" strokeLinejoin="round" />
-          <path d="M11 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M14.9 11.3V17" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-          <path d="M10.6 8.1L13.9 4.8C14.5 4.2 15.5 4.2 16.1 4.8L17.9 6.6" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M6 4.6L12.5 11.1" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" />
-        </svg>;
-    default:
-      return null;
-  }
+function DialogMenuIcon({ name }) {
+  const iconName = name === "delete" ? "trash" : name;
+  return <LiotanIcon name={iconName} size={21} />;
 }
 function DialogIconSlot({
   name
@@ -435,6 +386,14 @@ export default function DialogItem({
 
           <>
               {!isGroup && <>
+                  <button type="button" onClick={e => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                  }}>
+                    <DialogIconSlot name="openTab" />
+                    {t.openInNewTab || "Открыть в новой вкладке"}
+                  </button>
+
                   <button type="button" onClick={handlePin}>
                     <DialogIconSlot name={isPinned ? "unpin" : "pin"} />
 
@@ -454,6 +413,14 @@ export default function DialogItem({
                 </>}
 
               {isGroup && <>
+                  <button type="button" onClick={e => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                  }}>
+                    <DialogIconSlot name="openTab" />
+                    {t.openInNewTab || "Открыть в новой вкладке"}
+                  </button>
+
                   <button type="button" onClick={handlePin}>
                     <DialogIconSlot name={isPinned ? "unpin" : "pin"} />
 

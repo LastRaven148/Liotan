@@ -951,3 +951,180 @@
 .sidebar-create-button.active svg{
   transform:rotate(45deg);
 }
+
+/* 49.2.8 unified Telegram-like SVG icon system */
+:root{
+  --liotan-sidebar-width:360px;
+  --liotan-icon-size:22px;
+  --liotan-icon-color:#d7dde5;
+}
+
+.liotan-icon-button,
+.drawer-icon-button,
+.burger-button{
+  color:var(--liotan-icon-color) !important;
+}
+
+.liotan-icon-button svg,
+.telegram-menu-icon svg,
+.menu-icon svg,
+.sidebar-create-menu-icon svg,
+.sidebar-create-button svg,
+.create-group-next-button svg,
+.create-group-search-icon svg,
+.create-group-avatar-preview svg{
+  display:block !important;
+  overflow:visible !important;
+  color:currentColor !important;
+  fill:none !important;
+  stroke:none !important;
+}
+
+.burger-button{
+  font-size:0 !important;
+}
+
+.sidebar-search{
+  position:relative !important;
+  display:flex !important;
+  align-items:center !important;
+}
+
+.sidebar-search-icon{
+  position:absolute !important;
+  left:16px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:22px !important;
+  height:22px !important;
+  color:#8fa4b8 !important;
+  pointer-events:none !important;
+  user-select:none !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  z-index:1 !important;
+}
+
+.sidebar-search input{
+  padding-left:46px !important;
+}
+
+.telegram-menu.compact-menu,
+.sidebar-create-menu,
+.dialog-context-menu.telegram-action-menu{
+  box-sizing:border-box !important;
+  max-width:calc(var(--liotan-sidebar-width) - 28px) !important;
+}
+
+.sidebar-create-menu{
+  left:14px !important;
+  right:14px !important;
+  bottom:82px !important;
+  padding:6px !important;
+  border-radius:12px !important;
+}
+
+.sidebar-create-menu-item{
+  height:42px !important;
+  border-radius:9px !important;
+  padding:0 12px !important;
+  gap:12px !important;
+}
+
+.sidebar-create-menu-icon{
+  width:22px !important;
+  min-width:22px !important;
+  height:22px !important;
+  color:#d7dde5 !important;
+}
+
+.sidebar-create-button,
+.create-group-next-button{
+  width:52px !important;
+  height:52px !important;
+}
+
+.sidebar-create-button svg,
+.create-group-next-button svg{
+  width:24px !important;
+  height:24px !important;
+}
+
+.create-group-drawer{
+  box-sizing:border-box !important;
+  width:var(--liotan-sidebar-width) !important;
+  min-width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+  overflow:hidden !important;
+}
+
+.create-group-form-panel{
+  box-sizing:border-box !important;
+  width:100% !important;
+  max-width:100% !important;
+  padding:0 14px 88px !important;
+}
+
+.create-group-search-wrap{
+  box-sizing:border-box !important;
+  width:100% !important;
+  height:44px !important;
+  padding:0 16px !important;
+  gap:11px !important;
+  user-select:none !important;
+}
+
+.create-group-search-icon{
+  width:22px !important;
+  height:22px !important;
+  color:#8fa4b8 !important;
+  pointer-events:none !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  flex-shrink:0 !important;
+}
+
+.create-group-search{
+  user-select:text !important;
+}
+
+.create-group-avatar-preview svg{
+  width:48px !important;
+  height:48px !important;
+}
+
+.create-group-next-icon{
+  transform:rotate(180deg) !important;
+}
+
+.dialog-context-menu.telegram-action-menu{
+  width:240px !important;
+  padding:7px !important;
+  border-radius:13px !important;
+}
+
+.dialog-context-menu.telegram-action-menu button{
+  height:42px !important;
+  padding:0 12px !important;
+  gap:12px !important;
+  font-size:14px !important;
+  font-weight:500 !important;
+}
+
+.dialog-context-menu.telegram-action-menu button .menu-icon{
+  width:24px !important;
+  min-width:24px !important;
+  height:24px !important;
+  color:#d7dde5 !important;
+}
+
+.dialog-context-menu.telegram-action-menu button .menu-icon svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+.dialog-context-menu.telegram-action-menu button.danger .menu-icon{
+  color:#ff6b6b !important;
+}

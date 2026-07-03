@@ -172,3 +172,33 @@
 .dialog-delete-actions button.danger:hover{
   background:#dc2626;
 }
+/* 49.2.8 unified action icon sizing */
+.telegram-action-menu .menu-icon,
+.message-menu .menu-icon,
+.dialog-context-menu .menu-icon,
+.telegram-menu-item > span{
+  width:24px !important;
+  min-width:24px !important;
+  height:24px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  color:#d7dde5 !important;
+  opacity:1 !important;
+}
+
+.telegram-action-menu .menu-icon svg,
+.message-menu .menu-icon svg,
+.dialog-context-menu .menu-icon svg,
+.telegram-menu-item > span svg{
+  width:22px !important;
+  height:22px !important;
+  display:block !important;
+  overflow:visible !important;
+}
+
+.telegram-action-menu button.danger .menu-icon,
+.message-menu button.danger .menu-icon,
+.dialog-context-menu button.danger .menu-icon{
+  color:#ff6b6b !important;
+}
