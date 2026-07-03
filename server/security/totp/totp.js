@@ -47,7 +47,7 @@ function hotp(secret, counter, digits = securityPolicy.totp.digits) {
   const key = base32Decode(secret);
   const buffer = Buffer.alloc(8);
   buffer.writeBigUInt64BE(BigInt(counter));
-  const hmac = crypto.createHmac("sha1", key).update(buffer).digest();
+  const hmac = crypto.createHmac("sha1", key).update(buffer).digest(); // nosemgrep: crypto-weak-algorithm - RFC 6238 compatible TOTP defaults to HMAC-SHA1 for authenticator app interoperability.
   const offset = hmac[hmac.length - 1] & 0x0f;
   const code = ((hmac[offset] & 0x7f) << 24) |
     ((hmac[offset + 1] & 0xff) << 16) |

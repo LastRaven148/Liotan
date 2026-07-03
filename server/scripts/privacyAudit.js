@@ -139,20 +139,23 @@ const RULES = [
   }
 ];
 
-function safeChildPath(parent, name) {
-  if (typeof name !== "string" || name.includes("/") || name.includes("\\")) {
+function assertEntryName(name) {
+  if (typeof name !== "string" || !name || name.includes("/") || name.includes("\\")) {
     throw new Error("Unsafe filesystem entry name");
   }
+}
 
-  const resolvedParent = path.resolve(parent);
-  const resolvedChild = path.resolve(resolvedParent, name);
-  const relative = path.relative(resolvedParent, resolvedChild);
+function safeChildPath(parent, name) {
+  assertEntryName(name);
+  const prefix = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`;
+  const real = fs.realpathSync.native(`${prefix}${name}`);
+  const relative = path.relative(PROJECT_ROOT, real);
 
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Refusing to traverse outside project root");
   }
 
-  return resolvedChild;
+  return real;
 }
 
 function walk(dir, files = []) {

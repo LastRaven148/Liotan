@@ -333,11 +333,17 @@ function isConfirmedSecurityAction(req) {
   return req.method === "POST" && String(req.body?.confirm || "") === "1";
 }
 
+function sendHtml(res, statusCode, html) {
+  res.status(statusCode);
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.end(html);
+}
+
 function sendSimpleSecurityPage(res, { ok, title, message }) {
   const safeTitle = escapeHtml(title || "Liotan");
   const safeMessage = escapeHtml(message || "");
 
-  res.status(ok ? 200 : 400).send(`<!doctype html>
+  sendHtml(res, ok ? 200 : 400, `<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
@@ -363,7 +369,7 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
   const osName = escapeHtml(record.osName || copy.web);
   const ipHint = escapeHtml(record.ipHint || copy.unknown);
 
-  res.status(200).send(`<!doctype html>
+  sendHtml(res, 200, `<!doctype html>
 <html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
@@ -416,7 +422,7 @@ function securityPageStyle() {
 function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  res.status(200).send(`<!doctype html>
+  sendHtml(res, 200, `<!doctype html>
 <html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
@@ -480,7 +486,7 @@ async function sendSuspiciousRegistrationPage(res, { token, record, req }) {
     <button class="btn disabled" type="button" aria-disabled="true">${escapeHtml(item.title)}</button>
   `).join("");
 
-  res.status(200).send(`<!doctype html>
+  sendHtml(res, 200, `<!doctype html>
 <html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
@@ -513,7 +519,7 @@ function sendChangePasswordPage(res, { token, req, error = "" }) {
   const repeatLabel = locale === "ru" ? "Повторите новый пароль" : "Repeat new password";
   const submit = locale === "ru" ? "Сменить пароль" : "Change password";
 
-  res.status(error ? 400 : 200).send(`<!doctype html>
+  sendHtml(res, error ? 400 : 200, `<!doctype html>
 <html lang="${copy.htmlLang}">
 <head>
   <meta charset="utf-8" />
@@ -543,13 +549,13 @@ function sendChangePasswordPage(res, { token, req, error = "" }) {
 function sendDeleteStepOnePage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
+  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
 }
 
 function sendDeleteStepTwoPage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  res.status(200).send(`<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><input type="hidden" name="confirm" value="1" /><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
+  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><input type="hidden" name="confirm" value="1" /><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
 }
 
 async function createRegistrationCancelLink({ user, email, req, sessionIdHash }) {

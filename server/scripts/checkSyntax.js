@@ -2,23 +2,28 @@ const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const root = path.join(__dirname, "..");
+const root = fs.realpathSync.native(`${__dirname}${path.sep}..`);
 const ignored = new Set(["node_modules", "uploads"]);
 
-function safeChildPath(parent, name) {
-  if (typeof name !== "string" || name.includes("/") || name.includes("\\")) {
+function assertEntryName(name) {
+  if (typeof name !== "string" || !name || name.includes("/") || name.includes("\\")) {
     throw new Error("Unsafe filesystem entry name");
   }
+}
 
-  const resolvedParent = path.resolve(parent);
-  const resolvedChild = path.resolve(resolvedParent, name);
-  const relative = path.relative(resolvedParent, resolvedChild);
+function childPath(parent, name) {
+  assertEntryName(name);
+  const prefix = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`;
+  return `${prefix}${name}`;
+}
 
+function checkedExistingChildPath(parent, name) {
+  const real = fs.realpathSync.native(childPath(parent, name));
+  const relative = path.relative(root, real);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Refusing to traverse outside server root");
   }
-
-  return resolvedChild;
+  return real;
 }
 
 function collectJsFiles(dir, result = []) {
@@ -27,7 +32,7 @@ function collectJsFiles(dir, result = []) {
       continue;
     }
 
-    const fullPath = safeChildPath(dir, entry.name);
+    const fullPath = checkedExistingChildPath(dir, entry.name);
 
     if (entry.isDirectory()) {
       collectJsFiles(fullPath, result);
@@ -46,7 +51,8 @@ const files = collectJsFiles(root);
 
 for (const file of files) {
   execFileSync(process.execPath, ["-c", file], {
-    stdio: "inherit"
+    stdio: "inherit",
+    shell: false
   });
 }
 

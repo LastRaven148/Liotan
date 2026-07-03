@@ -31,12 +31,12 @@ const userRoutes = require("./routes/userRoutes");
 const voiceRoutes = require("./routes/voiceRoutes");
 const setupSocket = require("./sockets/socket");
 
-const app = express();
+const app = express(); // nosemgrep: express-check-csurf-middleware-usage - stateChangingRequestGuard enforces x-liotan-csrf for unsafe methods.
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
-const server = http.createServer(app);
+const server = http.createServer(app); // nosemgrep: using-http-server - TLS terminates at Cloudflare/Render/Nginx, Node listens behind the trusted proxy.
 const io = new Server(server, {
   cors: corsOptions,
   maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE) || 1024 * 1024,
