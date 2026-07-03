@@ -166,7 +166,7 @@ export async function loginUser(
       backupCode: secondFactor.backupCode || "",
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
-      transportMode: getTransportMode(),
+      transportMode: "direct",
       devicePublicKey,
       deviceKeyFingerprint
     })
@@ -196,7 +196,7 @@ export async function registerUser(
       code,
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
-      transportMode: getTransportMode(),
+      transportMode: "direct",
       devicePublicKey,
       deviceKeyFingerprint
     })
