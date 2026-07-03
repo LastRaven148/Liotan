@@ -97,7 +97,7 @@ export default function NotificationsPage({ back, labels }) {
           : (labels.notificationsHelp || labels.notificationsBlocked || "Уведомления выключены.");
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.notifications}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.notifications}</div></div>
       <SettingsSection title="Web" className="settings-notifications-web">
         <button type="button" className="settings-primary-button settings-primary-button-compact" onClick={togglePermission}>{notificationsActive ? labels.disableNotifications : labels.enableNotifications}</button>
         <div className="settings-muted-text">{permissionHelp}</div>

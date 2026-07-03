@@ -8,10 +8,30 @@ import {
   searchUsers
 } from "../../services/api";
 
+function BackIcon() {
+  return (
+    <span className="liotan-back-icon" aria-hidden="true" />
+  );
+}
+
+function GroupAvatarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="9" cy="8.2" r="3" />
+      <path d="M3.8 19c.65-3.25 2.5-5 5.2-5s4.55 1.75 5.2 5" />
+      <circle cx="16.5" cy="9.2" r="2.35" />
+      <path d="M14.4 15.2c2.4.2 4.05 1.45 4.8 3.8" />
+    </svg>
+  );
+}
+
 export default function CreateGroupModal({
   onClose,
   onCreated
 }) {
+
+  const [step, setStep] =
+    useState("members");
 
   const [name, setName] =
     useState("");
@@ -66,6 +86,24 @@ export default function CreateGroupModal({
 
   }
 
+  function goBack() {
+    if (step === "name") {
+      setStep("members");
+      return;
+    }
+
+    onClose();
+  }
+
+  function continueFlow() {
+    if (step === "members") {
+      setStep("name");
+      return;
+    }
+
+    createGroup();
+  }
+
   async function createGroup() {
 
     const cleanName =
@@ -99,127 +137,154 @@ export default function CreateGroupModal({
 
   }
 
+  const canContinue =
+    step === "members"
+      ? true
+      : Boolean(name.trim()) && !loading;
+
   return (
     <div
-      className="drawer-overlay drawer-overlay-left"
+      className="drawer-overlay drawer-overlay-left create-group-overlay"
       onClick={onClose}
     >
       <aside
-        className="settings-drawer"
+        className="settings-drawer create-group-drawer"
         onClick={(e) =>
           e.stopPropagation()
         }
       >
-        <div className="drawer-topbar">
+        <div className="drawer-topbar create-group-topbar">
           <button
             type="button"
             className="drawer-icon-button"
-            onClick={onClose}
+            onClick={goBack}
+            aria-label="Назад"
           >
-            ←
+            <BackIcon />
           </button>
 
           <div className="drawer-title">
-            Создать группу
+            {step === "members"
+              ? "Добавить участников"
+              : "Новая группа"}
           </div>
-
-          <button
-            type="button"
-            className="drawer-save-button"
-            onClick={createGroup}
-            disabled={
-              loading ||
-              !name.trim()
-            }
-          >
-            Создать
-          </button>
         </div>
 
-        <div className="create-group-form">
-          <input
-            value={name}
-            onChange={(e) =>
-              setName(e.target.value)
-            }
-            maxLength={40}
-            placeholder="Название группы"
-            className="create-group-input"
-          />
-
-          <input
-            value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
-            placeholder="Найти участников"
-            className="create-group-input"
-          />
-
-          {selected.length > 0 && (
-            <div className="selected-users">
-              {selected.map(item => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() =>
-                    toggleUser(item)
-                  }
-                >
-                  {item} ×
-                </button>
-              ))}
+        {step === "members" ? (
+          <div className="create-group-form create-group-form-panel">
+            <div className="create-group-search-wrap">
+              <span aria-hidden="true">⌕</span>
+              <input
+                value={search}
+                onChange={(e) =>
+                  setSearch(e.target.value)
+                }
+                placeholder="Поиск"
+                className="create-group-search"
+              />
             </div>
-          )}
 
-          <div className="create-group-users">
-            {users.map(user => {
-              const active =
-                selected.includes(user.username);
+            {selected.length > 0 && (
+              <div className="selected-users create-group-selected-users">
+                {selected.map(item => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() =>
+                      toggleUser(item)
+                    }
+                  >
+                    {item} ×
+                  </button>
+                ))}
+              </div>
+            )}
 
-              return (
-                <button
-                  key={user.username}
-                  type="button"
-                  className={
-                    active
-                      ? "create-group-user selected"
-                      : "create-group-user"
-                  }
-                  onClick={() =>
-                    toggleUser(user.username)
-                  }
-                >
-                  <div className="avatar small-avatar">
-                    {user.avatar ? (
-                      <img
-                        src={user.avatar}
-                        alt=""
-                        className="avatar-image"
-                      />
-                    ) : (
-                      user.username
-                        .charAt(0)
-                        .toUpperCase()
-                    )}
-                  </div>
+            <div className="create-group-users create-group-users-panel">
+              {users.map(user => {
+                const active =
+                  selected.includes(user.username);
 
-                  <div>
-                    <div className="create-group-user-name">
-                      {user.username}
+                return (
+                  <button
+                    key={user.username}
+                    type="button"
+                    className={
+                      active
+                        ? "create-group-user selected"
+                        : "create-group-user"
+                    }
+                    onClick={() =>
+                      toggleUser(user.username)
+                    }
+                  >
+                    <span className={active ? "create-group-check active" : "create-group-check"} />
+
+                    <div className="avatar small-avatar">
+                      {user.avatar ? (
+                        <img
+                          src={user.avatar}
+                          alt=""
+                          className="avatar-image"
+                        />
+                      ) : (
+                        user.username
+                          .charAt(0)
+                          .toUpperCase()
+                      )}
                     </div>
 
-                    <div className="create-group-user-sub">
-                      {active
-                        ? "Выбран"
-                        : "Нажми, чтобы выбрать"}
+                    <div>
+                      <div className="create-group-user-name">
+                        {user.username}
+                      </div>
+
+                      <div className="create-group-user-sub">
+                        {active
+                          ? "выбран"
+                          : "был(а) недавно"}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="create-group-form create-group-form-panel">
+            <div className="create-group-name-hero">
+              <div className="create-group-avatar-preview">
+                <GroupAvatarIcon />
+              </div>
+              <input
+                value={name}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
+                maxLength={40}
+                placeholder="Название группы"
+                className="create-group-name-input"
+                autoFocus
+              />
+              <div className="create-group-name-hint">
+                Участников: {selected.length}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="create-group-next-button"
+          disabled={!canContinue}
+          onClick={continueFlow}
+          aria-label="Продолжить"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h13" />
+            <path d="m13 6 6 6-6 6" />
+          </svg>
+        </button>
       </aside>
     </div>
   );

@@ -590,3 +590,304 @@
 .sidebar-search input{
   font-weight:400 !important;
 }
+
+
+/* 49.2.6 Telegram-like sidebar menu and create group polish */
+.telegram-menu.compact-menu{
+  top:12px !important;
+  left:12px !important;
+  width:232px !important;
+  padding:8px !important;
+  border-radius:13px !important;
+  background:#17212b !important;
+  border:1px solid rgba(255,255,255,.06) !important;
+  box-shadow:0 14px 34px rgba(0,0,0,.38) !important;
+}
+
+.telegram-menu-item{
+  height:42px !important;
+  border-radius:9px !important;
+  padding:0 12px !important;
+  gap:13px !important;
+  font-size:14.5px !important;
+  font-weight:500 !important;
+  color:#ffffff !important;
+}
+
+.telegram-menu-item:hover{
+  background:#243342 !important;
+}
+
+.telegram-menu-icon{
+  width:22px !important;
+  min-width:22px !important;
+  height:22px !important;
+  opacity:.9 !important;
+  color:#d7dde5 !important;
+}
+
+.telegram-menu-icon svg{
+  width:20px !important;
+  height:20px !important;
+  display:block !important;
+}
+
+.sidebar-create-button{
+  position:absolute;
+  right:18px;
+  bottom:18px;
+  z-index:15;
+  width:54px;
+  height:54px;
+  border:none;
+  border-radius:50%;
+  background:#8774e1;
+  color:#ffffff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 12px 28px rgba(0,0,0,.35);
+  transition:transform .15s ease, filter .15s ease;
+}
+
+.sidebar-create-button:hover{
+  filter:brightness(1.08);
+  transform:translateY(-1px);
+}
+
+.sidebar-create-button svg{
+  width:25px;
+  height:25px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.dialogs-list{
+  padding-bottom:84px !important;
+}
+
+.create-group-overlay{
+  background:rgba(0,0,0,.08) !important;
+}
+
+.create-group-drawer{
+  position:relative !important;
+  width:360px !important;
+  min-width:360px !important;
+  max-width:360px !important;
+  background:#17212b !important;
+  border-right:1px solid #0f1923 !important;
+  border-left:none !important;
+  box-shadow:0 10px 40px rgba(0,0,0,.38) !important;
+}
+
+.create-group-topbar{
+  height:58px !important;
+}
+
+.create-group-form-panel{
+  padding:0 16px 90px !important;
+}
+
+.create-group-search-wrap{
+  height:44px;
+  margin:4px 0 12px;
+  padding:0 15px;
+  border-radius:22px;
+  background:#242f3d;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  color:#8fa4b8;
+}
+
+.create-group-search{
+  flex:1;
+  min-width:0;
+  height:100%;
+  border:none;
+  outline:none;
+  background:transparent;
+  color:#ffffff;
+  font-family:inherit;
+  font-size:15px;
+}
+
+.create-group-search::placeholder{
+  color:#8fa4b8;
+}
+
+.create-group-selected-users{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:2px 0 10px;
+}
+
+.create-group-selected-users button{
+  min-height:30px;
+  border:none;
+  border-radius:15px;
+  background:#263645;
+  color:#d7dde5;
+  padding:0 11px;
+  font-family:inherit;
+  font-size:13px;
+  cursor:pointer;
+}
+
+.create-group-users-panel{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.create-group-user{
+  width:100%;
+  min-height:58px;
+  border:none;
+  border-radius:10px;
+  background:transparent;
+  color:#ffffff;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:7px 8px;
+  font-family:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+
+.create-group-user:hover{
+  background:#202b36;
+}
+
+.create-group-check{
+  width:18px;
+  height:18px;
+  min-width:18px;
+  border-radius:5px;
+  border:2px solid #7f91a4;
+  box-sizing:border-box;
+}
+
+.create-group-check.active{
+  border-color:#8774e1;
+  background:#8774e1;
+  position:relative;
+}
+
+.create-group-check.active::after{
+  content:"";
+  position:absolute;
+  left:4px;
+  top:1px;
+  width:5px;
+  height:10px;
+  border:solid #ffffff;
+  border-width:0 2px 2px 0;
+  transform:rotate(45deg);
+}
+
+.create-group-user-name{
+  color:#ffffff;
+  font-size:15px;
+  line-height:1.25;
+  font-weight:500;
+}
+
+.create-group-user-sub{
+  margin-top:2px;
+  color:#8fa4b8;
+  font-size:13px;
+  line-height:1.25;
+  font-weight:400;
+}
+
+.create-group-name-hero{
+  padding:20px 0 0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+}
+
+.create-group-avatar-preview{
+  width:82px;
+  height:82px;
+  border-radius:50%;
+  background:#8774e1;
+  color:#ffffff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.create-group-avatar-preview svg{
+  width:42px;
+  height:42px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.create-group-name-input{
+  width:100%;
+  height:46px;
+  border:none;
+  outline:none;
+  border-radius:12px;
+  background:#202b36;
+  color:#ffffff;
+  padding:0 14px;
+  font-family:inherit;
+  font-size:16px;
+  text-align:center;
+}
+
+.create-group-name-input::placeholder{
+  color:#8fa4b8;
+}
+
+.create-group-name-hint{
+  color:#8fa4b8;
+  font-size:13px;
+}
+
+.create-group-next-button{
+  position:absolute;
+  right:18px;
+  bottom:18px;
+  width:54px;
+  height:54px;
+  border:none;
+  border-radius:50%;
+  background:#8774e1;
+  color:#ffffff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  box-shadow:0 12px 28px rgba(0,0,0,.35);
+}
+
+.create-group-next-button:disabled{
+  opacity:.45;
+  cursor:default;
+}
+
+.create-group-next-button svg{
+  width:25px;
+  height:25px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}

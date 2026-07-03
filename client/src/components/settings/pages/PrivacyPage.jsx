@@ -14,7 +14,7 @@ export default function PrivacyPage({ back, labels, actions }) {
 
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.privacy}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.privacy}</div></div>
       <SettingsSection>
         {items.map((item) => <SettingsItem key={item.title} icon={item.icon} title={item.title} value={item.value} onClick={item.onClick} />)}
       </SettingsSection>

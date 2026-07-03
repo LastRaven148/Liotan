@@ -18,7 +18,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
   return (
     <>
       <div className="drawer-topbar settings-topbar">
-        <button type="button" className="drawer-icon-button" onClick={actions.close}>←</button>
+        <button type="button" className="drawer-icon-button" onClick={actions.close}><span className="liotan-back-icon" aria-hidden="true" /></button>
         <div className="drawer-title">{labels.settings}</div>
         <div className="settings-topbar-actions">
           <button type="button" className="drawer-icon-button" onClick={actions.openEdit} aria-label={labels.editProfile}>✎</button>

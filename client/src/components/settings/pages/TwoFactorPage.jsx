@@ -15,7 +15,7 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
   return (
     <>
       <div className="drawer-topbar settings-topbar">
-        <button type="button" className="drawer-icon-button" onClick={back}>←</button>
+        <button type="button" className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button>
         <div className="drawer-title">{labels.twoFactorTitle}</div>
       </div>
 

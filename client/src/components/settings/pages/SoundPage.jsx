@@ -12,7 +12,7 @@ export default function SoundPage({ back, labels }) {
   const speakers = devices.filter((item) => item.kind === "audiooutput");
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.sound}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.sound}</div></div>
       <SettingsSection title={labels.microphone}>
         <div className="settings-muted-text">{microphones[0]?.label || labels.defaultDevice}</div>
       </SettingsSection>

@@ -70,7 +70,6 @@ export default function Sidebar({
           openChat={openChat}
           showArchive={showArchive}
           setShowArchive={setShowArchive}
-          openCreateGroup={openCreateGroup}
         />
       )}
 
@@ -88,6 +87,18 @@ export default function Sidebar({
         username={username}
         deleteGroupDialog={deleteGroupDialog}
       />
+
+      <button
+        type="button"
+        className="sidebar-create-button"
+        onClick={openCreateGroup}
+        aria-label="Создать группу"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4.8 19.2 6 14.6 15.6 5a2.2 2.2 0 0 1 3.1 3.1L9.1 17.7 4.8 19.2Z" />
+          <path d="M14.2 6.4 17.3 9.5" />
+        </svg>
+      </button>
 
     </aside>
   );

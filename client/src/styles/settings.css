@@ -1004,3 +1004,50 @@
 .settings-row span{
   color:#d7dde5 !important;
 }
+
+
+/* 49.2.6 cleaner back icon and SVG alignment */
+.liotan-back-icon{
+  width:21px;
+  height:21px;
+  display:block;
+  position:relative;
+}
+
+.liotan-back-icon::before,
+.liotan-back-icon::after{
+  content:"";
+  position:absolute;
+  left:4px;
+  top:10px;
+  background:currentColor;
+  border-radius:2px;
+  transform-origin:left center;
+}
+
+.liotan-back-icon::before{
+  width:13px;
+  height:1.8px;
+}
+
+.liotan-back-icon::after{
+  width:8px;
+  height:8px;
+  border-left:1.8px solid currentColor;
+  border-bottom:1.8px solid currentColor;
+  background:transparent;
+  transform:translateY(-4px) rotate(45deg);
+}
+
+.drawer-icon-button{
+  font-size:0 !important;
+}
+
+.drawer-icon-button .liotan-back-icon{
+  color:#d7dde5;
+}
+
+.settings-svg-icon{
+  object-fit:contain;
+  object-position:center;
+}

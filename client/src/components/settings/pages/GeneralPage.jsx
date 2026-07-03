@@ -26,7 +26,7 @@ export default function GeneralPage({ back, labels }) {
   }
   return (
     <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}>←</button><div className="drawer-title">{labels.general}</div></div>
+      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><span className="liotan-back-icon" aria-hidden="true" /></button><div className="drawer-title">{labels.general}</div></div>
       <SettingsSection title={labels.textSize}>
         <SettingsSlider label={labels.messageTextSize} value={textSize} min={50} max={150} suffix="%" onChange={saveTextSize} />
       </SettingsSection>

@@ -50,7 +50,7 @@
   background:#243342;
 }
 
-.telegram-menu-item span{
+.telegram-menu-item > span{
   width:22px;
   min-width:22px;
 
