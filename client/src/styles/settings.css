@@ -967,3 +967,40 @@
     max-width:100vw !important;
   }
 }
+
+
+/* 49.2.5 optical weight polish */
+.settings-row-main,
+.profile-info-main{
+  font-weight:500 !important;
+}
+
+.settings-info-value{
+  font-weight:500 !important;
+}
+
+.settings-row-sub,
+.profile-info-sub,
+.settings-info-label,
+.settings-row-value{
+  font-weight:400 !important;
+}
+
+.drawer-title{
+  font-weight:700 !important;
+}
+
+.settings-name-hero,
+.settings-name{
+  font-weight:700 !important;
+}
+
+.settings-svg-icon{
+  width:25px !important;
+  height:25px !important;
+}
+
+.settings-item-icon,
+.settings-row span{
+  color:#d7dde5 !important;
+}

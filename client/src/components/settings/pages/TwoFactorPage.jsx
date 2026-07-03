@@ -79,7 +79,7 @@ const styles = {
     color: "#8da2b5",
     fontSize: "15px",
     lineHeight: "1.25",
-    fontWeight: 800,
+    fontWeight: 700,
     letterSpacing: ".04em",
     textTransform: "uppercase"
   },
@@ -109,19 +109,19 @@ const styles = {
   statusLabel: {
     fontSize: "16px",
     lineHeight: "1.2",
-    fontWeight: 850
+    fontWeight: 700
   },
   statusText: {
     color: "#d5dee8",
     fontSize: "15px",
     lineHeight: "1.45",
-    fontWeight: 550
+    fontWeight: 450
   },
   manageTitle: {
     color: "#ffffff",
     fontSize: "16px",
     lineHeight: "1.25",
-    fontWeight: 850,
+    fontWeight: 700,
     textAlign: "left"
   },
   manageHint: {
@@ -129,7 +129,7 @@ const styles = {
     color: "#9fb0c1",
     fontSize: "14.5px",
     lineHeight: "1.4",
-    fontWeight: 500,
+    fontWeight: 450,
     textAlign: "left"
   },
   actionButton: {
@@ -141,7 +141,7 @@ const styles = {
     fontFamily: "inherit",
     fontSize: "16px",
     lineHeight: "1.2",
-    fontWeight: 850,
+    fontWeight: 700,
     cursor: "pointer",
     transition: "background .15s ease, border-color .15s ease, color .15s ease"
   }

@@ -572,3 +572,21 @@
   width:26px !important;
   height:26px !important;
 }
+
+
+/* 49.2.5 chat list optical weight polish */
+.user-name{
+  font-weight:600 !important;
+}
+
+.dialog-preview{
+  font-weight:400 !important;
+}
+
+.dialog-time{
+  font-weight:400 !important;
+}
+
+.sidebar-search input{
+  font-weight:400 !important;
+}

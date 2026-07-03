@@ -11,7 +11,7 @@ const itemStyles = {
   main: {
     fontSize: 15.5,
     lineHeight: 1.35,
-    fontWeight: 600
+    fontWeight: 500
   },
   sub: {
     fontSize: 14,
