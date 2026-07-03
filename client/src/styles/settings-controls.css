@@ -277,3 +277,16 @@
 .settings-notifications-web .settings-muted-text{
   padding-top:0;
 }
+
+
+/* 49.2.4 final icon/text scale override */
+.settings-item-icon{
+  width:32px !important;
+  min-width:32px !important;
+  font-size:18px !important;
+}
+.settings-row .settings-item-icon svg,
+.settings-svg-icon{
+  width:24px !important;
+  height:24px !important;
+}

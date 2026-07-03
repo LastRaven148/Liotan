@@ -1,5 +1,5 @@
 .sidebar{
-  width:335px;
+  width:360px;
   background:#17212b;
   border-right:1px solid #0f1923;
   display:flex;
@@ -493,4 +493,82 @@
   width:24px;
   height:24px;
   display:block;
+}
+
+
+/* 49.2.4 Telegram-scale sidebar polish */
+.sidebar{
+  width:360px !important;
+  min-width:360px !important;
+  max-width:360px !important;
+}
+
+.sidebar-top{
+  height:62px !important;
+  padding:10px 14px !important;
+  gap:12px !important;
+}
+
+.burger-button{
+  width:42px !important;
+  height:42px !important;
+  font-size:24px !important;
+}
+
+.sidebar-search input{
+  height:44px !important;
+  border-radius:22px !important;
+  padding:0 18px !important;
+  font-size:15px !important;
+  font-weight:500 !important;
+}
+
+.user{
+  min-height:72px !important;
+  padding:10px 16px !important;
+  gap:14px !important;
+  box-sizing:border-box !important;
+}
+
+.profile-avatar,
+.avatar,
+.chat-avatar{
+  width:50px !important;
+  height:50px !important;
+  font-size:19px !important;
+}
+
+.user-name{
+  font-size:15.5px !important;
+  line-height:1.22 !important;
+  font-weight:700 !important;
+}
+
+.dialog-preview{
+  margin-top:3px !important;
+  font-size:14px !important;
+  line-height:1.25 !important;
+  color:#9fb0c1 !important;
+}
+
+.dialog-time{
+  font-size:13px !important;
+  line-height:1.2 !important;
+}
+
+.unread{
+  min-width:24px !important;
+  height:24px !important;
+  border-radius:12px !important;
+  font-size:12px !important;
+}
+
+.dialog-meta{
+  min-width:52px !important;
+  gap:8px !important;
+}
+
+.saved-icon svg{
+  width:26px !important;
+  height:26px !important;
 }

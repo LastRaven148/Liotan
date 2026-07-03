@@ -1,24 +1,24 @@
 const itemStyles = {
   row: {
-    minHeight: 54,
-    padding: "0 8px",
-    gap: 15
+    minHeight: 62,
+    padding: "0 12px",
+    gap: 16
   },
   icon: {
-    width: 28,
-    minWidth: 28
+    width: 32,
+    minWidth: 32
   },
   main: {
-    fontSize: 14.5,
+    fontSize: 15.5,
     lineHeight: 1.35,
     fontWeight: 600
   },
   sub: {
-    fontSize: 13,
+    fontSize: 14,
     lineHeight: 1.3
   },
   value: {
-    fontSize: 13.5
+    fontSize: 14
   }
 };
 

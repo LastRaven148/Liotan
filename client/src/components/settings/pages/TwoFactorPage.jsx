@@ -68,16 +68,16 @@ export default function TwoFactorPage({ back, labels, state, actions }) {
 
 const styles = {
   card: {
-    margin: "0 16px 16px",
-    padding: "16px",
+    margin: "0 16px 18px",
+    padding: "18px",
     background: "#202b36",
-    borderRadius: "14px",
+    borderRadius: "16px",
     boxSizing: "border-box"
   },
   sectionTitle: {
     marginBottom: "12px",
     color: "#8da2b5",
-    fontSize: "13px",
+    fontSize: "15px",
     lineHeight: "1.25",
     fontWeight: 800,
     letterSpacing: ".04em",
@@ -85,41 +85,41 @@ const styles = {
   },
   statusPanel: {
     width: "100%",
-    minHeight: "92px",
+    minHeight: "112px",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
-    gap: "10px",
-    padding: "14px 15px",
+    gap: "12px",
+    padding: "17px 18px",
     border: "1px solid transparent",
-    borderRadius: "13px",
+    borderRadius: "15px",
     boxSizing: "border-box"
   },
   statusTopLine: {
     display: "flex",
     alignItems: "center",
-    gap: "10px"
+    gap: "12px"
   },
   statusDot: {
-    width: "10px",
-    height: "10px",
+    width: "12px",
+    height: "12px",
     borderRadius: "50%",
     flexShrink: 0
   },
   statusLabel: {
-    fontSize: "15px",
+    fontSize: "16px",
     lineHeight: "1.2",
     fontWeight: 850
   },
   statusText: {
     color: "#d5dee8",
-    fontSize: "14px",
+    fontSize: "15px",
     lineHeight: "1.45",
     fontWeight: 550
   },
   manageTitle: {
     color: "#ffffff",
-    fontSize: "15.5px",
+    fontSize: "16px",
     lineHeight: "1.25",
     fontWeight: 850,
     textAlign: "left"
@@ -127,19 +127,19 @@ const styles = {
   manageHint: {
     marginTop: "8px",
     color: "#9fb0c1",
-    fontSize: "13.5px",
+    fontSize: "14.5px",
     lineHeight: "1.4",
     fontWeight: 500,
     textAlign: "left"
   },
   actionButton: {
     width: "100%",
-    minHeight: "46px",
-    marginTop: "15px",
+    minHeight: "52px",
+    marginTop: "17px",
     border: "1px solid transparent",
-    borderRadius: "12px",
+    borderRadius: "14px",
     fontFamily: "inherit",
-    fontSize: "15px",
+    fontSize: "16px",
     lineHeight: "1.2",
     fontWeight: 850,
     cursor: "pointer",
