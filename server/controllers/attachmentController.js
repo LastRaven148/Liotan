@@ -1,7 +1,6 @@
 const fs = require("fs").promises;
-const cloudinary = require("../config/cloudinary");
 const privacy = require("../config/privacy");
-const uploadToCloudinary = require("../utils/uploadToCloudinary");
+const { uploadToR2 } = require("../utils/uploadToR2");
 const {
   normalizeMime,
   assertAllowedAttachment,
@@ -35,12 +34,6 @@ function getAttachmentType(mimeType = "") {
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
   return "file";
-}
-
-function getResourceType(type) {
-  if (type === "photo") return "image";
-  if (type === "video" || type === "audio") return "video";
-  return "raw";
 }
 
 function getUploadOwnerSegment(req) {
@@ -99,10 +92,10 @@ async function uploadAttachment(req, res, next) {
     }
 
     const type = getAttachmentType(mimeType);
-    const result = await uploadToCloudinary(req.file, {
+    const result = await uploadToR2(req.file, {
       folder: getFolder(type, getUploadOwnerSegment(req)),
-      resourceType: getResourceType(type),
-      attachmentType: type
+      attachmentType: type,
+      mimeType
     });
 
     const upload = await registerAttachmentUpload({

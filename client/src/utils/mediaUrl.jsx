@@ -1,6 +1,8 @@
 import { API }
 from "../config/api";
 
+const DEFAULT_MEDIA_ORIGIN = "https://media.liotan.com";
+
 function isAllowedRemoteMediaUrl(value) {
   try {
     const parsed = new URL(value);
@@ -9,8 +11,11 @@ function isAllowedRemoteMediaUrl(value) {
       return false;
     }
 
+    const mediaOrigin = String(import.meta.env.VITE_MEDIA_URL || DEFAULT_MEDIA_ORIGIN)
+      .replace(/\/+$/, "");
+
     return (
-      parsed.hostname.endsWith(".cloudinary.com") ||
+      parsed.origin === mediaOrigin ||
       parsed.origin === API
     );
   } catch {

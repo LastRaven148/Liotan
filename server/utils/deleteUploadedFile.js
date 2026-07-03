@@ -1,101 +1,29 @@
-const path =
-  require("path");
+const path = require("path");
+const fs = require("fs/promises");
+const logger = require("./logger");
+const { deleteFromR2 } = require("./uploadToR2");
 
-const fs =
-  require("fs/promises");
+const uploadsDir = path.resolve(__dirname, "..", "uploads");
 
-const cloudinary =
-  require("../config/cloudinary");
-
-const logger =
-  require("./logger");
-
-const uploadsDir =
-  path.resolve(
-    __dirname,
-    "..",
-    "uploads"
-  );
-
-async function deleteLocalFile(
-  fileUrl
-) {
-
+async function deleteLocalFile(fileUrl) {
   try {
+    if (!fileUrl || !fileUrl.startsWith("/uploads/")) return;
 
-    if (
-      !fileUrl ||
-      !fileUrl.startsWith("/uploads/")
-    ) {
-      return;
-    }
+    const relative = fileUrl.replace("/uploads/", "");
+    const filePath = path.resolve(uploadsDir, relative);
 
-    const relative =
-      fileUrl.replace(
-        "/uploads/",
-        ""
-      );
-
-    const filePath =
-      path.resolve(
-        uploadsDir,
-        relative
-      );
-
-    if (
-      !filePath.startsWith(
-        uploadsDir + path.sep
-      )
-    ) {
-      return;
-    }
+    if (!filePath.startsWith(uploadsDir + path.sep)) return;
 
     await fs.unlink(filePath);
-
   } catch (err) {
-
     if (err.code !== "ENOENT") {
       logger.warn("delete local file failed", { code: err.code });
     }
-
   }
-
 }
 
-async function deleteCloudinaryFile({
-  publicId,
-  resourceType = "image"
-}) {
-
-  if (!publicId) {
-    return;
-  }
-
-  try {
-
-    await cloudinary.uploader.destroy(
-      publicId,
-      {
-        resource_type:
-          resourceType || "image"
-      }
-    );
-
-  } catch (err) {
-
-    logger.warn("delete cloudinary file failed", { code: err.code });
-
-  }
-
-}
-
-async function deleteUploadedFile(
-  file
-) {
-
-  if (!file) {
-    return;
-  }
+async function deleteUploadedFile(file) {
+  if (!file) return;
 
   if (typeof file === "string") {
     await deleteLocalFile(file);
@@ -103,19 +31,16 @@ async function deleteUploadedFile(
   }
 
   if (file.publicId) {
-    await deleteCloudinaryFile({
-      publicId:
-        file.publicId,
-      resourceType:
-        file.resourceType
-    });
+    try {
+      await deleteFromR2(file.publicId);
+    } catch (err) {
+      logger.warn("delete R2 file failed", { code: err.code, status: err.status });
+    }
   }
 
   if (file.url) {
     await deleteLocalFile(file.url);
   }
-
 }
 
-module.exports =
-  deleteUploadedFile;
+module.exports = deleteUploadedFile;

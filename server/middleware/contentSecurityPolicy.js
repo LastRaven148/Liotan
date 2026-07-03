@@ -35,8 +35,7 @@ function buildConnectSources() {
     process.env.API_URL,
     process.env.PUBLIC_API_URL,
     ...splitOrigins(process.env.ALLOWED_ORIGINS),
-    "https://api.cloudinary.com",
-    "https://res.cloudinary.com"
+    process.env.R2_PUBLIC_URL
   ].map(normalizeOrigin).filter(Boolean)));
 
   const wsOrigins = httpOrigins
@@ -57,8 +56,8 @@ const contentSecurityPolicy = {
     "base-uri": ["'self'"],
     "object-src": ["'none'"],
     "frame-ancestors": ["'none'"],
-    "img-src": ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
-    "media-src": ["'self'", "blob:", "https://res.cloudinary.com"],
+    "img-src": ["'self'", "data:", "blob:", process.env.R2_PUBLIC_URL || "https://media.liotan.com"],
+    "media-src": ["'self'", "blob:", process.env.R2_PUBLIC_URL || "https://media.liotan.com"],
     "connect-src": buildConnectSources(),
     "script-src": ["'self'"],
     "style-src": ["'self'", "'unsafe-inline'"],

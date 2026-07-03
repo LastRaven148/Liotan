@@ -2,7 +2,7 @@ const Group = require("../models/Group");
 const User = require("../models/User");
 const Message = require("../models/Messages");
 const E2EEKey = require("../models/E2EEKey");
-const uploadToCloudinary = require("../utils/uploadToCloudinary");
+const { uploadToR2 } = require("../utils/uploadToR2");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const {
   isValidUsername
@@ -239,9 +239,9 @@ async function uploadGroupAvatar(req, res, next) {
       publicId: group.avatarPublicId,
       resourceType: group.avatarResourceType
     });
-    const result = await uploadToCloudinary(req.file, {
+    const result = await uploadToR2(req.file, {
       folder: "liotan/groups",
-      resourceType: "image"
+      mimeType: req.file.mimetype
     });
     group.avatar = result.secure_url;
     group.avatarPublicId = result.public_id;

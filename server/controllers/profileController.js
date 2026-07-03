@@ -1,8 +1,8 @@
 const User =
   require("../models/User");
 
-const uploadToCloudinary =
-  require("../utils/uploadToCloudinary");
+const { uploadToR2 } =
+  require("../utils/uploadToR2");
 
 const deleteUploadedFile =
   require("../utils/deleteUploadedFile");
@@ -188,11 +188,11 @@ async function uploadAvatar(req, res, next) {
     });
 
     const result =
-      await uploadToCloudinary(
+      await uploadToR2(
         req.file,
         {
           folder: "liotan/avatars",
-          resourceType: "image"
+          mimeType: req.file.mimetype
         }
       );
 

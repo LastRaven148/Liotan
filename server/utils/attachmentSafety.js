@@ -1,6 +1,6 @@
 const path = require("path");
 
-const CLOUDINARY_FORMATS = {
+const ATTACHMENT_FORMATS = {
   photo: ["jpg", "jpeg", "png", "webp"],
   video: ["mp4", "webm", "mov"],
   audio: ["mp3", "m4a", "aac", "ogg", "wav", "webm"],
@@ -19,11 +19,11 @@ function sanitizeAttachmentName(value) {
   return (base || "file").slice(0, 160);
 }
 
-function getCloudinaryAllowedFormats(type) {
-  return CLOUDINARY_FORMATS[type] || CLOUDINARY_FORMATS.file;
+function getAllowedAttachmentFormats(type) {
+  return ATTACHMENT_FORMATS[type] || ATTACHMENT_FORMATS.file;
 }
 
 module.exports = {
   sanitizeAttachmentName,
-  getCloudinaryAllowedFormats
+  getAllowedAttachmentFormats
 };

@@ -49,17 +49,17 @@ const RULES = [
     note: "Global Socket.IO emit can leak metadata; prefer user/group rooms."
   },
   {
-    id: "client-cloudinary-internal-id",
+    id: "server-storage-internal-id",
     severity: "high",
     pattern: /publicId|resourceType/i,
-    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]cleanup|scripts[\/]/,
-    note: "Cloudinary publicId/resourceType must stay server-side and must not be accepted from client payloads."
+    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|scripts[\/]/,
+    note: "Storage publicId/resourceType must stay server-side and must not be accepted from client payloads."
   },
   {
-    id: "direct-cloudinary-signed-upload",
+    id: "direct-storage-signed-upload",
     severity: "high",
-    pattern: /api_sign_request|cloudName|apiKey/i,
-    allow: /config[\/]cloudinary\.js$|utils[\/]uploadToCloudinary\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
+    pattern: /api_sign_request|cloudName|apiKey|secretAccessKey/i,
+    allow: /utils[\/]uploadToR2\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
     note: "Prefer server-mediated uploads; direct signed upload exposes provider metadata."
   },
   {

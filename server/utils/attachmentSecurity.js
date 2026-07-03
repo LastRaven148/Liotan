@@ -62,30 +62,28 @@ function isDangerousName(fileName = "") {
   return false;
 }
 
-function isAllowedCloudinaryUrl(value = "") {
-  const url = String(value || "");
+function normalizeOrigin(value = "") {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
 
-  if (!url.startsWith("https://")) {
+function isAllowedR2Url(value = "") {
+  const url = String(value || "");
+  const publicUrl = normalizeOrigin(process.env.R2_PUBLIC_URL || "https://media.liotan.com");
+
+  if (!url.startsWith("https://") || !publicUrl) {
     return false;
   }
 
   try {
     const parsed = new URL(url);
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const allowed = new URL(publicUrl);
 
-    if (parsed.protocol !== "https:") {
-      return false;
-    }
-
-    if (!parsed.hostname.endsWith(".cloudinary.com")) {
-      return false;
-    }
-
-    if (cloudName) {
-      return parsed.pathname.includes(`/${cloudName}/`);
-    }
-
-    return parsed.hostname === "res.cloudinary.com";
+    return (
+      parsed.protocol === "https:" &&
+      parsed.origin === allowed.origin &&
+      !parsed.pathname.includes("..") &&
+      !parsed.pathname.includes("\\")
+    );
   } catch {
     return false;
   }
@@ -107,7 +105,7 @@ function isAllowedLocalUploadUrl(value = "") {
 
 function isAllowedAttachmentUrl(value = "") {
   return (
-    isAllowedCloudinaryUrl(value) ||
+    isAllowedR2Url(value) ||
     isAllowedLocalUploadUrl(value)
   );
 }
