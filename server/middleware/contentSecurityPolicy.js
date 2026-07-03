@@ -11,22 +11,14 @@ function splitOrigins(value) {
     .filter(Boolean);
 }
 
-function toWebSocketOrigin(origin) {
+function toSecureWebSocketOrigin(origin) {
   const clean = normalizeOrigin(origin);
 
-  if (clean.startsWith("https://")) {
-    return `wss://${clean.slice("https://".length)}`;
+  if (!clean.startsWith("https://")) {
+    return "";
   }
 
-  if (process.env.NODE_ENV !== "production" && clean.startsWith("http://localhost")) {
-    return `ws://${clean.slice("http://".length)}`;
-  }
-
-  if (process.env.NODE_ENV !== "production" && clean.startsWith("http://127.0.0.1")) {
-    return `ws://${clean.slice("http://".length)}`;
-  }
-
-  return "";
+  return `wss://${clean.slice("https://".length)}`;
 }
 
 function buildConnectSources() {
@@ -43,7 +35,7 @@ function buildConnectSources() {
   ].map(normalizeOrigin).filter(Boolean)));
 
   const wsOrigins = httpOrigins
-    .map(toWebSocketOrigin)
+    .map(toSecureWebSocketOrigin)
     .filter(Boolean);
 
   return [

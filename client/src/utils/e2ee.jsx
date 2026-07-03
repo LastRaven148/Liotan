@@ -255,7 +255,7 @@ async function syncE2EEServerState(action, label = "E2EE sync") {
     return true;
   } catch (err) {
     if (import.meta.env.DEV) {
-      console.warn(`${label} failed`, err);
+      console.warn("E2EE sync failed", { label: String(label || "E2EE sync"), error: err });
     }
     return false;
   }

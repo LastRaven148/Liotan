@@ -20,6 +20,22 @@ const uploadsDir =
     "uploads"
   );
 
+function safeChildPath(parent, name) {
+  if (typeof name !== "string" || name.includes("/") || name.includes("\\")) {
+    throw new Error("Unsafe filesystem entry name");
+  }
+
+  const resolvedParent = path.resolve(parent);
+  const resolvedChild = path.resolve(resolvedParent, name);
+  const relative = path.relative(resolvedParent, resolvedChild);
+
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Refusing to traverse outside uploads root");
+  }
+
+  return resolvedChild;
+}
+
 function urlToPath(fileUrl) {
 
   if (
@@ -70,7 +86,7 @@ async function walk(dir) {
     for (const entry of entries) {
 
       const fullPath =
-        path.join(
+        safeChildPath(
           dir,
           entry.name
         );

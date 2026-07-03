@@ -139,11 +139,27 @@ const RULES = [
   }
 ];
 
+function safeChildPath(parent, name) {
+  if (typeof name !== "string" || name.includes("/") || name.includes("\\")) {
+    throw new Error("Unsafe filesystem entry name");
+  }
+
+  const resolvedParent = path.resolve(parent);
+  const resolvedChild = path.resolve(resolvedParent, name);
+  const relative = path.relative(resolvedParent, resolvedChild);
+
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Refusing to traverse outside project root");
+  }
+
+  return resolvedChild;
+}
+
 function walk(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (IGNORED_DIRS.has(entry.name)) continue;
 
-    const fullPath = path.join(dir, entry.name);
+    const fullPath = safeChildPath(dir, entry.name);
 
     if (entry.isDirectory()) {
       walk(fullPath, files);

@@ -2,7 +2,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
@@ -11,6 +11,50 @@ const outDir = path.join(root, "release");
 const outFile = path.join(outDir, `Liotan-${version}-clean.zip`);
 const tmpDir = path.join(os.tmpdir(), `liotan-release-${process.pid}-${Date.now()}`);
 const stagedRoot = path.join(tmpDir, "Liotan");
+const WINDOWS_EXTENSIONS = [".cmd", ".exe", ".bat"];
+
+function getPathEntries() {
+  return String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean);
+}
+
+function resolveExecutable(command) {
+  if (!/^[A-Za-z0-9._-]+$/.test(command)) {
+    return "";
+  }
+
+  const candidates = process.platform === "win32"
+    ? [command, ...WINDOWS_EXTENSIONS.map(ext => `${command}${ext}`)]
+    : [command];
+
+  for (const dir of getPathEntries()) {
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (fs.existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  return "";
+}
+
+function safeChildPath(parent, name) {
+  if (typeof name !== "string" || name.includes("/") || name.includes("\\")) {
+    throw new Error("Unsafe filesystem entry name in release source");
+  }
+
+  const resolvedParent = path.resolve(parent);
+  const resolvedChild = path.resolve(resolvedParent, name);
+  const relative = path.relative(resolvedParent, resolvedChild);
+
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Refusing to copy a path outside the expected release tree");
+  }
+
+  return resolvedChild;
+}
 
 const EXCLUDED_NAMES = new Set([
   ".git",
@@ -56,10 +100,10 @@ function copyDirectory(source, destination) {
   const entries = fs.readdirSync(source, { withFileTypes: true });
 
   for (const entry of entries) {
-    const sourcePath = path.join(source, entry.name);
+    const sourcePath = safeChildPath(source, entry.name);
     if (shouldExclude(sourcePath)) continue;
 
-    const destinationPath = path.join(destination, entry.name);
+    const destinationPath = safeChildPath(destination, entry.name);
 
     if (entry.isDirectory()) {
       copyDirectory(sourcePath, destinationPath);
@@ -70,11 +114,7 @@ function copyDirectory(source, destination) {
 }
 
 function commandExists(command) {
-  const result = spawnSync(process.platform === "win32" ? "where" : "command", process.platform === "win32" ? [command] : ["-v", command], {
-    shell: process.platform !== "win32",
-    stdio: "ignore"
-  });
-  return result.status === 0;
+  return Boolean(resolveExecutable(command));
 }
 
 function zipWithArchiver() {
@@ -102,14 +142,15 @@ function zipWithSystemZip() {
     return false;
   }
 
-  const result = spawnSync("zip", ["-qr", outFile, "Liotan"], {
+  const zipPath = resolveExecutable("zip");
+  if (!zipPath) {
+    return false;
+  }
+
+  execFileSync(zipPath, ["-qr", outFile, "Liotan"], {
     cwd: tmpDir,
     stdio: "inherit"
   });
-
-  if (result.status !== 0) {
-    throw new Error("zip command failed");
-  }
 
   return true;
 }
@@ -126,11 +167,12 @@ function zipWithPowerShell() {
     `Compress-Archive -Path '${stagedRoot.replace(/'/g, "''")}' -DestinationPath '${outFile.replace(/'/g, "''")}' -Force`
   ];
 
-  const result = spawnSync("powershell.exe", command, { stdio: "inherit" });
-
-  if (result.status !== 0) {
-    throw new Error("PowerShell Compress-Archive failed");
+  const powershellPath = resolveExecutable("powershell");
+  if (!powershellPath) {
+    return false;
   }
+
+  execFileSync(powershellPath, command, { stdio: "inherit" });
 
   return true;
 }

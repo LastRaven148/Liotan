@@ -1,37 +1,55 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { execFileSync } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
 const releaseZip = path.join(root, "release", `Liotan-${rootPackage.version}-clean.zip`);
+const WINDOWS_EXTENSIONS = [".cmd", ".exe", ".bat"];
 
-function run(label, command, args, options = {}) {
+function getPathEntries() {
+  return String(process.env.PATH || "")
+    .split(path.delimiter)
+    .filter(Boolean);
+}
+
+function resolveExecutable(command) {
+  if (!/^[A-Za-z0-9._-]+$/.test(command)) {
+    return "";
+  }
+
+  const candidates = process.platform === "win32"
+    ? [command, ...WINDOWS_EXTENSIONS.map(ext => `${command}${ext}`)]
+    : [command];
+
+  for (const dir of getPathEntries()) {
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (fs.existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  return "";
+}
+
+function runExecutable(label, executable, args, options = {}) {
   console.log(`\n==> ${label}`);
-  const result = spawnSync(command, args, {
+  execFileSync(executable, args, {
     cwd: options.cwd || root,
-    shell: process.platform === "win32",
     stdio: "inherit",
     env: process.env
   });
-
-  if (result.status !== 0) {
-    throw new Error(`${label} failed with exit code ${result.status}`);
-  }
 }
 
-function commandExists(command) {
-  const result = spawnSync(
-    process.platform === "win32" ? "where" : "command",
-    process.platform === "win32" ? [command] : ["-v", command],
-    {
-      shell: process.platform !== "win32",
-      stdio: "ignore"
-    }
-  );
-
-  return result.status === 0;
+function runNpm(label, args, cwd = root) {
+  const npmPath = resolveExecutable("npm");
+  if (!npmPath) {
+    throw new Error("npm executable was not found in PATH");
+  }
+  runExecutable(label, npmPath, args, { cwd });
 }
 
 function testZip() {
@@ -39,13 +57,18 @@ function testZip() {
     throw new Error(`Release ZIP was not created: ${releaseZip}`);
   }
 
-  if (commandExists("unzip")) {
-    run("unzip -t release archive", "unzip", ["-t", releaseZip]);
+  const unzipPath = resolveExecutable("unzip");
+  if (unzipPath) {
+    runExecutable("unzip -t release archive", unzipPath, ["-t", releaseZip]);
     return;
   }
 
   if (process.platform === "win32") {
-    run("PowerShell ZIP integrity check", "powershell.exe", [
+    const powershellPath = resolveExecutable("powershell");
+    if (!powershellPath) {
+      throw new Error("PowerShell was not found for ZIP integrity check");
+    }
+    runExecutable("PowerShell ZIP integrity check", powershellPath, [
       "-NoProfile",
       "-ExecutionPolicy",
       "Bypass",
@@ -55,20 +78,16 @@ function testZip() {
     return;
   }
 
-  console.log("ZIP integrity tool not found; archive exists but was not deep-tested.");
+  throw new Error("No ZIP integrity checker found: install unzip or run on Windows with PowerShell.");
 }
 
 function main() {
-  run("client build", "npm", ["run", "check:client"]);
-  run("server syntax check", "npm", ["run", "check:server"]);
-  run("client production audit", "npm", ["audit", "--omit=dev"], {
-    cwd: path.join(root, "client")
-  });
-  run("server production audit", "npm", ["audit", "--omit=dev"], {
-    cwd: path.join(root, "server")
-  });
-  run("privacy audit", "npm", ["run", "audit:privacy"]);
-  run("make clean release", "npm", ["run", "make-release"]);
+  runNpm("client build", ["run", "check:client"]);
+  runNpm("server syntax check", ["run", "check:server"]);
+  runNpm("client production audit", ["audit", "--omit=dev"], path.join(root, "client"));
+  runNpm("server production audit", ["audit", "--omit=dev"], path.join(root, "server"));
+  runNpm("privacy audit", ["run", "audit:privacy"]);
+  runNpm("make clean release", ["run", "make-release"]);
   testZip();
   console.log("\nRelease check passed.");
 }

@@ -306,8 +306,27 @@ function formatSecurityDate(value, locale = "en") {
   }).format(date);
 }
 
+const SAFE_REGISTRATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,256}$/;
+
+function normalizeRegistrationToken(token) {
+  const clean = String(token || "").trim();
+  return SAFE_REGISTRATION_TOKEN_PATTERN.test(clean) ? clean : "";
+}
+
+function normalizeRegistrationSecurityAction(action) {
+  const clean = String(action || "").trim();
+  return isAllowedRegistrationSecurityAction(clean) ? clean : "";
+}
+
 function getRegistrationActionUrl(token, action) {
-  return `/auth/register/cancel/${encodeURIComponent(token)}/action/${encodeURIComponent(action)}`;
+  const safeToken = normalizeRegistrationToken(token);
+  const safeAction = normalizeRegistrationSecurityAction(action);
+
+  if (!safeToken || !safeAction) {
+    return "/";
+  }
+
+  return `/auth/register/cancel/${encodeURIComponent(safeToken)}/action/${encodeURIComponent(safeAction)}`;
 }
 
 function isConfirmedSecurityAction(req) {
@@ -1213,7 +1232,12 @@ async function cancelEmailChange(req, res, next) {
 
 
 async function findRegistrationSecurityRecord(token) {
-  const tokenHash = sha256(token || "");
+  const safeToken = normalizeRegistrationToken(token);
+  if (!safeToken) {
+    return null;
+  }
+
+  const tokenHash = sha256(safeToken);
   return RegistrationCancel.findOne({
     tokenHash,
     usedAt: null,
@@ -1265,7 +1289,8 @@ async function markRegistrationActionUsed(record, action) {
 
 async function cancelRegistration(req, res, next) {
   try {
-    const record = await findRegistrationSecurityRecord(req.params.token);
+    const token = normalizeRegistrationToken(req.params.token);
+    const record = await findRegistrationSecurityRecord(token);
 
     if (!record) {
       return sendSimpleSecurityPage(res, {
@@ -1276,7 +1301,7 @@ async function cancelRegistration(req, res, next) {
     }
 
     return sendRegistrationSecurityPage(res, {
-      token: req.params.token,
+      token,
       record,
       req
     });
@@ -1339,12 +1364,13 @@ async function sendRestrictedSecurityActionPageIfNeeded({
 
 async function handleRegistrationSecurityAction(req, res, next) {
   try {
-    const action = String(req.params.action || "");
-    const record = await findRegistrationSecurityRecord(req.params.token);
+    const token = normalizeRegistrationToken(req.params.token);
+    const action = normalizeRegistrationSecurityAction(req.params.action);
+    const record = await findRegistrationSecurityRecord(token);
     const locale = getSecurityPageLocale(req);
     const copy = securityText(locale);
 
-    if (!isAllowedRegistrationSecurityAction(action)) {
+    if (!action) {
       return sendSimpleSecurityPage(res, {
         ok: false,
         title: locale === "ru" ? "Неизвестное действие" : "Unknown action",
@@ -1365,12 +1391,12 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "suspicious") {
-      return sendSuspiciousRegistrationPage(res, { token: req.params.token, record, req });
+      return sendSuspiciousRegistrationPage(res, { token: token, record, req });
     }
 
     if (action === "revoke-session") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.revokeSession, text: copy.revokeSessionConfirm, req });
+        return sendSecurityConfirmPage(res, { token: token, action, title: copy.revokeSession, text: copy.revokeSessionConfirm, req });
       }
       const result = record.sessionIdHash
         ? await Session.updateOne(
@@ -1390,7 +1416,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
     if (action === "logout-all") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.logoutAll, text: copy.logoutAllConfirm, req });
+        return sendSecurityConfirmPage(res, { token: token, action, title: copy.logoutAll, text: copy.logoutAllConfirm, req });
       }
       await revokeAllUserSessions({ userId: record.userId });
       await markRegistrationActionUsed(record, "logout-all");
@@ -1403,7 +1429,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
 
     if (action === "change-password") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.changePassword, text: copy.changePasswordConfirm, req });
+        return sendSecurityConfirmPage(res, { token: token, action, title: copy.changePassword, text: copy.changePasswordConfirm, req });
       }
       const email = getRecordEmail(record);
       if (!email) {
@@ -1424,7 +1450,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
         code,
         purpose: "reset"
       });
-      return sendChangePasswordPage(res, { token: req.params.token, req });
+      return sendChangePasswordPage(res, { token: token, req });
     }
 
     if (action === "change-password-submit") {
@@ -1432,10 +1458,10 @@ async function handleRegistrationSecurityAction(req, res, next) {
       const password = String(req.body?.password || "");
       const passwordConfirm = String(req.body?.passwordConfirm || "");
       if (!isValidEmailCode(emailCode)) {
-        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Введите 8-значный код из письма." : "Enter the 8-digit email code." });
+        return sendChangePasswordPage(res, { token: token, req, error: locale === "ru" ? "Введите 8-значный код из письма." : "Enter the 8-digit email code." });
       }
       if (!isValidPassword(password) || password !== passwordConfirm) {
-        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Пароль должен быть от 8 до 64 символов, оба поля должны совпадать." : "Password must be 8–64 characters, and both fields must match." });
+        return sendChangePasswordPage(res, { token: token, req, error: locale === "ru" ? "Пароль должен быть от 8 до 64 символов, оба поля должны совпадать." : "Password must be 8–64 characters, and both fields must match." });
       }
       const verified = await verifyEmailCode({
         emailHash: record.emailHash,
@@ -1443,7 +1469,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
         code: emailCode
       });
       if (!verified) {
-        return sendChangePasswordPage(res, { token: req.params.token, req, error: locale === "ru" ? "Код неверный или истёк." : "The code is invalid or expired." });
+        return sendChangePasswordPage(res, { token: token, req, error: locale === "ru" ? "Код неверный или истёк." : "The code is invalid or expired." });
       }
       const user = await User.findOne({ _id: record.userId, username: record.username });
       if (!user) {
@@ -1474,7 +1500,7 @@ async function handleRegistrationSecurityAction(req, res, next) {
         });
       }
       if (!isConfirmedSecurityAction(req)) {
-        return sendSecurityConfirmPage(res, { token: req.params.token, action, title: copy.reset2fa, text: copy.reset2faConfirm, req });
+        return sendSecurityConfirmPage(res, { token: token, action, title: copy.reset2fa, text: copy.reset2faConfirm, req });
       }
       security.totp.enabled = false;
       security.totp.secretEnvelope = null;
@@ -1491,16 +1517,16 @@ async function handleRegistrationSecurityAction(req, res, next) {
     }
 
     if (action === "delete-step-1") {
-      return sendDeleteStepOnePage(res, { token: req.params.token, req });
+      return sendDeleteStepOnePage(res, { token: token, req });
     }
 
     if (action === "delete-step-2") {
-      return sendDeleteStepTwoPage(res, { token: req.params.token, req });
+      return sendDeleteStepTwoPage(res, { token: token, req });
     }
 
     if (action === "delete-final") {
       if (!isConfirmedSecurityAction(req)) {
-        return sendDeleteStepTwoPage(res, { token: req.params.token, req });
+        return sendDeleteStepTwoPage(res, { token: token, req });
       }
       const email = getRecordEmail(record);
       await markRegistrationActionUsed(record, "delete-final");
