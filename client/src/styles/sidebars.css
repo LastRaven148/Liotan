@@ -1493,3 +1493,77 @@
   width:24px !important;
   height:24px !important;
 }
+
+
+/* 49.2.11 fixed create action position + escape-ready group panel */
+.sidebar-create-button,
+.create-group-next-button{
+  position:fixed !important;
+  left:calc(var(--liotan-sidebar-width) - 76px) !important;
+  right:auto !important;
+  bottom:28px !important;
+  z-index:46000 !important;
+}
+
+.sidebar-create-menu{
+  position:fixed !important;
+  left:16px !important;
+  right:auto !important;
+  bottom:92px !important;
+  width:calc(var(--liotan-sidebar-width) - 32px) !important;
+  max-width:calc(var(--liotan-sidebar-width) - 32px) !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-overlay{
+  position:fixed !important;
+  left:0 !important;
+  top:0 !important;
+  bottom:0 !important;
+  right:auto !important;
+  width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+  min-width:var(--liotan-sidebar-width) !important;
+  z-index:45000 !important;
+}
+
+.create-group-drawer{
+  width:var(--liotan-sidebar-width) !important;
+  min-width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+}
+
+.create-group-form-panel{
+  padding-left:16px !important;
+  padding-right:16px !important;
+}
+
+.create-group-search-wrap{
+  width:100% !important;
+  max-width:100% !important;
+  height:44px !important;
+  margin:8px 0 14px !important;
+  padding:0 16px 0 44px !important;
+  border-radius:22px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-search-icon{
+  left:15px !important;
+  width:22px !important;
+  height:22px !important;
+}
+
+.create-group-search-icon svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+.create-group-search{
+  width:100% !important;
+  height:100% !important;
+  line-height:44px !important;
+  padding:0 !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+}

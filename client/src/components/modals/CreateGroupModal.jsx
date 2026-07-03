@@ -43,6 +43,21 @@ export default function CreateGroupModal({
 
   useEffect(() => {
 
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () =>
+      window.removeEventListener("keydown", handleEscape);
+
+  }, [onClose]);
+
+  useEffect(() => {
+
     const query =
       search.trim();
 

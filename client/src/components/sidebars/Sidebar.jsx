@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import useOutsideClick
 from "../../hooks/ui/useOutsideClick";
@@ -53,6 +53,23 @@ export default function Sidebar({
       }
     }
   );
+
+  useEffect(() => {
+    if (!createMenuOpen) {
+      return undefined;
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setCreateMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () =>
+      window.removeEventListener("keydown", handleEscape);
+  }, [createMenuOpen]);
 
   return (
     <aside className="sidebar">
