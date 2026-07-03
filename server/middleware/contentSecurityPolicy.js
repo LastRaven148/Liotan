@@ -18,7 +18,11 @@ function toWebSocketOrigin(origin) {
     return `wss://${clean.slice("https://".length)}`;
   }
 
-  if (clean.startsWith("http://")) {
+  if (process.env.NODE_ENV !== "production" && clean.startsWith("http://localhost")) {
+    return `ws://${clean.slice("http://".length)}`;
+  }
+
+  if (process.env.NODE_ENV !== "production" && clean.startsWith("http://127.0.0.1")) {
     return `ws://${clean.slice("http://".length)}`;
   }
 

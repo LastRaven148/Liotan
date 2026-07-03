@@ -1286,6 +1286,22 @@ async function cancelRegistration(req, res, next) {
 }
 
 
+const REGISTRATION_SECURITY_ACTIONS = new Set([
+  "suspicious",
+  "revoke-session",
+  "logout-all",
+  "change-password",
+  "change-password-submit",
+  "reset-2fa",
+  "delete-step-1",
+  "delete-step-2",
+  "delete-final"
+]);
+
+function isAllowedRegistrationSecurityAction(action) {
+  return REGISTRATION_SECURITY_ACTIONS.has(action);
+}
+
 function isSecurityPageActionBlockedByRestrictedSession(action) {
   return action !== "";
 }
@@ -1327,6 +1343,14 @@ async function handleRegistrationSecurityAction(req, res, next) {
     const record = await findRegistrationSecurityRecord(req.params.token);
     const locale = getSecurityPageLocale(req);
     const copy = securityText(locale);
+
+    if (!isAllowedRegistrationSecurityAction(action)) {
+      return sendSimpleSecurityPage(res, {
+        ok: false,
+        title: locale === "ru" ? "Неизвестное действие" : "Unknown action",
+        message: locale === "ru" ? "Выбранное действие не поддерживается." : "The selected action is not supported."
+      });
+    }
 
     if (!record) {
       return sendSimpleSecurityPage(res, {

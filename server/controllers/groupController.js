@@ -239,17 +239,6 @@ async function uploadGroupAvatar(req, res, next) {
         error: "no file"
       });
     }
-    const mimeType = normalizeMime(req.file.mimetype);
-    assertAllowedAvatar({
-      mimeType,
-      fileName: req.file.originalname,
-      size: req.file.size
-    });
-    assertSafeFileBuffer({
-      buffer: req.file.buffer,
-      mimeType
-    });
-
     await deleteUploadedFile({
       url: group.avatar,
       storageKey: group.avatarStorageKey,
@@ -424,17 +413,6 @@ async function deleteGroup(req, res, next) {
       chatType: "group",
       groupId: group._id
     });
-    const mimeType = normalizeMime(req.file.mimetype);
-    assertAllowedAvatar({
-      mimeType,
-      fileName: req.file.originalname,
-      size: req.file.size
-    });
-    assertSafeFileBuffer({
-      buffer: req.file.buffer,
-      mimeType
-    });
-
     await deleteUploadedFile({
       url: group.avatar,
       storageKey: group.avatarStorageKey,

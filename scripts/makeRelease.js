@@ -19,7 +19,12 @@ const EXCLUDED_NAMES = new Set([
   "dist",
   "build",
   "release",
-  "README.md"
+  "README.md",
+  "coverage",
+  ".cache",
+  "cache",
+  ".DS_Store",
+  "Thumbs.db"
 ]);
 
 const EXCLUDED_RELATIVE = new Set([
@@ -39,8 +44,10 @@ function shouldExclude(fullPath) {
   if (!rel) return false;
   if (EXCLUDED_NAMES.has(base)) return true;
   if (EXCLUDED_RELATIVE.has(rel)) return true;
+  if (base === ".env" || base.startsWith(".env.")) return true;
+  if (base.endsWith(".log") || base.endsWith(".zip")) return true;
   if (rel.endsWith("/.env") || rel.includes("/.git/") || rel.includes("/node_modules/")) return true;
-  if (rel.includes("/build/") || rel.includes("/dist/")) return true;
+  if (rel.includes("/build/") || rel.includes("/dist/") || rel.includes("/coverage/")) return true;
   return false;
 }
 
@@ -158,7 +165,7 @@ async function main() {
   const sizeMb = (fs.statSync(outFile).size / 1024 / 1024).toFixed(2);
   console.log(`Release archive created: ${outFile}`);
   console.log(`Size: ${sizeMb} MB`);
-  console.log("Excluded: .env, .git, node_modules, build, dist, release, README.md");
+  console.log("Excluded: .env*, .git, node_modules, build, dist, release, logs, cache, coverage, zip archives, README.md");
 }
 
 main().catch(err => {

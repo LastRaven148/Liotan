@@ -2,6 +2,8 @@ const crypto = require("crypto");
 
 const ALGORITHM = "aes-256-gcm";
 const VERSION = "v1";
+const IV_LENGTH_BYTES = 12;
+const AUTH_TAG_LENGTH_BYTES = 16;
 
 function getRootKey() {
   const securitySecret = String(process.env.SECURITY_ENCRYPTION_SECRET || "");
@@ -21,8 +23,10 @@ function getRootKey() {
 }
 
 function encryptJson(value, aad = "liotan") {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGORITHM, getRootKey(), iv);
+  const iv = crypto.randomBytes(IV_LENGTH_BYTES);
+  const cipher = crypto.createCipheriv(ALGORITHM, getRootKey(), iv, {
+    authTagLength: AUTH_TAG_LENGTH_BYTES
+  });
   cipher.setAAD(Buffer.from(String(aad)));
   const plaintext = Buffer.from(JSON.stringify(value));
   const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
@@ -40,15 +44,26 @@ function decryptJson(envelope, aad = "liotan") {
   if (!envelope || envelope.version !== VERSION || envelope.algorithm !== ALGORITHM) {
     throw new Error("invalid encrypted envelope");
   }
+  const iv = Buffer.from(String(envelope.iv || ""), "base64url");
+  const tag = Buffer.from(String(envelope.tag || ""), "base64url");
+  const data = Buffer.from(String(envelope.data || ""), "base64url");
+
+  if (iv.length !== IV_LENGTH_BYTES || tag.length !== AUTH_TAG_LENGTH_BYTES || data.length < 1) {
+    throw new Error("invalid encrypted envelope");
+  }
+
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
     getRootKey(),
-    Buffer.from(envelope.iv, "base64url")
+    iv,
+    {
+      authTagLength: AUTH_TAG_LENGTH_BYTES
+    }
   );
   decipher.setAAD(Buffer.from(String(aad)));
-  decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
+  decipher.setAuthTag(tag);
   const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(envelope.data, "base64url")),
+    decipher.update(data),
     decipher.final()
   ]);
   return JSON.parse(plaintext.toString("utf8"));

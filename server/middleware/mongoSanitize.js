@@ -20,7 +20,10 @@ function sanitizeValue(value) {
 
       if (
         key.startsWith("$") ||
-        key.includes(".")
+        key.includes(".") ||
+        key === "__proto__" ||
+        key === "constructor" ||
+        key === "prototype"
       ) {
         continue;
       }
