@@ -18,55 +18,194 @@ function GroupAvatarIcon() {
   return <LiotanIcon name="group" size={58} />;
 }
 
-const panelControlStyle = {
-  width: "calc(100% - 28px)",
-  maxWidth: "calc(100% - 28px)",
-  marginLeft: 14,
-  marginRight: 14,
+const SIDEBAR_WIDTH = 360;
+
+const overlayStyle = {
+  position: "fixed",
+  left: 0,
+  top: 0,
+  bottom: 0,
+  width: SIDEBAR_WIDTH,
+  maxWidth: "100vw",
+  background: "transparent",
+  zIndex: 9000,
+  overflow: "hidden"
+};
+
+const drawerStyle = {
+  position: "relative",
+  width: SIDEBAR_WIDTH,
+  minWidth: 0,
+  maxWidth: "100%",
+  height: "100dvh",
+  background: "#17212b",
+  color: "#ffffff",
+  borderRight: "1px solid #0f1923",
+  boxSizing: "border-box",
+  overflow: "hidden"
+};
+
+const topbarStyle = {
+  height: 56,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "0 16px",
+  boxSizing: "border-box"
+};
+
+const backButtonStyle = {
+  width: 36,
+  height: 36,
+  border: 0,
+  borderRadius: "50%",
+  background: "transparent",
+  color: "#d7dde5",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  cursor: "pointer",
+  flexShrink: 0
+};
+
+const titleStyle = {
+  flex: 1,
+  minWidth: 0,
+  color: "#ffffff",
+  fontSize: 16,
+  lineHeight: "20px",
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis"
+};
+
+const formStyle = {
+  width: "100%",
+  maxWidth: "100%",
+  padding: "0 16px 92px",
   boxSizing: "border-box"
 };
 
 const searchWrapStyle = {
-  ...panelControlStyle,
+  width: "100%",
+  maxWidth: "100%",
   height: 44,
   minHeight: 44,
   padding: "0 14px",
   display: "flex",
   alignItems: "center",
   gap: 10,
-  borderRadius: 22
+  borderRadius: 22,
+  background: "#242f3d",
+  boxSizing: "border-box",
+  overflow: "hidden",
+  margin: "6px 0 14px"
+};
+
+const searchIconStyle = {
+  width: 22,
+  minWidth: 22,
+  height: 22,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#8fa4b8",
+  pointerEvents: "none"
 };
 
 const searchInputStyle = {
   flex: "1 1 auto",
-  width: "auto",
   minWidth: 0,
+  width: "100%",
   height: "100%",
   padding: 0,
   margin: 0,
   border: 0,
   outline: 0,
   background: "transparent",
+  color: "#ffffff",
+  fontFamily: "inherit",
+  fontSize: 15,
+  lineHeight: "44px",
   boxSizing: "border-box"
 };
 
+const nameHeroStyle = {
+  width: "100%",
+  maxWidth: "100%",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  gap: 12,
+  boxSizing: "border-box"
+};
+
+const avatarPreviewStyle = {
+  width: 92,
+  height: 92,
+  margin: "16px auto 10px",
+  borderRadius: "50%",
+  background: "#8774e1",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0
+};
+
 const nameInputStyle = {
-  ...panelControlStyle,
+  width: "100%",
+  maxWidth: "100%",
   height: 44,
-  minHeight: 44
+  minHeight: 44,
+  margin: 0,
+  padding: "0 14px",
+  border: 0,
+  outline: 0,
+  borderRadius: 12,
+  background: "#242f3d",
+  color: "#ffffff",
+  fontFamily: "inherit",
+  fontSize: 15,
+  lineHeight: "44px",
+  boxSizing: "border-box"
+};
+
+const hintStyle = {
+  color: "#8da2b5",
+  fontSize: 13,
+  lineHeight: "18px"
 };
 
 const nextButtonStyle = {
   position: "absolute",
-  right: 16,
+  right: 18,
   bottom: 18,
-  width: 48,
-  height: 48,
-  minWidth: 48,
-  minHeight: 48,
-  maxWidth: 48,
-  maxHeight: 48,
-  borderRadius: "50%"
+  width: 56,
+  height: 56,
+  minWidth: 56,
+  minHeight: 56,
+  maxWidth: 56,
+  maxHeight: 56,
+  border: 0,
+  borderRadius: "50%",
+  background: "#8774e1",
+  color: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  boxShadow: "0 8px 22px rgba(0,0,0,.34)",
+  cursor: "pointer",
+  boxSizing: "border-box"
+};
+
+const usersPanelStyle = {
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box"
 };
 
 export default function CreateGroupModal({
@@ -203,26 +342,26 @@ export default function CreateGroupModal({
 
   return (
     <div
-      className="drawer-overlay drawer-overlay-left create-group-overlay"
+      style={overlayStyle}
       onClick={onClose}
     >
       <aside
-        className="settings-drawer create-group-drawer"
+        style={drawerStyle}
         onClick={(e) =>
           e.stopPropagation()
         }
       >
-        <div className="drawer-topbar create-group-topbar">
+        <div style={topbarStyle}>
           <button
             type="button"
-            className="drawer-icon-button"
+            style={backButtonStyle}
             onClick={goBack}
             aria-label="Назад"
           >
             <BackIcon />
           </button>
 
-          <div className="drawer-title">
+          <div style={titleStyle}>
             {step === "members"
               ? "Добавить участников"
               : "Новая группа"}
@@ -230,16 +369,15 @@ export default function CreateGroupModal({
         </div>
 
         {step === "members" ? (
-          <div className="create-group-form create-group-form-panel">
-            <div className="create-group-search-wrap" style={searchWrapStyle}>
-              <span className="create-group-search-icon" aria-hidden="true"><LiotanIcon name="search" size={21} /></span>
+          <div style={formStyle}>
+            <div style={searchWrapStyle}>
+              <span style={searchIconStyle} aria-hidden="true"><LiotanIcon name="search" size={21} /></span>
               <input
                 value={search}
                 onChange={(e) =>
                   setSearch(e.target.value)
                 }
                 placeholder="Поиск"
-                className="create-group-search"
                 style={searchInputStyle}
               />
             </div>
@@ -260,7 +398,7 @@ export default function CreateGroupModal({
               </div>
             )}
 
-            <div className="create-group-users create-group-users-panel">
+            <div className="create-group-users" style={usersPanelStyle}>
               {users.map(user => {
                 const active =
                   selected.includes(user.username);
@@ -311,9 +449,9 @@ export default function CreateGroupModal({
             </div>
           </div>
         ) : (
-          <div className="create-group-form create-group-form-panel">
-            <div className="create-group-name-hero">
-              <div className="create-group-avatar-preview">
+          <div style={formStyle}>
+            <div style={nameHeroStyle}>
+              <div style={avatarPreviewStyle}>
                 <GroupAvatarIcon />
               </div>
               <input
@@ -323,11 +461,10 @@ export default function CreateGroupModal({
                 }
                 maxLength={40}
                 placeholder="Название группы"
-                className="create-group-name-input"
                 style={nameInputStyle}
                 autoFocus
               />
-              <div className="create-group-name-hint">
+              <div style={hintStyle}>
                 Участников: {selected.length}
               </div>
             </div>
@@ -336,13 +473,12 @@ export default function CreateGroupModal({
 
         <button
           type="button"
-          className="create-group-next-button"
           style={nextButtonStyle}
           disabled={!canContinue}
           onClick={continueFlow}
           aria-label="Продолжить"
         >
-          <LiotanIcon name="arrowRight" size={25} className="create-group-next-icon" />
+          <LiotanIcon name="arrowRight" size={27} />
         </button>
       </aside>
     </div>
