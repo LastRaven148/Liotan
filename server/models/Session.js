@@ -46,11 +46,6 @@ const sessionSchema =
         maxlength: 80
       },
 
-      transportMode: {
-        type: String,
-        enum: ["direct"],
-        default: "direct"
-      },
 
       userAgentHash: {
         type: String,

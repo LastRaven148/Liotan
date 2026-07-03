@@ -1553,7 +1553,7 @@ async function listSessions(req, res, next) {
       expiresAt: {
         $gt: new Date()
       }
-    }).select("sessionIdHash deviceName createdAt lastSeenAt expiresAt transportMode devicePublicKey deviceKeyFingerprint").sort({
+    }).select("sessionIdHash deviceName createdAt lastSeenAt expiresAt devicePublicKey deviceKeyFingerprint").sort({
       lastSeenAt: -1
     }).lean();
     const currentHash = hashSessionId(req.user.sid);
@@ -1564,7 +1564,6 @@ async function listSessions(req, res, next) {
         createdAt: session.createdAt,
         lastSeenAt: session.lastSeenAt,
         expiresAt: session.expiresAt,
-        transportMode: session.transportMode || "auto",
         hasDevicePublicKey: Boolean(session.devicePublicKey),
         deviceKeyFingerprint: session.deviceKeyFingerprint || "",
         current: session.sessionIdHash === currentHash

@@ -49,7 +49,6 @@ function isBootstrapPath(req) {
     path === "/me/pinned-chats" ||
     path === "/sessions" ||
     path === "/devices" ||
-    path === "/proxy/status" ||
     path === "/voice/policy" ||
     path === "/calls/policy"
   );

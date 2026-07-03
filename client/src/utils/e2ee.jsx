@@ -140,31 +140,31 @@ export function getEffectiveE2EEChatKey(chatKey, dialog) {
   }
   return chatKey;
 }
-function safeStorageKey(username, chatKey) {
+function safeE2EEVaultId(username, chatKey) {
   return encodeURIComponent(`${username || ""}:${getConversationId(username, chatKey) || ""}`);
 }
-export function getE2EEStorageKey(username, chatKey) {
-  return `liotan:e2ee-secret:${safeStorageKey(username, chatKey)}`;
+export function getE2EEVaultId(username, chatKey) {
+  return `liotan:e2ee-secret:${safeE2EEVaultId(username, chatKey)}`;
 }
-function getIdentityStorageKey(username) {
+function getIdentityVaultId(username) {
   return `liotan:e2ee-identity:${encodeURIComponent(username || "")}`;
 }
 export function getChatSecret(username, chatKey) {
   if (!username || !chatKey) {
     return "";
   }
-  return chatSecretMemory.get(getE2EEStorageKey(username, chatKey)) || "";
+  return chatSecretMemory.get(getE2EEVaultId(username, chatKey)) || "";
 }
 function getLegacyChatSecret(username, chatKey) {
   try {
-    return localStorage.getItem(getE2EEStorageKey(username, chatKey)) || "";
+    return localStorage.getItem(getE2EEVaultId(username, chatKey)) || "";
   } catch {
     return "";
   }
 }
 function removeLegacyChatSecret(username, chatKey) {
   try {
-    localStorage.removeItem(getE2EEStorageKey(username, chatKey));
+    localStorage.removeItem(getE2EEVaultId(username, chatKey));
   } catch {}
 }
 export function hasChatSecret(username, chatKey) {
@@ -175,7 +175,7 @@ export function setChatSecret(username, chatKey, secret) {
     return false;
   }
 
-  const key = getE2EEStorageKey(username, chatKey);
+  const key = getE2EEVaultId(username, chatKey);
   const cleanSecret = String(secret || "").trim();
   const previousSecret = chatSecretMemory.get(key) || getLegacyChatSecret(username, chatKey) || "";
 
@@ -280,7 +280,7 @@ async function importNonExtractablePrivateKey(jwk) {
 }
 async function loadLegacyIdentity(username) {
   try {
-    const raw = localStorage.getItem(getIdentityStorageKey(username));
+    const raw = localStorage.getItem(getIdentityVaultId(username));
     if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data?.privateKey || !data?.publicKey) return null;
@@ -293,10 +293,10 @@ async function loadLegacyIdentity(username) {
       legacyPrivateJwk: data.privateKey
     };
     await saveLocalIdentity(username, data.publicKey, privateKey);
-    localStorage.removeItem(getIdentityStorageKey(username));
+    localStorage.removeItem(getIdentityVaultId(username));
     return identity;
   } catch {
-    try { localStorage.removeItem(getIdentityStorageKey(username)); } catch {}
+    try { localStorage.removeItem(getIdentityVaultId(username)); } catch {}
     return null;
   }
 }
@@ -308,7 +308,7 @@ async function loadLocalIdentity(username) {
     return identityCache.get(username);
   }
   try {
-    const stored = await idbGet(IDENTITY_STORE, getIdentityStorageKey(username));
+    const stored = await idbGet(IDENTITY_STORE, getIdentityVaultId(username));
     if (stored?.privateKey && stored?.publicKey) {
       const identity = {
         privateKey: stored.privateKey,
@@ -346,12 +346,12 @@ async function createIdentityPair() {
 }
 async function saveLocalIdentity(username, publicJwk, privateKey) {
   const publicKey = await importPublicKey(publicJwk);
-  await idbSet(IDENTITY_STORE, getIdentityStorageKey(username), {
+  await idbSet(IDENTITY_STORE, getIdentityVaultId(username), {
     publicJwk,
     publicKey,
     privateKey
   });
-  try { localStorage.removeItem(getIdentityStorageKey(username)); } catch {}
+  try { localStorage.removeItem(getIdentityVaultId(username)); } catch {}
   identityCache.delete(username);
 }
 async function encryptIdentityBackup({

@@ -12,9 +12,6 @@ export function getVoiceMessageCapabilities() {
   return apiRequest(`${API}/voice/capabilities`);
 }
 
-export function getProxyTransportCapabilities() {
-  return apiRequest(`${API}/proxy/capabilities`);
-}
 
 export {
   getCallRoute,

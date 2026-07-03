@@ -1,5 +1,6 @@
 const crypto = require("crypto");
-const fs = require("fs/promises");
+const fs = require("fs");
+const fsp = require("fs/promises");
 const https = require("https");
 const { URL } = require("url");
 const { sanitizeAttachmentName } = require("./attachmentSafety");
@@ -81,16 +82,30 @@ function getSigningKey(secretAccessKey, dateStamp) {
   return hmac(kService, "aws4_request");
 }
 
-function requestR2({ method, key, body = Buffer.alloc(0), contentType = "application/octet-stream" }) {
+function getFileSize(file) {
+  if (Number.isFinite(file?.size)) return Number(file.size);
+  if (file?.buffer) return file.buffer.length;
+  return 0;
+}
+
+function getRequestBody(file, method) {
+  if (method === "DELETE") return null;
+  if (file?.buffer) return file.buffer;
+  if (file?.path) return fs.createReadStream(file.path);
+  return Buffer.alloc(0);
+}
+
+function requestR2({ method, key, file, contentType = "application/octet-stream" }) {
   const config = getR2Config();
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = sha256(body);
+  const payloadHash = method === "DELETE" ? sha256("") : "UNSIGNED-PAYLOAD";
   const encodedKey = encodeR2Key(key);
   const endpoint = new URL(config.endpoint);
   const path = `/${config.bucket}/${encodedKey}`;
   const host = endpoint.host;
+  const contentLength = getFileSize(file);
 
   const headers = {
     host,
@@ -100,7 +115,7 @@ function requestR2({ method, key, body = Buffer.alloc(0), contentType = "applica
 
   if (method !== "DELETE") {
     headers["content-type"] = contentType;
-    headers["content-length"] = String(body.length);
+    headers["content-length"] = String(contentLength);
     headers["cache-control"] = "public, max-age=31536000, immutable";
   }
 
@@ -156,30 +171,49 @@ function requestR2({ method, key, body = Buffer.alloc(0), contentType = "applica
     });
 
     req.on("error", reject);
-    if (body.length) req.write(body);
-    req.end();
+
+    const body = getRequestBody(file, method);
+    if (!body) {
+      req.end();
+      return;
+    }
+
+    if (typeof body.pipe === "function") {
+      body.on("error", err => req.destroy(err));
+      body.pipe(req);
+      return;
+    }
+
+    req.end(body);
   });
 }
 
-async function readFileBuffer(file) {
-  if (file?.buffer) return file.buffer;
-  if (file?.path) return fs.readFile(file.path);
-  return Buffer.alloc(0);
+async function getUploadFileMeta(file) {
+  if (file?.buffer) return { size: file.buffer.length };
+  if (file?.path) {
+    const stat = await fsp.stat(file.path);
+    return { size: stat.size };
+  }
+  return { size: 0 };
 }
 
 async function uploadToR2(file, options = {}) {
   const config = getR2Config();
-  const body = await readFileBuffer(file);
   const key = buildObjectKey(file, options);
   const contentType = String(file?.mimetype || options.mimeType || "application/octet-stream");
+  const meta = await getUploadFileMeta(file);
+  const uploadFile = {
+    ...file,
+    size: meta.size
+  };
 
-  await requestR2({ method: "PUT", key, body, contentType });
+  await requestR2({ method: "PUT", key, file: uploadFile, contentType });
 
   return {
     url: `${config.publicUrl}/${encodeR2Key(key)}`,
-    key: key,
+    key,
     storageType: "r2",
-    bytes: body.length,
+    bytes: meta.size,
     format: getExtension(file?.originalname || "").replace(/^\./, "")
   };
 }

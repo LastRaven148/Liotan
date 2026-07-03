@@ -370,7 +370,6 @@ async function createUserSession({
     deviceName: nextSession.deviceName,
     devicePublicKey,
     deviceKeyFingerprint,
-    transportMode: nextSession.transportMode,
     userAgentHash: nextSession.userAgentHash,
     expiresAt: nextSession.expiresAt
   });

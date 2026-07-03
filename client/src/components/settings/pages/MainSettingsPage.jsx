@@ -9,7 +9,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
   const otherCount = sessions.filter((item) => !item.current).length;
   const totpEnabled = Boolean(state.securityStatus?.totp?.enabled);
   const browserConnectionRisk = getBrowserConnectionRisk();
-  const connectionIsSuspicious = browserConnectionRisk !== "secure" || state.transportInfo?.connectionRisk === "suspicious";
+  const connectionIsSuspicious = browserConnectionRisk !== "secure";
   return (
     <>
       <div className="drawer-topbar settings-topbar">

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../../context/LanguageContext";
 import {
   getDeviceSessionsApi,
-  getTransportCapabilitiesApi,
   logoutOtherSessionsApi,
   startEmailChangeCurrentApi,
   verifyEmailChangeCurrentApi,
@@ -60,7 +59,6 @@ export default function SettingsModal({
   const [securityStatus, setSecurityStatus] = useState(null);
   const [restrictedSession, setRestrictedSession] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [transportInfo, setTransportInfo] = useState(null);
 
   useEffect(() => setNameValue(displayName || ""), [displayName]);
   useEffect(() => setBioValue(bio || ""), [bio]);
@@ -79,14 +77,12 @@ export default function SettingsModal({
     let alive = true;
     async function load() {
       try {
-        const [sessionData, transportData, securityData] = await Promise.all([
+        const [sessionData, securityData] = await Promise.all([
           getDeviceSessionsApi(),
-          getTransportCapabilitiesApi().catch(() => null),
           getSecurityStatus().catch(() => null)
         ]);
         if (!alive) return;
         setSessions(Array.isArray(sessionData?.sessions) ? sessionData.sessions : []);
-        setTransportInfo(transportData || null);
         setSecurityStatus(securityData?.security || null);
         setRestrictedSession(securityData?.restrictedSession || null);
       } catch {
@@ -243,7 +239,6 @@ export default function SettingsModal({
     bio,
     language,
     sessions,
-    transportInfo,
     menuOpen,
     securityStatus
   };

@@ -136,8 +136,7 @@ export async function sendLoginEmailCode(
       email,
       password,
       deviceId: getDeviceId(),
-      deviceName: getDeviceName(),
-      transportMode: "direct"
+      deviceName: getDeviceName()
     })
   });
 }
@@ -166,7 +165,6 @@ export async function loginUser(
       backupCode: secondFactor.backupCode || "",
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
-      transportMode: "direct",
       devicePublicKey,
       deviceKeyFingerprint
     })
@@ -196,7 +194,6 @@ export async function registerUser(
       code,
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
-      transportMode: "direct",
       devicePublicKey,
       deviceKeyFingerprint
     })
@@ -311,9 +308,6 @@ export async function getDeviceSessionsApi() {
   return getSessionsApi();
 }
 
-export async function getTransportCapabilitiesApi() {
-  return apiRequest(`${API}/proxy/capabilities`);
-}
 
 function getAttachmentType(file) {
   const mimeType =
