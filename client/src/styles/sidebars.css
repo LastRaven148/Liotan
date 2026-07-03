@@ -1326,3 +1326,170 @@
 .create-group-next-icon{
   transform:none !important;
 }
+
+
+/* 49.2.10 strict icon kit + sidebar bounded panels */
+:root{
+  --liotan-sidebar-width:360px;
+  --liotan-menu-icon-size:24px;
+}
+
+.liotan-icon-button svg,
+.drawer-icon-button svg,
+.telegram-menu-icon svg,
+.menu-icon svg,
+.sidebar-search-icon svg,
+.create-group-search-icon svg,
+.sidebar-create-menu-icon svg,
+.sidebar-create-button svg,
+.create-group-next-button svg,
+.create-group-avatar-preview svg{
+  width:var(--liotan-menu-icon-size) !important;
+  height:var(--liotan-menu-icon-size) !important;
+  display:block !important;
+  overflow:visible !important;
+  color:currentColor !important;
+  flex-shrink:0 !important;
+}
+
+.telegram-menu-icon,
+.menu-icon,
+.sidebar-create-menu-icon{
+  width:28px !important;
+  min-width:28px !important;
+  height:28px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+}
+
+.dialog-context-menu.telegram-action-menu button .menu-icon svg,
+.message-menu.telegram-action-menu button .menu-icon svg{
+  width:24px !important;
+  height:24px !important;
+}
+
+.dialog-context-menu.telegram-action-menu button.danger .menu-icon svg,
+.message-menu.telegram-action-menu button.danger .menu-icon svg{
+  width:25px !important;
+  height:25px !important;
+}
+
+.dialog-context-menu.telegram-action-menu,
+.message-menu.telegram-action-menu{
+  width:260px !important;
+  min-width:260px !important;
+  max-width:calc(var(--liotan-sidebar-width) - 24px) !important;
+}
+
+.dialog-context-menu.telegram-action-menu button,
+.message-menu.telegram-action-menu button{
+  min-height:46px !important;
+  height:46px !important;
+  gap:14px !important;
+}
+
+.sidebar-create-menu{
+  width:218px !important;
+  max-width:calc(var(--liotan-sidebar-width) - 36px) !important;
+  right:18px !important;
+  bottom:84px !important;
+  padding:6px !important;
+  border-radius:14px !important;
+}
+
+.sidebar-create-menu-item{
+  height:44px !important;
+  min-height:44px !important;
+  padding:0 12px !important;
+  gap:12px !important;
+  font-size:14px !important;
+}
+
+.sidebar-create-menu-icon svg{
+  width:24px !important;
+  height:24px !important;
+}
+
+.create-group-overlay,
+.create-group-drawer{
+  width:var(--liotan-sidebar-width) !important;
+  min-width:var(--liotan-sidebar-width) !important;
+  max-width:var(--liotan-sidebar-width) !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-overlay{
+  left:0 !important;
+  right:auto !important;
+  overflow:hidden !important;
+}
+
+.create-group-drawer{
+  margin:0 !important;
+  border-right:1px solid #0f1923 !important;
+  border-left:none !important;
+}
+
+.create-group-form-panel{
+  width:100% !important;
+  max-width:100% !important;
+  padding-left:16px !important;
+  padding-right:16px !important;
+  box-sizing:border-box !important;
+}
+
+.create-group-search-wrap{
+  position:relative !important;
+  width:100% !important;
+  max-width:100% !important;
+  height:46px !important;
+  padding:0 16px 0 46px !important;
+  box-sizing:border-box !important;
+  gap:0 !important;
+}
+
+.create-group-search-icon{
+  position:absolute !important;
+  left:16px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  width:22px !important;
+  height:22px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  user-select:none !important;
+  -webkit-user-select:none !important;
+  pointer-events:none !important;
+}
+
+.create-group-search-icon svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+.create-group-search{
+  padding:0 !important;
+  height:100% !important;
+  line-height:46px !important;
+}
+
+.create-group-avatar-preview svg{
+  width:66px !important;
+  height:66px !important;
+}
+
+.create-group-next-button svg{
+  width:27px !important;
+  height:27px !important;
+}
+
+.drawer-icon-button{
+  margin-left:-4px !important;
+}
+
+.drawer-icon-button svg{
+  width:24px !important;
+  height:24px !important;
+}
