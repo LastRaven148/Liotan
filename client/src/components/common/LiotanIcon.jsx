@@ -1,11 +1,19 @@
 const ICON_STROKE = 1.62;
+const ICON_SIZE_BUMP = 2;
+
+function normalizeIconSize(size) {
+  const numericSize = Number(size) || 22;
+  return numericSize + ICON_SIZE_BUMP;
+}
 
 function Svg({ children, size = 22, className = "", title }) {
+  const renderSize = normalizeIconSize(size);
+
   return (
     <svg
       className={className || undefined}
-      width={size}
-      height={size}
+      width={renderSize}
+      height={renderSize}
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -27,11 +35,13 @@ function Svg({ children, size = 22, className = "", title }) {
 }
 
 function FilledSvg({ children, size = 22, className = "", title }) {
+  const renderSize = normalizeIconSize(size);
+
   return (
     <svg
       className={className || undefined}
-      width={size}
-      height={size}
+      width={renderSize}
+      height={renderSize}
       viewBox="0 0 24 24"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
@@ -230,8 +240,8 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
     case "arrowRight":
       return (
         <Svg size={size} className={className} title={title}>
-          <path d="M9.2 6.2 15 12l-5.8 5.8" />
-          <path d="M4.8 12h9.8" />
+          <path d="M10.15 6.2 15.95 12l-5.8 5.8" />
+          <path d="M5.15 12h11.15" />
         </Svg>
       );
 
