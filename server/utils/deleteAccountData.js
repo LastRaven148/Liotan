@@ -41,8 +41,8 @@ async function deleteAccountData(username) {
 
   await deleteUploadedFile({
     url: user.avatar,
-    publicId: user.avatarPublicId,
-    resourceType: user.avatarResourceType
+    storageKey: user.avatarStorageKey,
+    storageType: user.avatarStorageType
   });
 
   const messages =
@@ -66,8 +66,8 @@ async function deleteAccountData(username) {
   for (const message of messages) {
     await deleteUploadedFile({
       url: message.attachment?.url,
-      publicId: message.attachment?.publicId,
-      resourceType: message.attachment?.resourceType
+      storageKey: message.attachment?.storageKey,
+      storageType: message.attachment?.storageType
     });
   }
 

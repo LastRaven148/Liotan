@@ -46,8 +46,8 @@ async function deleteUserCompletely(username) {
 
   await deleteUploadedFile({
     url: user.avatar,
-    publicId: user.avatarPublicId,
-    resourceType: user.avatarResourceType
+    storageKey: user.avatarStorageKey,
+    storageType: user.avatarStorageType
   });
 
   const messages =
@@ -63,8 +63,8 @@ async function deleteUserCompletely(username) {
   for (const msg of messages) {
     await deleteUploadedFile({
       url: msg.attachment?.url,
-      publicId: msg.attachment?.publicId,
-      resourceType: msg.attachment?.resourceType
+      storageKey: msg.attachment?.storageKey,
+      storageType: msg.attachment?.storageType
     });
   }
 

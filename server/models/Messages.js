@@ -219,11 +219,11 @@ const messageSchema =
     type: [Number],
     default: []
   },
-  publicId: {
+  storageKey: {
     type: String,
     default: ""
   },
-  resourceType: {
+  storageType: {
     type: String,
     default: "auto"
   },

@@ -176,9 +176,9 @@ async function uploadToR2(file, options = {}) {
   await requestR2({ method: "PUT", key, body, contentType });
 
   return {
-    secure_url: `${config.publicUrl}/${encodeR2Key(key)}`,
-    public_id: key,
-    resource_type: "r2",
+    url: `${config.publicUrl}/${encodeR2Key(key)}`,
+    key: key,
+    storageType: "r2",
     bytes: body.length,
     format: getExtension(file?.originalname || "").replace(/^\./, "")
   };

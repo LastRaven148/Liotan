@@ -46,11 +46,11 @@ const attachmentUploadSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
-    publicId: {
+    storageKey: {
       type: String,
       required: true
     },
-    resourceType: {
+    storageType: {
       type: String,
       default: "auto"
     },

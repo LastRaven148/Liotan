@@ -8,10 +8,10 @@ async function deleteAttachmentFile(
   await deleteUploadedFile({
     url:
       attachment?.url,
-    publicId:
-      attachment?.publicId,
-    resourceType:
-      attachment?.resourceType
+    storageKey:
+      attachment?.storageKey,
+    storageType:
+      attachment?.storageType
   });
 
 }

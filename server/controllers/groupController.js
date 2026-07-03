@@ -92,8 +92,8 @@ async function deleteGroupMessageFiles(messages) {
   for (const message of messages) {
     await deleteUploadedFile({
       url: message.attachment?.url,
-      publicId: message.attachment?.publicId,
-      resourceType: message.attachment?.resourceType
+      storageKey: message.attachment?.storageKey,
+      storageType: message.attachment?.storageType
     });
   }
 }
@@ -236,16 +236,16 @@ async function uploadGroupAvatar(req, res, next) {
     }
     await deleteUploadedFile({
       url: group.avatar,
-      publicId: group.avatarPublicId,
-      resourceType: group.avatarResourceType
+      storageKey: group.avatarStorageKey,
+      storageType: group.avatarStorageType
     });
     const result = await uploadToR2(req.file, {
       folder: "liotan/groups",
       mimeType: req.file.mimetype
     });
-    group.avatar = result.secure_url;
-    group.avatarPublicId = result.public_id;
-    group.avatarResourceType = result.resource_type;
+    group.avatar = result.url;
+    group.avatarStorageKey = result.key;
+    group.avatarStorageType = result.storageType;
     await group.save();
     const serialized = await serializeGroup(group);
     emitGroupUpdated(req, serialized);
@@ -410,8 +410,8 @@ async function deleteGroup(req, res, next) {
     });
     await deleteUploadedFile({
       url: group.avatar,
-      publicId: group.avatarPublicId,
-      resourceType: group.avatarResourceType
+      storageKey: group.avatarStorageKey,
+      storageType: group.avatarStorageType
     });
     const chatKey = `group:${group._id}`;
     await User.updateMany({}, {

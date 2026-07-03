@@ -30,7 +30,7 @@ async function registerAttachmentUpload({ owner, result, name, type, mimeType, s
   const upload = await AttachmentUpload.create({
     uploadId: createUploadId(),
     owner,
-    url: result.secure_url,
+    url: result.url,
     name,
     type,
     mimeType,
@@ -38,8 +38,8 @@ async function registerAttachmentUpload({ owner, result, name, type, mimeType, s
     width: result.width || 0,
     height: result.height || 0,
     duration: result.duration || 0,
-    publicId: result.public_id,
-    resourceType: result.resource_type || "auto",
+    storageKey: result.key,
+    storageType: result.storageType || "auto",
     expiresAt: getExpiresAt()
   });
 
@@ -79,8 +79,8 @@ async function resolveOwnedAttachment(input, owner) {
 
   return {
     ...sanitized,
-    publicId: upload.publicId,
-    resourceType: upload.resourceType || "auto"
+    storageKey: upload.storageKey,
+    storageType: upload.storageType || "auto"
   };
 }
 

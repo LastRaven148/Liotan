@@ -30,9 +30,9 @@ async function deleteUploadedFile(file) {
     return;
   }
 
-  if (file.publicId) {
+  if (file.storageKey) {
     try {
-      await deleteFromR2(file.publicId);
+      await deleteFromR2(file.storageKey);
     } catch (err) {
       logger.warn("delete R2 file failed", { code: err.code, status: err.status });
     }

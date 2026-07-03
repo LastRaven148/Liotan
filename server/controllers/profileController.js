@@ -183,8 +183,8 @@ async function uploadAvatar(req, res, next) {
 
     await deleteUploadedFile({
       url: user.avatar,
-      publicId: user.avatarPublicId,
-      resourceType: user.avatarResourceType
+      storageKey: user.avatarStorageKey,
+      storageType: user.avatarStorageType
     });
 
     const result =
@@ -197,13 +197,13 @@ async function uploadAvatar(req, res, next) {
       );
 
     user.avatar =
-      result.secure_url;
+      result.url;
 
-    user.avatarPublicId =
-      result.public_id;
+    user.avatarStorageKey =
+      result.key;
 
-    user.avatarResourceType =
-      result.resource_type;
+    user.avatarStorageType =
+      result.storageType;
 
     await user.save();
 

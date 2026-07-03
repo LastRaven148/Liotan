@@ -24,12 +24,12 @@ const groupSchema =
         default: ""
       },
 
-      avatarPublicId: {
+      avatarStorageKey: {
         type: String,
         default: ""
       },
 
-      avatarResourceType: {
+      avatarStorageType: {
         type: String,
         default: ""
       },
