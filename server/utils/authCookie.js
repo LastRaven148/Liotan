@@ -1,5 +1,5 @@
 const COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "liotan_auth";
-const COOKIE_DOMAIN = String(process.env.AUTH_COOKIE_DOMAIN || "").trim();
+const COOKIE_DOMAIN = String(process.env.AUTH_COOKIE_DOMAIN || process.env.COOKIE_DOMAIN || "").trim();
 const COOKIE_MAX_AGE_MS = Number(process.env.AUTH_COOKIE_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000;
 
 function parseCookies(header = "") {
@@ -57,10 +57,13 @@ function setAuthCookie(res, token) {
 }
 
 function clearAuthCookie(res) {
-  res.clearCookie(COOKIE_NAME, {
-    ...getCookieOptions(),
-    maxAge: undefined
-  });
+  const options = {
+    ...getCookieOptions()
+  };
+
+  delete options.maxAge;
+
+  res.clearCookie(COOKIE_NAME, options);
 }
 
 module.exports = {

@@ -29,14 +29,12 @@ router.get(
 router.post(
   "/profile/update",
   authMiddleware,
-  restrictedSessionGuard,
   updateProfile
 );
 
 router.post(
   "/upload-avatar",
   authMiddleware,
-  restrictedSessionGuard,
   upload.single("avatar"),
   uploadAvatar
 );

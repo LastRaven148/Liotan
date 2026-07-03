@@ -28,8 +28,14 @@ const allowedOrigins = Array.from(new Set([
   ...splitOrigins(process.env.LEGACY_ALLOWED_ORIGINS)
 ].filter(Boolean)));
 
+const allowNullOrigin = String(process.env.ALLOW_NULL_ORIGIN || "").toLowerCase() === "true";
+
 function corsOrigin(origin, callback) {
   if (!origin) {
+    return callback(null, true);
+  }
+
+  if (origin === "null" && allowNullOrigin) {
     return callback(null, true);
   }
 
