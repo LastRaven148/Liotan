@@ -11,7 +11,7 @@ function setupGracefulShutdown(server) {
 
     shuttingDown = true;
 
-    logger.warn("graceful shutdown started", { signal });
+    logger.info("graceful shutdown started", { signal });
 
     const forceTimer = setTimeout(() => {
       logger.error("graceful shutdown timeout", new Error("force exit"));

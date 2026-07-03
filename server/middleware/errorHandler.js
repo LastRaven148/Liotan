@@ -11,13 +11,19 @@ function getSafeMessage(err) {
 function errorHandler(err, req, res, next) {
   const status = err.status || err.statusCode || 500;
 
-  logger.error("request failed", err, {
+  const meta = {
     requestId: req.id,
     method: req.method,
     path: req.safePath || String(req.path || "").slice(0, 300),
     status,
     ...(require("../config/privacy").logUserHandle && req.user?.username ? { user: req.user.username } : {})
-  });
+  };
+
+  if (status >= 500) {
+    logger.error("request failed", err, meta);
+  } else {
+    logger.info("request rejected", meta);
+  }
 
   if (res.headersSent) {
     return next(err);

@@ -35,16 +35,23 @@ function requestContext(req, res, next) {
     const durationMs = Date.now() - startedAt;
     const statusCode = res.statusCode;
 
-    if (statusCode >= 500 || durationMs >= SLOW_REQUEST_MS) {
-      logger.warn("http request completed", {
-        requestId: req.id,
-        method: req.method,
-        path: req.safePath,
-        statusCode,
-        durationMs,
-        ...(privacy.logIpHash ? { ipHash: hashRequestIp(req) } : {}),
-        ...(privacy.logUserHandle && req.user?.username ? { user: req.user.username } : {})
-      });
+    const meta = {
+      requestId: req.id,
+      method: req.method,
+      path: req.safePath,
+      statusCode,
+      durationMs,
+      ...(privacy.logIpHash ? { ipHash: hashRequestIp(req) } : {}),
+      ...(privacy.logUserHandle && req.user?.username ? { user: req.user.username } : {})
+    };
+
+    if (statusCode >= 500) {
+      logger.warn("http request completed", meta);
+      return;
+    }
+
+    if (durationMs >= SLOW_REQUEST_MS) {
+      logger.info("slow http request completed", meta);
     }
   });
 

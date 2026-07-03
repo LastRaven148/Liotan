@@ -90,10 +90,7 @@ function log(level, message, meta) {
   const line =
     JSON.stringify(payload);
 
-  if (
-    level === "error" ||
-    level === "warn"
-  ) {
+  if (level === "error") {
     console.error(line);
     return;
   }

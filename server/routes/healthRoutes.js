@@ -1,7 +1,26 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const { version } = require("../config/version");
 
 const router = express.Router();
+
+
+router.get("/", (req, res) => {
+  res.json({
+    ok: true,
+    service: "liotan-api",
+    version,
+    requestId: req.id
+  });
+});
+
+router.head("/", (req, res) => {
+  res.status(204).end();
+});
+
+router.get("/favicon.ico", (req, res) => {
+  res.status(204).end();
+});
 
 function isMongoReady() {
   return mongoose.connection.readyState === 1;
