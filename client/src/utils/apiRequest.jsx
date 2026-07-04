@@ -1,4 +1,4 @@
-import { API, buildApiUrlForEndpoint, getActiveApiUrl, getApiCandidates, setActiveApiUrl } from "../config/api";
+import { API } from "../config/api";
 const CSRF_HEADER = "X-Liotan-CSRF";
 const CSRF_VALUE = "liotan-browser-request-v1";
 
@@ -103,90 +103,8 @@ function createTimeoutSignal(options = {}) {
   };
 }
 
-function getEndpointOrder() {
-  const active = getActiveApiUrl();
-  return [
-    active,
-    ...getApiCandidates().filter(url => url !== active)
-  ];
-}
-
-function shouldUseEndpointFallback(url) {
-  return String(url || "").startsWith(`${API}/`);
-}
-
-async function performRequest(url, options = {}) {
-  const headers = {
-    ...(options.headers || {})
-  };
-
-  if (isStateChangingMethod(options.method) && !headers[CSRF_HEADER]) {
-    headers[CSRF_HEADER] = CSRF_VALUE;
-  }
-
-  let res;
-  const timeout = createTimeoutSignal(options);
-
-  try {
-    res = await fetch(url, {
-      ...options,
-      credentials: "include",
-      headers,
-      signal: timeout.signal
-    });
-  } catch {
-    throw new Error("Нет соединения с сервером или запрос был прерван");
-  } finally {
-    timeout.cancel();
-  }
-
-  const contentType = res.headers.get("content-type") || "";
-  let data = null;
-
-  try {
-    if (contentType.includes("application/json")) {
-      data = await res.json();
-    } else {
-      const text = await res.text();
-      data = {
-        error: text || "Request failed"
-      };
-    }
-  } catch {
-    data = {
-      error: "Не удалось прочитать ответ сервера"
-    };
-  }
-
-  if (!res.ok) {
-    if (res.status === 401 && !options.suppressUnauthorized && !data?.secondFactorRequired) {
-      setApiAuthToken("");
-      localStorage.removeItem("username");
-      window.dispatchEvent(new Event("liotan:session-expired"));
-    }
-
-    let message = data?.error || "Request failed";
-
-    if (res.status === 413) {
-      message = "Файл слишком большой для сервера";
-    }
-
-    if (res.status === 408) {
-      message = "Загрузка заняла слишком много времени";
-    }
-
-    if (res.status >= 500) {
-      message = data?.error || "Ошибка сервера при загрузке";
-    }
-
-    const error = new Error(message);
-    error.status = res.status;
-    error.data = data;
-    error.secondFactorRequired = Boolean(data?.secondFactorRequired);
-    throw error;
-  }
-
-  return data;
+async function performRequestWithEndpointFallback(url, options = {}) {
+  return performRequest(url, options);
 }
 
 export function clearApiRequestMemory() {
@@ -195,32 +113,6 @@ export function clearApiRequestMemory() {
   cachedGetResponses.clear();
   activeGetCount = 0;
   getQueue.splice(0).forEach(resolve => resolve());
-}
-
-async function performRequestWithEndpointFallback(url, options = {}) {
-  if (!shouldUseEndpointFallback(url)) {
-    return performRequest(url, options);
-  }
-
-  let lastError = null;
-
-  for (const endpoint of getEndpointOrder()) {
-    const endpointUrl = buildApiUrlForEndpoint(url, endpoint);
-
-    try {
-      const data = await performRequest(endpointUrl, options);
-      setActiveApiUrl(endpoint);
-      return data;
-    } catch (err) {
-      lastError = err;
-
-      if (err?.status) {
-        throw err;
-      }
-    }
-  }
-
-  throw lastError || new Error("Нет соединения с сервером");
 }
 
 export async function apiRequest(url, options = {}) {

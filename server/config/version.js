@@ -1,4 +1,4 @@
 module.exports = {
-  version: "49.2.1",
-  release: "mobile network transport hardening"
+  version: "49.3.8",
+  release: "single API endpoint cleanup"
 };
