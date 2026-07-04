@@ -1,7 +1,7 @@
 import { API } from "../config/api";
+
 const CSRF_HEADER = "X-Liotan-CSRF";
 const CSRF_VALUE = "liotan-browser-request-v1";
-
 
 const pendingGetRequests = new Map();
 const recentFailedGetRequests = new Map();
@@ -15,10 +15,9 @@ const REQUEST_TIMEOUT_MS = 12000;
 let activeGetCount = 0;
 const getQueue = [];
 
-
 async function waitForGetSlot() {
   while (activeGetCount >= MAX_PARALLEL_GETS) {
-    await new Promise(resolve => getQueue.push(resolve));
+    await new Promise((resolve) => getQueue.push(resolve));
   }
   activeGetCount += 1;
 }
@@ -26,9 +25,7 @@ async function waitForGetSlot() {
 function releaseGetSlot() {
   activeGetCount = Math.max(0, activeGetCount - 1);
   const next = getQueue.shift();
-  if (next) {
-    next();
-  }
+  if (next) next();
 }
 
 function isGetRequest(options) {
@@ -40,9 +37,7 @@ function makeRequestKey(url, options) {
 }
 
 function cloneData(data) {
-  if (data === null || data === undefined) {
-    return data;
-  }
+  if (data === null || data === undefined) return data;
 
   try {
     return structuredClone(data);
@@ -52,12 +47,8 @@ function cloneData(data) {
 }
 
 function getCachedResponse(key) {
-  const cached =
-    cachedGetResponses.get(key);
-
-  if (!cached) {
-    return null;
-  }
+  const cached = cachedGetResponses.get(key);
+  if (!cached) return null;
 
   if (Date.now() > cached.expiresAt) {
     cachedGetResponses.delete(key);
@@ -103,8 +94,69 @@ function createTimeoutSignal(options = {}) {
   };
 }
 
-async function performRequestWithEndpointFallback(url, options = {}) {
-  return performRequest(url, options);
+function buildApiUrl(url) {
+  const value = String(url || "");
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `${API}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+async function readResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  return text || null;
+}
+
+async function performRequest(url, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const isFormData = options.body instanceof FormData;
+  const { signal, cancel } = createTimeoutSignal(options);
+
+  const headers = new Headers(options.headers || {});
+
+  if (!isFormData && options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (isStateChangingMethod(method) && !headers.has(CSRF_HEADER)) {
+    headers.set(CSRF_HEADER, CSRF_VALUE);
+  }
+
+  try {
+    const response = await fetch(buildApiUrl(url), {
+      ...options,
+      method,
+      headers,
+      credentials: "include",
+      signal
+    });
+
+    const data = await readResponse(response);
+
+    if (!response.ok) {
+      const message =
+        data?.message ||
+        data?.error ||
+        `Request failed with status ${response.status}`;
+
+      const error = new Error(message);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  } finally {
+    cancel();
+  }
 }
 
 export function clearApiRequestMemory() {
@@ -112,14 +164,14 @@ export function clearApiRequestMemory() {
   recentFailedGetRequests.clear();
   cachedGetResponses.clear();
   activeGetCount = 0;
-  getQueue.splice(0).forEach(resolve => resolve());
+  getQueue.splice(0).forEach((resolve) => resolve());
 }
 
 export async function apiRequest(url, options = {}) {
   const isGet = isGetRequest(options);
 
   if (!isGet) {
-    return performRequestWithEndpointFallback(url, options);
+    return performRequest(url, options);
   }
 
   const key = makeRequestKey(url, options);
@@ -145,7 +197,7 @@ export async function apiRequest(url, options = {}) {
     await waitForGetSlot();
 
     try {
-      const data = await performRequestWithEndpointFallback(url, options);
+      const data = await performRequest(url, options);
       recentFailedGetRequests.delete(key);
       setCachedResponse(key, data);
       return cloneData(data);
