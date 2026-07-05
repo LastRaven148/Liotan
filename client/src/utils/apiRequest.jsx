@@ -11,6 +11,7 @@ const GET_FAIL_COOLDOWN_MS = 15000;
 const GET_CACHE_TTL_MS = 15000;
 const MAX_PARALLEL_GETS = 4;
 const REQUEST_TIMEOUT_MS = 12000;
+const UPLOAD_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 let activeGetCount = 0;
 const getQueue = [];
@@ -77,7 +78,7 @@ function isStateChangingMethod(method = "GET") {
   return !["GET", "HEAD", "OPTIONS"].includes(String(method || "GET").toUpperCase());
 }
 
-function createTimeoutSignal(options = {}) {
+function createTimeoutSignal(options = {}, isFormData = false) {
   if (options.signal) {
     return {
       signal: options.signal,
@@ -85,8 +86,16 @@ function createTimeoutSignal(options = {}) {
     };
   }
 
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs))
+    ? Number(options.timeoutMs)
+    : isFormData
+      ? UPLOAD_REQUEST_TIMEOUT_MS
+      : REQUEST_TIMEOUT_MS;
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => {
+    controller.abort(new Error("request timeout"));
+  }, timeoutMs);
 
   return {
     signal: controller.signal,
@@ -118,7 +127,7 @@ async function readResponse(response) {
 async function performRequest(url, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   const isFormData = options.body instanceof FormData;
-  const { signal, cancel } = createTimeoutSignal(options);
+  const { signal, cancel } = createTimeoutSignal(options, isFormData);
 
   const headers = new Headers(options.headers || {});
 
@@ -154,6 +163,13 @@ async function performRequest(url, options = {}) {
     }
 
     return data;
+  } catch (err) {
+    if (err?.name === "AbortError" || signal?.aborted) {
+      throw new Error(isFormData
+        ? "Загрузка файла заняла слишком много времени. Проверьте соединение и попробуйте ещё раз."
+        : "Сервер долго не отвечает. Попробуйте ещё раз.");
+    }
+    throw err;
   } finally {
     cancel();
   }
