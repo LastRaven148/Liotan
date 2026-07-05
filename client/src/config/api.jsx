@@ -1,4 +1,4 @@
-const PRODUCTION_API_URL = "https://api.liotan.com";
+const PRODUCTION_API_URL = "https://api.liotan.ru";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
 
 function normalizeApiUrl(url) {
@@ -23,7 +23,7 @@ function resolvePrimaryApiUrl() {
 
 export const API = resolvePrimaryApiUrl();
 export const API_CANDIDATES = [API];
-export const PRODUCTION_CLIENT_URL = "https://liotan.com";
+export const PRODUCTION_CLIENT_URL = "https://liotan.ru";
 export const PRODUCTION_API_URL_VALUE = PRODUCTION_API_URL;
 
 export function getApiCandidates() {
