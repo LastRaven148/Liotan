@@ -66,21 +66,28 @@ function normalizeOrigin(value = "") {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+function getAllowedR2Origins() {
+  return Array.from(new Set([
+    normalizeOrigin(process.env.R2_PUBLIC_URL || "https://media.liotan.ru"),
+    normalizeOrigin(process.env.LEGACY_R2_PUBLIC_URL || "https://media.liotan.com"),
+    "https://media.liotan.ru",
+    "https://media.liotan.com"
+  ].filter(Boolean)));
+}
+
 function isAllowedR2Url(value = "") {
   const url = String(value || "");
-  const publicUrl = normalizeOrigin(process.env.R2_PUBLIC_URL || "https://media.liotan.com");
 
-  if (!url.startsWith("https://") || !publicUrl) {
+  if (!url.startsWith("https://")) {
     return false;
   }
 
   try {
     const parsed = new URL(url);
-    const allowed = new URL(publicUrl);
 
     return (
       parsed.protocol === "https:" &&
-      parsed.origin === allowed.origin &&
+      getAllowedR2Origins().includes(parsed.origin) &&
       !parsed.pathname.includes("..") &&
       !parsed.pathname.includes("\\")
     );

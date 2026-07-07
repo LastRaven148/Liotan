@@ -13,7 +13,7 @@ function getEnv(name) {
 function getMailFrom() {
   return (
     getEnv("MAIL_FROM") ||
-    "Liotan <security@liotan.com>"
+    "Liotan <security@liotan.ru>"
   );
 }
 

@@ -1,7 +1,22 @@
-const PRODUCTION_API_URL = "https://api.liotan.ru";
 const DEVELOPMENT_API_URL = "http://localhost:3001";
-const BUILTIN_FALLBACK_API_URLS = [
-  "https://api.liotan.com"
+
+const DOMAIN_API_MAP = {
+  "liotan.com": "https://api.liotan.com",
+  "www.liotan.com": "https://api.liotan.com",
+  "liotan.ru": "https://api.liotan.ru",
+  "www.liotan.ru": "https://api.liotan.ru"
+};
+
+const DOMAIN_CLIENT_MAP = {
+  "liotan.com": "https://liotan.com",
+  "www.liotan.com": "https://liotan.com",
+  "liotan.ru": "https://liotan.ru",
+  "www.liotan.ru": "https://liotan.ru"
+};
+
+const BUILTIN_API_URLS = [
+  "https://api.liotan.com",
+  "https://api.liotan.ru"
 ];
 
 function normalizeApiUrl(url) {
@@ -21,18 +36,36 @@ function uniqueUrls(urls) {
   return Array.from(new Set(urls.map(normalizeApiUrl).filter(Boolean)));
 }
 
+function getRuntimeHostname() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return String(window.location?.hostname || "").toLowerCase();
+}
+
+function getRuntimePrimaryApiUrl() {
+  const hostname = getRuntimeHostname();
+  return DOMAIN_API_MAP[hostname] || "";
+}
+
+function getRuntimeClientUrl() {
+  const hostname = getRuntimeHostname();
+  return DOMAIN_CLIENT_MAP[hostname] || "";
+}
+
 function resolvePrimaryApiUrl() {
   const envApiUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
 
-  if (envApiUrl) {
-    return envApiUrl;
+  if (!import.meta.env.PROD) {
+    return envApiUrl || DEVELOPMENT_API_URL;
   }
 
-  if (import.meta.env.PROD) {
-    return PRODUCTION_API_URL;
-  }
-
-  return DEVELOPMENT_API_URL;
+  return (
+    getRuntimePrimaryApiUrl() ||
+    envApiUrl ||
+    "https://api.liotan.com"
+  );
 }
 
 function resolveApiCandidates() {
@@ -46,14 +79,17 @@ function resolveApiCandidates() {
   return uniqueUrls([
     primary,
     ...envFallbacks,
-    ...BUILTIN_FALLBACK_API_URLS
+    ...BUILTIN_API_URLS
   ]);
 }
 
 export const API = resolvePrimaryApiUrl();
 export const API_CANDIDATES = resolveApiCandidates();
-export const PRODUCTION_CLIENT_URL = "https://liotan.ru";
-export const PRODUCTION_API_URL_VALUE = PRODUCTION_API_URL;
+export const PRODUCTION_CLIENT_URL =
+  getRuntimeClientUrl() ||
+  normalizeApiUrl(import.meta.env.VITE_PUBLIC_CLIENT_URL) ||
+  "https://liotan.com";
+export const PRODUCTION_API_URL_VALUE = API;
 
 let activeApiUrl = API;
 
