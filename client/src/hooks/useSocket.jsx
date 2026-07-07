@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import io from "socket.io-client";
+import { getApiCandidates } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
@@ -71,9 +72,14 @@ export default function useSocket({
     }
     window.addEventListener("click", unlockSoundOnUserGesture);
     window.addEventListener("keydown", unlockSoundOnUserGesture);
-    const activeSocketEndpoint = API;
+    const socketEndpoints = Array.from(new Set([
+      API,
+      ...getApiCandidates()
+    ].filter(Boolean)));
+    let activeSocketIndex = 0;
+    let reconnectTimer = null;
 
-    function createSocketConnection(endpoint = activeSocketEndpoint) {
+    function createSocketConnection(endpoint = socketEndpoints[activeSocketIndex]) {
       return io(endpoint, {
         withCredentials: true,
         transports: ["websocket", "polling"],
@@ -85,13 +91,40 @@ export default function useSocket({
       });
     }
 
-    let socket = createSocketConnection(activeSocketEndpoint);
+    function switchSocketEndpoint(reason) {
+      if (socketEndpoints.length <= 1 || reconnectTimer) {
+        return;
+      }
+
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        activeSocketIndex = (activeSocketIndex + 1) % socketEndpoints.length;
+        const nextEndpoint = socketEndpoints[activeSocketIndex];
+
+        console.warn(`[Liotan Socket] switching endpoint after ${reason}: ${nextEndpoint}`);
+
+        socket.removeAllListeners();
+        socket.disconnect();
+        socket = createSocketConnection(nextEndpoint);
+        socketRef.current = socket;
+        attachSocketHandlers(socket);
+      }, 1500);
+    }
+
+    let socket = createSocketConnection(socketEndpoints[activeSocketIndex]);
     socketRef.current = socket;
 
     function attachSocketHandlers(currentSocket) {
       currentSocket.on("connect", () => {
+        console.info(`[Liotan Socket] connected: ${currentSocket.io.uri}`);
       });
-      currentSocket.on("connect_error", () => {});
+      currentSocket.on("disconnect", reason => {
+        console.warn(`[Liotan Socket] disconnected: ${reason}`);
+      });
+      currentSocket.on("connect_error", err => {
+        console.warn("[Liotan Socket] connect_error:", err?.message || err);
+        switchSocketEndpoint(err?.message || "connect_error");
+      });
 
     function markActiveChatRead(user) {
       if (!user || user === username || user.startsWith?.("group:")) {
@@ -371,7 +404,10 @@ export default function useSocket({
     return () => {
       window.removeEventListener("click", unlockSoundOnUserGesture);
       window.removeEventListener("keydown", unlockSoundOnUserGesture);
-        socket.removeAllListeners();
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket.removeAllListeners();
       socket.disconnect();
     };
   }, [token, username, API, setActiveChat, setChats, setUnread, setOnlineUsers, setTypingUsers, updateDialog, updateUserLastSeen, updateUserProfile, removeDialog, setAvatar, setBio, setProfileUser, updateGroup, setDisplayName, socketRef]);

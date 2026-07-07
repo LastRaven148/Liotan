@@ -1,67 +1,109 @@
-function normalizeOrigin(origin) {
-  return String(origin || "")
-    .trim()
-    .replace(/\/+$/, "");
-}
+const CONNECT_SOURCES = [
+  "'self'",
 
-function splitOrigins(value) {
-  return String(value || "")
-    .split(",")
-    .map(normalizeOrigin)
-    .filter(Boolean);
-}
+  // Main production domains.
+  "https://liotan.ru",
+  "https://www.liotan.ru",
+  "https://api.liotan.ru",
+  "https://media.liotan.ru",
 
-function toSecureWebSocketOrigin(origin) {
-  const clean = normalizeOrigin(origin);
+  // Legacy / fallback domains.
+  "https://liotan.com",
+  "https://www.liotan.com",
+  "https://api.liotan.com",
+  "https://media.liotan.com",
 
-  if (!clean.startsWith("https://")) {
-    return "";
-  }
+  // WebSocket connections.
+  "wss://liotan.ru",
+  "wss://www.liotan.ru",
+  "wss://api.liotan.ru",
 
-  return `wss://${clean.slice("https://".length)}`;
-}
+  "wss://liotan.com",
+  "wss://www.liotan.com",
+  "wss://api.liotan.com",
 
-function buildConnectSources() {
-  const httpOrigins = Array.from(new Set([
-    "https://liotan.com",
-    "https://www.liotan.com",
-    "https://api.liotan.com",
-    process.env.CLIENT_URL,
-    process.env.PUBLIC_CLIENT_URL,
-    process.env.API_URL,
-    process.env.PUBLIC_API_URL,
-    ...splitOrigins(process.env.ALLOWED_ORIGINS),
-    process.env.R2_PUBLIC_URL
-  ].map(normalizeOrigin).filter(Boolean)));
+  // Local development.
+  "http://localhost:*",
+  "http://127.0.0.1:*",
+  "ws://localhost:*",
+  "ws://127.0.0.1:*",
+];
 
-  const wsOrigins = httpOrigins
-    .map(toSecureWebSocketOrigin)
-    .filter(Boolean);
+const MEDIA_SOURCES = [
+  "'self'",
+  "blob:",
 
-  return [
+  "https://media.liotan.ru",
+  "https://media.liotan.com",
+];
+
+const IMAGE_SOURCES = [
+  "'self'",
+  "data:",
+  "blob:",
+
+  "https://media.liotan.ru",
+  "https://media.liotan.com",
+];
+
+export const contentSecurityPolicyDirectives = {
+  defaultSrc: [
     "'self'",
-    ...httpOrigins,
-    ...wsOrigins
-  ];
-}
+  ],
 
-const contentSecurityPolicy = {
-  useDefaults: true,
-  directives: {
-    "default-src": ["'self'"],
-    "base-uri": ["'self'"],
-    "object-src": ["'none'"],
-    "frame-ancestors": ["'none'"],
-    "img-src": ["'self'", "data:", "blob:", process.env.R2_PUBLIC_URL || "https://media.liotan.com"],
-    "media-src": ["'self'", "blob:", process.env.R2_PUBLIC_URL || "https://media.liotan.com"],
-    "connect-src": buildConnectSources(),
-    "script-src": ["'self'"],
-    "style-src": ["'self'", "'unsafe-inline'"],
-    "font-src": ["'self'", "data:"],
-    "worker-src": ["'self'", "blob:"],
-    "form-action": ["'self'"],
-    "upgrade-insecure-requests": []
-  }
+  baseUri: [
+    "'self'",
+  ],
+
+  objectSrc: [
+    "'none'",
+  ],
+
+  frameAncestors: [
+    "'none'",
+  ],
+
+  imgSrc: IMAGE_SOURCES,
+
+  mediaSrc: MEDIA_SOURCES,
+
+  connectSrc: CONNECT_SOURCES,
+
+  scriptSrc: [
+    "'self'",
+  ],
+
+  scriptSrcAttr: [
+    "'none'",
+  ],
+
+  styleSrc: [
+    "'self'",
+    "'unsafe-inline'",
+  ],
+
+  fontSrc: [
+    "'self'",
+    "data:",
+  ],
+
+  workerSrc: [
+    "'self'",
+    "blob:",
+  ],
+
+  formAction: [
+    "'self'",
+  ],
+
+  upgradeInsecureRequests: [],
 };
 
-module.exports = contentSecurityPolicy;
+export function getContentSecurityPolicyOptions() {
+  return {
+    useDefaults: false,
+    directives: contentSecurityPolicyDirectives,
+  };
+}
+
+export default getContentSecurityPolicyOptions;

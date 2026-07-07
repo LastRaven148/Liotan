@@ -1,76 +1,93 @@
-const env = require("./env");
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://liotan.ru",
+  "https://www.liotan.ru",
+
+  // Legacy / fallback domains.
+  "https://liotan.com",
+  "https://www.liotan.com",
+
+  // Local development.
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+];
 
 function normalizeOrigin(origin) {
-  return String(origin || "")
-    .trim()
-    .replace(/\/+$/, "");
+  if (typeof origin !== "string") {
+    return "";
+  }
+
+  return origin.trim().replace(/\/+$/, "");
 }
 
-function splitOrigins(value) {
-  return String(value || "")
+function parseAllowedOrigins(value) {
+  if (!value) {
+    return [];
+  }
+
+  return value
     .split(",")
     .map(normalizeOrigin)
     .filter(Boolean);
 }
 
-const defaultAllowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "https://liotan.com",
-  "https://www.liotan.com"
-];
+const envAllowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 
-const allowedOrigins = Array.from(new Set([
-  ...defaultAllowedOrigins,
-  normalizeOrigin(env.CLIENT_URL),
-  normalizeOrigin(process.env.PUBLIC_CLIENT_URL),
-  ...splitOrigins(process.env.ALLOWED_ORIGINS),
-  ...splitOrigins(process.env.LEGACY_ALLOWED_ORIGINS)
-].filter(Boolean)));
+const allowedOrigins = new Set(
+  [...DEFAULT_ALLOWED_ORIGINS, ...envAllowedOrigins].map(normalizeOrigin)
+);
 
-const allowNullOrigin = String(process.env.ALLOW_NULL_ORIGIN || "").toLowerCase() === "true";
-
-function corsOrigin(origin, callback) {
+export function isOriginAllowed(origin) {
+  // Requests without Origin are allowed.
+  // Examples: curl, server-to-server requests, health checks.
   if (!origin) {
-    return callback(null, true);
+    return true;
   }
 
-  if (origin === "null" && allowNullOrigin) {
-    return callback(null, true);
-  }
-
-  const cleanOrigin = normalizeOrigin(origin);
-
-  if (allowedOrigins.includes(cleanOrigin)) {
-    return callback(null, true);
-  }
-
-  return callback(new Error(`CORS blocked: ${cleanOrigin}`));
+  return allowedOrigins.has(normalizeOrigin(origin));
 }
 
-const corsOptions = {
-  origin: corsOrigin,
+export const corsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+
+    callback(new Error(`Origin "${origin}" is not allowed by CORS`));
+  },
+
   credentials: true,
+
   methods: [
     "GET",
+    "HEAD",
     "POST",
     "PUT",
     "PATCH",
     "DELETE",
-    "OPTIONS"
+    "OPTIONS",
   ],
+
   allowedHeaders: [
+    "Accept",
+    "Authorization",
     "Content-Type",
-    "X-Liotan-Device-Id",
-    "X-Liotan-Device-Name",
-    "X-Liotan-CSRF",
-    "X-Requested-With"
-  ]
+    "Origin",
+    "X-Requested-With",
+    "X-Request-Id",
+  ],
+
+  exposedHeaders: [
+    "X-Request-Id",
+  ],
+
+  optionsSuccessStatus: 204,
 };
 
-module.exports = {
-  allowedOrigins,
-  corsOptions,
-  normalizeOrigin,
-  splitOrigins
-};
+export { allowedOrigins };
+
+export default corsOptions;

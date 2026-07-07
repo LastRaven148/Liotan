@@ -107,13 +107,25 @@ async function verifySecondFactorIfEnabled({ user, code, backupCode }) {
 
 
 function getRegistrationCancelUrl(token) {
-  const base = String(
-    process.env.PUBLIC_API_URL ||
-    process.env.API_URL ||
-    "https://api.liotan.com"
-  ).replace(/\/$/, "");
+  const normalizeBaseUrl = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
 
-  return `${base}/auth/register/cancel/${encodeURIComponent(token)}`;
+  return value.trim().replace(/\/+$/, "");
+};
+
+const PUBLIC_API_URL = normalizeBaseUrl(
+  process.env.PUBLIC_API_URL ||
+  "https://api.liotan.ru"
+);
+
+const PUBLIC_CLIENT_URL = normalizeBaseUrl(
+  process.env.PUBLIC_CLIENT_URL ||
+  "https://liotan.ru"
+);
+
+  return `${PUBLIC_API_URL}/auth/register/cancel/${encodeURIComponent(token)}`;
 }
 
 function getPublicClientUrl() {

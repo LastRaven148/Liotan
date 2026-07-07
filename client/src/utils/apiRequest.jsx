@@ -1,4 +1,9 @@
-import { API } from "../config/api";
+import {
+  API,
+  buildApiUrlForEndpoint,
+  getApiCandidates,
+  setActiveApiUrl
+} from "../config/api";
 
 const CSRF_HEADER = "X-Liotan-CSRF";
 const CSRF_VALUE = "liotan-browser-request-v1";
@@ -103,14 +108,16 @@ function createTimeoutSignal(options = {}, isFormData = false) {
   };
 }
 
-function buildApiUrl(url) {
-  const value = String(url || "");
-
-  if (/^https?:\/\//i.test(value)) {
-    return value;
+function isRetryableNetworkError(err) {
+  if (!err || err.status) {
+    return false;
   }
 
-  return `${API}${value.startsWith("/") ? value : `/${value}`}`;
+  return (
+    err.name === "TypeError" ||
+    err.name === "AbortError" ||
+    /failed to fetch|network|timeout|сервер долго не отвечает/i.test(err.message || "")
+  );
 }
 
 async function readResponse(response) {
@@ -124,7 +131,7 @@ async function readResponse(response) {
   return text || null;
 }
 
-async function performRequest(url, options = {}) {
+async function performRequestToEndpoint(url, options = {}, endpoint = API) {
   const method = String(options.method || "GET").toUpperCase();
   const isFormData = options.body instanceof FormData;
   const { signal, cancel } = createTimeoutSignal(options, isFormData);
@@ -140,7 +147,7 @@ async function performRequest(url, options = {}) {
   }
 
   try {
-    const response = await fetch(buildApiUrl(url), {
+    const response = await fetch(buildApiUrlForEndpoint(url, endpoint), {
       ...options,
       method,
       headers,
@@ -162,6 +169,7 @@ async function performRequest(url, options = {}) {
       throw error;
     }
 
+    setActiveApiUrl(endpoint);
     return data;
   } catch (err) {
     if (err?.name === "AbortError" || signal?.aborted) {
@@ -173,6 +181,27 @@ async function performRequest(url, options = {}) {
   } finally {
     cancel();
   }
+}
+
+async function performRequest(url, options = {}) {
+  const candidates = getApiCandidates();
+  let lastError = null;
+
+  for (const endpoint of candidates) {
+    try {
+      return await performRequestToEndpoint(url, options, endpoint);
+    } catch (err) {
+      lastError = err;
+
+      if (!isRetryableNetworkError(err)) {
+        throw err;
+      }
+
+      console.warn(`[Liotan API] ${endpoint} failed:`, err.message);
+    }
+  }
+
+  throw lastError;
 }
 
 export function clearApiRequestMemory() {

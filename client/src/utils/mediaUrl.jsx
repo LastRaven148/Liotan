@@ -1,7 +1,31 @@
-import { API }
-from "../config/api";
+import { API } from "../config/api";
 
-const DEFAULT_MEDIA_ORIGIN = "https://media.liotan.com";
+const DEFAULT_MEDIA_ORIGINS = [
+  "https://media.liotan.ru",
+  "https://media.liotan.com"
+];
+
+function normalizeOrigin(origin) {
+  return String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+function splitOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
+function getAllowedMediaOrigins() {
+  return Array.from(new Set([
+    ...DEFAULT_MEDIA_ORIGINS,
+    normalizeOrigin(import.meta.env.VITE_MEDIA_URL),
+    ...splitOrigins(import.meta.env.VITE_MEDIA_URLS),
+    API
+  ].filter(Boolean)));
+}
 
 function isAllowedRemoteMediaUrl(value) {
   try {
@@ -11,20 +35,13 @@ function isAllowedRemoteMediaUrl(value) {
       return false;
     }
 
-    const mediaOrigin = String(import.meta.env.VITE_MEDIA_URL || DEFAULT_MEDIA_ORIGIN)
-      .replace(/\/+$/, "");
-
-    return (
-      parsed.origin === mediaOrigin ||
-      parsed.origin === API
-    );
+    return getAllowedMediaOrigins().includes(parsed.origin);
   } catch {
     return false;
   }
 }
 
 export function mediaUrl(url) {
-
   if (!url) {
     return "";
   }
@@ -43,5 +60,4 @@ export function mediaUrl(url) {
   }
 
   return "";
-
 }
