@@ -2,11 +2,9 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://liotan.ru",
   "https://www.liotan.ru",
 
-  // Legacy / fallback domains.
   "https://liotan.com",
   "https://www.liotan.com",
 
-  // Local development.
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
@@ -14,17 +12,12 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 function normalizeOrigin(origin) {
-  if (typeof origin !== "string") {
-    return "";
-  }
-
+  if (typeof origin !== "string") return "";
   return origin.trim().replace(/\/+$/, "");
 }
 
 function parseAllowedOrigins(value) {
-  if (!value) {
-    return [];
-  }
+  if (!value) return [];
 
   return value
     .split(",")
@@ -38,17 +31,12 @@ const allowedOrigins = new Set(
   [...DEFAULT_ALLOWED_ORIGINS, ...envAllowedOrigins].map(normalizeOrigin)
 );
 
-export function isOriginAllowed(origin) {
-  // Requests without Origin are allowed.
-  // Examples: curl, server-to-server requests, health checks.
-  if (!origin) {
-    return true;
-  }
-
+function isOriginAllowed(origin) {
+  if (!origin) return true;
   return allowedOrigins.has(normalizeOrigin(origin));
 }
 
-export const corsOptions = {
+const corsOptions = {
   origin(origin, callback) {
     if (isOriginAllowed(origin)) {
       callback(null, true);
@@ -56,21 +44,12 @@ export const corsOptions = {
     }
 
     console.warn(`[CORS] Blocked origin: ${origin}`);
-
     callback(new Error(`Origin "${origin}" is not allowed by CORS`));
   },
 
   credentials: true,
 
-  methods: [
-    "GET",
-    "HEAD",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "OPTIONS",
-  ],
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
   allowedHeaders: [
     "Accept",
@@ -81,13 +60,13 @@ export const corsOptions = {
     "X-Request-Id",
   ],
 
-  exposedHeaders: [
-    "X-Request-Id",
-  ],
+  exposedHeaders: ["X-Request-Id"],
 
   optionsSuccessStatus: 204,
 };
 
-export { allowedOrigins };
-
-export default corsOptions;
+module.exports = {
+  corsOptions,
+  allowedOrigins,
+  isOriginAllowed,
+};
