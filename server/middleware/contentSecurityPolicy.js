@@ -1,19 +1,16 @@
 const CONNECT_SOURCES = [
   "'self'",
 
-  // Main production domains.
   "https://liotan.ru",
   "https://www.liotan.ru",
   "https://api.liotan.ru",
   "https://media.liotan.ru",
 
-  // Legacy / fallback domains.
   "https://liotan.com",
   "https://www.liotan.com",
   "https://api.liotan.com",
   "https://media.liotan.com",
 
-  // WebSocket connections.
   "wss://liotan.ru",
   "wss://www.liotan.ru",
   "wss://api.liotan.ru",
@@ -22,7 +19,6 @@ const CONNECT_SOURCES = [
   "wss://www.liotan.com",
   "wss://api.liotan.com",
 
-  // Local development.
   "http://localhost:*",
   "http://127.0.0.1:*",
   "ws://localhost:*",
@@ -32,7 +28,6 @@ const CONNECT_SOURCES = [
 const MEDIA_SOURCES = [
   "'self'",
   "blob:",
-
   "https://media.liotan.ru",
   "https://media.liotan.com",
 ];
@@ -41,69 +36,31 @@ const IMAGE_SOURCES = [
   "'self'",
   "data:",
   "blob:",
-
   "https://media.liotan.ru",
   "https://media.liotan.com",
 ];
 
-export const contentSecurityPolicyDirectives = {
-  defaultSrc: [
-    "'self'",
-  ],
-
-  baseUri: [
-    "'self'",
-  ],
-
-  objectSrc: [
-    "'none'",
-  ],
-
-  frameAncestors: [
-    "'none'",
-  ],
+const contentSecurityPolicyDirectives = {
+  defaultSrc: ["'self'"],
+  baseUri: ["'self'"],
+  objectSrc: ["'none'"],
+  frameAncestors: ["'none'"],
 
   imgSrc: IMAGE_SOURCES,
-
   mediaSrc: MEDIA_SOURCES,
-
   connectSrc: CONNECT_SOURCES,
 
-  scriptSrc: [
-    "'self'",
-  ],
-
-  scriptSrcAttr: [
-    "'none'",
-  ],
-
-  styleSrc: [
-    "'self'",
-    "'unsafe-inline'",
-  ],
-
-  fontSrc: [
-    "'self'",
-    "data:",
-  ],
-
-  workerSrc: [
-    "'self'",
-    "blob:",
-  ],
-
-  formAction: [
-    "'self'",
-  ],
+  scriptSrc: ["'self'"],
+  scriptSrcAttr: ["'none'"],
+  styleSrc: ["'self'", "'unsafe-inline'"],
+  fontSrc: ["'self'", "data:"],
+  workerSrc: ["'self'", "blob:"],
+  formAction: ["'self'"],
 
   upgradeInsecureRequests: [],
 };
 
-export function getContentSecurityPolicyOptions() {
-  return {
-    useDefaults: false,
-    directives: contentSecurityPolicyDirectives,
-  };
-}
-
-export default getContentSecurityPolicyOptions;
+module.exports = {
+  useDefaults: false,
+  directives: contentSecurityPolicyDirectives,
+};
