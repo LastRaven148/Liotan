@@ -1,4 +1,8 @@
-import { API } from "../config/api";
+import {
+  API,
+  getActiveApiUrl,
+  getApiCandidates
+} from "../config/api";
 
 const DEFAULT_MEDIA_ORIGINS = [
   "https://media.liotan.ru",
@@ -23,8 +27,14 @@ function getAllowedMediaOrigins() {
     ...DEFAULT_MEDIA_ORIGINS,
     normalizeOrigin(import.meta.env.VITE_MEDIA_URL),
     ...splitOrigins(import.meta.env.VITE_MEDIA_URLS),
-    API
+    API,
+    getActiveApiUrl(),
+    ...getApiCandidates()
   ].filter(Boolean)));
+}
+
+function getUploadBaseUrl() {
+  return normalizeOrigin(getActiveApiUrl()) || API;
 }
 
 function isAllowedRemoteMediaUrl(value) {
@@ -47,7 +57,7 @@ export function mediaUrl(url) {
   }
 
   if (url.startsWith("/uploads/")) {
-    return `${API}${url}`;
+    return `${getUploadBaseUrl()}${url}`;
   }
 
   if (

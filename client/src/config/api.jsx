@@ -3,6 +3,8 @@ const DEVELOPMENT_API_URL = "http://localhost:3001";
 const DOMAIN_API_MAP = {
   "liotan.com": "https://api.liotan.com",
   "www.liotan.com": "https://api.liotan.com",
+  "tunnel.liotan.com": "https://api-tunnel.liotan.com",
+
   "liotan.ru": "https://api.liotan.ru",
   "www.liotan.ru": "https://api.liotan.ru"
 };
@@ -10,12 +12,15 @@ const DOMAIN_API_MAP = {
 const DOMAIN_CLIENT_MAP = {
   "liotan.com": "https://liotan.com",
   "www.liotan.com": "https://liotan.com",
+  "tunnel.liotan.com": "https://tunnel.liotan.com",
+
   "liotan.ru": "https://liotan.ru",
   "www.liotan.ru": "https://liotan.ru"
 };
 
 const BUILTIN_API_URLS = [
   "https://api.liotan.com",
+  "https://api-tunnel.liotan.com",
   "https://api.liotan.ru"
 ];
 
