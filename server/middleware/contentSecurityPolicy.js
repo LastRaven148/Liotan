@@ -11,6 +11,9 @@ const CONNECT_SOURCES = [
   "https://api.liotan.com",
   "https://media.liotan.com",
 
+  "https://tunnel.liotan.com",
+  "https://api-tunnel.liotan.com",
+
   "wss://liotan.ru",
   "wss://www.liotan.ru",
   "wss://api.liotan.ru",
@@ -18,6 +21,9 @@ const CONNECT_SOURCES = [
   "wss://liotan.com",
   "wss://www.liotan.com",
   "wss://api.liotan.com",
+
+  "wss://tunnel.liotan.com",
+  "wss://api-tunnel.liotan.com",
 
   "http://localhost:*",
   "http://127.0.0.1:*",
@@ -30,6 +36,7 @@ const MEDIA_SOURCES = [
   "blob:",
   "https://media.liotan.ru",
   "https://media.liotan.com",
+  "https://api-tunnel.liotan.com",
 ];
 
 const IMAGE_SOURCES = [
@@ -38,6 +45,7 @@ const IMAGE_SOURCES = [
   "blob:",
   "https://media.liotan.ru",
   "https://media.liotan.com",
+  "https://api-tunnel.liotan.com",
 ];
 
 const contentSecurityPolicyDirectives = {

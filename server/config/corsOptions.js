@@ -5,6 +5,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://liotan.com",
   "https://www.liotan.com",
 
+  "https://tunnel.liotan.com",
+
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
@@ -26,9 +28,14 @@ function parseAllowedOrigins(value) {
 }
 
 const envAllowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+const legacyAllowedOrigins = parseAllowedOrigins(process.env.LEGACY_ALLOWED_ORIGINS);
 
 const allowedOrigins = new Set(
-  [...DEFAULT_ALLOWED_ORIGINS, ...envAllowedOrigins].map(normalizeOrigin)
+  [
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...envAllowedOrigins,
+    ...legacyAllowedOrigins,
+  ].map(normalizeOrigin)
 );
 
 function isOriginAllowed(origin) {
@@ -58,6 +65,7 @@ const corsOptions = {
     "Origin",
     "X-Requested-With",
     "X-Request-Id",
+    "X-Liotan-CSRF",
   ],
 
   exposedHeaders: ["X-Request-Id"],
