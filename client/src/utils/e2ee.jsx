@@ -13,6 +13,17 @@ const E2EE_DB_VERSION = 2;
 const IDENTITY_STORE = "identities";
 const TRUST_STORE = "trusted-public-keys";
 
+function getRandomBytes(length) {
+  const bytes = new Uint8Array(length);
+  const chunkSize = 65536;
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    crypto.getRandomValues(bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+  }
+
+  return bytes;
+}
+
 function toBase64(bytes) {
   let binary = "";
   const chunkSize = 0x8000;
@@ -696,7 +707,7 @@ export async function encryptAttachmentFileForChat({
   const paddedSize = Math.max(plain.byteLength, getPaddedAttachmentSize(plain.byteLength));
   const paddingLength = Math.max(0, paddedSize - plain.byteLength);
   const paddedPlain = paddingLength
-    ? concatBytes(plain, crypto.getRandomValues(new Uint8Array(paddingLength)).buffer)
+    ? concatBytes(plain, getRandomBytes(paddingLength).buffer)
     : plain;
   const encrypted = await crypto.subtle.encrypt({
     name: "AES-GCM",
