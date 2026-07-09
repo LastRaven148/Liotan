@@ -5,7 +5,8 @@ const authMiddleware =
   require("../middleware/authMiddleware");
 
 const {
-  uploadLimiter
+  uploadLimiter,
+  mediaDownloadLimiter
 } = require("../middleware/rateLimiters");
 
 const attachmentUpload =
@@ -13,6 +14,7 @@ const attachmentUpload =
 
 const {
   uploadAttachment,
+  downloadAttachment,
   signAttachmentUpload
 } = require("../controllers/attachmentController");
 
@@ -32,6 +34,13 @@ router.post(
   uploadLimiter,
   attachmentUpload.single("attachment"),
   uploadAttachment
+);
+
+router.get(
+  "/attachments/:uploadId/download",
+  authMiddleware,
+  mediaDownloadLimiter,
+  downloadAttachment
 );
 
 module.exports =

@@ -183,6 +183,15 @@ const messageSchema =
       },
 
       attachment: {
+  uploadId: {
+    type: String,
+    default: "",
+    index: true
+  },
+  mediaId: {
+    type: String,
+    default: ""
+  },
   url: {
     type: String,
     default: ""

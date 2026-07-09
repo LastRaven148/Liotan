@@ -2,6 +2,8 @@ function serializeAttachment(attachment) {
   if (!attachment?.url) return undefined;
 
   return {
+    uploadId: attachment.uploadId || attachment.mediaId || "",
+    mediaId: attachment.mediaId || attachment.uploadId || "",
     url: attachment.url || "",
     name: attachment.name || "",
     type: attachment.type || "",

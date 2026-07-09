@@ -24,7 +24,7 @@ function getR2Config() {
     accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
     secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
     bucket: requireEnv("R2_BUCKET"),
-    publicUrl: requireEnv("R2_PUBLIC_URL").replace(/\/+$/, ""),
+    publicUrl: String(process.env.R2_PUBLIC_URL || "").trim().replace(/\/+$/, ""),
     endpoint
   };
 }
@@ -89,7 +89,7 @@ function getFileSize(file) {
 }
 
 function getRequestBody(file, method) {
-  if (method === "DELETE") return null;
+  if (method === "DELETE" || method === "GET" || method === "HEAD") return null;
   if (file?.buffer) return file.buffer;
   if (file?.path) return fs.createReadStream(file.path);
   return Buffer.alloc(0);
@@ -100,7 +100,7 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = method === "DELETE" ? sha256("") : "UNSIGNED-PAYLOAD";
+  const payloadHash = (method === "DELETE" || method === "GET" || method === "HEAD") ? sha256("") : "UNSIGNED-PAYLOAD";
   const encodedKey = encodeR2Key(key);
   const endpoint = new URL(config.endpoint);
   const path = `/${config.bucket}/${encodedKey}`;
@@ -113,10 +113,10 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
     "x-amz-date": amzDate
   };
 
-  if (method !== "DELETE") {
+  if (method !== "DELETE" && method !== "GET" && method !== "HEAD") {
     headers["content-type"] = contentType;
     headers["content-length"] = String(contentLength);
-    headers["cache-control"] = "public, max-age=31536000, immutable";
+    headers["cache-control"] = "private, max-age=0, no-store";
   }
 
   const sortedHeaderNames = Object.keys(headers).sort();
@@ -159,7 +159,12 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
       res.on("end", () => {
         const responseBody = Buffer.concat(chunks).toString("utf8");
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve({ statusCode: res.statusCode, body: responseBody });
+          resolve({
+            statusCode: res.statusCode,
+            body: responseBody,
+            buffer: Buffer.concat(chunks),
+            headers: res.headers
+          });
           return;
         }
 
@@ -168,6 +173,11 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
         err.details = responseBody.slice(0, 500);
         reject(err);
       });
+    });
+
+    const timeoutMs = Number(process.env.R2_REQUEST_TIMEOUT_MS) || 120000;
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`R2 ${method} timed out after ${timeoutMs}ms`));
     });
 
     req.on("error", reject);
@@ -210,12 +220,22 @@ async function uploadToR2(file, options = {}) {
   await requestR2({ method: "PUT", key, file: uploadFile, contentType });
 
   return {
-    url: `${config.publicUrl}/${encodeR2Key(key)}`,
+    url: config.publicUrl ? `${config.publicUrl}/${encodeR2Key(key)}` : "",
     key,
     storageType: "r2",
     bytes: meta.size,
     format: getExtension(file?.originalname || "").replace(/^\./, "")
   };
+}
+
+async function getFromR2(key) {
+  if (!key) {
+    const err = new Error("R2 key is required");
+    err.status = 404;
+    throw err;
+  }
+
+  return requestR2({ method: "GET", key });
 }
 
 async function deleteFromR2(key) {
@@ -225,6 +245,7 @@ async function deleteFromR2(key) {
 
 module.exports = {
   uploadToR2,
+  getFromR2,
   deleteFromR2,
-  isR2Configured: () => Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET && process.env.R2_PUBLIC_URL)
+  isR2Configured: () => Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET)
 };

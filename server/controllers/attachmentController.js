@@ -1,6 +1,6 @@
 const fs = require("fs").promises;
 const privacy = require("../config/privacy");
-const { uploadToR2 } = require("../utils/uploadToR2");
+const { uploadToR2, getFromR2 } = require("../utils/uploadToR2");
 const {
   normalizeMime,
   assertAllowedAttachment,
@@ -9,6 +9,7 @@ const {
 } = require("../middleware/uploadSecurity");
 const { hmac } = require("../utils/privacy");
 const { sanitizeAttachmentName } = require("../utils/attachmentSafety");
+const { findAccessibleAttachment, safeUploadId } = require("../services/attachmentAccess");
 const {
   publicAttachmentView,
   registerAttachmentUpload
@@ -29,7 +30,10 @@ function fixFileName(name) {
   }
 }
 
-function getAttachmentType(mimeType = "") {
+function getAttachmentType(mimeType = "", fileName = "") {
+  if (hasEncryptedAttachmentExtension(fileName)) {
+    return fileName.toLowerCase().endsWith(".liotanvoice") ? "voice" : "file";
+  }
   if (mimeType.startsWith("image/")) return "photo";
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "audio";
@@ -86,12 +90,14 @@ async function uploadAttachment(req, res, next) {
 
     assertAllowedAttachment({ mimeType, fileName: fixedName, size: req.file.size });
 
-    if (!hasEncryptedAttachmentExtension(fixedName)) {
+    const encryptedUpload = hasEncryptedAttachmentExtension(fixedName);
+
+    if (!encryptedUpload) {
       const magic = await readMagicBytes(req.file);
       assertSafeFileBuffer({ buffer: magic, mimeType });
     }
 
-    const type = getAttachmentType(mimeType);
+    const type = getAttachmentType(mimeType, fixedName);
     const result = await uploadToR2(req.file, {
       folder: getFolder(type, getUploadOwnerSegment(req)),
       attachmentType: type,
@@ -103,8 +109,9 @@ async function uploadAttachment(req, res, next) {
       result,
       name: fixedName,
       type,
-      mimeType,
-      size: req.file.size
+      mimeType: encryptedUpload ? "application/octet-stream" : mimeType,
+      size: req.file.size,
+      encrypted: encryptedUpload
     });
 
     res.json(publicAttachmentView(upload));
@@ -115,8 +122,36 @@ async function uploadAttachment(req, res, next) {
   }
 }
 
+async function downloadAttachment(req, res, next) {
+  try {
+    const uploadId = safeUploadId(req.params.uploadId);
+    const access = await findAccessibleAttachment({
+      uploadId,
+      username: req.user?.username
+    });
+
+    if (!access) {
+      return res.status(404).json({ error: "media not found" });
+    }
+
+    const attachment = access.attachment;
+    const object = await getFromR2(attachment.storageKey);
+    const contentType = attachment.mimeType || "application/octet-stream";
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Length", String(object.buffer.length));
+
+    return res.status(200).send(object.buffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   uploadAttachment,
+  downloadAttachment,
   signAttachmentUpload,
   fixFileName,
   getAttachmentType

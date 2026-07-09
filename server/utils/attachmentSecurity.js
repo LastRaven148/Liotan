@@ -99,15 +99,15 @@ function isAllowedR2Url(value = "") {
 function isAllowedLocalUploadUrl(value = "") {
   const url = String(value || "");
 
-  if (!url.startsWith("/uploads/")) {
-    return false;
-  }
-
   if (url.includes("..") || url.includes("\\")) {
     return false;
   }
 
-  return true;
+  if (url.startsWith("/uploads/")) {
+    return true;
+  }
+
+  return /^\/attachments\/[a-zA-Z0-9_-]{16,80}\/download$/.test(url);
 }
 
 function isAllowedAttachmentUrl(value = "") {
@@ -153,6 +153,60 @@ function expectedTypeForMime(mimeType = "") {
   return "file";
 }
 
+
+function safeString(value = "", max = 256) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeBase64String(value = "", max = 8192) {
+  const text = safeString(value, max);
+  return /^[a-zA-Z0-9+/=_-]*$/.test(text) ? text : "";
+}
+
+function validateE2eeMediaEnvelope(value, type) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const originalType = normalizeAttachmentType(value.originalType || type);
+  if (!originalType || originalType !== type) {
+    return null;
+  }
+
+  const envelope = {
+    v: Number(value.v),
+    prefix: safeString(value.prefix, 64),
+    alg: safeString(value.alg, 64),
+    kdf: safeString(value.kdf, 64),
+    iter: safeNumber(value.iter, 0, 1000000),
+    salt: safeBase64String(value.salt, 128),
+    iv: safeBase64String(value.iv, 128),
+    kid: safeString(value.kid, 160),
+    metaIv: safeBase64String(value.metaIv, 128),
+    meta: safeBase64String(value.meta, 16384),
+    originalType
+  };
+
+  if (
+    envelope.v !== 1 ||
+    envelope.alg !== "AES-GCM-256" ||
+    envelope.kdf !== "PBKDF2-SHA256" ||
+    envelope.iter < 100000 ||
+    !envelope.salt ||
+    !envelope.iv ||
+    !envelope.metaIv ||
+    !envelope.meta ||
+    envelope.salt.length > 64 ||
+    envelope.iv.length > 64 ||
+    envelope.metaIv.length > 64 ||
+    envelope.meta.length > 16384
+  ) {
+    return null;
+  }
+
+  return envelope;
+}
+
 function sanitizeAttachment(input) {
   if (!input || typeof input !== "object") {
     return null;
@@ -187,7 +241,18 @@ function sanitizeAttachment(input) {
     }
   }
 
-  if (
+  const e2eeMedia = validateE2eeMediaEnvelope(input.e2eeMedia, type);
+  const encryptedClientView = Boolean(e2eeMedia);
+
+  if (encryptedClientView) {
+    if (mimeType !== "application/octet-stream") {
+      return null;
+    }
+
+    if (!/^\/attachments\/[a-zA-Z0-9_-]{16,80}\/download$/.test(url)) {
+      return null;
+    }
+  } else if (
     mimeType &&
     !isAllowedAttachment({
       mimeType,
@@ -210,12 +275,11 @@ function sanitizeAttachment(input) {
     waveform: Array.isArray(input.waveform)
       ? input.waveform.slice(0, 64).map(item => safeNumber(item, 0, 1))
       : [],
-    uploadId: String(input.uploadId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
+    uploadId: String(input.uploadId || input.mediaId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
+    mediaId: String(input.mediaId || input.uploadId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
     storageKey: "",
     storageType: "auto",
-    e2eeMedia: input.e2eeMedia && typeof input.e2eeMedia === "object"
-      ? input.e2eeMedia
-      : null
+    e2eeMedia
   };
 
   if (input.encrypted === true || input.isEncrypted === true) {
@@ -247,5 +311,6 @@ module.exports = {
   sanitizeFileName,
   isAllowedAttachmentUrl,
   isDangerousName,
+  validateE2eeMediaEnvelope,
   getExtension
 };

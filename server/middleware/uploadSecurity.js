@@ -25,10 +25,10 @@ const VIDEO_MIME_BY_EXT = {
 
 const AUDIO_MIME_BY_EXT = {
   ".mp3": ["audio/mpeg", "audio/mp3"],
-  ".m4a": ["audio/mp4", "audio/aac"],
+  ".m4a": ["audio/mp4", "audio/aac", "audio/x-m4a"],
   ".aac": ["audio/aac"],
-  ".ogg": ["audio/ogg"],
-  ".wav": ["audio/wav"],
+  ".ogg": ["audio/ogg", "application/ogg"],
+  ".wav": ["audio/wav", "audio/wave", "audio/x-wav"],
   ".webm": ["audio/webm"]
 };
 
@@ -113,7 +113,7 @@ function isAllowedAttachment({ mimeType = "", fileName = "", size = 0 }) {
   if (fileSize > 0 && fileSize > maxSize) return false;
 
   if (kind === "encrypted") {
-    return normalizedMime === "application/octet-stream" || normalizedMime.startsWith("audio/") || normalizedMime.startsWith("video/") || normalizedMime.startsWith("image/");
+    return normalizedMime === "application/octet-stream";
   }
 
   return true;
@@ -147,9 +147,27 @@ function hasKnownMagicBytes(buffer, mimeType = "") {
   }
   if (normalizedMime === "application/x-7z-compressed") return bufferStartsWith(buffer, [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]);
   if (normalizedMime === "application/vnd.rar" || normalizedMime === "application/x-rar-compressed") return bufferStartsWith(buffer, [0x52, 0x61, 0x72, 0x21]);
-
-  if (normalizedMime.startsWith("audio/") || normalizedMime.startsWith("video/") || normalizedMime === "text/plain" || normalizedMime === "application/octet-stream") {
-    return true;
+  if (normalizedMime === "application/octet-stream") return false;
+  if (normalizedMime === "text/plain") {
+    return !buffer.includes(0);
+  }
+  if (normalizedMime === "video/mp4" || normalizedMime === "video/quicktime" || normalizedMime === "audio/mp4" || normalizedMime === "audio/x-m4a") {
+    return buffer.length >= 12 && buffer.slice(4, 8).toString("ascii") === "ftyp";
+  }
+  if (normalizedMime === "video/webm" || normalizedMime === "audio/webm") {
+    return bufferStartsWith(buffer, [0x1a, 0x45, 0xdf, 0xa3]);
+  }
+  if (normalizedMime === "audio/mpeg" || normalizedMime === "audio/mp3") {
+    return bufferStartsWith(buffer, [0x49, 0x44, 0x33]) || (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0);
+  }
+  if (normalizedMime === "audio/ogg" || normalizedMime === "application/ogg") {
+    return buffer.slice(0, 4).toString("ascii") === "OggS";
+  }
+  if (normalizedMime === "audio/wav" || normalizedMime === "audio/wave" || normalizedMime === "audio/x-wav") {
+    return bufferStartsWith(buffer, [0x52, 0x49, 0x46, 0x46]) && buffer.slice(8, 12).toString("ascii") === "WAVE";
+  }
+  if (normalizedMime === "audio/aac") {
+    return buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xf0) === 0xf0;
   }
 
   return false;

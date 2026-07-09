@@ -56,7 +56,7 @@ export function mediaUrl(url) {
     return "";
   }
 
-  if (url.startsWith("/uploads/")) {
+  if (url.startsWith("/uploads/") || url.startsWith("/attachments/")) {
     return `${getUploadBaseUrl()}${url}`;
   }
 

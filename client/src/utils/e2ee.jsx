@@ -632,7 +632,8 @@ export async function encryptAttachmentFileForChat({
   participants,
   file,
   originalTypeOverride = "",
-  uploadExtension = ".liotanenc"
+  uploadExtension = ".liotanenc",
+  privateMetadata = {}
 }) {
   if (!file) {
     return null;
@@ -643,13 +644,11 @@ export async function encryptAttachmentFileForChat({
     participants
   });
   if (!secret || !crypto?.subtle) {
-    return {
-      uploadFile: file,
-      metadata: null
-    };
+    throw new Error("Невозможно безопасно зашифровать вложение");
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
+  const metaIv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveMessageKey(secret, salt);
   const plain = await file.arrayBuffer();
   const encrypted = await crypto.subtle.encrypt({
@@ -660,7 +659,19 @@ export async function encryptAttachmentFileForChat({
   const safeExtension = String(uploadExtension || ".liotanenc")
     .trim()
     .replace(/[^a-z0-9.]/gi, "") || ".liotanenc";
-  const uploadFile = new File([encrypted], `${originalName}${safeExtension}`, {
+  const originalType = originalTypeOverride || getAttachmentTypeFromMime(file.type);
+  const encryptedMetadata = await crypto.subtle.encrypt({
+    name: "AES-GCM",
+    iv: metaIv
+  }, key, encoder.encode(JSON.stringify({
+    originalName,
+    originalType,
+    originalMimeType: file.type || "application/octet-stream",
+    originalSize: file.size,
+    ...privateMetadata
+  })));
+  const randomName = `liotan-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}${safeExtension}`;
+  const uploadFile = new File([encrypted], randomName, {
     type: "application/octet-stream",
     lastModified: Date.now()
   });
@@ -675,10 +686,9 @@ export async function encryptAttachmentFileForChat({
       salt: toBase64(salt),
       iv: toBase64(iv),
       kid: chatKey,
-      originalName,
-      originalType: originalTypeOverride || getAttachmentTypeFromMime(file.type),
-      originalMimeType: file.type || "application/octet-stream",
-      originalSize: file.size
+      metaIv: toBase64(metaIv),
+      meta: toBase64(new Uint8Array(encryptedMetadata)),
+      originalType
     }
   };
 }
@@ -694,6 +704,35 @@ function getAttachmentTypeFromMime(mimeType = "") {
   }
   return "file";
 }
+export async function decryptAttachmentMetadataForChat({
+  username,
+  chatKey,
+  attachment
+}) {
+  if (!isEncryptedAttachment(attachment) || !attachment.e2eeMedia?.meta || !attachment.e2eeMedia?.metaIv) {
+    return null;
+  }
+
+  const meta = attachment.e2eeMedia;
+  const secret = getChatSecret(username, meta.kid || chatKey);
+  if (!secret) {
+    return null;
+  }
+
+  try {
+    const key = await deriveMessageKey(secret, fromBase64(meta.salt));
+    const decrypted = await crypto.subtle.decrypt({
+      name: "AES-GCM",
+      iv: fromBase64(meta.metaIv)
+    }, key, fromBase64(meta.meta).buffer);
+
+    const parsed = JSON.parse(decoder.decode(decrypted));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function decryptAttachmentBlobForChat({
   username,
   chatKey,
@@ -713,8 +752,14 @@ export async function decryptAttachmentBlobForChat({
     name: "AES-GCM",
     iv: fromBase64(meta.iv)
   }, key, await blob.arrayBuffer());
+  const privateMeta = await decryptAttachmentMetadataForChat({
+    username,
+    chatKey,
+    attachment
+  });
+
   return new Blob([decrypted], {
-    type: meta.originalMimeType || attachment.mimeType || "application/octet-stream"
+    type: privateMeta?.originalMimeType || attachment.mimeType || "application/octet-stream"
   });
 }
 export async function encryptTextForChat({

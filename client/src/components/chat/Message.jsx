@@ -17,7 +17,7 @@ import MessageVoice from "./message/MessageVoice";
 import MessageActions from "./message/MessageActions";
 import MessageViewer from "./message/MessageViewer";
 import MessageTime from "./message/MessageTime";
-import { decryptAttachmentBlobForChat, decryptTextForChat, isEncryptedAttachment, isEncryptedText } from "../../utils/e2ee";
+import { decryptAttachmentBlobForChat, decryptAttachmentMetadataForChat, decryptTextForChat, isEncryptedAttachment, isEncryptedText } from "../../utils/e2ee";
 import DownloadConfirmModal from "./message/DownloadConfirmModal";
 const AUTO_CACHE_LIMIT = 50 * 1024 * 1024;
 function safeDownloadName(name = "download") {
@@ -43,6 +43,7 @@ function Message({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
   const [decryptedText, setDecryptedText] = useState(isEncryptedText(message.text) || message.encryptedContent?.ciphertext ? "" : message.text || "");
+  const [privateAttachmentMeta, setPrivateAttachmentMeta] = useState(null);
   const isMine = message.from === username;
   const attachment = message.attachment;
   const hasAttachment = attachment && attachment.url;
@@ -59,9 +60,17 @@ function Message({
   const hasUsableText = Boolean(decryptedText && !isPendingDecryptionText);
   const canEdit = isMine && hasUsableText && !hasAttachment;
   const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
-  const attachmentDuration = Number(attachment?.duration) || 0;
-  const attachmentSizeText = formatFileSize(attachment?.size);
   const encryptedMedia = isEncryptedAttachment(attachment);
+  const attachmentForDisplay = privateAttachmentMeta ? {
+    ...attachment,
+    name: privateAttachmentMeta.originalName || attachment?.name,
+    mimeType: privateAttachmentMeta.originalMimeType || attachment?.mimeType,
+    size: Number(privateAttachmentMeta.originalSize) || attachment?.size || 0,
+    duration: Number(privateAttachmentMeta.duration) || attachment?.duration || 0,
+    waveform: Array.isArray(privateAttachmentMeta.waveform) ? privateAttachmentMeta.waveform : attachment?.waveform || []
+  } : attachment;
+  const attachmentDuration = Number(attachmentForDisplay?.duration) || 0;
+  const attachmentSizeText = formatFileSize(attachmentForDisplay?.size);
   const shouldAutoCache = hasAttachment && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice);
   const {
     localUrl,
@@ -125,6 +134,33 @@ function Message({
       cancelled = true;
     };
   }, [username, activeChat, message.text, message.encryptedContent, e2eeRevision]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function updateAttachmentMeta() {
+      if (!encryptedMedia) {
+        setPrivateAttachmentMeta(null);
+        return;
+      }
+
+      const value = await decryptAttachmentMetadataForChat({
+        username,
+        chatKey: activeChat,
+        attachment
+      });
+
+      if (!cancelled) {
+        setPrivateAttachmentMeta(value);
+      }
+    }
+
+    updateAttachmentMeta();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [username, activeChat, attachment?.e2eeMedia, encryptedMedia, e2eeRevision]);
+
   useEffect(() => {
     if (attachment?.width && attachment?.height) {
       setVideoRatio(`${attachment.width} / ${attachment.height}`);
@@ -231,7 +267,9 @@ function Message({
       if (hasAttachment && !isOfflineSaved && remoteUrl) {
         await saveOffline();
       }
-      const response = await fetch(sourceUrl);
+      const response = await fetch(sourceUrl, {
+        credentials: "include"
+      });
       if (!response.ok) {
         throw new Error("Download failed");
       }
@@ -245,7 +283,7 @@ function Message({
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = safeDownloadName(attachment.name);
+      link.download = safeDownloadName(attachmentForDisplay?.name || attachment.name);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -280,9 +318,9 @@ function Message({
       detail: {
         messageId: message._id,
         url: fileUrl || attachment.url,
-        name: isVoice ? t.voiceMessage || "Голосовое сообщение" : attachment.name || t.audio || "Аудио",
+        name: isVoice ? t.voiceMessage || "Голосовое сообщение" : attachmentForDisplay?.name || t.audio || "Аудио",
         duration: audioDuration || attachmentDuration,
-        size: attachment.size || 0,
+        size: attachmentForDisplay?.size || 0,
         type: isVoice ? "voice" : "audio",
         playlist
       }
@@ -384,7 +422,7 @@ function Message({
         e.stopPropagation();
         downloadFile();
       }}>
-            ↓ {formatFileSize(attachment.size)}
+            ↓ {formatFileSize(attachmentForDisplay?.size || attachment.size)}
           </button>}
 
         {renderMediaCaption()}
@@ -400,11 +438,11 @@ function Message({
         {isVideo && renderVideo()}
 
         <div className="message-content">
-          {isAudio && <MessageAudio attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} attachmentSizeText={attachmentSizeText} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
+          {isAudio && <MessageAudio attachment={attachmentForDisplay} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} attachmentSizeText={attachmentSizeText} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
-          {isVoice && <MessageVoice t={t} attachment={attachment} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
+          {isVoice && <MessageVoice t={t} attachment={attachmentForDisplay} audioPlaying={audioPlaying} audioStarted={audioStarted} audioProgress={audioProgress} audioDuration={audioDuration} footer={renderMessageTime("message-footer-compact")} onToggle={toggleAudio} onSeek={seekAudio} />}
 
-          {isFile && <MessageFile attachment={attachment} t={t} footer={renderMessageTime("message-footer-compact")} onDownloadRequest={requestDownloadFile} />}
+          {isFile && <MessageFile attachment={attachmentForDisplay} t={t} footer={renderMessageTime("message-footer-compact")} onDownloadRequest={requestDownloadFile} />}
 
           {decryptedText && !isPhoto && !isVideo && <MessageText value={decryptedText} footer={!hasAttachment ? renderMessageTime("message-footer-inline") : null} />}
         </div>
@@ -424,7 +462,7 @@ function Message({
 
       <MessageViewer open={viewerOpen} attachment={attachment || {}} fileUrl={fileUrl} isPhoto={isPhoto} isVideo={isVideo} videoRatio={videoRatio} onClose={closeViewer} onDownload={downloadFile} onVideoMetadata={handleVideoMetadata} />
 
-      <DownloadConfirmModal open={downloadConfirmOpen} fileName={attachment?.name} fileSize={attachment?.size} onCancel={() => setDownloadConfirmOpen(false)} onConfirm={() => {
+      <DownloadConfirmModal open={downloadConfirmOpen} fileName={attachmentForDisplay?.name} fileSize={attachmentForDisplay?.size} onCancel={() => setDownloadConfirmOpen(false)} onConfirm={() => {
       setDownloadConfirmOpen(false);
       downloadFile();
     }} />

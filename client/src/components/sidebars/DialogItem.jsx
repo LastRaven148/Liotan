@@ -134,7 +134,9 @@ export default function DialogItem({
       }
 
       try {
-        const response = await fetch(mediaUrl(lastAttachmentUrl));
+        const response = await fetch(mediaUrl(lastAttachmentUrl), {
+          credentials: "include"
+        });
         if (!response.ok) return;
         const blob = await response.blob();
         const decrypted = await decryptAttachmentBlobForChat({

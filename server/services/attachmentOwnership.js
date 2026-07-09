@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const AttachmentUpload = require("../models/AttachmentUpload");
 const { sanitizeAttachment } = require("../utils/attachmentSecurity");
 
-const UPLOAD_TTL_MS = 1000 * 60 * 60 * 24;
+const UPLOAD_TTL_MS = Number(process.env.ATTACHMENT_UPLOAD_RECORD_TTL_MS) || 1000 * 60 * 60 * 24 * 7;
 
 function createUploadId() {
   return crypto.randomBytes(24).toString("base64url");
@@ -12,36 +12,52 @@ function getExpiresAt() {
   return new Date(Date.now() + UPLOAD_TTL_MS);
 }
 
+function isEncryptedUpload(upload) {
+  return upload?.encrypted === true || upload?.mimeType === "application/octet-stream";
+}
+
+function mediaDownloadPath(uploadId) {
+  return `/attachments/${encodeURIComponent(uploadId)}/download`;
+}
+
 function publicAttachmentView(upload) {
+  const encrypted = isEncryptedUpload(upload);
+
   return {
     uploadId: upload.uploadId,
-    url: upload.url,
-    name: upload.name,
+    mediaId: upload.uploadId,
+    url: mediaDownloadPath(upload.uploadId),
+    name: encrypted ? "Liotan encrypted media" : upload.name,
     type: upload.type,
-    mimeType: upload.mimeType,
-    size: upload.size,
-    width: upload.width || 0,
-    height: upload.height || 0,
-    duration: upload.duration || 0
+    mimeType: encrypted ? "application/octet-stream" : upload.mimeType,
+    size: Number(upload.size) || 0,
+    width: encrypted ? 0 : upload.width || 0,
+    height: encrypted ? 0 : upload.height || 0,
+    duration: encrypted ? 0 : upload.duration || 0
   };
 }
 
-async function registerAttachmentUpload({ owner, result, name, type, mimeType, size }) {
+async function registerAttachmentUpload({ owner, result, name, type, mimeType, size, encrypted = false }) {
   const upload = await AttachmentUpload.create({
     uploadId: createUploadId(),
     owner,
-    url: result.url,
-    name,
+    url: "",
+    mediaUrl: mediaDownloadPath("pending"),
+    name: encrypted ? "Liotan encrypted media" : name,
     type,
-    mimeType,
+    mimeType: encrypted ? "application/octet-stream" : mimeType,
     size,
-    width: result.width || 0,
-    height: result.height || 0,
-    duration: result.duration || 0,
+    encrypted,
+    width: encrypted ? 0 : result.width || 0,
+    height: encrypted ? 0 : result.height || 0,
+    duration: encrypted ? 0 : result.duration || 0,
     storageKey: result.key,
     storageType: result.storageType || "auto",
     expiresAt: getExpiresAt()
   });
+
+  upload.mediaUrl = mediaDownloadPath(upload.uploadId);
+  await upload.save();
 
   return upload;
 }
@@ -50,7 +66,7 @@ async function resolveOwnedAttachment(input, owner) {
   const sanitized = sanitizeAttachment(input);
   if (!sanitized) return null;
 
-  const uploadId = String(input?.uploadId || sanitized.uploadId || "").trim();
+  const uploadId = String(input?.uploadId || input?.mediaId || sanitized.uploadId || sanitized.mediaId || "").trim();
   if (!uploadId) return null;
 
   const upload = await AttachmentUpload.findOne({
@@ -62,30 +78,44 @@ async function resolveOwnedAttachment(input, owner) {
 
   if (!upload) return null;
 
+  const expectedUrl = mediaDownloadPath(upload.uploadId);
   const isEncryptedClientView = Boolean(sanitized.e2eeMedia?.v);
 
-  if (upload.url !== sanitized.url) {
+  if (sanitized.url !== expectedUrl) {
     return null;
   }
 
-  if (!isEncryptedClientView && (
-    upload.name !== sanitized.name ||
-    upload.type !== sanitized.type ||
-    upload.mimeType !== sanitized.mimeType ||
-    Number(upload.size || 0) !== Number(sanitized.size || 0)
-  )) {
-    return null;
+  if (!isEncryptedClientView) {
+    if (
+      upload.name !== sanitized.name ||
+      upload.type !== sanitized.type ||
+      upload.mimeType !== sanitized.mimeType ||
+      Number(upload.size || 0) !== Number(sanitized.size || 0)
+    ) {
+      return null;
+    }
   }
 
   return {
     ...sanitized,
+    uploadId: upload.uploadId,
+    mediaId: upload.uploadId,
+    url: expectedUrl,
+    name: isEncryptedClientView ? sanitized.name : upload.name,
+    type: sanitized.type || upload.type,
+    mimeType: isEncryptedClientView ? "application/octet-stream" : upload.mimeType,
+    size: isEncryptedClientView ? Number(upload.size || 0) : sanitized.size,
+    width: isEncryptedClientView ? 0 : sanitized.width,
+    height: isEncryptedClientView ? 0 : sanitized.height,
+    duration: isEncryptedClientView ? 0 : sanitized.duration,
+    waveform: isEncryptedClientView ? [] : sanitized.waveform,
     storageKey: upload.storageKey,
     storageType: upload.storageType || "auto"
   };
 }
 
 async function markAttachmentUploadUsed(input, owner) {
-  const uploadId = String(input?.uploadId || "").trim();
+  const uploadId = String(input?.uploadId || input?.mediaId || "").trim();
   if (!uploadId) return;
 
   await AttachmentUpload.updateOne(
@@ -106,5 +136,6 @@ module.exports = {
   publicAttachmentView,
   registerAttachmentUpload,
   resolveOwnedAttachment,
-  markAttachmentUploadUsed
+  markAttachmentUploadUsed,
+  mediaDownloadPath
 };

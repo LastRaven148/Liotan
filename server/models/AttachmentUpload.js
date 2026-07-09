@@ -15,7 +15,11 @@ const attachmentUploadSchema = new mongoose.Schema(
     },
     url: {
       type: String,
-      required: true
+      default: ""
+    },
+    mediaUrl: {
+      type: String,
+      default: ""
     },
     name: {
       type: String,
@@ -33,6 +37,11 @@ const attachmentUploadSchema = new mongoose.Schema(
     size: {
       type: Number,
       default: 0
+    },
+    encrypted: {
+      type: Boolean,
+      default: false,
+      index: true
     },
     width: {
       type: Number,

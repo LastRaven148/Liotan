@@ -125,6 +125,20 @@ const uploadLimiter =
     legacyHeaders: false
   });
 
+
+const mediaDownloadLimiter =
+  rateLimit({
+    windowMs: 60 * 1000,
+    max:
+      process.env.NODE_ENV === "production"
+        ? 240
+        : 5000,
+    keyGenerator: userOrIpKey,
+    message: createMessage("too many media download requests"),
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+
 const e2eeLimiter =
   rateLimit({
     windowMs: 60 * 1000,
@@ -144,5 +158,6 @@ module.exports = {
   authLimiter,
   codeLimiter,
   uploadLimiter,
+  mediaDownloadLimiter,
   e2eeLimiter
 };

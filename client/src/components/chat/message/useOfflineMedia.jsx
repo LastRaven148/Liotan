@@ -89,7 +89,13 @@ export default function useOfflineMedia({
       setSavingOffline(true);
 
       const response =
-        await fetch(remoteUrl);
+        await fetch(remoteUrl, {
+          credentials: "include"
+        });
+
+      if (!response.ok) {
+        throw new Error("Media request failed");
+      }
 
       const remoteBlob =
         await response.blob();

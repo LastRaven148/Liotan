@@ -283,10 +283,9 @@ export default function useChat({
         const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
         if (encryptedFile.metadata) {
           attachment.e2eeMedia = encryptedFile.metadata;
-          attachment.type = encryptedFile.metadata.originalType;
-          attachment.mimeType = encryptedFile.metadata.originalMimeType;
-          attachment.size = encryptedFile.metadata.originalSize;
-          attachment.name = encryptedFile.metadata.originalName;
+          attachment.type = encryptedFile.metadata.originalType || attachment.type;
+          attachment.mimeType = "application/octet-stream";
+          attachment.name = attachment.type === "photo" ? "Фото" : attachment.type === "video" ? "Видео" : attachment.type === "audio" ? "Аудио" : "Файл";
         }
         const ok = await emitMessage({
           target,
@@ -332,17 +331,20 @@ export default function useChat({
         participants: getConversationParticipants(activeChat),
         file,
         originalTypeOverride: "voice",
-        uploadExtension: ".liotanvoice"
+        uploadExtension: ".liotanvoice",
+        privateMetadata: {
+          duration: Number(duration) || 0,
+          waveform: Array.isArray(waveform) ? waveform.slice(0, 64) : []
+        }
       });
       const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
       if (encryptedFile.metadata) {
         attachment.e2eeMedia = encryptedFile.metadata;
         attachment.type = "voice";
-        attachment.mimeType = encryptedFile.metadata.originalMimeType;
-        attachment.size = encryptedFile.metadata.originalSize;
+        attachment.mimeType = "application/octet-stream";
         attachment.name = "Голосовое сообщение";
-        attachment.duration = Number(duration) || 0;
-        attachment.waveform = Array.isArray(waveform) ? waveform.slice(0, 64) : [];
+        attachment.duration = 0;
+        attachment.waveform = [];
       }
       return await sendMessage(attachment);
     } catch (err) {
@@ -365,10 +367,9 @@ export default function useChat({
       const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
       if (encryptedFile.metadata) {
         attachment.e2eeMedia = encryptedFile.metadata;
-        attachment.type = encryptedFile.metadata.originalType;
-        attachment.mimeType = encryptedFile.metadata.originalMimeType;
-        attachment.size = encryptedFile.metadata.originalSize;
-        attachment.name = encryptedFile.metadata.originalName;
+        attachment.type = encryptedFile.metadata.originalType || attachment.type;
+        attachment.mimeType = "application/octet-stream";
+        attachment.name = attachment.type === "photo" ? "Фото" : attachment.type === "video" ? "Видео" : attachment.type === "audio" ? "Аудио" : "Файл";
       }
       return await sendMessage(attachment);
     } catch (err) {
