@@ -18,11 +18,11 @@ const DOMAIN_CLIENT_MAP = {
   "www.liotan.ru": "https://liotan.ru"
 };
 
-const BUILTIN_API_URLS = [
-  "https://api.liotan.com",
-  "https://api-tunnel.liotan.com",
-  "https://api.liotan.ru"
-];
+const API_FALLBACKS_BY_ZONE = {
+  com: ["https://api-tunnel.liotan.com"],
+  ru: ["https://api-tunnel.liotan.com"],
+  tunnel: ["https://api.liotan.com"]
+};
 
 function normalizeApiUrl(url) {
   return String(url || "")
@@ -49,6 +49,14 @@ function getRuntimeHostname() {
   return String(window.location?.hostname || "").toLowerCase();
 }
 
+function getRuntimeZone() {
+  const hostname = getRuntimeHostname();
+
+  if (hostname === "tunnel.liotan.com") return "tunnel";
+  if (hostname.endsWith(".ru")) return "ru";
+  return "com";
+}
+
 function getRuntimePrimaryApiUrl() {
   const hostname = getRuntimeHostname();
   return DOMAIN_API_MAP[hostname] || "";
@@ -73,6 +81,14 @@ function resolvePrimaryApiUrl() {
   );
 }
 
+function resolveBuiltInFallbacks() {
+  if (!import.meta.env.PROD) {
+    return [];
+  }
+
+  return API_FALLBACKS_BY_ZONE[getRuntimeZone()] || API_FALLBACKS_BY_ZONE.com;
+}
+
 function resolveApiCandidates() {
   const primary = resolvePrimaryApiUrl();
   const envFallbacks = splitUrls(import.meta.env.VITE_API_FALLBACK_URLS);
@@ -84,7 +100,7 @@ function resolveApiCandidates() {
   return uniqueUrls([
     primary,
     ...envFallbacks,
-    ...BUILTIN_API_URLS
+    ...resolveBuiltInFallbacks()
   ]);
 }
 

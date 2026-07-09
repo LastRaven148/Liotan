@@ -1,16 +1,20 @@
-const DEFAULT_ALLOWED_ORIGINS = [
+const PRODUCTION_ALLOWED_ORIGINS = [
   "https://liotan.ru",
   "https://www.liotan.ru",
 
   "https://liotan.com",
   "https://www.liotan.com",
 
-  "https://tunnel.liotan.com",
+  "https://tunnel.liotan.com"
+];
+
+const DEVELOPMENT_ALLOWED_ORIGINS = [
+  ...PRODUCTION_ALLOWED_ORIGINS,
 
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
-  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5173"
 ];
 
 function normalizeOrigin(origin) {
@@ -27,12 +31,20 @@ function parseAllowedOrigins(value) {
     .filter(Boolean);
 }
 
+function isProduction() {
+  return process.env.NODE_ENV === "production";
+}
+
+const defaultAllowedOrigins = isProduction()
+  ? PRODUCTION_ALLOWED_ORIGINS
+  : DEVELOPMENT_ALLOWED_ORIGINS;
+
 const envAllowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 const legacyAllowedOrigins = parseAllowedOrigins(process.env.LEGACY_ALLOWED_ORIGINS);
 
 const allowedOrigins = new Set(
   [
-    ...DEFAULT_ALLOWED_ORIGINS,
+    ...defaultAllowedOrigins,
     ...envAllowedOrigins,
     ...legacyAllowedOrigins,
   ].map(normalizeOrigin)
