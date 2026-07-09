@@ -1,3 +1,3 @@
-const version = "49.4.2";
-
-module.exports = { version };
+module.exports = {
+  version: "49.4.3"
+};

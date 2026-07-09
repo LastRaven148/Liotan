@@ -20,7 +20,9 @@ const env = {
   MONGO_URI: requireEnv("MONGO_URI"),
   CLIENT_URL: process.env.CLIENT_URL || "",
   LIOTAN_KEEP_LEGACY_ACCOUNTS: process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false",
-  LIOTAN_ALLOW_PUBLIC_BIND: process.env.LIOTAN_ALLOW_PUBLIC_BIND || "false"
+  LIOTAN_ALLOW_PUBLIC_BIND: process.env.LIOTAN_ALLOW_PUBLIC_BIND || "false",
+  LIOTAN_ENFORCE_PROXY_PROTO: process.env.LIOTAN_ENFORCE_PROXY_PROTO || "true",
+  TRUST_PROXY_HOPS: Number(process.env.TRUST_PROXY_HOPS || 1)
 };
 
 module.exports = env;

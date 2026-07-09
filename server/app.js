@@ -12,6 +12,8 @@ const mongoSanitize = require("./middleware/mongoSanitize");
 const requestContext = require("./middleware/requestContext");
 const securityHeaders = require("./middleware/securityHeaders");
 const { createProductionHostGuard } = require("./middleware/productionHostGuard");
+const { createProxyProtocolGuard } = require("./middleware/proxyProtocolGuard");
+const apiNoStore = require("./middleware/apiNoStore");
 const { stateChangingRequestGuard } = require("./middleware/stateChangingRequestGuard");
 const contentSecurityPolicy = require("./middleware/contentSecurityPolicy");
 const uploadErrorHandler = require("./middleware/uploadErrorHandler");
@@ -31,18 +33,20 @@ const profileRoutes = require("./routes/profileRoutes");
 const userRoutes = require("./routes/userRoutes");
 const voiceRoutes = require("./routes/voiceRoutes");
 const setupSocket = require("./sockets/socket");
+const { createSocketAllowRequest } = require("./security/socketHandshakeGuard");
 
 const app = express(); // nosemgrep: express-check-csurf-middleware-usage - stateChangingRequestGuard enforces x-liotan-csrf for unsafe methods.
 
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+app.set("trust proxy", env.TRUST_PROXY_HOPS);
 
 const server = http.createServer(app); // nosemgrep: using-http-server - TLS terminates at Cloudflare/Render/Nginx, Node listens behind the trusted proxy.
 const io = new Server(server, {
   cors: corsOptions,
   maxHttpBufferSize: Number(process.env.SOCKET_MAX_HTTP_BUFFER_SIZE) || 1024 * 1024,
   pingTimeout: Number(process.env.SOCKET_PING_TIMEOUT_MS) || 20000,
-  pingInterval: Number(process.env.SOCKET_PING_INTERVAL_MS) || 25000
+  pingInterval: Number(process.env.SOCKET_PING_INTERVAL_MS) || 25000,
+  allowRequest: createSocketAllowRequest({ nodeEnv: env.NODE_ENV })
 });
 
 app.set("io", io);
@@ -71,6 +75,8 @@ app.use(
 
 app.use(requestContext);
 app.use(createProductionHostGuard({ nodeEnv: env.NODE_ENV }));
+app.use(createProxyProtocolGuard({ nodeEnv: env.NODE_ENV }));
+app.use(apiNoStore);
 app.use(cors(corsOptions));
 app.use(securityHeaders);
 app.use(express.json({ limit: "256kb" }));

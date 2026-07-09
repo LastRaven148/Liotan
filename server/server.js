@@ -7,6 +7,8 @@ const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
 const { version } = require("./config/version");
 const { assertVpsBindingSafe } = require("./security/vpsRuntimeGuard");
+const { applyHttpServerHardening } = require("./security/httpServerHardening");
+const { validateStartupSecurity } = require("./security/startupSecurityValidation");
 const {
   setupGracefulShutdown,
   setupProcessSafety
@@ -16,6 +18,8 @@ setupProcessSafety();
 setupGracefulShutdown(server);
 
 assertVpsBindingSafe(env, logger);
+validateStartupSecurity(env, logger);
+const httpHardening = applyHttpServerHardening(server, process.env);
 
 async function start() {
   try {
@@ -26,7 +30,8 @@ async function start() {
       logger.info("SERVER READY", {
         host: env.HOST,
         port: env.PORT,
-        version
+        version,
+        httpHardening
       });
       if (env.NODE_ENV !== "production") {
         logger.info("ALLOWED ORIGINS", { allowedOrigins });
