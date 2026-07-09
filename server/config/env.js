@@ -14,6 +14,7 @@ function requireEnv(name) {
 
 const env = {
   PORT: process.env.PORT || 3001,
+  HOST: process.env.HOST || (process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0"),
   NODE_ENV: process.env.NODE_ENV || "development",
   JWT_SECRET: requireEnv("JWT_SECRET"),
   MONGO_URI: requireEnv("MONGO_URI"),

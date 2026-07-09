@@ -19,8 +19,9 @@ async function start() {
     await connectDb();
     await cleanupLegacyAccountsOnStartup();
 
-    server.listen(env.PORT, () => {
+    server.listen(env.PORT, env.HOST, () => {
       logger.info("SERVER READY", {
+        host: env.HOST,
         port: env.PORT,
         version
       });
