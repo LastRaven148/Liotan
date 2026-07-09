@@ -16,7 +16,9 @@ function main() {
 
   const envJs = read("server/config/env.js");
   const serverJs = read("server/server.js");
+  const appJs = read("server/app.js");
   const guardJs = read("server/security/vpsRuntimeGuard.js");
+  const hostGuardJs = read("server/middleware/productionHostGuard.js");
 
   if (!envJs.includes("HOST:")) {
     addFinding(findings, "critical", "server/config/env.js", "HOST is not defined in env config.");
@@ -40,6 +42,14 @@ function main() {
 
   if (!guardJs.includes("Unsafe production bind refused")) {
     addFinding(findings, "critical", "server/security/vpsRuntimeGuard.js", "Runtime guard does not refuse unsafe production binds.");
+  }
+
+  if (!appJs.includes("createProductionHostGuard")) {
+    addFinding(findings, "high", "server/app.js", "Production Host header guard is not enabled before CORS/routes.");
+  }
+
+  if (!hostGuardJs.includes("api.liotan.com") || !hostGuardJs.includes("421")) {
+    addFinding(findings, "high", "server/middleware/productionHostGuard.js", "Production Host header guard is missing allowed API hosts or rejection status.");
   }
 
   const ok = findings.length === 0;

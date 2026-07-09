@@ -11,6 +11,7 @@ const { apiLimiter } = require("./middleware/rateLimiters");
 const mongoSanitize = require("./middleware/mongoSanitize");
 const requestContext = require("./middleware/requestContext");
 const securityHeaders = require("./middleware/securityHeaders");
+const { createProductionHostGuard } = require("./middleware/productionHostGuard");
 const { stateChangingRequestGuard } = require("./middleware/stateChangingRequestGuard");
 const contentSecurityPolicy = require("./middleware/contentSecurityPolicy");
 const uploadErrorHandler = require("./middleware/uploadErrorHandler");
@@ -69,6 +70,7 @@ app.use(
 );
 
 app.use(requestContext);
+app.use(createProductionHostGuard({ nodeEnv: env.NODE_ENV }));
 app.use(cors(corsOptions));
 app.use(securityHeaders);
 app.use(express.json({ limit: "256kb" }));
