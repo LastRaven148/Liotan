@@ -62,16 +62,19 @@ function Message({
   const canEdit = isMine && hasUsableText && !hasAttachment;
   const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
   const attachmentForDisplay = privateAttachmentMeta ? {
-    ...attachment,
-    name: privateAttachmentMeta.originalName || attachment?.name,
-    mimeType: privateAttachmentMeta.originalMimeType || attachment?.mimeType,
-    size: Number(privateAttachmentMeta.originalSize) || attachment?.size || 0,
-    duration: Number(privateAttachmentMeta.duration) || attachment?.duration || 0,
-    waveform: Array.isArray(privateAttachmentMeta.waveform) ? privateAttachmentMeta.waveform : attachment?.waveform || []
-  } : attachment;
+  ...attachment,
+  type: privateAttachmentMeta.originalType || attachment?.type,
+  name: privateAttachmentMeta.originalName || attachment?.name,
+  mimeType: privateAttachmentMeta.originalMimeType || attachment?.mimeType,
+  size: Number(privateAttachmentMeta.originalSize) || attachment?.size || 0,
+  width: Number(privateAttachmentMeta.width) || attachment?.width || 0,
+  height: Number(privateAttachmentMeta.height) || attachment?.height || 0,
+  duration: Number(privateAttachmentMeta.duration) || attachment?.duration || 0,
+  waveform: Array.isArray(privateAttachmentMeta.waveform) ? privateAttachmentMeta.waveform : attachment?.waveform || []
+} : attachment;
   const attachmentDuration = Number(attachmentForDisplay?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachmentForDisplay?.size);
-  const shouldAutoCache = hasAttachment && !encryptedMedia && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice);
+  const shouldAutoCache = hasAttachment && (encryptedMedia ? Boolean(privateAttachmentMeta && ["photo", "video", "audio", "voice"].includes(displayAttachmentType)) : attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice));
   const {
     localUrl,
     isOfflineSaved,
