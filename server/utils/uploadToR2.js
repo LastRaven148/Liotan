@@ -48,6 +48,34 @@ function encodeR2Key(key) {
     .join("/");
 }
 
+
+function encodeQueryValue(value) {
+  return encodeURIComponent(String(value || "")).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function canonicalizeQuery(query = "") {
+  const raw = String(query || "").replace(/^\?/, "");
+  if (!raw) return { canonicalQuery: "", requestQuery: "" };
+
+  const params = new URLSearchParams(raw);
+  const pairs = [];
+
+  for (const [key, value] of params.entries()) {
+    pairs.push([encodeQueryValue(key), encodeQueryValue(value)]);
+  }
+
+  pairs.sort((a, b) => {
+    if (a[0] === b[0]) return a[1].localeCompare(b[1]);
+    return a[0].localeCompare(b[0]);
+  });
+
+  const canonicalQuery = pairs.map(([key, value]) => `${key}=${value}`).join("&");
+  return {
+    canonicalQuery,
+    requestQuery: canonicalQuery ? `?${canonicalQuery}` : ""
+  };
+}
+
 function safeSegment(value, fallback = "item") {
   return String(value || fallback)
     .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -95,7 +123,7 @@ function getRequestBody(file, method) {
   return Buffer.alloc(0);
 }
 
-function requestR2({ method, key, file, contentType = "application/octet-stream", range = "" }) {
+function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "" }) {
   const config = getR2Config();
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
@@ -103,7 +131,9 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
   const payloadHash = (method === "DELETE" || method === "GET" || method === "HEAD") ? sha256("") : "UNSIGNED-PAYLOAD";
   const encodedKey = encodeR2Key(key);
   const endpoint = new URL(config.endpoint);
-  const path = `/${config.bucket}/${encodedKey}`;
+  const objectPath = key ? `/${config.bucket}/${encodedKey}` : `/${config.bucket}`;
+  const { canonicalQuery, requestQuery } = canonicalizeQuery(query);
+  const path = `${objectPath}${requestQuery}`;
   const host = endpoint.host;
   const contentLength = getFileSize(file);
 
@@ -130,8 +160,8 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
   const signedHeaders = sortedHeaderNames.join(";");
   const canonicalRequest = [
     method,
-    path,
-    "",
+    objectPath,
+    canonicalQuery,
     canonicalHeaders,
     signedHeaders,
     payloadHash
@@ -247,9 +277,90 @@ async function deleteFromR2(key) {
   await requestR2({ method: "DELETE", key });
 }
 
+function decodeXmlEntities(value = "") {
+  return String(value || "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function readXmlTag(xml, tag) {
+  const match = String(xml || "").match(new RegExp(`<${tag}>([\s\S]*?)</${tag}>`));
+  return match ? decodeXmlEntities(match[1]) : "";
+}
+
+function readXmlTags(xml, tag) {
+  const result = [];
+  const re = new RegExp(`<${tag}>([\s\S]*?)</${tag}>`, "g");
+  let match;
+  while ((match = re.exec(String(xml || "")))) {
+    result.push(decodeXmlEntities(match[1]));
+  }
+  return result;
+}
+
+async function listR2Objects({ prefix = "", continuationToken = "", maxKeys = 1000 } = {}) {
+  const params = new URLSearchParams();
+  params.set("list-type", "2");
+  params.set("max-keys", String(Math.max(1, Math.min(Number(maxKeys) || 1000, 1000))));
+  if (prefix) params.set("prefix", prefix);
+  if (continuationToken) params.set("continuation-token", continuationToken);
+
+  const response = await requestR2({ method: "GET", key: "", query: params.toString() });
+  const body = response.body || "";
+
+  return {
+    keys: readXmlTags(body, "Key"),
+    isTruncated: readXmlTag(body, "IsTruncated") === "true",
+    nextContinuationToken: readXmlTag(body, "NextContinuationToken")
+  };
+}
+
+async function deleteR2Prefix(prefix, options = {}) {
+  const normalizedPrefix = String(prefix || "").trim();
+  if (!normalizedPrefix || normalizedPrefix === "/") {
+    const err = new Error("Refusing to delete empty R2 prefix");
+    err.status = 400;
+    throw err;
+  }
+
+  const dryRun = options.dryRun !== false;
+  const maxObjects = Number(options.maxObjects) || 10000;
+  let continuationToken = "";
+  const keys = [];
+
+  do {
+    const page = await listR2Objects({ prefix: normalizedPrefix, continuationToken });
+    keys.push(...page.keys);
+    continuationToken = page.nextContinuationToken;
+    if (!page.isTruncated || keys.length >= maxObjects) break;
+  } while (continuationToken);
+
+  const limitedKeys = keys.slice(0, maxObjects);
+
+  if (!dryRun) {
+    for (const key of limitedKeys) {
+      await deleteFromR2(key);
+    }
+  }
+
+  return {
+    prefix: normalizedPrefix,
+    dryRun,
+    found: keys.length,
+    processed: limitedKeys.length,
+    truncatedByLimit: keys.length > limitedKeys.length,
+    keys: limitedKeys
+  };
+}
+
 module.exports = {
   uploadToR2,
   getFromR2,
   deleteFromR2,
+  listR2Objects,
+  deleteR2Prefix,
   isR2Configured: () => Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET)
 };

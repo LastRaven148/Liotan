@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "49.4.8",
+  "version": "49.4.9",
   "description": "",
   "main": "server.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "check": "node scripts/checkSyntax.js",
     "audit:privacy": "node scripts/privacyAudit.js",
     "audit:vps": "node scripts/auditVpsHardening.js",
-    "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js"
+    "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js",
+    "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js"
   },
   "keywords": [],
   "author": "",
