@@ -32,7 +32,7 @@ function fixFileName(name) {
 
 function getAttachmentType(mimeType = "", fileName = "") {
   if (hasEncryptedAttachmentExtension(fileName)) {
-    return fileName.toLowerCase().endsWith(".liotanvoice") ? "voice" : "file";
+    return "file";
   }
   if (mimeType.startsWith("image/")) return "photo";
   if (mimeType.startsWith("video/")) return "video";
@@ -135,15 +135,26 @@ async function downloadAttachment(req, res, next) {
     }
 
     const attachment = access.attachment;
-    const object = await getFromR2(attachment.storageKey);
     const contentType = attachment.mimeType || "application/octet-stream";
+    const rangeHeader = String(req.headers.range || "").trim();
+    const safeRange = /^bytes=\d*-\d*$/.test(rangeHeader) ? rangeHeader : "";
+    const object = await getFromR2(attachment.storageKey, { range: safeRange });
+    const statusCode = object.statusCode === 206 ? 206 : 200;
 
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Length", String(object.buffer.length));
+    res.setHeader("Accept-Ranges", "bytes");
+    if (object.headers?.["content-range"]) {
+      res.setHeader("Content-Range", object.headers["content-range"]);
+    }
+    if (object.headers?.["content-length"]) {
+      res.setHeader("Content-Length", object.headers["content-length"]);
+    } else {
+      res.setHeader("Content-Length", String(object.buffer.length));
+    }
 
-    return res.status(200).send(object.buffer);
+    return res.status(statusCode).send(object.buffer);
   } catch (err) {
     next(err);
   }

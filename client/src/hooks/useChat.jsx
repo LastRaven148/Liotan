@@ -260,6 +260,22 @@ export default function useChat({
       }, 350);
     }
   }
+  function sealEncryptedAttachmentForTransport(attachment, encryptedFile) {
+    if (!attachment || !encryptedFile?.metadata) return attachment;
+    return {
+      ...attachment,
+      e2eeMedia: encryptedFile.metadata,
+      type: "file",
+      mimeType: "application/octet-stream",
+      name: "Liotan encrypted media",
+      size: 0,
+      width: 0,
+      height: 0,
+      duration: 0,
+      waveform: []
+    };
+  }
+
   async function sendAttachments(files, caption = "") {
     if (sendingRef.current) {
       return false;
@@ -281,16 +297,11 @@ export default function useChat({
           file: safeFiles[i]
         });
         const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-        if (encryptedFile.metadata) {
-          attachment.e2eeMedia = encryptedFile.metadata;
-          attachment.type = encryptedFile.metadata.originalType || attachment.type;
-          attachment.mimeType = "application/octet-stream";
-          attachment.name = attachment.type === "photo" ? "Фото" : attachment.type === "video" ? "Видео" : attachment.type === "audio" ? "Аудио" : "Файл";
-        }
+        const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
         const ok = await emitMessage({
           target,
           messageText: i === captionIndex ? captionText : "",
-          attachment
+          attachment: sealedAttachment
         });
         if (!ok) {
           return false;
@@ -338,15 +349,8 @@ export default function useChat({
         }
       });
       const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-      if (encryptedFile.metadata) {
-        attachment.e2eeMedia = encryptedFile.metadata;
-        attachment.type = "voice";
-        attachment.mimeType = "application/octet-stream";
-        attachment.name = "Голосовое сообщение";
-        attachment.duration = 0;
-        attachment.waveform = [];
-      }
-      return await sendMessage(attachment);
+      const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
+      return await sendMessage(sealedAttachment);
     } catch (err) {
       if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось отправить голосовое сообщение");
@@ -365,13 +369,8 @@ export default function useChat({
         file
       });
       const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-      if (encryptedFile.metadata) {
-        attachment.e2eeMedia = encryptedFile.metadata;
-        attachment.type = encryptedFile.metadata.originalType || attachment.type;
-        attachment.mimeType = "application/octet-stream";
-        attachment.name = attachment.type === "photo" ? "Фото" : attachment.type === "video" ? "Видео" : attachment.type === "audio" ? "Аудио" : "Файл";
-      }
-      return await sendMessage(attachment);
+      const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
+      return await sendMessage(sealedAttachment);
     } catch (err) {
       if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось отправить файл");

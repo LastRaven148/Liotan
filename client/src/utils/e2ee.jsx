@@ -626,6 +626,21 @@ export async function ensureConversationSecret({
 export function isEncryptedAttachment(attachment) {
   return Boolean(attachment?.e2eeMedia?.v === 1 && attachment.e2eeMedia.iv && attachment.e2eeMedia.salt);
 }
+
+function getPaddedAttachmentSize(size) {
+  const value = Number(size) || 0;
+  if (value <= 1024 * 1024) return Math.ceil(value / (64 * 1024)) * 64 * 1024;
+  if (value <= 10 * 1024 * 1024) return Math.ceil(value / (512 * 1024)) * 512 * 1024;
+  return Math.ceil(value / (1024 * 1024)) * 1024 * 1024;
+}
+
+function concatBytes(first, second) {
+  const out = new Uint8Array(first.byteLength + second.byteLength);
+  out.set(new Uint8Array(first), 0);
+  out.set(new Uint8Array(second), first.byteLength);
+  return out.buffer;
+}
+
 export async function encryptAttachmentFileForChat({
   username,
   chatKey,
@@ -651,10 +666,15 @@ export async function encryptAttachmentFileForChat({
   const metaIv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveMessageKey(secret, salt);
   const plain = await file.arrayBuffer();
+  const paddedSize = Math.max(plain.byteLength, getPaddedAttachmentSize(plain.byteLength));
+  const paddingLength = Math.max(0, paddedSize - plain.byteLength);
+  const paddedPlain = paddingLength
+    ? concatBytes(plain, crypto.getRandomValues(new Uint8Array(paddingLength)).buffer)
+    : plain;
   const encrypted = await crypto.subtle.encrypt({
     name: "AES-GCM",
     iv
-  }, key, plain);
+  }, key, paddedPlain);
   const originalName = file.name || "file";
   const safeExtension = String(uploadExtension || ".liotanenc")
     .trim()
@@ -668,6 +688,8 @@ export async function encryptAttachmentFileForChat({
     originalType,
     originalMimeType: file.type || "application/octet-stream",
     originalSize: file.size,
+    paddingLength,
+    paddedSize,
     ...privateMetadata
   })));
   const randomName = `liotan-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}${safeExtension}`;
@@ -757,8 +779,12 @@ export async function decryptAttachmentBlobForChat({
     chatKey,
     attachment
   });
+  const originalSize = Number(privateMeta?.originalSize);
+  const plain = Number.isFinite(originalSize) && originalSize >= 0
+    ? decrypted.slice(0, originalSize)
+    : decrypted;
 
-  return new Blob([decrypted], {
+  return new Blob([plain], {
     type: privateMeta?.originalMimeType || attachment.mimeType || "application/octet-stream"
   });
 }

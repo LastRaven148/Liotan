@@ -11,6 +11,8 @@ import {
 
 export function getMediaKey(attachment) {
   return (
+    attachment?.mediaId ||
+    attachment?.uploadId ||
     attachment?.url ||
     ""
   );
@@ -44,15 +46,23 @@ export default function useOfflineMedia({
       }
 
       try {
-        const blob =
+        const storedBlob =
           await getOfflineBlob(mediaKey);
 
-        if (!blob || !alive) {
+        if (!storedBlob || !alive) {
+          return;
+        }
+
+        const displayBlob = decryptBlob
+          ? await decryptBlob(storedBlob)
+          : storedBlob;
+
+        if (!alive) {
           return;
         }
 
         objectUrl =
-          URL.createObjectURL(blob);
+          URL.createObjectURL(displayBlob);
 
         setLocalUrl(objectUrl);
         setIsOfflineSaved(true);
@@ -71,7 +81,8 @@ export default function useOfflineMedia({
       }
     };
   }, [
-    mediaKey
+    mediaKey,
+    decryptBlob
   ]);
 
   const saveOffline = useCallback(async (
@@ -100,17 +111,19 @@ export default function useOfflineMedia({
       const remoteBlob =
         await response.blob();
 
-      const blob = decryptBlob
+      const displayBlob = decryptBlob
         ? await decryptBlob(remoteBlob)
         : remoteBlob;
 
+      // Encrypted media is stored offline only as ciphertext.
+      // The decrypted blob exists only as an in-memory object URL for the current session.
       await saveOfflineBlob(
         mediaKey,
-        blob
+        remoteBlob
       );
 
       const objectUrl =
-        URL.createObjectURL(blob);
+        URL.createObjectURL(displayBlob);
 
       setLocalUrl(objectUrl);
       setIsOfflineSaved(true);

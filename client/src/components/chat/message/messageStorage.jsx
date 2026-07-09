@@ -1,8 +1,8 @@
 const DB_NAME =
-  "liotan-offline-media";
+  "liotan-offline-media-v2";
 
 const STORE_NAME =
-  "media";
+  "encrypted-media";
 
 export function openMediaDb() {
   return new Promise((resolve, reject) => {

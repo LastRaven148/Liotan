@@ -47,12 +47,13 @@ function Message({
   const isMine = message.from === username;
   const attachment = message.attachment;
   const hasAttachment = attachment && attachment.url;
-  const attachmentType = attachment?.type || "";
-  const isPhoto = hasAttachment && attachmentType === "photo";
-  const isVideo = hasAttachment && attachmentType === "video";
-  const isAudio = hasAttachment && attachmentType === "audio";
-  const isVoice = hasAttachment && attachmentType === "voice";
-  const isFile = hasAttachment && attachmentType === "file";
+  const encryptedMedia = isEncryptedAttachment(attachment);
+  const displayAttachmentType = privateAttachmentMeta?.originalType || attachment?.type || "";
+  const isPhoto = hasAttachment && displayAttachmentType === "photo";
+  const isVideo = hasAttachment && displayAttachmentType === "video";
+  const isAudio = hasAttachment && displayAttachmentType === "audio";
+  const isVoice = hasAttachment && displayAttachmentType === "voice";
+  const isFile = hasAttachment && displayAttachmentType === "file";
   const isPendingDecryptionText =
     decryptedText === "Зашифрованное сообщение. Ключ этого чата ещё не получен." ||
     decryptedText === "Не удалось расшифровать сообщение." ||
@@ -60,7 +61,6 @@ function Message({
   const hasUsableText = Boolean(decryptedText && !isPendingDecryptionText);
   const canEdit = isMine && hasUsableText && !hasAttachment;
   const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
-  const encryptedMedia = isEncryptedAttachment(attachment);
   const attachmentForDisplay = privateAttachmentMeta ? {
     ...attachment,
     name: privateAttachmentMeta.originalName || attachment?.name,
@@ -71,7 +71,7 @@ function Message({
   } : attachment;
   const attachmentDuration = Number(attachmentForDisplay?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachmentForDisplay?.size);
-  const shouldAutoCache = hasAttachment && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice);
+  const shouldAutoCache = hasAttachment && !encryptedMedia && attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice);
   const {
     localUrl,
     isOfflineSaved,
@@ -79,7 +79,7 @@ function Message({
   } = useOfflineMedia({
     attachment,
     remoteUrl,
-    shouldAutoCache: shouldAutoCache || encryptedMedia,
+    shouldAutoCache,
     decryptBlob: encryptedMedia ? blob => decryptAttachmentBlobForChat({
       username,
       chatKey: activeChat,
@@ -312,7 +312,7 @@ function Message({
         name: item.attachment.type === "voice" ? t.voiceMessage || "Голосовое сообщение" : item.attachment.name || t.audio || "Аудио",
         duration: Number(item.attachment.duration) || 0,
         size: item.attachment.size || 0,
-        type: item.attachment.type
+        type: item.attachment.e2eeMedia?.originalType || item.attachment.type
       }));
     window.dispatchEvent(new CustomEvent("liotan:play-audio", {
       detail: {

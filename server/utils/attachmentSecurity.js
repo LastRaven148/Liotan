@@ -168,8 +168,8 @@ function validateE2eeMediaEnvelope(value, type) {
     return null;
   }
 
-  const originalType = normalizeAttachmentType(value.originalType || type);
-  if (!originalType || originalType !== type) {
+  const originalType = normalizeAttachmentType(value.originalType || "file");
+  if (!originalType) {
     return null;
   }
 
@@ -249,6 +249,10 @@ function sanitizeAttachment(input) {
       return null;
     }
 
+    if (type !== "file") {
+      return null;
+    }
+
     if (!/^\/attachments\/[a-zA-Z0-9_-]{16,80}\/download$/.test(url)) {
       return null;
     }
@@ -266,15 +270,15 @@ function sanitizeAttachment(input) {
   const sanitized = {
     url,
     type,
-    name,
+    name: encryptedClientView ? "Liotan encrypted media" : name,
     mimeType,
-    size,
-    width: safeNumber(input.width, 0, 20000),
-    height: safeNumber(input.height, 0, 20000),
-    duration: safeNumber(input.duration, 0, 24 * 60 * 60),
-    waveform: Array.isArray(input.waveform)
+    size: encryptedClientView ? 0 : size,
+    width: encryptedClientView ? 0 : safeNumber(input.width, 0, 20000),
+    height: encryptedClientView ? 0 : safeNumber(input.height, 0, 20000),
+    duration: encryptedClientView ? 0 : safeNumber(input.duration, 0, 24 * 60 * 60),
+    waveform: encryptedClientView ? [] : (Array.isArray(input.waveform)
       ? input.waveform.slice(0, 64).map(item => safeNumber(item, 0, 1))
-      : [],
+      : []),
     uploadId: String(input.uploadId || input.mediaId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
     mediaId: String(input.mediaId || input.uploadId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80),
     storageKey: "",

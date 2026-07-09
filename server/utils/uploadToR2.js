@@ -95,7 +95,7 @@ function getRequestBody(file, method) {
   return Buffer.alloc(0);
 }
 
-function requestR2({ method, key, file, contentType = "application/octet-stream" }) {
+function requestR2({ method, key, file, contentType = "application/octet-stream", range = "" }) {
   const config = getR2Config();
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
@@ -117,6 +117,10 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
     headers["content-type"] = contentType;
     headers["content-length"] = String(contentLength);
     headers["cache-control"] = "private, max-age=0, no-store";
+  }
+
+  if ((method === "GET" || method === "HEAD") && range) {
+    headers.range = String(range).trim();
   }
 
   const sortedHeaderNames = Object.keys(headers).sort();
@@ -228,14 +232,14 @@ async function uploadToR2(file, options = {}) {
   };
 }
 
-async function getFromR2(key) {
+async function getFromR2(key, options = {}) {
   if (!key) {
     const err = new Error("R2 key is required");
     err.status = 404;
     throw err;
   }
 
-  return requestR2({ method: "GET", key });
+  return requestR2({ method: "GET", key, range: options.range || "" });
 }
 
 async function deleteFromR2(key) {

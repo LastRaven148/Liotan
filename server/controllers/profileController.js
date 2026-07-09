@@ -7,6 +7,9 @@ const { uploadToR2 } =
 const deleteUploadedFile =
   require("../utils/deleteUploadedFile");
 
+const { buildSanitizedAvatarFile } =
+  require("../utils/avatarProcessing");
+
 const deleteAccountData =
   require("../utils/deleteAccountData");
 
@@ -204,9 +207,11 @@ async function uploadAvatar(req, res, next) {
       storageType: user.avatarStorageType
     });
 
+    const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
+
     const result =
       await uploadToR2(
-        req.file,
+        sanitizedAvatar,
         {
           folder: "liotan/avatars",
           mimeType

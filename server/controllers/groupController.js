@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Message = require("../models/Messages");
 const E2EEKey = require("../models/E2EEKey");
 const { uploadToR2 } = require("../utils/uploadToR2");
+const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const {
   normalizeMime,
@@ -255,7 +256,8 @@ async function uploadGroupAvatar(req, res, next) {
       storageKey: group.avatarStorageKey,
       storageType: group.avatarStorageType
     });
-    const result = await uploadToR2(req.file, {
+    const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
+    const result = await uploadToR2(sanitizedAvatar, {
       folder: "liotan/groups",
       mimeType
     });
