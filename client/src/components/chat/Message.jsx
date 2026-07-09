@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatTime } from "../../utils/date";
 import { useLanguage } from "../../context/LanguageContext";
@@ -75,6 +75,22 @@ function Message({
   const attachmentDuration = Number(attachmentForDisplay?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachmentForDisplay?.size);
   const shouldAutoCache = hasAttachment && (encryptedMedia ? Boolean(privateAttachmentMeta && ["photo", "video", "audio", "voice"].includes(displayAttachmentType)) : attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice));
+  const decryptMediaBlob = useCallback(
+  (blob) => decryptAttachmentBlobForChat({
+    username,
+    chatKey: activeChat,
+    attachment,
+    blob
+  }),
+  [
+    username,
+    activeChat,
+    attachment?.url,
+    attachment?.mediaId,
+    attachment?.uploadId,
+    attachment?.e2eeMedia
+  ]
+);
   const {
     localUrl,
     isOfflineSaved,
@@ -83,12 +99,7 @@ function Message({
     attachment,
     remoteUrl,
     shouldAutoCache,
-    decryptBlob: encryptedMedia ? blob => decryptAttachmentBlobForChat({
-      username,
-      chatKey: activeChat,
-      attachment,
-      blob
-    }) : null
+    decryptBlob: encryptedMedia ? decryptMediaBlob : null
   });
   const fileUrl = encryptedMedia ? localUrl : localUrl || remoteUrl;
   const {
