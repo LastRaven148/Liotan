@@ -5,23 +5,56 @@ const { deleteR2Prefix } = require("../utils/uploadToR2");
 const DEFAULT_SAFE_PREFIX = "liotan/u/";
 const CONFIRM_VALUE = "YES_DELETE_R2_PREFIX";
 
+const SAFE_MEDIA_PREFIXES = new Set([
+  "liotan/u/",
+  "liotan/uploads/",
+  "files/",
+  "photos/",
+  "videos/",
+  "audio/"
+]);
+
+const FORBIDDEN_PREFIXES = new Set([
+  "",
+  "/",
+  "avatars/",
+  "avatar/",
+  "liotan/avatars/",
+  "liotan/groups/"
+]);
+
+function normalizePrefix(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^\/+/, "");
+}
+
+function assertSafePrefix(prefix) {
+  if (!prefix || prefix.includes("..") || prefix.includes("\\")) {
+    throw new Error(`Unsafe prefix: ${prefix || "<empty>"}`);
+  }
+
+  const normalized = prefix.endsWith("/") ? prefix : `${prefix}/`;
+
+  if (FORBIDDEN_PREFIXES.has(normalized) || FORBIDDEN_PREFIXES.has(prefix)) {
+    throw new Error(`Refusing to delete protected prefix: ${prefix}`);
+  }
+
+  if (!SAFE_MEDIA_PREFIXES.has(normalized)) {
+    throw new Error(
+      `Unsafe prefix: ${prefix}. Allowed media prefixes: ${[...SAFE_MEDIA_PREFIXES].join(", ")}`
+    );
+  }
+
+  return normalized;
+}
+
 async function main() {
-  const prefix = String(process.env.LIOTAN_R2_DELETE_PREFIX || process.argv[2] || DEFAULT_SAFE_PREFIX).trim();
+  const rawPrefix = process.env.LIOTAN_R2_DELETE_PREFIX || process.argv[2] || DEFAULT_SAFE_PREFIX;
+  const prefix = assertSafePrefix(normalizePrefix(rawPrefix));
   const confirmed = process.env.LIOTAN_R2_DELETE_CONFIRM === CONFIRM_VALUE || process.argv.includes("--yes");
   const maxObjectsArg = process.argv.find(arg => arg.startsWith("--max="));
   const maxObjects = maxObjectsArg ? Number(maxObjectsArg.split("=")[1]) : Number(process.env.LIOTAN_R2_DELETE_MAX_OBJECTS || 10000);
-
-  if (!prefix || prefix === "/") {
-    throw new Error("Empty R2 prefix is forbidden");
-  }
-
-  if (!prefix.startsWith("liotan/")) {
-    throw new Error(`Unsafe prefix: ${prefix}. Prefix must start with liotan/`);
-  }
-
-  if (prefix === "liotan/avatars" || prefix === "liotan/avatars/") {
-    throw new Error("Refusing to delete avatar prefix from this script");
-  }
 
   const result = await deleteR2Prefix(prefix, {
     dryRun: !confirmed,

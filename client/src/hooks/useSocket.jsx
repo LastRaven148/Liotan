@@ -3,7 +3,31 @@ import io from "socket.io-client";
 import { getApiCandidates } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
+import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
+
+function attachmentOfflineKeys(attachment) {
+  if (!attachment) return [];
+
+  return [
+    attachment.mediaId,
+    attachment.uploadId,
+    attachment.url
+  ].filter(Boolean).map(String);
+}
+
+function messageOfflineKeys(message) {
+  return attachmentOfflineKeys(message?.attachment);
+}
+
+async function purgeOfflineMedia(keys = []) {
+  try {
+    await deleteOfflineBlobs(keys);
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn(err);
+  }
+}
+
 function statusRank(status) {
   if (status === "read") {
     return 3;
@@ -183,6 +207,11 @@ export default function useSocket({
     function handleMessageDeleted(data) {
       setChats(prev => deleteMessageFromChat(prev, data));
       const deleted = data.deletedMessage;
+      const deletedMediaKeys = [
+        ...(data.deletedMediaKeys || []),
+        ...messageOfflineKeys(deleted)
+      ];
+      purgeOfflineMedia(deletedMediaKeys);
       if (!deleted) {
         return;
       }
@@ -205,8 +234,10 @@ export default function useSocket({
     function handleChatDeleted({
       chatId,
       user1,
-      user2
+      user2,
+      deletedMediaKeys = []
     }) {
+      purgeOfflineMedia(deletedMediaKeys);
       const dialogUsername = user1 === username ? user2 : user1;
       setChats(prev => deleteChatFromState(prev, chatId));
       setUnread(prev => ({
@@ -357,6 +388,7 @@ export default function useSocket({
       updateGroup?.(group);
     }
     function handleGroupDeleted(data) {
+      purgeOfflineMedia(data?.deletedMediaKeys || []);
       const groupId = data?.groupId || data?._id;
       if (!groupId) {
         return;

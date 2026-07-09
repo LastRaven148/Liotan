@@ -67,7 +67,9 @@ async function deleteAccountData(username) {
     await deleteUploadedFile({
       url: message.attachment?.url,
       storageKey: message.attachment?.storageKey,
-      storageType: message.attachment?.storageType
+      storageType: message.attachment?.storageType,
+      uploadId: message.attachment?.uploadId,
+      mediaId: message.attachment?.mediaId
     });
   }
 
@@ -107,9 +109,31 @@ async function deleteAccountData(username) {
     });
 
   for (const group of emptyGroups) {
+    const groupMessages =
+      await Message.find({
+        chatType: "group",
+        groupId: group._id
+      });
+
+    for (const message of groupMessages) {
+      await deleteUploadedFile({
+        url: message.attachment?.url,
+        storageKey: message.attachment?.storageKey,
+        storageType: message.attachment?.storageType,
+        uploadId: message.attachment?.uploadId,
+        mediaId: message.attachment?.mediaId
+      });
+    }
+
     await Message.deleteMany({
       chatType: "group",
       groupId: group._id
+    });
+
+    await deleteUploadedFile({
+      url: group.avatar,
+      storageKey: group.avatarStorageKey,
+      storageType: group.avatarStorageType
     });
 
     await E2EEKey.deleteMany({

@@ -287,13 +287,13 @@ function decodeXmlEntities(value = "") {
 }
 
 function readXmlTag(xml, tag) {
-  const match = String(xml || "").match(new RegExp(`<${tag}>([\s\S]*?)</${tag}>`));
+  const match = String(xml || "").match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
   return match ? decodeXmlEntities(match[1]) : "";
 }
 
 function readXmlTags(xml, tag) {
   const result = [];
-  const re = new RegExp(`<${tag}>([\s\S]*?)</${tag}>`, "g");
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g");
   let match;
   while ((match = re.exec(String(xml || "")))) {
     result.push(decodeXmlEntities(match[1]));

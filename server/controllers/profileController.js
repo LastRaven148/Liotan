@@ -207,11 +207,11 @@ async function uploadAvatar(req, res, next) {
       });
     }
 
-    await deleteUploadedFile({
+    const oldAvatar = {
       url: user.avatar,
       storageKey: user.avatarStorageKey,
       storageType: user.avatarStorageType
-    });
+    };
 
     const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
 
@@ -234,6 +234,8 @@ async function uploadAvatar(req, res, next) {
       result.storageType;
 
     await user.save();
+
+    await deleteUploadedFile(oldAvatar);
 
     const profile = {
       username: user.username,

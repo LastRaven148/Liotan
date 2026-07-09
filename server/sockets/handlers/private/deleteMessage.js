@@ -10,6 +10,9 @@ const emitToChatUsers =
 const deleteAttachmentFile =
   require("../../services/deleteAttachmentFile");
 
+const { attachmentMediaKeys } =
+  require("../../services/mediaKeys");
+
 const {
   canAccessMessage,
   canDeleteForEveryone
@@ -108,6 +111,9 @@ function registerDeleteMessage({
             return;
           }
 
+          const deletedMediaKeys =
+            attachmentMediaKeys(msg.attachment);
+
           await deleteAttachmentFile(
             msg.attachment
           );
@@ -134,6 +140,7 @@ function registerDeleteMessage({
                 messageId.toString(),
               deletedMessage: msg,
               latestMessage,
+              deletedMediaKeys,
               forEveryone: true
             }
           );
@@ -188,6 +195,9 @@ function registerDeleteMessage({
           return;
         }
 
+        const deletedMediaKeys =
+          attachmentMediaKeys(msg.attachment);
+
         await deleteAttachmentFile(
           msg.attachment
         );
@@ -217,6 +227,7 @@ function registerDeleteMessage({
               messageId.toString(),
             deletedMessage: msg,
             latestMessage,
+            deletedMediaKeys,
             forEveryone: true
           }
         });

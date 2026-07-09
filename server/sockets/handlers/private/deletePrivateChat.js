@@ -20,6 +20,9 @@ const deleteMessageAttachments =
 const E2EEKey =
   require("../../../models/E2EEKey");
 
+const { messagesMediaKeys } =
+  require("../../services/mediaKeys");
+
 function registerDeletePrivateChat({
   io,
   socket
@@ -48,6 +51,20 @@ function registerDeletePrivateChat({
           );
 
         if (!forEveryone) {
+          const userOnlyMessages =
+            await Message.find({
+              chatType: {
+                $ne: "group"
+              },
+              chatId,
+              deletedFor: {
+                $ne: user1
+              }
+            });
+
+          const deletedMediaKeys =
+            messagesMediaKeys(userOnlyMessages);
+
           await Message.updateMany(
             {
               chatType: {
@@ -68,6 +85,7 @@ function registerDeletePrivateChat({
               chatId,
               user1,
               user2,
+              deletedMediaKeys,
               forUserOnly: true
             }
           );
@@ -86,6 +104,9 @@ function registerDeletePrivateChat({
         if (!messages.length) {
           return;
         }
+
+        const deletedMediaKeys =
+          messagesMediaKeys(messages);
 
         await deleteMessageAttachments(
           messages
@@ -111,6 +132,7 @@ function registerDeletePrivateChat({
             chatId,
             user1,
             user2,
+            deletedMediaKeys,
             forEveryone: true
           }
         });

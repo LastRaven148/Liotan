@@ -69,3 +69,75 @@ export async function saveOfflineBlob(key, blob) {
       () => reject(tx.error);
   });
 }
+
+export async function deleteOfflineBlob(key) {
+  if (!key) return;
+
+  const db =
+    await openMediaDb();
+
+  return new Promise((resolve, reject) => {
+    const tx =
+      db.transaction(STORE_NAME, "readwrite");
+
+    const store =
+      tx.objectStore(STORE_NAME);
+
+    store.delete(key);
+
+    tx.oncomplete =
+      () => resolve();
+
+    tx.onerror =
+      () => reject(tx.error);
+  });
+}
+
+export async function deleteOfflineBlobs(keys = []) {
+  const uniqueKeys =
+    [...new Set((keys || []).filter(Boolean).map(String))];
+
+  if (!uniqueKeys.length) return;
+
+  const db =
+    await openMediaDb();
+
+  return new Promise((resolve, reject) => {
+    const tx =
+      db.transaction(STORE_NAME, "readwrite");
+
+    const store =
+      tx.objectStore(STORE_NAME);
+
+    uniqueKeys.forEach(key => {
+      store.delete(key);
+    });
+
+    tx.oncomplete =
+      () => resolve();
+
+    tx.onerror =
+      () => reject(tx.error);
+  });
+}
+
+export async function clearOfflineMedia() {
+  const db =
+    await openMediaDb();
+
+  return new Promise((resolve, reject) => {
+    const tx =
+      db.transaction(STORE_NAME, "readwrite");
+
+    const store =
+      tx.objectStore(STORE_NAME);
+
+    store.clear();
+
+    tx.oncomplete =
+      () => resolve();
+
+    tx.onerror =
+      () => reject(tx.error);
+  });
+}

@@ -5,6 +5,7 @@ const E2EEKey = require("../models/E2EEKey");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
+const { messagesMediaKeys } = require("../sockets/services/mediaKeys");
 const {
   normalizeMime,
   assertAllowedAvatar,
@@ -82,7 +83,7 @@ function emitGroupUpdated(req, group) {
   });
 }
 
-function emitGroupDeleted(req, group) {
+function emitGroupDeleted(req, group, deletedMediaKeys = []) {
   const io = req.app.get("io");
   if (!io) {
     return;
@@ -93,7 +94,8 @@ function emitGroupDeleted(req, group) {
     members: group.members || [],
     event: "groupDeleted",
     payload: {
-      groupId: String(group._id)
+      groupId: String(group._id),
+      deletedMediaKeys
     }
   });
 }
@@ -105,7 +107,9 @@ async function deleteGroupMessageFiles(messages) {
     await deleteUploadedFile({
       url: message.attachment?.url,
       storageKey: message.attachment?.storageKey,
-      storageType: message.attachment?.storageType
+      storageType: message.attachment?.storageType,
+      uploadId: message.attachment?.uploadId,
+      mediaId: message.attachment?.mediaId
     });
   }
 }
@@ -257,11 +261,11 @@ async function uploadGroupAvatar(req, res, next) {
       mimeType
     });
 
-    await deleteUploadedFile({
+    const oldAvatar = {
       url: group.avatar,
       storageKey: group.avatarStorageKey,
       storageType: group.avatarStorageType
-    });
+    };
     const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
     const result = await uploadToR2(sanitizedAvatar, {
       folder: "liotan/groups",
@@ -271,6 +275,7 @@ async function uploadGroupAvatar(req, res, next) {
     group.avatarStorageKey = result.key;
     group.avatarStorageType = result.storageType;
     await group.save();
+    await deleteUploadedFile(oldAvatar);
     const serialized = await serializeGroup(group);
     emitGroupUpdated(req, serialized);
     res.json(serialized);
@@ -427,6 +432,8 @@ async function deleteGroup(req, res, next) {
       chatType: "group",
       groupId: group._id
     });
+    const deletedMediaKeys = messagesMediaKeys(messages);
+
     await deleteGroupMessageFiles(messages);
     await Message.deleteMany({
       chatType: "group",
@@ -452,7 +459,7 @@ async function deleteGroup(req, res, next) {
         $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
       }
     });
-    emitGroupDeleted(req, group);
+    emitGroupDeleted(req, group, deletedMediaKeys);
     res.json({
       ok: true
     });
