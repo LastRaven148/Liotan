@@ -114,6 +114,7 @@ function registerSendGroupMessage({
         const replyTo =
           await buildReplyTo({
             replyTo: data.replyTo,
+            currentContentMode: contentMode,
             groupId
           });
 

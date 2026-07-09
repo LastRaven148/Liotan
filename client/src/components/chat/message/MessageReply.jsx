@@ -73,6 +73,10 @@ export default function MessageReply({
       return replyText;
     }
 
+    if (replyTo.previewMode === "encrypted") {
+      return t.encryptedMessage || "Зашифрованное сообщение";
+    }
+
     if (replyTo.attachmentType === "photo") {
       return t.photo || "Фото";
     }

@@ -1,10 +1,22 @@
 const Message =
   require("../../models/Messages");
 
+const ENCRYPTED_REPLY_PLACEHOLDER =
+  "encrypted";
+
+function shouldHideReplyPreview({
+  currentContentMode,
+  originalContentMode
+}) {
+  return currentContentMode === "e2ee" ||
+    originalContentMode === "e2ee";
+}
+
 async function buildReplyTo({
   replyTo,
   chatId,
-  groupId = null
+  groupId = null,
+  currentContentMode = "plain"
 }) {
 
   if (!replyTo?.messageId) {
@@ -30,22 +42,37 @@ async function buildReplyTo({
     return undefined;
   }
 
+  const hidePreview =
+    shouldHideReplyPreview({
+      currentContentMode,
+      originalContentMode: original.contentMode
+    });
+
   return {
     messageId:
       original._id.toString(),
     from:
       original.from,
     text:
-      original.contentMode === "e2ee"
+      hidePreview
         ? ""
         : original.text || "",
     attachmentType:
       original.attachment?.type || "",
     attachmentName:
-      original.attachment?.name || ""
+      hidePreview
+        ? ""
+        : original.attachment?.name || "",
+    previewMode:
+      hidePreview
+        ? ENCRYPTED_REPLY_PLACEHOLDER
+        : "plain"
   };
 
 }
 
 module.exports =
   buildReplyTo;
+
+module.exports.shouldHideReplyPreview =
+  shouldHideReplyPreview;

@@ -111,6 +111,14 @@ const messageSchema =
         attachmentName: {
           type: String,
           default: ""
+        },
+        previewMode: {
+          type: String,
+          enum: [
+            "plain",
+            "encrypted"
+          ],
+          default: "plain"
         }
       },
 
