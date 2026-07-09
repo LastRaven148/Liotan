@@ -163,13 +163,8 @@ function safeBase64String(value = "", max = 8192) {
   return /^[a-zA-Z0-9+/=_-]*$/.test(text) ? text : "";
 }
 
-function validateE2eeMediaEnvelope(value, type) {
+function validateE2eeMediaEnvelope(value) {
   if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const originalType = normalizeAttachmentType(value.originalType || "file");
-  if (!originalType) {
     return null;
   }
 
@@ -183,8 +178,7 @@ function validateE2eeMediaEnvelope(value, type) {
     iv: safeBase64String(value.iv, 128),
     kid: safeString(value.kid, 160),
     metaIv: safeBase64String(value.metaIv, 128),
-    meta: safeBase64String(value.meta, 16384),
-    originalType
+    meta: safeBase64String(value.meta, 16384)
   };
 
   if (
@@ -241,7 +235,7 @@ function sanitizeAttachment(input) {
     }
   }
 
-  const e2eeMedia = validateE2eeMediaEnvelope(input.e2eeMedia, type);
+  const e2eeMedia = validateE2eeMediaEnvelope(input.e2eeMedia);
   const encryptedClientView = Boolean(e2eeMedia);
 
   if (encryptedClientView) {

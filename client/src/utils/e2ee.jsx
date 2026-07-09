@@ -628,10 +628,37 @@ export function isEncryptedAttachment(attachment) {
 }
 
 function getPaddedAttachmentSize(size) {
-  const value = Number(size) || 0;
-  if (value <= 1024 * 1024) return Math.ceil(value / (64 * 1024)) * 64 * 1024;
-  if (value <= 10 * 1024 * 1024) return Math.ceil(value / (512 * 1024)) * 512 * 1024;
-  return Math.ceil(value / (1024 * 1024)) * 1024 * 1024;
+  const value = Math.max(0, Number(size) || 0);
+  const MB = 1024 * 1024;
+  const buckets = [
+    256 * 1024,
+    512 * 1024,
+    1 * MB,
+    2 * MB,
+    4 * MB,
+    8 * MB,
+    16 * MB,
+    32 * MB,
+    64 * MB,
+    100 * MB
+  ];
+
+  const bucketIndex = buckets.findIndex(bucket => value <= bucket);
+  if (bucketIndex === -1) {
+    return Math.ceil(value / (16 * MB)) * 16 * MB;
+  }
+
+  const baseBucket = buckets[bucketIndex];
+  const nextBucket = buckets[Math.min(bucketIndex + 1, buckets.length - 1)];
+
+  if (nextBucket > baseBucket && crypto?.getRandomValues) {
+    const roll = crypto.getRandomValues(new Uint8Array(1))[0];
+    if (roll < 64) {
+      return nextBucket;
+    }
+  }
+
+  return baseBucket;
 }
 
 function concatBytes(first, second) {
@@ -709,8 +736,7 @@ export async function encryptAttachmentFileForChat({
       iv: toBase64(iv),
       kid: chatKey,
       metaIv: toBase64(metaIv),
-      meta: toBase64(new Uint8Array(encryptedMetadata)),
-      originalType
+      meta: toBase64(new Uint8Array(encryptedMetadata))
     }
   };
 }

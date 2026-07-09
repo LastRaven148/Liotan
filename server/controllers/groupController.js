@@ -16,6 +16,12 @@ const {
 
 const emitToGroupMembers =
   require("../sockets/services/emitToGroupMembers");
+function withAvatarCacheBust(url) {
+  if (!url) return "";
+  const separator = String(url).includes("?") ? "&" : "?";
+  return `${url}${separator}v=${Date.now()}`;
+}
+
 function normalizeMembers(members, owner) {
   const list = Array.isArray(members) ? members : [];
   return [...new Set([owner, ...list.filter(isValidUsername)])];
@@ -261,7 +267,7 @@ async function uploadGroupAvatar(req, res, next) {
       folder: "liotan/groups",
       mimeType
     });
-    group.avatar = result.url;
+    group.avatar = withAvatarCacheBust(result.url);
     group.avatarStorageKey = result.key;
     group.avatarStorageType = result.storageType;
     await group.save();

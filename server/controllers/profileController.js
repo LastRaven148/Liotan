@@ -26,6 +26,12 @@ const {
 
 const { getRelatedUsernames, usersAreRelated } = require("../utils/userRelations");
 
+function withAvatarCacheBust(url) {
+  if (!url) return "";
+  const separator = String(url).includes("?") ? "&" : "?";
+  return `${url}${separator}v=${Date.now()}`;
+}
+
 function isValidDisplayName(value) {
   return (
     typeof value === "string" &&
@@ -219,7 +225,7 @@ async function uploadAvatar(req, res, next) {
       );
 
     user.avatar =
-      result.url;
+      withAvatarCacheBust(result.url);
 
     user.avatarStorageKey =
       result.key;
