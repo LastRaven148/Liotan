@@ -19,7 +19,8 @@ const env = {
   JWT_SECRET: requireEnv("JWT_SECRET"),
   MONGO_URI: requireEnv("MONGO_URI"),
   CLIENT_URL: process.env.CLIENT_URL || "",
-  LIOTAN_KEEP_LEGACY_ACCOUNTS: process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false"
+  LIOTAN_KEEP_LEGACY_ACCOUNTS: process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false",
+  LIOTAN_ALLOW_PUBLIC_BIND: process.env.LIOTAN_ALLOW_PUBLIC_BIND || "false"
 };
 
 module.exports = env;

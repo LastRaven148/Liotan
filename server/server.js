@@ -6,6 +6,7 @@ const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts"
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
 const { version } = require("./config/version");
+const { assertVpsBindingSafe } = require("./security/vpsRuntimeGuard");
 const {
   setupGracefulShutdown,
   setupProcessSafety
@@ -13,6 +14,8 @@ const {
 
 setupProcessSafety();
 setupGracefulShutdown(server);
+
+assertVpsBindingSafe(env, logger);
 
 async function start() {
   try {

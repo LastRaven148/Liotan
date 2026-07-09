@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "49.4.0",
+  "version": "49.4.1",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
@@ -15,7 +15,8 @@
     "check": "npm run check:client && npm run check:server",
     "audit:privacy": "cd server && npm run audit:privacy",
     "make-release": "node scripts/makeRelease.js",
-    "release:check": "node scripts/checkRelease.js"
+    "release:check": "node scripts/checkRelease.js",
+    "audit:vps": "cd server && npm run audit:vps"
   },
   "devDependencies": {
     "archiver": "^7.0.1"
