@@ -1,4 +1,5 @@
-import { getE2EEConversationKeyApi, getE2EEIdentitiesApi, getE2EEIdentityBackupApi, setE2EEConversationKeysApi, setE2EEIdentityApi, setE2EEIdentityBackupApi } from "../services/api";
+import { getE2EEConversationKeyApi, getE2EEIdentitiesApi, getE2EEIdentityBackupApi, setE2EEConversationKeysApi, setE2EEIdentityApi } from "../services/api";
+import { getChatId } from "./chat";
 const E2EE_PREFIX = "__LIOTAN_E2EE_V2__";
 const LEGACY_E2EE_PREFIX = "__LIOTAN_E2EE_V1__";
 const E2EE_ITERATIONS = 200000;
@@ -9,9 +10,10 @@ const chatSecretMemory = new Map();
 const pendingConversationKeys = new Map();
 const ATTACHMENT_E2EE_PREFIX = "__LIOTAN_E2EE_FILE_V1__";
 const E2EE_DB_NAME = "liotan-e2ee-v2";
-const E2EE_DB_VERSION = 2;
+const E2EE_DB_VERSION = 3;
 const IDENTITY_STORE = "identities";
 const TRUST_STORE = "trusted-public-keys";
+const REPLAY_STORE = "replay-envelopes";
 
 function getRandomBytes(length) {
   const bytes = new Uint8Array(length);
@@ -82,6 +84,31 @@ async function assertTrustedPublicKey(username, publicJwk) {
 function randomNonce() {
   return toBase64(crypto.getRandomValues(new Uint8Array(24)));
 }
+
+function canonicalAad({ conversationId, sender, contentType, nonce }) {
+  return encoder.encode(JSON.stringify([
+    "liotan-e2ee-v3",
+    String(conversationId || ""),
+    String(sender || ""),
+    String(contentType || ""),
+    String(nonce || "")
+  ]));
+}
+
+function getSecretSlot(chatKey, protocolConversationId) {
+  return String(chatKey || "").startsWith("group:")
+    ? String(protocolConversationId || chatKey)
+    : String(chatKey || "");
+}
+
+function isExpectedConversation(username, chatKey, protocolConversationId) {
+  const local = String(chatKey || "");
+  const protocol = String(protocolConversationId || "");
+  if (local.startsWith("group:")) {
+    return protocol === local || protocol.startsWith(`${local}:v`);
+  }
+  return protocol === getConversationId(username, local);
+}
 function openE2EEDb() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
@@ -96,6 +123,9 @@ function openE2EEDb() {
       }
       if (!db.objectStoreNames.contains(TRUST_STORE)) {
         db.createObjectStore(TRUST_STORE);
+      }
+      if (!db.objectStoreNames.contains(REPLAY_STORE)) {
+        db.createObjectStore(REPLAY_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -130,6 +160,25 @@ async function idbDelete(storeName, key) {
     tx.onerror = () => { db.close(); reject(tx.error || new Error("IndexedDB delete failed")); };
   });
 }
+
+async function assertNotReplayed({ username, conversationId, sender, nonce, messageId, ciphertext }) {
+  if (!messageId || !nonce) return;
+  const replayKey = await sha256Base64Url(JSON.stringify([
+    username, conversationId, sender, nonce
+  ]));
+  const digest = await sha256Base64Url(ciphertext);
+  const existing = await idbGet(REPLAY_STORE, replayKey);
+  if (existing && (existing.messageId !== messageId || existing.digest !== digest)) {
+    throw new Error("Replayed E2EE envelope rejected");
+  }
+  if (!existing) {
+    await idbSet(REPLAY_STORE, replayKey, {
+      messageId,
+      digest,
+      firstSeenAt: new Date().toISOString()
+    });
+  }
+}
 function getConversationId(username, chatKey) {
   const cleanUsername = String(username || "").trim();
   const cleanChatKey = String(chatKey || "").trim();
@@ -139,7 +188,7 @@ function getConversationId(username, chatKey) {
   if (cleanChatKey.startsWith("group:")) {
     return cleanChatKey;
   }
-  return [cleanUsername, cleanChatKey].sort().join("_");
+  return getChatId(cleanUsername, cleanChatKey);
 }
 export function getEffectiveE2EEChatKey(chatKey, dialog) {
   if (!chatKey) {
@@ -222,18 +271,6 @@ export function isEncryptedText(value) {
 }
 async function deriveMessageKey(secret, salt) {
   const baseKey = await crypto.subtle.importKey("raw", encoder.encode(secret), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({
-    name: "PBKDF2",
-    salt,
-    iterations: E2EE_ITERATIONS,
-    hash: "SHA-256"
-  }, baseKey, {
-    name: "AES-GCM",
-    length: 256
-  }, false, ["encrypt", "decrypt"]);
-}
-async function deriveBackupKey(password, salt) {
-  const baseKey = await crypto.subtle.importKey("raw", encoder.encode(String(password || "")), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({
     name: "PBKDF2",
     salt,
@@ -365,121 +402,41 @@ async function saveLocalIdentity(username, publicJwk, privateKey) {
   try { localStorage.removeItem(getIdentityVaultId(username)); } catch {}
   identityCache.delete(username);
 }
-async function encryptIdentityBackup({
-  publicJwk,
-  privateJwk,
-  password
-}) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveBackupKey(password, salt);
-  const encrypted = await crypto.subtle.encrypt({
-    name: "AES-GCM",
-    iv
-  }, key, encoder.encode(JSON.stringify(privateJwk)));
-  return {
-    v: 1,
-    alg: "PBKDF2-SHA256-AES-GCM",
-    iter: E2EE_ITERATIONS,
-    publicKey: publicJwk,
-    encryptedPrivateKey: toBase64(new Uint8Array(encrypted)),
-    salt: toBase64(salt),
-    iv: toBase64(iv)
-  };
-}
-async function decryptIdentityBackup({
-  backup,
-  password
-}) {
-  const key = await deriveBackupKey(password, fromBase64(backup.salt));
-  const decrypted = await crypto.subtle.decrypt({
-    name: "AES-GCM",
-    iv: fromBase64(backup.iv)
-  }, key, fromBase64(backup.encryptedPrivateKey));
-  return JSON.parse(decoder.decode(decrypted));
-}
 export async function initE2EEAccountIdentity({
-  username,
-  password
+  username
 }) {
-  if (!username || !password || !crypto?.subtle) {
+  if (!username || !crypto?.subtle) {
     return null;
   }
-  let backup = null;
+  let serverPublicKey = null;
   try {
     const response = await getE2EEIdentityBackupApi();
-    backup = response?.backup || null;
+    serverPublicKey = response?.publicKey || null;
   } catch (err) {
     if (import.meta.env.DEV) {
       console.warn("E2EE backup fetch failed", err);
     }
   }
-  let backupDecryptFailed = false;
-
-  if (backup?.publicKey && backup?.encryptedPrivateKey) {
-    try {
-      const privateJwk = await decryptIdentityBackup({
-        backup,
-        password
-      });
-      const privateKey = await importNonExtractablePrivateKey(privateJwk);
-      await saveLocalIdentity(username, backup.publicKey, privateKey);
-      const identity = await loadLocalIdentity(username);
-      if (identity) {
-        await syncE2EEServerState(
-          () => setE2EEIdentityApi(identity.publicJwk),
-          "E2EE identity publish"
-        );
-      }
-      return identity;
-    } catch (err) {
-      backupDecryptFailed = true;
-      if (import.meta.env.DEV) {
-        console.warn("E2EE backup decrypt failed; preserving existing server identity", err);
-      }
-    }
-  }
-
   const local = await loadLocalIdentity(username);
   if (local) {
-    if (local.legacyPrivateJwk) {
-      const nextBackup = await encryptIdentityBackup({
-        publicJwk: local.publicJwk,
-        privateJwk: local.legacyPrivateJwk,
-        password
-      });
-      await syncE2EEServerState(
-        () => setE2EEIdentityBackupApi(nextBackup),
-        "E2EE identity backup publish"
-      );
-    }
-    await syncE2EEServerState(
+    const published = await syncE2EEServerState(
       () => setE2EEIdentityApi(local.publicJwk),
       "E2EE identity publish"
     );
-    return local;
+    return published ? local : null;
   }
 
-  if (backupDecryptFailed) {
-    return null;
-  }
+  // An existing server identity must never be silently replaced by a new
+  // browser. Device transfer/recovery requires a separate client-held secret.
+  if (serverPublicKey) return null;
 
   const created = await createIdentityPair();
   await saveLocalIdentity(username, created.publicJwk, created.privateKey);
-  const nextBackup = await encryptIdentityBackup({
-    publicJwk: created.publicJwk,
-    privateJwk: created.privateJwk,
-    password
-  });
-  await syncE2EEServerState(
-    () => setE2EEIdentityBackupApi(nextBackup),
-    "E2EE identity backup publish"
-  );
-  await syncE2EEServerState(
+  const published = await syncE2EEServerState(
     () => setE2EEIdentityApi(created.publicJwk),
     "E2EE identity publish"
   );
-  return loadLocalIdentity(username);
+  return published ? loadLocalIdentity(username) : null;
 }
 export async function ensureE2EEIdentity(username) {
   if (!username || !crypto?.subtle) {
@@ -500,6 +457,7 @@ async function wrapSecretForUser({
   username,
   recipient,
   recipientPublicJwk,
+  conversationId,
   secret
 }) {
   await assertTrustedPublicKey(recipient, recipientPublicJwk);
@@ -511,14 +469,19 @@ async function wrapSecretForUser({
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({
     name: "AES-GCM",
-    iv
+    iv,
+    additionalData: encoder.encode(JSON.stringify([
+      "liotan-key-wrap-v2", conversationId, username, recipient
+    ]))
   }, wrapKey, encoder.encode(secret));
+  const commitId = await sha256Base64Url(`liotan-conversation-secret:${secret}`);
   return {
     user: recipient,
     sender: username,
     wrappedKey: toBase64(new Uint8Array(encrypted)),
     iv: toBase64(iv),
-    alg: "ECDH-P256-AES-GCM"
+    commitId,
+    alg: "ECDH-P256-AES-GCM-AAD-V2"
   };
 }
 async function unwrapSecret({
@@ -526,7 +489,10 @@ async function unwrapSecret({
   sender,
   senderPublicJwk,
   wrappedKey,
-  iv
+  iv,
+  conversationId,
+  recipient,
+  alg
 }) {
   await assertTrustedPublicKey(sender, senderPublicJwk);
   const senderPublicKey = await importPublicKey(senderPublicJwk);
@@ -536,7 +502,12 @@ async function unwrapSecret({
   });
   const decrypted = await crypto.subtle.decrypt({
     name: "AES-GCM",
-    iv: fromBase64(iv)
+    iv: fromBase64(iv),
+    ...(alg === "ECDH-P256-AES-GCM-AAD-V2" ? {
+      additionalData: encoder.encode(JSON.stringify([
+        "liotan-key-wrap-v2", conversationId, sender, recipient
+      ]))
+    } : {})
   }, wrapKey, fromBase64(wrappedKey));
   return decoder.decode(decrypted);
 }
@@ -564,7 +535,7 @@ export async function ensureConversationSecret({
   const promise = (async () => {
     const identity = await ensureE2EEIdentity(username);
     if (!identity) {
-      return current;
+      throw new Error("E2EE identity is unavailable on this device");
     }
     if (!current) {
       try {
@@ -580,7 +551,10 @@ export async function ensureConversationSecret({
               sender: sender.username,
               senderPublicJwk: sender.publicKey,
               wrappedKey: wrapped.wrappedKey,
-              iv: wrapped.iv
+              iv: wrapped.iv,
+              conversationId,
+              recipient: username,
+              alg: wrapped.alg
             });
             setChatSecret(username, chatKey, unlockedSecret);
             return unlockedSecret;
@@ -593,39 +567,40 @@ export async function ensureConversationSecret({
       }
     }
     const secret = getChatSecret(username, chatKey) || getLegacyChatSecret(username, chatKey) || randomSecret();
-    setChatSecret(username, chatKey, secret);
     const safeParticipants = cleanParticipants([username, ...participants]);
     try {
       const identities = await getE2EEIdentitiesApi(safeParticipants);
       const users = identities?.users || [];
+      const usableUsers = users.filter(user => user?.username && user?.publicKey);
+      if (
+        usableUsers.length !== safeParticipants.length ||
+        safeParticipants.some(participant => !usableUsers.some(user => user.username === participant))
+      ) {
+        throw new Error("Not every participant has a verified E2EE identity");
+      }
       const wrappedKeys = [];
-      for (const user of users) {
-        if (!user?.username || !user?.publicKey) {
-          continue;
-        }
-        try {
-          wrappedKeys.push(await wrapSecretForUser({
-            identity,
-            username,
+      for (const user of usableUsers) {
+        wrappedKeys.push(await wrapSecretForUser({
+          identity,
+          username,
             recipient: user.username,
             recipientPublicJwk: user.publicKey,
+            conversationId: getConversationId(username, chatKey),
             secret
-          }));
-        } catch (err) {
-          if (import.meta.env.DEV) {
-            console.warn("E2EE wrap failed for user", user.username, err);
-          }
-        }
+        }));
       }
-      if (wrappedKeys.length) {
-        await setE2EEConversationKeysApi(getConversationId(username, chatKey), wrappedKeys);
+      const response = await setE2EEConversationKeysApi(getConversationId(username, chatKey), wrappedKeys);
+      if (!response?.ok || Number(response.count) !== wrappedKeys.length) {
+        throw new Error("E2EE key publication was not committed");
       }
+      setChatSecret(username, chatKey, secret);
+      return secret;
     } catch (err) {
       if (import.meta.env.DEV) {
         console.warn("E2EE key publish failed", err);
       }
+      throw new Error("Безопасный ключ чата не удалось согласовать");
     }
-    return secret;
   })();
   pendingConversationKeys.set(pendingKey, promise);
   try {
@@ -635,7 +610,7 @@ export async function ensureConversationSecret({
   }
 }
 export function isEncryptedAttachment(attachment) {
-  return Boolean(attachment?.e2eeMedia?.v === 1 && attachment.e2eeMedia.iv && attachment.e2eeMedia.salt);
+  return Boolean([1, 2].includes(attachment?.e2eeMedia?.v) && attachment.e2eeMedia.iv && attachment.e2eeMedia.salt);
 }
 
 function getPaddedAttachmentSize(size) {
@@ -702,6 +677,8 @@ export async function encryptAttachmentFileForChat({
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const metaIv = crypto.getRandomValues(new Uint8Array(12));
+  const nonce = randomNonce();
+  const conversationId = getConversationId(username, chatKey);
   const key = await deriveMessageKey(secret, salt);
   const plain = await file.arrayBuffer();
   const paddedSize = Math.max(plain.byteLength, getPaddedAttachmentSize(plain.byteLength));
@@ -711,7 +688,8 @@ export async function encryptAttachmentFileForChat({
     : plain;
   const encrypted = await crypto.subtle.encrypt({
     name: "AES-GCM",
-    iv
+    iv,
+    additionalData: canonicalAad({ conversationId, sender: username, contentType: "media", nonce })
   }, key, paddedPlain);
   const originalName = file.name || "file";
   const safeExtension = String(uploadExtension || ".liotanenc")
@@ -720,7 +698,8 @@ export async function encryptAttachmentFileForChat({
   const originalType = originalTypeOverride || getAttachmentTypeFromMime(file.type);
   const encryptedMetadata = await crypto.subtle.encrypt({
     name: "AES-GCM",
-    iv: metaIv
+    iv: metaIv,
+    additionalData: canonicalAad({ conversationId, sender: username, contentType: "media-metadata", nonce })
   }, key, encoder.encode(JSON.stringify({
     originalName,
     originalType,
@@ -738,14 +717,16 @@ export async function encryptAttachmentFileForChat({
   return {
     uploadFile,
     metadata: {
-      v: 1,
+      v: 2,
       prefix: ATTACHMENT_E2EE_PREFIX,
       alg: "AES-GCM-256",
       kdf: "PBKDF2-SHA256",
       iter: E2EE_ITERATIONS,
       salt: toBase64(salt),
       iv: toBase64(iv),
-      kid: chatKey,
+      kid: conversationId,
+      sender: username,
+      nonce,
       metaIv: toBase64(metaIv),
       meta: toBase64(new Uint8Array(encryptedMetadata))
     }
@@ -773,7 +754,20 @@ export async function decryptAttachmentMetadataForChat({
   }
 
   const meta = attachment.e2eeMedia;
-  const secret = getChatSecret(username, meta.kid || chatKey);
+  if (meta.v === 2 && !isExpectedConversation(username, chatKey, meta.kid)) {
+    return null;
+  }
+  const secretSlot = getSecretSlot(chatKey, meta.kid);
+  let secret = getChatSecret(username, secretSlot);
+  if (!secret) {
+    try {
+      secret = await ensureConversationSecret({
+        username,
+        chatKey: secretSlot,
+        participants: meta.sender ? [meta.sender] : []
+      });
+    } catch {}
+  }
   if (!secret) {
     return null;
   }
@@ -782,7 +776,15 @@ export async function decryptAttachmentMetadataForChat({
     const key = await deriveMessageKey(secret, fromBase64(meta.salt));
     const decrypted = await crypto.subtle.decrypt({
       name: "AES-GCM",
-      iv: fromBase64(meta.metaIv)
+      iv: fromBase64(meta.metaIv),
+      ...(meta.v === 2 ? {
+        additionalData: canonicalAad({
+          conversationId: meta.kid,
+          sender: meta.sender,
+          contentType: "media-metadata",
+          nonce: meta.nonce
+        })
+      } : {})
     }, key, fromBase64(meta.meta).buffer);
 
     const parsed = JSON.parse(decoder.decode(decrypted));
@@ -802,14 +804,33 @@ export async function decryptAttachmentBlobForChat({
     return blob;
   }
   const meta = attachment.e2eeMedia;
-  const secret = getChatSecret(username, meta.kid || chatKey);
+  if (meta.v === 2 && !isExpectedConversation(username, chatKey, meta.kid)) {
+    throw new Error("E2EE media conversation mismatch");
+  }
+  const secretSlot = getSecretSlot(chatKey, meta.kid);
+  let secret = getChatSecret(username, secretSlot);
+  if (!secret) {
+    secret = await ensureConversationSecret({
+      username,
+      chatKey: secretSlot,
+      participants: meta.sender ? [meta.sender] : []
+    });
+  }
   if (!secret) {
     throw new Error("E2EE media key is not available");
   }
   const key = await deriveMessageKey(secret, fromBase64(meta.salt));
   const decrypted = await crypto.subtle.decrypt({
     name: "AES-GCM",
-    iv: fromBase64(meta.iv)
+    iv: fromBase64(meta.iv),
+    ...(meta.v === 2 ? {
+      additionalData: canonicalAad({
+        conversationId: meta.kid,
+        sender: meta.sender,
+        contentType: "media",
+        nonce: meta.nonce
+      })
+    } : {})
   }, key, await blob.arrayBuffer());
   const privateMeta = await decryptAttachmentMetadataForChat({
     username,
@@ -840,31 +861,37 @@ export async function encryptTextForChat({
     participants
   });
   if (!secret) {
-    return text;
+    throw new Error("Безопасный ключ чата недоступен. Сообщение не отправлено.");
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveMessageKey(secret, salt);
+  const nonce = randomNonce();
+  const conversationId = getConversationId(username, chatKey);
   const encrypted = await crypto.subtle.encrypt({
     name: "AES-GCM",
-    iv
+    iv,
+    additionalData: canonicalAad({ conversationId, sender: username, contentType: "text", nonce })
   }, key, encoder.encode(text));
   const payload = {
-    v: 2,
+    v: 3,
     alg: "AES-GCM-256",
     kdf: "PBKDF2-SHA256",
     iter: E2EE_ITERATIONS,
-    kid: chatKey,
+    kid: conversationId,
+    sender: username,
+    contentType: "text",
     salt: toBase64(salt),
     iv: toBase64(iv),
     ct: toBase64(new Uint8Array(encrypted)),
-    nonce: randomNonce()
+    nonce
   };
   return `${E2EE_PREFIX}${btoa(JSON.stringify(payload))}`;
 }
 export function encryptedTextToTransport(text) {
   if (!isEncryptedText(text) || text.startsWith(LEGACY_E2EE_PREFIX)) {
-    return { text: text || "", encryptedContent: null };
+    if (!text) return { text: "", encryptedContent: null };
+    throw new Error("Отправка незашифрованного текста запрещена");
   }
   try {
     const payload = JSON.parse(atob(text.slice(E2EE_PREFIX.length)));
@@ -879,11 +906,13 @@ export function encryptedTextToTransport(text) {
         kdf: payload.kdf || "PBKDF2-SHA256",
         iter: payload.iter || E2EE_ITERATIONS,
         kid: payload.kid || "",
+        sender: payload.sender || "",
+        contentType: payload.contentType || "text",
         nonce: payload.nonce || ""
       }
     };
   } catch {
-    return { text: text || "", encryptedContent: null };
+    throw new Error("Повреждён E2EE-конверт; сообщение не отправлено");
   }
 }
 export function encryptedContentToText(encryptedContent) {
@@ -896,6 +925,8 @@ export function encryptedContentToText(encryptedContent) {
     kdf: encryptedContent.kdf || "PBKDF2-SHA256",
     iter: encryptedContent.iter || E2EE_ITERATIONS,
     kid: encryptedContent.kid || "",
+    sender: encryptedContent.sender || "",
+    contentType: encryptedContent.contentType || "text",
     salt: encryptedContent.salt || "",
     iv: encryptedContent.iv || "",
     ct: encryptedContent.ciphertext || "",
@@ -906,6 +937,8 @@ export function encryptedContentToText(encryptedContent) {
 export async function decryptTextForChat({
   username,
   chatKey,
+  sender = "",
+  messageId = "",
   text,
   encryptedContent = null
 }) {
@@ -919,11 +952,36 @@ export async function decryptTextForChat({
   }
   try {
     const payload = JSON.parse(atob(text.slice(E2EE_PREFIX.length)));
-    if (payload?.v !== 2) {
+    if (![2, 3].includes(payload?.v)) {
       throw new Error("Unsupported E2EE version");
     }
-    const secretKey = payload.kid || chatKey;
-    const secret = getChatSecret(username, secretKey) || getLegacyChatSecret(username, secretKey);
+    if (payload.v === 3) {
+      if (!isExpectedConversation(username, chatKey, payload.kid)) {
+        throw new Error("E2EE conversation mismatch");
+      }
+      if (sender && payload.sender !== sender) {
+        throw new Error("E2EE sender mismatch");
+      }
+      await assertNotReplayed({
+        username,
+        conversationId: payload.kid,
+        sender: payload.sender,
+        nonce: payload.nonce,
+        messageId,
+        ciphertext: payload.ct
+      });
+    }
+    const secretKey = getSecretSlot(chatKey, payload.kid);
+    let secret = getChatSecret(username, secretKey) || getLegacyChatSecret(username, secretKey);
+    if (!secret) {
+      try {
+        secret = await ensureConversationSecret({
+          username,
+          chatKey: secretKey,
+          participants: payload.sender ? [payload.sender] : []
+        });
+      } catch {}
+    }
     if (secret) {
       setChatSecret(username, secretKey, secret);
     }
@@ -936,7 +994,15 @@ export async function decryptTextForChat({
     const key = await deriveMessageKey(secret, salt);
     const decrypted = await crypto.subtle.decrypt({
       name: "AES-GCM",
-      iv
+      iv,
+      ...(payload.v === 3 ? {
+        additionalData: canonicalAad({
+          conversationId: payload.kid,
+          sender: payload.sender,
+          contentType: payload.contentType,
+          nonce: payload.nonce
+        })
+      } : {})
     }, key, ct);
     return decoder.decode(decrypted);
   } catch (err) {

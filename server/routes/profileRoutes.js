@@ -9,6 +9,7 @@ const upload =
 
 const { restrictedSessionGuard } =
   require("../middleware/restrictedSession");
+const { requireReauthentication } = require("../middleware/recentAuth");
 
 const {
   getProfile,
@@ -43,6 +44,7 @@ router.delete(
   "/me/account",
   authMiddleware,
   restrictedSessionGuard,
+  requireReauthentication,
   deleteAccount
 );
 

@@ -1,13 +1,22 @@
 const HOURS = 60 * 60 * 1000;
 
 module.exports = Object.freeze({
-  version: "49.1.3",
+  version: "49.4.10-remediated",
   principles: Object.freeze({
-    serverTrust: "untrusted",
+    serverTrust: "trusted-for-key-directory-until-ratchet-migration",
     supportTrust: "untrusted",
     storageTrust: "untrusted",
     networkTrust: "untrusted",
     userDataOwner: "user"
+  }),
+  messagingCrypto: Object.freeze({
+    writeProtocol: 3,
+    plaintextWritesAllowed: false,
+    canonicalAad: true,
+    clientReplayDetection: true,
+    forwardSecrecy: false,
+    postCompromiseSecurity: false,
+    releaseClaim: "encrypted-transport-preview-not-audited-e2ee"
   }),
   emailChange: Object.freeze({
     securityWindowHours: Number(process.env.EMAIL_CHANGE_SECURITY_WINDOW_HOURS || 72),

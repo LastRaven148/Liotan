@@ -77,11 +77,7 @@ function registerSendGroupMessage({
         const hasEncryptedContent =
           Boolean(encryptedContent);
 
-        const hasText =
-          !hasEncryptedContent &&
-          isValidMessage(
-            data.text
-          );
+        const hasText = false;
 
         const safeAttachment =
           await resolveOwnedAttachment(
@@ -92,12 +88,25 @@ function registerSendGroupMessage({
         const hasAttachment =
           Boolean(safeAttachment);
 
+        const epochConversationId = `group:${groupId}:v${Number(group.e2eeVersion) || 1}`;
+        const envelopeMatches = !hasEncryptedContent || (
+          encryptedContent.sender === sender &&
+          encryptedContent.kid === epochConversationId
+        );
+        const mediaMatches = !hasAttachment || (
+          safeAttachment.e2eeMedia?.sender === sender &&
+          safeAttachment.e2eeMedia?.kid === epochConversationId
+        );
+
         if (
           !hasText &&
           !hasAttachment &&
-          !hasEncryptedContent
+          !hasEncryptedContent ||
+          !envelopeMatches ||
+          !mediaMatches ||
+          (Boolean(String(data.text || "").trim()) && !hasEncryptedContent)
         ) {
-          reply({ ok: false, error: "invalid-message" });
+          reply({ ok: false, error: "e2ee-v3-required" });
           return;
         }
 
@@ -106,10 +115,7 @@ function registerSendGroupMessage({
             ? data.text.trim()
             : "";
 
-        const contentMode =
-          hasEncryptedContent
-            ? "e2ee"
-            : "plain";
+        const contentMode = "e2ee";
 
         const replyTo =
           await buildReplyTo({
@@ -125,6 +131,16 @@ function registerSendGroupMessage({
           });
 
           if (duplicate) {
+            reply({ ok: true, duplicate: true });
+            return;
+          }
+        }
+        if (hasAttachment) {
+          const duplicateMedia = await Message.exists({
+            from: sender,
+            "attachment.e2eeMedia.nonce": safeAttachment.e2eeMedia.nonce
+          });
+          if (duplicateMedia) {
             reply({ ok: true, duplicate: true });
             return;
           }

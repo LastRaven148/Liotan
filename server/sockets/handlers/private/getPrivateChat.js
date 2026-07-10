@@ -1,5 +1,6 @@
 const Message = require("../../../models/Messages");
 const getChatId = require("../../../utils/getChatId");
+const { getLegacyChatId, getPrivateChatParticipants } = getChatId;
 const { isValidUsername } = require("../../../utils/validators");
 const { serializeMessages } = require("../../services/serializeMessage");
 
@@ -19,7 +20,7 @@ function registerGetPrivateChat(socket) {
   socket.on("joinChat", (chatId) => {
     const username = socket.user.username;
     const raw = String(chatId || "");
-    const parts = raw.split("_");
+    const parts = getPrivateChatParticipants(raw);
 
     if (parts.length !== 2 || !parts.includes(username) || !parts.every(isValidUsername)) return;
 
@@ -41,7 +42,16 @@ function registerGetPrivateChat(socket) {
 
       const query = {
         chatType: { $ne: "group" },
-        chatId,
+        $or: [
+          { chatId },
+          {
+            chatId: getLegacyChatId(user1, user2),
+            $or: [
+              { from: user1, to: user2 },
+              { from: user2, to: user1 }
+            ]
+          }
+        ],
         deletedFor: { $ne: user1 }
       };
 

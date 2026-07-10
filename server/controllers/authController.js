@@ -1346,7 +1346,7 @@ function isAllowedRegistrationSecurityAction(action) {
 }
 
 function isSecurityPageActionBlockedByRestrictedSession(action) {
-  return action !== "";
+  return !["", "suspicious", "revoke-session", "logout-all"].includes(action);
 }
 
 async function sendRestrictedSecurityActionPageIfNeeded({
@@ -1422,6 +1422,9 @@ async function handleRegistrationSecurityAction(req, res, next) {
             { $set: { revokedAt: new Date() } }
           )
         : { modifiedCount: 0 };
+      if (record.sessionIdHash) {
+        require("../sockets/sessionRegistry").disconnectSessionHash(record.sessionIdHash);
+      }
       await markRegistrationActionUsed(record, "revoke-session");
       return sendSimpleSecurityPage(res, {
         ok: true,

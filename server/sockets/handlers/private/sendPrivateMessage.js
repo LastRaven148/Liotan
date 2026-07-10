@@ -63,11 +63,7 @@ function registerSendPrivateMessage({
         const hasEncryptedContent =
           Boolean(encryptedContent);
 
-        const hasText =
-          !hasEncryptedContent &&
-          isValidMessage(
-            data.text
-          );
+        const hasText = false;
 
         const safeAttachment =
           await resolveOwnedAttachment(
@@ -78,15 +74,25 @@ function registerSendPrivateMessage({
         const hasAttachment =
           Boolean(safeAttachment);
 
+        const chatId = getChatId(sender, receiver);
+        const envelopeMatches = !hasEncryptedContent || (
+          encryptedContent.sender === sender &&
+          encryptedContent.kid === chatId
+        );
+        const mediaMatches = !hasAttachment || (
+          safeAttachment.e2eeMedia?.sender === sender &&
+          safeAttachment.e2eeMedia?.kid === chatId
+        );
+
         if (
           !isValidUsername(receiver) ||
           (
             !hasText &&
             !hasAttachment &&
             !hasEncryptedContent
-          )
+          ) || !envelopeMatches || !mediaMatches || Boolean(String(data.text || "").trim()) && !hasEncryptedContent
         ) {
-          reply({ ok: false, error: "invalid-message" });
+          reply({ ok: false, error: "e2ee-v3-required" });
           return;
         }
 
@@ -112,16 +118,7 @@ function registerSendPrivateMessage({
             ? data.text.trim()
             : "";
 
-        const contentMode =
-          hasEncryptedContent
-            ? "e2ee"
-            : "plain";
-
-        const chatId =
-          getChatId(
-            sender,
-            receiver
-          );
+        const contentMode = "e2ee";
 
         const isSavedMessages =
           sender === receiver;
@@ -146,6 +143,16 @@ function registerSendPrivateMessage({
           });
 
           if (duplicate) {
+            reply({ ok: true, duplicate: true });
+            return;
+          }
+        }
+        if (hasAttachment) {
+          const duplicateMedia = await Message.exists({
+            from: sender,
+            "attachment.e2eeMedia.nonce": safeAttachment.e2eeMedia.nonce
+          });
+          if (duplicateMedia) {
             reply({ ok: true, duplicate: true });
             return;
           }

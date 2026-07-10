@@ -1,4 +1,5 @@
 function isValidEncryptedContent(value) {
+  const version = Number(value?.version);
   return Boolean(
     value &&
     typeof value === "object" &&
@@ -16,7 +17,15 @@ function isValidEncryptedContent(value) {
     value.nonce.length <= 200 &&
     typeof value.alg === "string" &&
     value.alg.length > 0 &&
-    value.alg.length <= 100
+    value.alg.length <= 100 &&
+    version === 3 &&
+    typeof value.kid === "string" &&
+    value.kid.length > 0 &&
+    value.kid.length <= 300 &&
+    typeof value.sender === "string" &&
+    value.sender.length > 0 &&
+    value.sender.length <= 64 &&
+    value.contentType === "text"
   );
 }
 
@@ -35,6 +44,8 @@ function normalizeEncryptedContent(value) {
       ? Math.min(1000000, Math.max(1, Math.floor(Number(value.iter))))
       : 200000,
     kid: String(value.kid || "").slice(0, 300),
+    sender: String(value.sender || "").slice(0, 64),
+    contentType: "text",
     nonce: value.nonce,
     version: Number.isFinite(Number(value.version))
       ? Math.max(1, Math.floor(Number(value.version)))
@@ -53,11 +64,9 @@ function buildMessageContentPayload({ text = "", encryptedContent = null }) {
     };
   }
 
-  return {
-    contentMode: "plain",
-    text,
-    encryptedContent: undefined
-  };
+  const err = new Error("E2EE v3 encrypted content required");
+  err.code = "E2EE_V3_REQUIRED";
+  throw err;
 }
 
 module.exports = {

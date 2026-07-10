@@ -254,6 +254,10 @@ export default function useChat({
       setReplyMessage(null);
       setTextState("");
       return true;
+    } catch (err) {
+      if (import.meta.env.DEV) console.warn(err);
+      alert(err?.message || "Сообщение не отправлено: безопасный ключ недоступен");
+      return false;
     } finally {
       window.setTimeout(() => {
         sendingRef.current = false;

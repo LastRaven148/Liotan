@@ -6,6 +6,7 @@ const logger =
 
 const getChatId =
   require("../../../utils/getChatId");
+const { getLegacyChatId } = getChatId;
 
 const {
   isValidUsername
@@ -46,7 +47,10 @@ function registerMarkPrivateChatRead({
             chatType: {
               $ne: "group"
             },
-            chatId,
+            $or: [
+              { chatId },
+              { chatId: getLegacyChatId(reader, user2) }
+            ],
             from: user2,
             to: reader,
             status: {

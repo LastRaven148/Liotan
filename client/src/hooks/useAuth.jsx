@@ -134,13 +134,11 @@ export default function useAuth({
   }, []);
 
   async function initializeE2EEAfterAuth({
-    username: nextUsername,
-    password: accountPassword
+    username: nextUsername
   }) {
     try {
       await initE2EEAccountIdentity({
-        username: nextUsername,
-        password: accountPassword
+        username: nextUsername
       });
     } catch (err) {
       devWarn("E2EE identity init failed after auth", err);
@@ -242,8 +240,7 @@ export default function useAuth({
       await saveSession(data);
 
       await initializeE2EEAfterAuth({
-        username: data.username,
-        password: loginPassword
+        username: data.username
       });
 
       return { ok: true };
@@ -361,8 +358,7 @@ export default function useAuth({
       await saveSession(data);
 
       await initializeE2EEAfterAuth({
-        username: data.username,
-        password: registerPassword
+        username: data.username
       });
 
       showToast("Registered");
@@ -400,9 +396,9 @@ export default function useAuth({
     }
   }
 
-  async function deleteAccount(socketRef) {
+  async function deleteAccount(socketRef, reauth = {}) {
     try {
-      await deleteAccountApi();
+      await deleteAccountApi(reauth);
       showToast("Account deleted");
       clearSession(socketRef);
       return true;

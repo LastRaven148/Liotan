@@ -20,15 +20,24 @@ async function isRecentlyAuthenticated(req) {
     sessionIdHash: hashSessionId(req.user.sid),
     revokedAt: null,
     expiresAt: { $gt: getNow() }
-  }).select("createdAt lastSeenAt").lean();
+  }).select("reauthenticatedAt").lean();
 
   if (!session) return false;
-  const timestamps = [session.createdAt, session.lastSeenAt]
-    .filter(Boolean)
-    .map(value => new Date(value).getTime())
-    .filter(Number.isFinite);
-  if (!timestamps.length) return false;
-  return Date.now() - Math.max(...timestamps) <= RECENT_AUTH_WINDOW_MS;
+  const timestamp = new Date(session.reauthenticatedAt || 0).getTime();
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= RECENT_AUTH_WINDOW_MS;
+}
+
+async function markRecentlyAuthenticated(req) {
+  if (!req.user?.sid) return false;
+  const result = await Session.updateOne({
+    userId: req.user.userId,
+    sessionIdHash: hashSessionId(req.user.sid),
+    revokedAt: null,
+    expiresAt: { $gt: getNow() }
+  }, {
+    $set: { reauthenticatedAt: getNow() }
+  });
+  return result.matchedCount > 0;
 }
 
 async function verifyPasswordFallback(user, password) {
@@ -95,10 +104,12 @@ async function recentAuth(req, res, next) {
       totpCode: req.body?.totpCode || req.body?.code,
       backupCode: req.body?.backupCode
     })) {
+      await markRecentlyAuthenticated(req);
       return next();
     }
 
     if (!state?.totp?.enabled && await verifyPasswordFallback(user, req.body?.currentPassword || req.body?.password)) {
+      await markRecentlyAuthenticated(req);
       return next();
     }
 
@@ -112,7 +123,34 @@ async function recentAuth(req, res, next) {
   }
 }
 
+async function requireReauthentication(req, res, next) {
+  try {
+    const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
+    if (!user) return res.status(401).json({ error: "auth required" });
+    const state = await UserSecurity.findOne({ userId: user._id });
+    const verified = state?.totp?.enabled
+      ? await verifySecondFactor(state, user._id, {
+          totpCode: req.body?.totpCode || req.body?.code,
+          backupCode: req.body?.backupCode
+        })
+      : await verifyPasswordFallback(user, req.body?.currentPassword || req.body?.password);
+    if (!verified) {
+      return res.status(401).json({
+        error: "explicit reauthentication required",
+        recentAuthRequired: true,
+        secondFactorRequired: Boolean(state?.totp?.enabled)
+      });
+    }
+    await markRecentlyAuthenticated(req);
+    return next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   recentAuth,
+  requireReauthentication,
+  markRecentlyAuthenticated,
   RECENT_AUTH_WINDOW_MS
 };

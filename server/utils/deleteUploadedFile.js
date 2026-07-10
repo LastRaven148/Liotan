@@ -17,7 +17,15 @@ function normalizeR2Key(key) {
 }
 
 function getPublicR2BaseUrl() {
-  return normalizeValue(process.env.R2_PUBLIC_URL).replace(/\/+$/, "");
+  return normalizeValue(process.env.R2_AVATAR_PUBLIC_URL).replace(/\/+$/, "");
+}
+
+function storageClassFor(file) {
+  if (file?.storageType === "r2:public-avatar") return "public-avatar";
+  const publicBase = getPublicR2BaseUrl();
+  return publicBase && String(file?.url || "").startsWith(`${publicBase}/`)
+    ? "public-avatar"
+    : "private-media";
 }
 
 function extractR2KeyFromUrl(fileUrl) {
@@ -108,7 +116,7 @@ async function deleteUploadedFile(file) {
     const key = extractR2KeyFromUrl(file);
     if (key) {
       try {
-        await deleteFromR2(key);
+        await deleteFromR2(key, { storageClass: "public-avatar" });
         return { deletedR2: 1, deletedLocal: false };
       } catch (err) {
         logger.warn("delete R2 file failed", { code: err.code, status: err.status });
@@ -130,7 +138,7 @@ async function deleteUploadedFile(file) {
 
   for (const key of storageKeys) {
     try {
-      await deleteFromR2(key);
+      await deleteFromR2(key, { storageClass: storageClassFor(file) });
       deletedR2 += 1;
     } catch (err) {
       logger.warn("delete R2 file failed", { code: err.code, status: err.status });

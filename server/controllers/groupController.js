@@ -269,7 +269,8 @@ async function uploadGroupAvatar(req, res, next) {
     const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
     const result = await uploadToR2(sanitizedAvatar, {
       folder: "liotan/groups",
-      mimeType
+      mimeType,
+      storageClass: "public-avatar"
     });
     group.avatar = withAvatarCacheBust(result.url);
     group.avatarStorageKey = result.key;
@@ -314,6 +315,7 @@ async function addGroupMember(req, res, next) {
     }
     if (!group.members.includes(member)) {
       group.members.push(member);
+      group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
       await group.save();
     }
     const serialized = await serializeGroup(group);
@@ -356,11 +358,8 @@ async function removeGroupMember(req, res, next) {
         archivedChats: chatKey
       }
     });
-    await E2EEKey.deleteMany({
-      conversationId: {
-        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
-      }
-    });
+    // Historical epoch wrappers are intentionally retained for remaining
+    // members. The removed member is excluded from the new epoch.
     const serialized = await serializeGroup(group);
     emitGroupUpdated(req, serialized);
     res.json(serialized);
@@ -400,11 +399,8 @@ async function leaveGroup(req, res, next) {
         archivedChats: chatKey
       }
     });
-    await E2EEKey.deleteMany({
-      conversationId: {
-        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
-      }
-    });
+    // Do not destroy historical epochs. A new epoch is created above and the
+    // leaving member will not receive its wrappers.
     const serialized = await serializeGroup(group);
     emitGroupUpdated(req, serialized);
     res.json({

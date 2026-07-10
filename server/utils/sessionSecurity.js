@@ -17,6 +17,11 @@ const {
   hmac
 } = require("./privacy");
 
+const {
+  disconnectSessionHash,
+  disconnectSessionHashes
+} = require("../sockets/sessionRegistry");
+
 function createSessionId() {
   return crypto
     .randomBytes(32)
@@ -318,6 +323,7 @@ async function createUserSession({
       ? hmac(String(req.headers["user-agent"] || ""))
       : "",
     lastSeenAt: now,
+    reauthenticatedAt: now,
     expiresAt: getSessionExpiryDate(),
     revokedAt: null
   };
@@ -371,6 +377,7 @@ async function createUserSession({
     devicePublicKey,
     deviceKeyFingerprint,
     userAgentHash: nextSession.userAgentHash,
+    reauthenticatedAt: now,
     expiresAt: nextSession.expiresAt
   });
 
@@ -564,6 +571,7 @@ async function revokeSession({
       }
     }
   );
+  disconnectSessionHash(sessionIdHash);
 }
 
 async function revokeAllUserSessions({
@@ -581,6 +589,8 @@ async function revokeAllUserSessions({
     };
   }
 
+  const sessions = await Session.find(query, "sessionIdHash").lean();
+
   await Session.updateMany(
     query,
     {
@@ -589,6 +599,7 @@ async function revokeAllUserSessions({
       }
     }
   );
+  disconnectSessionHashes(sessions.map(session => session.sessionIdHash));
 }
 
 async function cleanupExpiredSessions() {

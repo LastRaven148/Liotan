@@ -3,6 +3,7 @@ const connectDb = require("./config/db");
 const { allowedOrigins } = require("./config/corsOptions");
 const { server } = require("./app");
 const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts");
+const removePasswordIdentityBackups = require("./startup/removePasswordIdentityBackups");
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
 const { version } = require("./config/version");
@@ -25,6 +26,7 @@ async function start() {
   try {
     await connectDb();
     await cleanupLegacyAccountsOnStartup();
+    await removePasswordIdentityBackups();
 
     server.listen(env.PORT, env.HOST, () => {
       logger.info("SERVER READY", {

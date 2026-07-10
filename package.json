@@ -17,7 +17,8 @@
     "make-release": "node scripts/makeRelease.js",
     "release:check": "node scripts/checkRelease.js",
     "audit:vps": "cd server && npm run audit:vps",
-    "audit:e2ee-replies": "cd server && npm run audit:e2ee-replies"
+    "audit:e2ee-replies": "cd server && npm run audit:e2ee-replies",
+    "test:security": "node scripts/securityRegression.js"
   },
   "devDependencies": {
     "archiver": "^7.0.1"

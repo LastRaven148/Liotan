@@ -92,16 +92,19 @@ async function uploadAttachment(req, res, next) {
 
     const encryptedUpload = hasEncryptedAttachmentExtension(fixedName);
 
-    if (!encryptedUpload) {
-      const magic = await readMagicBytes(req.file);
-      assertSafeFileBuffer({ buffer: magic, mimeType });
+    if (!encryptedUpload || mimeType !== "application/octet-stream") {
+      return res.status(415).json({
+        error: "encrypted attachment required",
+        protocolVersion: 3
+      });
     }
 
     const type = getAttachmentType(mimeType, fixedName);
     const result = await uploadToR2(req.file, {
       folder: getFolder(type, getUploadOwnerSegment(req)),
       attachmentType: type,
-      mimeType
+      mimeType,
+      storageClass: "private-media"
     });
 
     const upload = await registerAttachmentUpload({

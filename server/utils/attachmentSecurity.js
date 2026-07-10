@@ -177,12 +177,14 @@ function validateE2eeMediaEnvelope(value) {
     salt: safeBase64String(value.salt, 128),
     iv: safeBase64String(value.iv, 128),
     kid: safeString(value.kid, 160),
+    sender: safeString(value.sender, 64),
+    nonce: safeBase64String(value.nonce, 200),
     metaIv: safeBase64String(value.metaIv, 128),
     meta: safeBase64String(value.meta, 16384)
   };
 
   if (
-    envelope.v !== 1 ||
+    envelope.v !== 2 ||
     envelope.alg !== "AES-GCM-256" ||
     envelope.kdf !== "PBKDF2-SHA256" ||
     envelope.iter < 100000 ||
@@ -190,6 +192,9 @@ function validateE2eeMediaEnvelope(value) {
     !envelope.iv ||
     !envelope.metaIv ||
     !envelope.meta ||
+    !envelope.kid ||
+    !envelope.sender ||
+    !envelope.nonce ||
     envelope.salt.length > 64 ||
     envelope.iv.length > 64 ||
     envelope.metaIv.length > 64 ||

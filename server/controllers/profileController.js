@@ -220,7 +220,8 @@ async function uploadAvatar(req, res, next) {
         sanitizedAvatar,
         {
           folder: "liotan/avatars",
-          mimeType
+          mimeType,
+          storageClass: "public-avatar"
         }
       );
 
@@ -256,6 +257,9 @@ async function deleteAccount(req, res, next) {
   try {
     const username =
       req.user.username;
+
+    const { disconnectUserId } = require("../sockets/sessionRegistry");
+    disconnectUserId(req.user.userId);
 
     const result =
       await deleteAccountData(username);

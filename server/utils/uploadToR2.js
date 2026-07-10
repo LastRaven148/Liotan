@@ -15,16 +15,18 @@ function requireEnv(name) {
   return value;
 }
 
-function getR2Config() {
-  const accountId = requireEnv("R2_ACCOUNT_ID");
-  const endpoint = String(process.env.R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`).replace(/\/+$/, "");
+function getR2Config(storageClass = "private-media") {
+  const avatar = storageClass === "public-avatar";
+  const prefix = avatar ? "R2_AVATAR" : "R2_MEDIA";
+  const accountId = requireEnv(`${prefix}_ACCOUNT_ID`);
+  const endpoint = String(process.env[`${prefix}_ENDPOINT`] || `https://${accountId}.r2.cloudflarestorage.com`).replace(/\/+$/, "");
 
   return {
     accountId,
-    accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
-    secretAccessKey: requireEnv("R2_SECRET_ACCESS_KEY"),
-    bucket: requireEnv("R2_BUCKET"),
-    publicUrl: String(process.env.R2_PUBLIC_URL || "").trim().replace(/\/+$/, ""),
+    accessKeyId: requireEnv(`${prefix}_ACCESS_KEY_ID`),
+    secretAccessKey: requireEnv(`${prefix}_SECRET_ACCESS_KEY`),
+    bucket: requireEnv(`${prefix}_BUCKET`),
+    publicUrl: avatar ? String(process.env.R2_AVATAR_PUBLIC_URL || "").trim().replace(/\/+$/, "") : "",
     endpoint
   };
 }
@@ -123,8 +125,8 @@ function getRequestBody(file, method) {
   return Buffer.alloc(0);
 }
 
-function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "" }) {
-  const config = getR2Config();
+function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "", storageClass = "private-media" }) {
+  const config = getR2Config(storageClass);
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const dateStamp = amzDate.slice(0, 8);
@@ -242,7 +244,8 @@ async function getUploadFileMeta(file) {
 }
 
 async function uploadToR2(file, options = {}) {
-  const config = getR2Config();
+  const storageClass = options.storageClass || "private-media";
+  const config = getR2Config(storageClass);
   const key = buildObjectKey(file, options);
   const contentType = String(file?.mimetype || options.mimeType || "application/octet-stream");
   const meta = await getUploadFileMeta(file);
@@ -251,12 +254,12 @@ async function uploadToR2(file, options = {}) {
     size: meta.size
   };
 
-  await requestR2({ method: "PUT", key, file: uploadFile, contentType });
+  await requestR2({ method: "PUT", key, file: uploadFile, contentType, storageClass });
 
   return {
     url: config.publicUrl ? `${config.publicUrl}/${encodeR2Key(key)}` : "",
     key,
-    storageType: "r2",
+    storageType: `r2:${storageClass}`,
     bytes: meta.size,
     format: getExtension(file?.originalname || "").replace(/^\./, "")
   };
@@ -269,12 +272,12 @@ async function getFromR2(key, options = {}) {
     throw err;
   }
 
-  return requestR2({ method: "GET", key, range: options.range || "" });
+  return requestR2({ method: "GET", key, range: options.range || "", storageClass: options.storageClass || "private-media" });
 }
 
-async function deleteFromR2(key) {
+async function deleteFromR2(key, options = {}) {
   if (!key) return;
-  await requestR2({ method: "DELETE", key });
+  await requestR2({ method: "DELETE", key, storageClass: options.storageClass || "private-media" });
 }
 
 function decodeXmlEntities(value = "") {
@@ -308,7 +311,7 @@ async function listR2Objects({ prefix = "", continuationToken = "", maxKeys = 10
   if (prefix) params.set("prefix", prefix);
   if (continuationToken) params.set("continuation-token", continuationToken);
 
-  const response = await requestR2({ method: "GET", key: "", query: params.toString() });
+  const response = await requestR2({ method: "GET", key: "", query: params.toString(), storageClass: "private-media" });
   const body = response.body || "";
 
   return {
@@ -362,5 +365,5 @@ module.exports = {
   deleteFromR2,
   listR2Objects,
   deleteR2Prefix,
-  isR2Configured: () => Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_BUCKET)
+  isR2Configured: () => Boolean(process.env.R2_MEDIA_ACCOUNT_ID && process.env.R2_MEDIA_ACCESS_KEY_ID && process.env.R2_MEDIA_SECRET_ACCESS_KEY && process.env.R2_MEDIA_BUCKET)
 };

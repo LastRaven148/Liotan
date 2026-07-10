@@ -53,6 +53,7 @@ export default function SettingsModal({
   const [deleteStep, setDeleteStep] = useState(1);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [deleteCredential, setDeleteCredential] = useState("");
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [emailChangeOpen, setEmailChangeOpen] = useState(false);
   const [totpOpen, setTotpOpen] = useState(false);
@@ -189,6 +190,7 @@ export default function SettingsModal({
     setMenuOpen(false);
     setDeleteStep(1);
     setDeleteError("");
+    setDeleteCredential("");
     setDeleteOpen(true);
   }
 
@@ -202,9 +204,15 @@ export default function SettingsModal({
       setDeleteStep(2);
       return;
     }
+    if (!deleteCredential.trim()) {
+      setDeleteError(labels.reauthRequired);
+      return;
+    }
     setDeleting(true);
     try {
-      const ok = await deleteAccount?.();
+      const ok = await deleteAccount?.(securityStatus?.totpEnabled
+        ? { totpCode: deleteCredential.trim() }
+        : { currentPassword: deleteCredential });
       if (ok !== false) {
         onClose?.();
         return;
@@ -223,6 +231,7 @@ export default function SettingsModal({
     setDeleteOpen(false);
     setDeleteStep(1);
     setDeleteError("");
+    setDeleteCredential("");
   }
 
   async function refreshSecurityStatus() {
@@ -316,25 +325,36 @@ export default function SettingsModal({
         {deleteOpen && <ConfirmModal
           title={labels.deleteAccount}
           text={deleteStep === 1 ? labels.deleteStepOne : labels.deleteStepTwo}
-          error={deleteStep === 1 ? deleteError : ""}
+          error={deleteError}
           cancel={labels.cancel}
           action={deleting ? "..." : deleteStep === 1 ? labels.continue : labels.accept}
           danger
           disabled={deleting}
           onClose={closeDelete}
           onAction={confirmDelete}
-        />}
+        >
+          {deleteStep === 2 && <input
+            className="settings-input"
+            type={securityStatus?.totpEnabled ? "text" : "password"}
+            inputMode={securityStatus?.totpEnabled ? "numeric" : undefined}
+            autoComplete={securityStatus?.totpEnabled ? "one-time-code" : "current-password"}
+            value={deleteCredential}
+            onChange={(event) => setDeleteCredential(event.target.value)}
+            placeholder={securityStatus?.totpEnabled ? labels.totpCode : labels.currentPassword}
+          />}
+        </ConfirmModal>}
       </aside>
     </div>
   );
 }
 
-function ConfirmModal({ title, text, error, cancel, action, onClose, onAction, disabled }) {
+function ConfirmModal({ title, text, error, cancel, action, onClose, onAction, disabled, children }) {
   return (
     <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
       <div className="dialog-delete-modal" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-delete-modal-title">{title}</div>
         <div className="dialog-delete-modal-text">{text}</div>
+        {children}
         {error && <div className="settings-modal-error">{error}</div>}
         <div className="dialog-delete-modal-actions">
           <button type="button" className="dialog-delete-modal-cancel" onClick={onClose} disabled={disabled}>{cancel}</button>
@@ -360,6 +380,9 @@ function getLabels(t) {
     deleteAccount: t.deleteAccount || "Удалить аккаунт",
     deleteStepOne: t.deleteStepOne || "Все ваши данные будут удалены без возможности восстановления",
     deleteStepTwo: t.deleteStepTwo || "Вы точно уверены что хотите полностью удалить аккаунт?",
+    currentPassword: t.currentPassword || "Текущий пароль",
+    totpCode: t.totpCode || "Код 2FA",
+    reauthRequired: t.reauthRequired || "Повторно подтвердите вход",
     cancel: t.cancel || "Отмена",
     continue: t.continue || "Продолжить",
     accept: t.accept || "Принять",

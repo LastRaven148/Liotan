@@ -4,6 +4,8 @@ const User =
 const E2EEKey =
   require("../models/E2EEKey");
 
+const E2EEConversation = require("../models/E2EEConversation");
+
 const Group =
   require("../models/Group");
 
@@ -19,6 +21,8 @@ const privacy =
 const {
   isValidUsername
 } = require("../utils/validators");
+
+const getChatId = require("../utils/getChatId");
 
 function isValidConversationId(value) {
   return (
@@ -39,43 +43,13 @@ function getPrivateConversationParticipants(value) {
     return [];
   }
 
-  if (conversationId.includes(":")) {
-    const participants =
-      conversationId.split(":");
-
-    if (
-      participants.length === 2 &&
-      participants.every(isValidUsername)
-    ) {
-      return participants;
-    }
-
+  const participants = getChatId.getPrivateChatParticipants(conversationId);
+  if (participants.length !== 2 || !participants.every(isValidUsername)) {
     return [];
   }
-
-  const parts =
-    conversationId.split("_");
-
-  if (parts.length < 2) {
-    return [];
-  }
-
-  for (let index = 1; index < parts.length; index += 1) {
-    const left =
-      parts.slice(0, index).join("_");
-
-    const right =
-      parts.slice(index).join("_");
-
-    if (
-      isValidUsername(left) &&
-      isValidUsername(right)
-    ) {
-      return [left, right];
-    }
-  }
-
-  return [];
+  return getChatId(participants[0], participants[1]) === conversationId
+    ? participants
+    : [];
 }
 
 function isValidPublicKey(value) {
@@ -139,24 +113,9 @@ function cleanWrappedKey(key) {
     sender: key.sender,
     wrappedKey: key.wrappedKey,
     iv: key.iv,
+    commitId: key.commitId,
     alg: String(key.alg || "ECDH-P256-AES-GCM").slice(0, 100)
   };
-}
-
-function isValidIdentityBackup(value) {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    isValidPublicKey(value.publicKey) &&
-    typeof value.encryptedPrivateKey === "string" &&
-    value.encryptedPrivateKey.length < 10000 &&
-    typeof value.salt === "string" &&
-    value.salt.length < 500 &&
-    typeof value.iv === "string" &&
-    value.iv.length < 500 &&
-    typeof value.alg === "string" &&
-    value.alg.length < 100
-  );
 }
 
 function isValidWrappedKey(value) {
@@ -169,7 +128,9 @@ function isValidWrappedKey(value) {
     typeof value.wrappedKey === "string" &&
     value.wrappedKey.length < 5000 &&
     typeof value.iv === "string" &&
-    value.iv.length < 500
+    value.iv.length < 500 &&
+    typeof value.commitId === "string" &&
+    /^[a-zA-Z0-9_-]{40,80}$/.test(value.commitId)
   );
 }
 
@@ -257,14 +218,17 @@ async function setIdentity(req, res, next) {
       });
     }
 
-    await User.updateOne(
-      { username },
-      {
-        $set: {
-          e2eePublicKey: publicKey
-        }
-      }
-    );
+    const user = await User.findOne({ username }, "e2eePublicKey");
+    if (!user) return res.status(404).json({ error: "user not found" });
+
+    const current = user.e2eePublicKey;
+    const sameKey = current && ["kty", "crv", "x", "y"].every(field => current[field] === publicKey[field]);
+    if (current && !sameKey) {
+      return res.status(409).json({ error: "identity change requires verified device transfer" });
+    }
+
+    user.e2eePublicKey = publicKey;
+    await user.save();
 
     res.json({
       ok: true
@@ -286,7 +250,7 @@ async function getIdentityBackup(req, res, next) {
       ).lean();
 
     res.json({
-      backup: user?.e2eeIdentityBackup || null,
+      backup: null,
       publicKey: user?.e2eePublicKey || null
     });
   } catch (err) {
@@ -295,35 +259,10 @@ async function getIdentityBackup(req, res, next) {
 }
 
 async function setIdentityBackup(req, res, next) {
-  try {
-    const username =
-      req.user.username;
-
-    const backup =
-      req.body.backup;
-
-    if (!isValidIdentityBackup(backup)) {
-      return res.status(400).json({
-        error: "invalid identity backup"
-      });
-    }
-
-    await User.updateOne(
-      { username },
-      {
-        $set: {
-          e2eePublicKey: backup.publicKey,
-          e2eeIdentityBackup: backup
-        }
-      }
-    );
-
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
+  res.status(410).json({
+    error: "password-encrypted identity backup disabled",
+    recoveryRequired: true
+  });
 }
 
 async function getDeviceIdentities(req, res, next) {
@@ -496,7 +435,7 @@ async function getConversationKey(req, res, next) {
       await E2EEKey.findOne({
         conversationId,
         user: username
-      }, "conversationId user sender wrappedKey iv alg version updatedAt").lean();
+      }, "conversationId user sender wrappedKey iv alg version commitId updatedAt").lean();
 
     res.json({
       key: key || null
@@ -518,6 +457,18 @@ async function setConversationKeys(req, res, next) {
       return res.status(400).json({
         error: "invalid conversation"
       });
+    }
+
+    if (conversationId.startsWith("group:")) {
+      const match = conversationId.match(/^group:([a-fA-F0-9]{24}):v(\d+)$/);
+      const group = match ? await Group.findById(match[1], "e2eeVersion members").lean() : null;
+      if (
+        !group ||
+        !group.members.includes(username) ||
+        Number(match[2]) !== (Number(group.e2eeVersion) || 1)
+      ) {
+        return res.status(409).json({ error: "only current group epoch can be committed" });
+      }
     }
 
     const allowedParticipants =
@@ -547,6 +498,41 @@ async function setConversationKeys(req, res, next) {
             .map(cleanWrappedKey)
         : [];
 
+    const expectedUsers = [...allowedUsers].sort();
+    const submittedUsers = [...new Set(keys.map(key => key.user))].sort();
+    const commitIds = [...new Set(keys.map(key => key.commitId))];
+    if (
+      keys.length !== expectedUsers.length ||
+      submittedUsers.length !== expectedUsers.length ||
+      submittedUsers.some((user, index) => user !== expectedUsers[index]) ||
+      commitIds.length !== 1
+    ) {
+      return res.status(400).json({ error: "complete atomic key set required" });
+    }
+
+    let commit;
+    try {
+      commit = await E2EEConversation.findOneAndUpdate(
+        { conversationId },
+        {
+          $setOnInsert: {
+            conversationId,
+            commitId: commitIds[0],
+            participants: expectedUsers,
+            createdBy: username
+          }
+        },
+        { upsert: true, new: true }
+      ).lean();
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      commit = await E2EEConversation.findOne({ conversationId }).lean();
+    }
+
+    if (!commit || commit.commitId !== commitIds[0]) {
+      return res.status(409).json({ error: "conversation key already committed" });
+    }
+
     for (const key of keys) {
       await E2EEKey.updateOne(
         {
@@ -558,6 +544,7 @@ async function setConversationKeys(req, res, next) {
             conversationId,
             user: key.user,
             sender: key.sender,
+            commitId: key.commitId,
             wrappedKey: key.wrappedKey,
             iv: key.iv,
             alg: key.alg || "ECDH-P256-AES-GCM",

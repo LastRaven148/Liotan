@@ -1,5 +1,4 @@
 export function getChatId(a, b) {
-  return [a, b]
-    .sort()
-    .join("_");
+  const participants = [String(a || ""), String(b || "")].sort();
+  return `private:v2:${participants[0]}:${participants[1]}`;
 }

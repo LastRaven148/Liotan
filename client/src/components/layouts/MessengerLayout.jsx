@@ -164,8 +164,8 @@ export default function MessengerLayout({
         logout={() =>
           logout(socketRef)
         }
-        deleteAccount={() =>
-          deleteAccount(socketRef)
+        deleteAccount={(reauth) =>
+          deleteAccount(socketRef, reauth)
         }
         deleteGroupDialog={deleteGroupDialog}
         updateGroup={updateGroup}

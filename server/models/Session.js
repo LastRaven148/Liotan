@@ -62,6 +62,11 @@ const sessionSchema =
         default: Date.now
       },
 
+      reauthenticatedAt: {
+        type: Date,
+        default: Date.now
+      },
+
       expiresAt: {
         type: Date,
         required: true,

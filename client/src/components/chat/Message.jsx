@@ -136,6 +136,8 @@ function Message({
       const value = await decryptTextForChat({
         username,
         chatKey: activeChat,
+        sender: message.from,
+        messageId: message._id,
         text: message.text || "",
         encryptedContent: message.encryptedContent || null
       });

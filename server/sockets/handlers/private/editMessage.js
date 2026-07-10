@@ -15,7 +15,7 @@ function registerEditMessage({ io, socket }) {
       const messageId = data.messageId;
       const encryptedContent = normalizeEncryptedContent(data.encryptedContent);
       const hasEncryptedContent = Boolean(encryptedContent);
-      const hasPlainText = !hasEncryptedContent && isValidMessage(data.text);
+      const hasPlainText = false;
 
       if (!messageId || (!hasEncryptedContent && !hasPlainText)) {
         return;
@@ -24,6 +24,18 @@ function registerEditMessage({ io, socket }) {
       const msg = await Message.findById(messageId);
 
       if (!msg || !(await canEditMessage({ username: sender, message: msg }))) {
+        return;
+      }
+
+      const expectedConversationId = msg.chatType === "group"
+        ? String(encryptedContent.kid || "")
+        : require("../../../utils/getChatId")(msg.from, msg.to);
+      if (
+        !hasEncryptedContent ||
+        encryptedContent.sender !== sender ||
+        encryptedContent.kid !== expectedConversationId ||
+        (msg.chatType === "group" && !expectedConversationId.startsWith(`group:${msg.groupId}:v`))
+      ) {
         return;
       }
 

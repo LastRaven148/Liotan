@@ -72,6 +72,7 @@ async function resolveOwnedAttachment(input, owner) {
   const upload = await AttachmentUpload.findOne({
     uploadId,
     owner,
+    encrypted: true,
     usedAt: null,
     expiresAt: { $gt: new Date() }
   }).lean();
@@ -82,6 +83,10 @@ async function resolveOwnedAttachment(input, owner) {
   const isEncryptedClientView = Boolean(sanitized.e2eeMedia?.v);
 
   if (sanitized.url !== expectedUrl) {
+    return null;
+  }
+
+  if (!isEncryptedClientView || !isEncryptedUpload(upload)) {
     return null;
   }
 

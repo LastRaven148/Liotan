@@ -218,9 +218,11 @@ export async function uploadAvatarApi(
   });
 }
 
-export async function deleteAccountApi() {
+export async function deleteAccountApi(reauth = {}) {
   return apiRequest(`${API}/me/account`, {
-    method: "DELETE"
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reauth)
   });
 }
 

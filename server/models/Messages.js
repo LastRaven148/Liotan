@@ -76,6 +76,14 @@ const messageSchema =
           type: String,
           default: ""
         },
+        sender: {
+          type: String,
+          default: ""
+        },
+        contentType: {
+          type: String,
+          default: ""
+        },
         nonce: {
           type: String,
           default: "",
@@ -298,6 +306,19 @@ messageSchema.index(
         $type: "string",
         $gt: ""
       }
+    }
+  }
+);
+
+messageSchema.index(
+  {
+    from: 1,
+    "attachment.e2eeMedia.nonce": 1
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "attachment.e2eeMedia.nonce": { $type: "string", $gt: "" }
     }
   }
 );

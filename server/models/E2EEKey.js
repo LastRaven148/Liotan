@@ -21,6 +21,12 @@ const e2eeKeySchema =
         required: true
       },
 
+      commitId: {
+        type: String,
+        required: true,
+        index: true
+      },
+
       wrappedKey: {
         type: String,
         required: true

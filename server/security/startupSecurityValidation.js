@@ -39,6 +39,43 @@ function validateStartupSecurity(env, logger = console) {
         message: "LIOTAN_ALLOW_PUBLIC_BIND is enabled in production."
       });
     }
+
+    const requiredR2 = [
+      "R2_MEDIA_ACCOUNT_ID", "R2_MEDIA_ACCESS_KEY_ID", "R2_MEDIA_SECRET_ACCESS_KEY", "R2_MEDIA_BUCKET",
+      "R2_AVATAR_ACCOUNT_ID", "R2_AVATAR_ACCESS_KEY_ID", "R2_AVATAR_SECRET_ACCESS_KEY", "R2_AVATAR_BUCKET", "R2_AVATAR_PUBLIC_URL"
+    ];
+    const missingR2 = requiredR2.filter(name => !String(process.env[name] || "").trim());
+    if (missingR2.length) {
+      findings.push({
+        severity: "critical",
+        code: "separate_r2_configuration_required",
+        message: `Private media and public avatar R2 configuration is incomplete: ${missingR2.join(", ")}`
+      });
+    }
+    if (process.env.R2_MEDIA_BUCKET && process.env.R2_MEDIA_BUCKET === process.env.R2_AVATAR_BUCKET) {
+      findings.push({
+        severity: "critical",
+        code: "shared_r2_bucket_for_private_and_public_data",
+        message: "R2_MEDIA_BUCKET and R2_AVATAR_BUCKET must be different buckets."
+      });
+    }
+    if (
+      process.env.R2_MEDIA_ACCESS_KEY_ID &&
+      process.env.R2_MEDIA_ACCESS_KEY_ID === process.env.R2_AVATAR_ACCESS_KEY_ID
+    ) {
+      findings.push({
+        severity: "critical",
+        code: "shared_r2_credentials_for_private_and_public_data",
+        message: "Private media and public avatars require different bucket-scoped R2 credentials."
+      });
+    }
+    if (process.env.R2_PUBLIC_URL || process.env.R2_BUCKET) {
+      findings.push({
+        severity: "critical",
+        code: "legacy_shared_r2_configuration_present",
+        message: "Remove legacy R2_BUCKET/R2_PUBLIC_URL variables after migrating to separate media/avatar buckets."
+      });
+    }
   }
 
   for (const finding of findings) {

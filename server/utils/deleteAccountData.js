@@ -91,15 +91,17 @@ async function deleteAccountData(username) {
     }
   );
 
-  await Group.updateMany(
-    {},
-    {
-      $pull: {
-        members: username,
-        admins: username
-      }
+  const affectedGroups = await Group.find({ members: username });
+  for (const group of affectedGroups) {
+    group.members = group.members.filter(member => member !== username);
+    group.admins = group.admins.filter(admin => admin !== username);
+    group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
+    if (group.owner === username && group.members.length) {
+      group.owner = group.admins.find(admin => group.members.includes(admin)) || group.members[0];
+      if (!group.admins.includes(group.owner)) group.admins.push(group.owner);
     }
-  );
+    await group.save();
+  }
 
   const emptyGroups =
     await Group.find({
@@ -148,10 +150,7 @@ async function deleteAccountData(username) {
   });
 
   await E2EEKey.deleteMany({
-    $or: [
-      { user: username },
-      { sender: username }
-    ]
+    user: username
   });
 
   if (user.emailHash) {

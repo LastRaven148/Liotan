@@ -6,6 +6,7 @@ const logger =
 
 const getChatId =
   require("../../../utils/getChatId");
+const { getLegacyChatId } = getChatId;
 
 const {
   isValidUsername
@@ -19,6 +20,7 @@ const deleteMessageAttachments =
 
 const E2EEKey =
   require("../../../models/E2EEKey");
+const E2EEConversation = require("../../../models/E2EEConversation");
 
 const { messagesMediaKeys } =
   require("../../services/mediaKeys");
@@ -50,13 +52,24 @@ function registerDeletePrivateChat({
             user2
           );
 
+        const exactConversation = {
+          chatType: { $ne: "group" },
+          $or: [
+            { chatId },
+            {
+              chatId: getLegacyChatId(user1, user2),
+              $or: [
+                { from: user1, to: user2 },
+                { from: user2, to: user1 }
+              ]
+            }
+          ]
+        };
+
         if (!forEveryone) {
           const userOnlyMessages =
             await Message.find({
-              chatType: {
-                $ne: "group"
-              },
-              chatId,
+              ...exactConversation,
               deletedFor: {
                 $ne: user1
               }
@@ -67,10 +80,7 @@ function registerDeletePrivateChat({
 
           await Message.updateMany(
             {
-              chatType: {
-                $ne: "group"
-              },
-              chatId
+              ...exactConversation
             },
             {
               $addToSet: {
@@ -95,10 +105,7 @@ function registerDeletePrivateChat({
 
         const messages =
           await Message.find({
-            chatType: {
-              $ne: "group"
-            },
-            chatId
+            ...exactConversation
           });
 
         if (!messages.length) {
@@ -113,15 +120,13 @@ function registerDeletePrivateChat({
         );
 
         await Message.deleteMany({
-          chatType: {
-            $ne: "group"
-          },
-          chatId
+          ...exactConversation
         });
 
         await E2EEKey.deleteMany({
           conversationId: chatId
         });
+        await E2EEConversation.deleteOne({ conversationId: chatId });
 
         emitToChatUsers({
           io,

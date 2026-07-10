@@ -26,8 +26,15 @@ const { getCallRoom } = require("../utils/callPrivacy");
 
 const {
   isSessionActive,
-  touchSession
+  touchSession,
+  hashSessionId
 } = require("../utils/sessionSecurity");
+
+const {
+  configureSessionRegistry,
+  sessionRoom,
+  userRoom
+} = require("./sessionRegistry");
 
 const {
   verifyAuthToken
@@ -38,6 +45,7 @@ const {
 } = require("../utils/authCookie");
 
 function setupSocket(io) {
+  configureSessionRegistry(io);
   io.use((socket, next) => {
     try {
       if (isConnectionRateLimited(socket)) {
@@ -75,6 +83,8 @@ function setupSocket(io) {
         await touchSession(decoded.sid);
 
         socket.user = decoded;
+        socket.join(sessionRoom(hashSessionId(decoded.sid)));
+        socket.join(userRoom(decoded.userId));
 
         const callRoom = getCallRoom(decoded.username);
 
@@ -96,6 +106,38 @@ function setupSocket(io) {
 
   io.on("connection", async (socket) => {
     attachSocketRateLimit(socket);
+
+    const validateLiveAuthorization = async () => {
+      if (socket.user?.exp && Date.now() >= Number(socket.user.exp) * 1000) return false;
+      const [exists, sessionOk] = await Promise.all([
+        User.exists({
+          _id: socket.user.userId,
+          username: socket.user.username,
+          emailVerified: true
+        }),
+        isSessionActive({
+          userId: socket.user.userId,
+          username: socket.user.username,
+          sessionId: socket.user.sid
+        })
+      ]);
+      return Boolean(exists && sessionOk);
+    };
+
+    socket.use(async (_packet, next) => {
+      try {
+        if (await validateLiveAuthorization()) return next();
+      } catch {}
+      socket.disconnect(true);
+      next(new Error("session revoked"));
+    });
+
+    const authorizationTimer = setInterval(() => {
+      validateLiveAuthorization()
+        .then(ok => { if (!ok) socket.disconnect(true); })
+        .catch(() => socket.disconnect(true));
+    }, Math.max(5000, Number(process.env.SOCKET_AUTH_RECHECK_MS) || 15000));
+    authorizationTimer.unref?.();
 
     try {
       await handleConnectionStart({
@@ -134,6 +176,7 @@ function setupSocket(io) {
     });
 
     socket.on("disconnect", () => {
+      clearInterval(authorizationTimer);
       handleConnectionEnd({
         io,
         socket,
