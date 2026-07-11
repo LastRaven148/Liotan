@@ -52,7 +52,7 @@ restart_pm2() {
   pm2 save || return 1
 }
 
-if ! restart_pm2 || ! curl --fail --silent --show-error --retry 12 --retry-delay 2 "$health_url" >/dev/null; then
+if ! restart_pm2 || ! curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 2 "$health_url" >/dev/null; then
   if [[ -n "$previous" && -d "$previous" ]]; then
     rm -f -- "$deploy_root/current.rollback"
     ln -s "$previous" "$deploy_root/current.rollback"
