@@ -21,6 +21,28 @@ function runNpm(label, args, cwd = root) {
   });
 }
 
+function listZipEntries() {
+  const commands = process.platform === "win32"
+    ? [["tar", ["-tf", releaseZip]]]
+    : [
+        ["unzip", ["-Z1", releaseZip]],
+        ["bsdtar", ["-tf", releaseZip]]
+      ];
+  let lastError;
+
+  for (const [command, args] of commands) {
+    try {
+      return execFileSync(command, args, { encoding: "utf8", shell: false })
+        .split(/\r?\n/)
+        .filter(Boolean);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`Unable to inspect release ZIP: ${lastError?.message || "no compatible ZIP reader found"}`);
+}
+
 function testZip() {
   if (!fs.existsSync(releaseZip)) {
     throw new Error(`Release ZIP was not created: ${releaseZip}`);
@@ -43,8 +65,7 @@ function testZip() {
   if (expected !== actual) {
     throw new Error("Release checksum does not match ZIP contents");
   }
-  const entries = execFileSync("tar", ["-tf", releaseZip], { encoding: "utf8", shell: false })
-    .split(/\r?\n/).filter(Boolean);
+  const entries = listZipEntries();
   const forbidden = entries.filter(entry => /(^|\/)(node_modules|\.git|build|dist|coverage|test-results|playwright-report)(\/|$)|(^|\/)\.env(?:\.|$)|\.zip$/i.test(entry));
   if (forbidden.length) {
     throw new Error(`Forbidden release entries: ${forbidden.slice(0, 10).join(", ")}`);
