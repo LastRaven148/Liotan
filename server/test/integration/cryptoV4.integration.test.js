@@ -223,10 +223,10 @@ before(async () => {
 });
 
 after(async () => {
-  await new Promise(resolve => io.close(resolve));
-  if (server.listening) await new Promise(resolve => server.close(resolve));
-  await mongoose.disconnect();
-  await replSet.stop();
+  if (io) await new Promise(resolve => io.close(resolve));
+  if (server?.listening) await new Promise(resolve => server.close(resolve));
+  if (mongoose) await mongoose.disconnect();
+  if (replSet) await replSet.stop();
 });
 
 test("MLS delivery service enforces identity, device, replay, epochs and membership", async () => {
