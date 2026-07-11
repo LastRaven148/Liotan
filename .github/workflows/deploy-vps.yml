@@ -1,20 +1,64 @@
-name: Deploy VPS
+name: Deploy production
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
 
     steps:
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Check out attested revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            ~/deploy-liotan.sh
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download CI release evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-evidence-${{ github.event.workflow_run.head_sha }}
+          path: release-evidence
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Configure SSH host verification
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s %s\n' "$VPS_HOST" "$VPS_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload and atomically activate release
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+          SYSTEMD_SERVICE: ${{ vars.SYSTEMD_SERVICE }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+        run: |
+          BUNDLE=$(find release-evidence -name '*-deploy.tar.gz' -type f -print -quit)
+          test -n "$BUNDLE"
+          REMOTE_BUNDLE="/tmp/liotan-${{ github.event.workflow_run.head_sha }}.tar.gz"
+          scp -i ~/.ssh/id_ed25519 "$BUNDLE" "$VPS_USER@$VPS_HOST:$REMOTE_BUNDLE"
+          ssh -i ~/.ssh/id_ed25519 "$VPS_USER@$VPS_HOST" \
+            "bash -s -- '$REMOTE_BUNDLE' '$DEPLOY_ROOT' '$SYSTEMD_SERVICE' '$HEALTH_URL' '${{ github.event.workflow_run.head_sha }}'" \
+            < server/deploy/install-release.sh

@@ -481,34 +481,6 @@ export async function deleteGroupApi(groupId) {
   });
 }
 
-export async function setE2EEIdentityApi(publicKey) {
-  return apiRequest(`${API}/e2ee/identity`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      publicKey
-    })
-  });
-}
-
-export async function getE2EEIdentityBackupApi() {
-  return apiRequest(`${API}/e2ee/identity-backup`);
-}
-
-export async function setE2EEIdentityBackupApi(backup) {
-  return apiRequest(`${API}/e2ee/identity-backup`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      backup
-    })
-  });
-}
-
 export async function getE2EEIdentitiesApi(users) {
   return apiRequest(`${API}/e2ee/identities`, {
     method: "POST",
@@ -523,19 +495,4 @@ export async function getE2EEIdentitiesApi(users) {
 
 export async function getE2EEConversationKeyApi(conversationId) {
   return apiRequest(`${API}/e2ee/conversations/${encodeURIComponent(conversationId)}/key`);
-}
-
-export async function setE2EEConversationKeysApi(
-  conversationId,
-  keys
-) {
-  return apiRequest(`${API}/e2ee/conversations/${encodeURIComponent(conversationId)}/keys`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      keys
-    })
-  });
 }

@@ -1,6 +1,7 @@
 {
   "name": "Liotan",
-  "version": "49.4.10",
+  "version": "50.1.0",
+  "license": "GPL-3.0-only",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
@@ -18,9 +19,21 @@
     "release:check": "node scripts/checkRelease.js",
     "audit:vps": "cd server && npm run audit:vps",
     "audit:e2ee-replies": "cd server && npm run audit:e2ee-replies",
-    "test:security": "node scripts/securityRegression.js"
+    "test:security": "node scripts/securityRegression.js",
+    "test:media-storage": "node scripts/mediaStorageRegression.js",
+    "test:server": "npm test --prefix server",
+    "test:browser": "playwright test",
+    "test:coverage": "c8 --check-coverage --lines 80 --functions 80 --branches 70 --reporter=text --reporter=json-summary --include=server/utils/canonicalJson.js --include=server/security/cryptoV4.js node --test server/test/unit/cryptoPrimitives.test.js",
+    "test": "npm run test:security && npm run test:media-storage && npm run test:server && npm run test:browser && npm run test:coverage",
+    "licenses:check": "node scripts/checkLicenses.js",
+    "sbom:generate": "node scripts/generateSbom.js",
+    "supply-chain": "npm run licenses:check && npm run sbom:generate"
   },
   "devDependencies": {
-    "archiver": "^7.0.1"
+    "@cyclonedx/cyclonedx-npm": "6.0.0",
+    "@playwright/test": "1.61.1",
+    "archiver": "7.0.1",
+    "c8": "11.0.0",
+    "socket.io-client": "4.8.3"
   }
 }

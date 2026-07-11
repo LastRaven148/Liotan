@@ -5,6 +5,7 @@ from "./hooks/app/useAppController";
 
 import AuthLayout from "./components/layouts/AuthLayout";
 import MessengerLayout from "./components/layouts/MessengerLayout";
+import CryptoGate from "./crypto/CryptoGate";
 
 export default function App() {
 
@@ -52,9 +53,9 @@ export default function App() {
   }
 
   return (
-    <MessengerLayout
-      app={app}
-    />
+    <CryptoGate username={app.username}>
+      <MessengerLayout app={app} />
+    </CryptoGate>
   );
 
 }

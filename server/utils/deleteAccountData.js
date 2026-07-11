@@ -21,6 +21,14 @@ const UserSecurity =
 
 const RegistrationCancel =
   require("../models/RegistrationCancel");
+const CryptoIdentity = require("../models/CryptoIdentity");
+const CryptoDevice = require("../models/CryptoDevice");
+const CryptoKeyPackage = require("../models/CryptoKeyPackage");
+const CryptoConversation = require("../models/CryptoConversation");
+const CryptoOperation = require("../models/CryptoOperation");
+const CryptoEvent = require("../models/CryptoEvent");
+const CryptoRequestNonce = require("../models/CryptoRequestNonce");
+const AttachmentUpload = require("../models/AttachmentUpload");
 
 const deleteUploadedFile =
   require("./deleteUploadedFile");
@@ -92,6 +100,10 @@ async function deleteAccountData(username) {
   );
 
   const affectedGroups = await Group.find({ members: username });
+  await CryptoConversation.updateMany(
+    { chatType: "group", groupId: { $in: affectedGroups.map(group => group._id) } },
+    { $set: { blockedForEpochChange: true } }
+  );
   for (const group of affectedGroups) {
     group.members = group.members.filter(member => member !== username);
     group.admins = group.admins.filter(admin => admin !== username);
@@ -102,6 +114,17 @@ async function deleteAccountData(username) {
     }
     await group.save();
   }
+  await CryptoConversation.updateMany(
+    { chatType: "group", groupId: { $in: affectedGroups.map(group => group._id) } },
+    {
+      $pull: {
+        participantUserIds: user._id,
+        participantUsernames: username,
+        adminUserIds: user._id
+      },
+      $set: { blockedForEpochChange: true }
+    }
+  );
 
   const emptyGroups =
     await Group.find({
@@ -141,6 +164,23 @@ async function deleteAccountData(username) {
     await E2EEKey.deleteMany({
       conversationId: `group:${group._id}`
     });
+
+    const cryptoConversation = await CryptoConversation.findOne({ lookupKey: `group:${group._id}` }).lean();
+    if (cryptoConversation) {
+      const uploads = await AttachmentUpload.find({
+        protocol: "mls-media-1",
+        cryptoConversationId: cryptoConversation.conversationId
+      }).lean();
+      for (const upload of uploads) {
+        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
+      }
+      await Promise.all([
+        AttachmentUpload.deleteMany({ cryptoConversationId: cryptoConversation.conversationId }),
+        CryptoEvent.deleteMany({ conversationId: cryptoConversation.conversationId }),
+        CryptoOperation.deleteMany({ conversationId: cryptoConversation.conversationId }),
+        CryptoConversation.deleteOne({ _id: cryptoConversation._id })
+      ]);
+    }
   }
 
   await Group.deleteMany({
@@ -152,6 +192,38 @@ async function deleteAccountData(username) {
   await E2EEKey.deleteMany({
     user: username
   });
+
+  const cryptoDevices = await CryptoDevice.find({ userId: user._id }).lean();
+  const cryptoClientIds = cryptoDevices.map(device => device.clientId);
+  const cryptoConversations = await CryptoConversation.find({ participantUserIds: user._id }).lean();
+  const privateConversations = cryptoConversations.filter(item => item.chatType === "private");
+  const privateConversationIds = privateConversations.map(item => item.conversationId);
+  const privateUploads = await AttachmentUpload.find({
+    protocol: "mls-media-1",
+    cryptoConversationId: { $in: privateConversationIds }
+  }).lean();
+  for (const upload of privateUploads) {
+    await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
+  }
+  await Promise.all([
+    AttachmentUpload.deleteMany({ protocol: "mls-media-1", cryptoConversationId: { $in: privateConversationIds } }),
+    CryptoEvent.deleteMany({ conversationId: { $in: privateConversationIds } }),
+    CryptoOperation.deleteMany({
+      $or: [
+        { conversationId: { $in: privateConversationIds } },
+        { requestedByUserId: user._id }
+      ]
+    }),
+    CryptoConversation.deleteMany({ conversationId: { $in: privateConversationIds } }),
+    CryptoConversation.updateMany(
+      { chatType: "group", participantUserIds: user._id },
+      { $set: { blockedForEpochChange: true } }
+    ),
+    CryptoKeyPackage.deleteMany({ userId: user._id }),
+    CryptoRequestNonce.deleteMany({ clientId: { $in: cryptoClientIds } }),
+    CryptoDevice.deleteMany({ userId: user._id }),
+    CryptoIdentity.deleteOne({ userId: user._id })
+  ]);
 
   if (user.emailHash) {
     await EmailCode.deleteMany({

@@ -5,6 +5,7 @@ import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatF
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
+import { getMlsEngine } from "../crypto/mlsEngine";
 
 function attachmentOfflineKeys(attachment) {
   if (!attachment) return [];
@@ -102,6 +103,55 @@ export default function useSocket({
     ].filter(Boolean)));
     let activeSocketIndex = 0;
     let reconnectTimer = null;
+
+    function handleMlsEvent(event) {
+      const detail = event?.detail || {};
+      if (detail.type === "message" && detail.message) {
+        const msg = detail.message;
+        const chatKey = getMessageChatKey(msg, username);
+        setChats(previous => addMessageToChat(previous, msg));
+        if (msg.from !== username && activeChatRef.current !== chatKey) {
+          setUnread(previous => ({ ...previous, [chatKey]: (previous[chatKey] || 0) + 1 }));
+        }
+        updateDialog(msg, username);
+        return;
+      }
+      if (!detail.chatId || !detail.messageId) return;
+      if (detail.type === "edit") {
+        setChats(previous => editMessageInChat(previous, {
+          chatId: detail.chatId,
+          _id: detail.messageId,
+          text: detail.text || "",
+          edited: true,
+          editedAt: new Date().toISOString()
+        }));
+      } else if (detail.type === "delete") {
+        setChats(previous => deleteMessageFromChat(previous, {
+          chatId: detail.chatId,
+          messageId: detail.messageId
+        }));
+      } else if (detail.type === "pin") {
+        setChats(previous => pinMessageInChat(previous, {
+          chatId: detail.chatId,
+          _id: detail.messageId,
+          isPinned: true,
+          pinnedAt: new Date().toISOString(),
+          pinnedBy: detail.from || ""
+        }));
+      }
+    }
+
+    function handleCryptoEventAvailable(data) {
+      try {
+        getMlsEngine().syncConversationById(data?.conversationId).catch(() => {});
+      } catch {}
+    }
+
+    function handleCryptoRosterChanged(data) {
+      try {
+        getMlsEngine().refreshRosterById(data?.conversationId).catch(() => {});
+      } catch {}
+    }
 
     function createSocketConnection(endpoint = socketEndpoints[activeSocketIndex]) {
       return io(endpoint, {
@@ -429,9 +479,12 @@ export default function useSocket({
     currentSocket.on(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
     currentSocket.on(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
     currentSocket.on(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
+    currentSocket.on("cryptoEventAvailable", handleCryptoEventAvailable);
+    currentSocket.on("cryptoRosterChanged", handleCryptoRosterChanged);
     }
 
     attachSocketHandlers(socket);
+    window.addEventListener("liotan:mls-event", handleMlsEvent);
 
     return () => {
       window.removeEventListener("click", unlockSoundOnUserGesture);
@@ -439,6 +492,7 @@ export default function useSocket({
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
+      window.removeEventListener("liotan:mls-event", handleMlsEvent);
       socket.removeAllListeners();
       socket.disconnect();
     };

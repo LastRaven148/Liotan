@@ -37,7 +37,20 @@ function publicAttachmentView(upload) {
   };
 }
 
-async function registerAttachmentUpload({ owner, result, name, type, mimeType, size, encrypted = false }) {
+async function registerAttachmentUpload({
+  owner,
+  result,
+  name,
+  type,
+  mimeType,
+  size,
+  encrypted = false,
+  protocol = "legacy-v3",
+  cryptoConversationId = "",
+  cryptoClientId = "",
+  bindingId = "",
+  ciphertextHash = ""
+}) {
   const upload = await AttachmentUpload.create({
     uploadId: createUploadId(),
     owner,
@@ -48,6 +61,11 @@ async function registerAttachmentUpload({ owner, result, name, type, mimeType, s
     mimeType: encrypted ? "application/octet-stream" : mimeType,
     size: encrypted ? 0 : size,
     encrypted,
+    protocol,
+    cryptoConversationId,
+    cryptoClientId,
+    bindingId,
+    ciphertextHash,
     width: encrypted ? 0 : result.width || 0,
     height: encrypted ? 0 : result.height || 0,
     duration: encrypted ? 0 : result.duration || 0,

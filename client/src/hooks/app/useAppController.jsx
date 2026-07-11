@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { API } from "../../config/api";
-import { devWarn } from "../../utils/devLogger";
-
-import {
-  ensureE2EEIdentity
-} from "../../utils/e2ee";
+import { getMlsEngine } from "../../crypto/mlsEngine";
 
 import useSocket from "../useSocket";
 import useProfile from "../useProfile";
@@ -138,17 +134,14 @@ export default function useAppController() {
 
 
   useEffect(() => {
-    if (!token || !username) {
-      return;
-    }
-
-    ensureE2EEIdentity(username).catch(err => {
-      devWarn("E2EE identity init failed", err);
-    });
-  }, [
-    token,
-    username
-  ]);
+    if (!token || !username || !dialogs.dialogs?.length) return;
+    const prepare = () => {
+      try { getMlsEngine().prepareDialogs(dialogs.dialogs); } catch {}
+    };
+    prepare();
+    window.addEventListener("liotan:mls-ready", prepare, { once: true });
+    return () => window.removeEventListener("liotan:mls-ready", prepare);
+  }, [token, username, dialogs.dialogs]);
 
   useAppInitialization({
     token,

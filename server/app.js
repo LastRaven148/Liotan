@@ -25,6 +25,7 @@ const authRoutes = require("./routes/authRoutes");
 const callRoutes = require("./routes/callRoutes");
 const dialogRoutes = require("./routes/dialogRoutes");
 const e2eeRoutes = require("./routes/e2eeRoutes");
+const cryptoV4Routes = require("./routes/cryptoV4Routes");
 const groupMessageRoutes = require("./routes/groupMessageRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const healthRoutes = require("./routes/healthRoutes");
@@ -97,6 +98,7 @@ app.use(groupRoutes);
 app.use(attachmentRoutes);
 app.use(groupMessageRoutes);
 app.use(e2eeRoutes);
+app.use(cryptoV4Routes);
 app.use(callRoutes);
 app.use(voiceRoutes);
 

@@ -16,7 +16,7 @@ function securityHeaders(req, res, next) {
 
   res.setHeader(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=()"
+    "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), bluetooth=()"
   );
 
   res.setHeader(
@@ -40,7 +40,8 @@ function securityHeaders(req, res, next) {
     req.path.startsWith("/login") ||
     req.path.startsWith("/register") ||
     req.path.startsWith("/password") ||
-    req.path.startsWith("/e2ee")
+    req.path.startsWith("/e2ee") ||
+    req.path.startsWith("/crypto")
   ) {
     res.setHeader(
       "Cache-Control",

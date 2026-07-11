@@ -6,17 +6,15 @@ import Composer from "./Composer";
 
 import {
   memo,
-  useCallback,
   useEffect,
   useRef,
   useState
 } from "react";
 
 import {
-  ensureConversationSecret,
-  getEffectiveE2EEChatKey,
-  hasChatSecret
+  getEffectiveE2EEChatKey
 } from "../../utils/e2ee";
+import { getConversationSecurityInfo } from "../../crypto/mlsEngine";
 
 import {
   useLanguage
@@ -135,9 +133,6 @@ const Chat = memo(function Chat({
   const [cachedChat, setCachedChat] =
     useState(null);
 
-  const lastAutoE2EEKeyRef =
-    useRef("");
-
   useEffect(() => {
     if (!activeChat) {
       return;
@@ -176,12 +171,6 @@ const Chat = memo(function Chat({
       renderedActiveDialog
     );
 
-  const e2eeEnabled =
-    Boolean(
-      renderedActiveChat &&
-      hasChatSecret(username, renderedE2EEChatKey)
-    );
-
   useEffect(() => {
     function handleE2EEUpdated() {
       setE2eeRevision(value => value + 1);
@@ -191,102 +180,31 @@ const Chat = memo(function Chat({
       "liotan:e2ee-updated",
       handleE2EEUpdated
     );
+    window.addEventListener("liotan:mls-conversation-ready", handleE2EEUpdated);
 
     return () => {
       window.removeEventListener(
         "liotan:e2ee-updated",
         handleE2EEUpdated
       );
+      window.removeEventListener("liotan:mls-conversation-ready", handleE2EEUpdated);
     };
   }, []);
 
-  const getConversationParticipants = useCallback(() => {
-    if (!renderedActiveChat) {
-      return [];
-    }
+  const mlsSecurityInfo = getConversationSecurityInfo(renderedActiveChat);
 
-    if (renderedActiveDialog?.type === "group") {
-      const members = Array.isArray(renderedActiveDialog.members)
-        ? renderedActiveDialog.members
-        : Array.isArray(renderedActiveDialog.memberUsers)
-          ? renderedActiveDialog.memberUsers.map(user => user.username)
-          : [];
-
-      return [
-        ...new Set([
-          username,
-          ...members.filter(Boolean)
-        ])
-      ];
-    }
-
-    return [
-      username,
-      renderedActiveChat
-    ].filter(Boolean);
-  }, [
-    renderedActiveChat,
-    renderedActiveDialog,
-    username
-  ]);
-
-  async function handleE2EESettings() {
-    if (!renderedActiveChat) {
+  function showMlsSecurityInfo() {
+    if (!mlsSecurityInfo) {
+      alert("MLS-сессия ещё синхронизируется. Отправка останется заблокированной до завершения проверки.");
       return;
     }
-
-    await ensureConversationSecret({
-      username,
-      chatKey: renderedE2EEChatKey,
-      participants: getConversationParticipants()
-    });
-
-    setE2eeRevision(value => value + 1);
+    alert([
+      mlsSecurityInfo.protocol,
+      `Участники: ${mlsSecurityInfo.participants.join(", ")}`,
+      "Сверьте этот safety number по независимому каналу:",
+      mlsSecurityInfo.formatted
+    ].join("\n\n"));
   }
-
-  useEffect(() => {
-    if (!renderedActiveChat || !username || !renderedE2EEChatKey) {
-      return;
-    }
-
-    const participants =
-      getConversationParticipants();
-
-    const ensureKey =
-      `${username}|${renderedE2EEChatKey}|${participants.join(",")}`;
-
-    if (lastAutoE2EEKeyRef.current === ensureKey) {
-      return;
-    }
-
-    lastAutoE2EEKeyRef.current =
-      ensureKey;
-
-    let cancelled = false;
-
-    ensureConversationSecret({
-      username,
-      chatKey: renderedE2EEChatKey,
-      participants
-    }).then(() => {
-      if (!cancelled) {
-        setE2eeRevision(value => value + 1);
-      }
-    }).catch(() => {
-      if (lastAutoE2EEKeyRef.current === ensureKey) {
-        lastAutoE2EEKeyRef.current = "";
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    username,
-    renderedActiveChat,
-    renderedE2EEChatKey,
-    getConversationParticipants
-  ]);
 
   useChatScroll({
     activeChat: renderedActiveChat,
@@ -313,8 +231,8 @@ const Chat = memo(function Chat({
             openProfile={openProfile}
             username={username}
             onBack={onBack}
-            e2eeEnabled={e2eeEnabled}
-            onE2EESettings={handleE2EESettings}
+            e2eeEnabled={true}
+            onE2EESettings={showMlsSecurityInfo}
           />
 
           <PinnedBar

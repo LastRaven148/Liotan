@@ -1,6 +1,6 @@
 const fs = require("fs").promises;
 const privacy = require("../config/privacy");
-const { uploadToR2, getFromR2 } = require("../utils/uploadToR2");
+const { uploadToR2, streamFromR2 } = require("../utils/uploadToR2");
 const {
   normalizeMime,
   assertAllowedAttachment,
@@ -141,23 +141,21 @@ async function downloadAttachment(req, res, next) {
     const contentType = attachment.mimeType || "application/octet-stream";
     const rangeHeader = String(req.headers.range || "").trim();
     const safeRange = /^bytes=\d*-\d*$/.test(rangeHeader) ? rangeHeader : "";
-    const object = await getFromR2(attachment.storageKey, { range: safeRange });
-    const statusCode = object.statusCode === 206 ? 206 : 200;
-
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Accept-Ranges", "bytes");
-    if (object.headers?.["content-range"]) {
-      res.setHeader("Content-Range", object.headers["content-range"]);
-    }
-    if (object.headers?.["content-length"]) {
-      res.setHeader("Content-Length", object.headers["content-length"]);
-    } else {
-      res.setHeader("Content-Length", String(object.buffer.length));
-    }
-
-    return res.status(statusCode).send(object.buffer);
+    await streamFromR2(attachment.storageKey, res, {
+      range: safeRange,
+      storageClass: "private-media",
+      onResponse: object => {
+        res.status(object.statusCode === 206 ? 206 : 200);
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Cache-Control", "private, no-store, max-age=0");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Disposition", "attachment");
+        res.setHeader("Accept-Ranges", "bytes");
+        if (object.headers?.["content-range"]) res.setHeader("Content-Range", object.headers["content-range"]);
+        if (object.headers?.["content-length"]) res.setHeader("Content-Length", object.headers["content-length"]);
+      }
+    });
+    return undefined;
   } catch (err) {
     next(err);
   }

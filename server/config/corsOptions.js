@@ -78,6 +78,12 @@ const corsOptions = {
     "X-Requested-With",
     "X-Request-Id",
     "X-Liotan-CSRF",
+    "X-Liotan-Crypto-Device",
+    "X-Liotan-Crypto-Timestamp",
+    "X-Liotan-Crypto-Nonce",
+    "X-Liotan-Crypto-Signature",
+    "X-Liotan-Crypto-Body",
+    "Range",
   ],
 
   exposedHeaders: ["X-Request-Id"],

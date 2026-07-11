@@ -1,10 +1,12 @@
 {
   "name": "server",
-  "version": "49.4.10",
+  "version": "50.1.0",
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test --test-concurrency=1 test/unit/cryptoPrimitives.test.js",
+    "test:integration": "node --test --test-concurrency=1 --test-timeout=120000 test/integration/cryptoV4.integration.test.js",
     "start": "node server.js",
     "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js",
     "check": "node scripts/checkSyntax.js",
@@ -16,24 +18,28 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "GPL-3.0-only",
   "type": "commonjs",
   "engines": {
     "node": "22.x",
     "npm": "10.x"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.5.2",
-    "helmet": "^8.2.0",
-    "hpp": "^0.2.3",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.6.3",
-    "multer": "^2.1.1",
-    "nodemailer": "^9.0.3",
-    "socket.io": "^4.8.3"
+    "bcrypt": "6.0.0",
+    "cors": "2.8.6",
+    "dotenv": "17.4.2",
+    "express": "5.2.1",
+    "express-rate-limit": "8.5.2",
+    "helmet": "8.2.0",
+    "hpp": "0.2.3",
+    "jsonwebtoken": "9.0.3",
+    "mongoose": "9.7.3",
+    "multer": "2.2.0",
+    "nodemailer": "9.0.3",
+    "socket.io": "4.8.3"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "11.2.0",
+    "supertest": "7.2.2"
   }
 }

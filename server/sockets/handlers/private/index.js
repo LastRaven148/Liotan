@@ -27,10 +27,12 @@ function registerPrivateHandlers({
 
   registerGetPrivateChat(socket);
 
-  registerSendPrivateMessage({
-    io,
-    socket,
-    emitStopTyping
+  socket.on("sendMessage", (_data, ack) => {
+    if (typeof ack === "function") ack({
+      ok: false,
+      error: "mls-v4-required",
+      protocol: "mls-1.0"
+    });
   });
 
   registerMarkPrivateChatRead({
@@ -38,9 +40,8 @@ function registerPrivateHandlers({
     socket
   });
 
-  registerEditMessage({
-    io,
-    socket
+  socket.on("editMessage", (_data, ack) => {
+    if (typeof ack === "function") ack({ ok: false, error: "mls-v4-control-event-required" });
   });
 
   registerDeleteMessage({

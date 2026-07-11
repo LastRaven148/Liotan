@@ -19,6 +19,7 @@ import MessageViewer from "./message/MessageViewer";
 import MessageTime from "./message/MessageTime";
 import { decryptAttachmentBlobForChat, decryptAttachmentMetadataForChat, decryptTextForChat, isEncryptedAttachment, isEncryptedText } from "../../utils/e2ee";
 import DownloadConfirmModal from "./message/DownloadConfirmModal";
+import { downloadMlsCiphertext } from "../../crypto/mlsEngine";
 const AUTO_CACHE_LIMIT = 50 * 1024 * 1024;
 function safeDownloadName(name = "download") {
   return String(name || "download").replace(/[/\\0\r\n\t]/g, " ").replace(/[<>:"|?*]/g, "_").replace(/\s+/g, " ").trim().slice(0, 160) || "download";
@@ -99,7 +100,8 @@ function Message({
     attachment,
     remoteUrl,
     shouldAutoCache,
-    decryptBlob: encryptedMedia ? decryptMediaBlob : null
+    decryptBlob: encryptedMedia ? decryptMediaBlob : null,
+    downloadBlob: attachment?.mlsMedia?.v === 1 ? () => downloadMlsCiphertext(attachment) : null
   });
   const fileUrl = encryptedMedia ? localUrl : localUrl || remoteUrl;
   const {
@@ -275,6 +277,26 @@ function Message({
       </div>;
   }
   async function downloadFile() {
+    if (attachment?.mlsMedia?.v === 1) {
+      try {
+        const ciphertext = await downloadMlsCiphertext(attachment);
+        const plaintext = await decryptAttachmentBlobForChat({
+          username,
+          chatKey: activeChat,
+          attachment,
+          blob: ciphertext
+        });
+        const blobUrl = URL.createObjectURL(plaintext);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = safeDownloadName(attachmentForDisplay?.name || attachment.name);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } catch {}
+      return;
+    }
     const sourceUrl = localUrl || fileUrl || remoteUrl;
     if (!sourceUrl) {
       return;

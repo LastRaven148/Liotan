@@ -1,22 +1,24 @@
 const HOURS = 60 * 60 * 1000;
 
 module.exports = Object.freeze({
-  version: "49.4.10-remediated",
+  version: "50.1.0-mls",
   principles: Object.freeze({
-    serverTrust: "trusted-for-key-directory-until-ratchet-migration",
+    serverTrust: "untrusted-delivery-service-root-signed-device-directory",
     supportTrust: "untrusted",
     storageTrust: "untrusted",
     networkTrust: "untrusted",
     userDataOwner: "user"
   }),
   messagingCrypto: Object.freeze({
-    writeProtocol: 3,
+    writeProtocol: "MLS-1.0-RFC9420",
     plaintextWritesAllowed: false,
     canonicalAad: true,
     clientReplayDetection: true,
-    forwardSecrecy: false,
-    postCompromiseSecurity: false,
-    releaseClaim: "encrypted-transport-preview-not-audited-e2ee"
+    forwardSecrecy: true,
+    postCompromiseSecurity: true,
+    accountRootPins: true,
+    signedDeviceRequests: true,
+    releaseClaim: "MLS production candidate; independent audit required before security certification"
   }),
   emailChange: Object.freeze({
     securityWindowHours: Number(process.env.EMAIL_CHANGE_SECURITY_WINDOW_HOURS || 72),
@@ -45,8 +47,8 @@ module.exports = Object.freeze({
     enabledByDefault: false,
     serverStoresPlaintextVaultKey: false,
     serverCanRecoverVault: false,
-    kdf: "PBKDF2-SHA256",
-    kdfIterations: Number(process.env.VAULT_KDF_ITERATIONS || 310000)
+    kdf: "HKDF-SHA256 from random 256-bit recovery key",
+    kdfIterations: 1
   }),
   devices: Object.freeze({
     newDeviceApprovalRequiredWhenAvailable: true,

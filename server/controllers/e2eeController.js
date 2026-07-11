@@ -4,8 +4,6 @@ const User =
 const E2EEKey =
   require("../models/E2EEKey");
 
-const E2EEConversation = require("../models/E2EEConversation");
-
 const Group =
   require("../models/Group");
 
@@ -52,21 +50,6 @@ function getPrivateConversationParticipants(value) {
     : [];
 }
 
-function isValidPublicKey(value) {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    value.kty === "EC" &&
-    value.crv === "P-256" &&
-    typeof value.x === "string" &&
-    value.x.length > 20 &&
-    value.x.length < 200 &&
-    typeof value.y === "string" &&
-    value.y.length > 20 &&
-    value.y.length < 200
-  );
-}
-
 function getSafeDeviceName(session, requester, targetUser) {
   if (requester === targetUser || privacy.exposeDeviceNamesToContacts) {
     return session.deviceName || "Device";
@@ -107,33 +90,6 @@ function emptyDeviceList(username = "") {
   };
 }
 
-function cleanWrappedKey(key) {
-  return {
-    user: key.user,
-    sender: key.sender,
-    wrappedKey: key.wrappedKey,
-    iv: key.iv,
-    commitId: key.commitId,
-    alg: String(key.alg || "ECDH-P256-AES-GCM").slice(0, 100)
-  };
-}
-
-function isValidWrappedKey(value) {
-  return Boolean(
-    value &&
-    typeof value.user === "string" &&
-    isValidUsername(value.user) &&
-    typeof value.sender === "string" &&
-    isValidUsername(value.sender) &&
-    typeof value.wrappedKey === "string" &&
-    value.wrappedKey.length < 5000 &&
-    typeof value.iv === "string" &&
-    value.iv.length < 500 &&
-    typeof value.commitId === "string" &&
-    /^[a-zA-Z0-9_-]{40,80}$/.test(value.commitId)
-  );
-}
-
 async function canAccessConversation({
   conversationId,
   username
@@ -165,104 +121,6 @@ async function canAccessConversation({
   }
 
   return participants.includes(username);
-}
-
-async function getAllowedConversationParticipants({
-  conversationId,
-  username
-}) {
-  if (conversationId === username) {
-    return [username];
-  }
-
-  if (conversationId.startsWith("group:")) {
-    const groupId =
-      conversationId
-        .slice("group:".length)
-        .split(":v")[0];
-
-    const group =
-      await Group.findById(groupId, "members").lean();
-
-    if (
-      !group ||
-      !group.members.includes(username)
-    ) {
-      return [];
-    }
-
-    return group.members;
-  }
-
-  const participants =
-    getPrivateConversationParticipants(conversationId);
-
-  if (!participants.includes(username)) {
-    return [];
-  }
-
-  return participants;
-}
-
-async function setIdentity(req, res, next) {
-  try {
-    const username =
-      req.user.username;
-
-    const publicKey =
-      req.body.publicKey;
-
-    if (!isValidPublicKey(publicKey)) {
-      return res.status(400).json({
-        error: "invalid public key"
-      });
-    }
-
-    const user = await User.findOne({ username }, "e2eePublicKey");
-    if (!user) return res.status(404).json({ error: "user not found" });
-
-    const current = user.e2eePublicKey;
-    const sameKey = current && ["kty", "crv", "x", "y"].every(field => current[field] === publicKey[field]);
-    if (current && !sameKey) {
-      return res.status(409).json({ error: "identity change requires verified device transfer" });
-    }
-
-    user.e2eePublicKey = publicKey;
-    await user.save();
-
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function getIdentityBackup(req, res, next) {
-  try {
-    const username =
-      req.user.username;
-
-    const user =
-      await User.findOne(
-        { username },
-        "username e2eeIdentityBackup e2eePublicKey"
-      ).lean();
-
-    res.json({
-      backup: null,
-      publicKey: user?.e2eePublicKey || null
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function setIdentityBackup(req, res, next) {
-  res.status(410).json({
-    error: "password-encrypted identity backup disabled",
-    recoveryRequired: true
-  });
 }
 
 async function getDeviceIdentities(req, res, next) {
@@ -445,134 +303,9 @@ async function getConversationKey(req, res, next) {
   }
 }
 
-async function setConversationKeys(req, res, next) {
-  try {
-    const username =
-      req.user.username;
-
-    const conversationId =
-      String(req.params.conversationId || "").trim();
-
-    if (!isValidConversationId(conversationId)) {
-      return res.status(400).json({
-        error: "invalid conversation"
-      });
-    }
-
-    if (conversationId.startsWith("group:")) {
-      const match = conversationId.match(/^group:([a-fA-F0-9]{24}):v(\d+)$/);
-      const group = match ? await Group.findById(match[1], "e2eeVersion members").lean() : null;
-      if (
-        !group ||
-        !group.members.includes(username) ||
-        Number(match[2]) !== (Number(group.e2eeVersion) || 1)
-      ) {
-        return res.status(409).json({ error: "only current group epoch can be committed" });
-      }
-    }
-
-    const allowedParticipants =
-      await getAllowedConversationParticipants({
-        conversationId,
-        username
-      });
-
-    if (!allowedParticipants.length) {
-      return res.status(403).json({
-        error: "access denied"
-      });
-    }
-
-    const allowedUsers =
-      new Set(allowedParticipants);
-
-    const keys =
-      Array.isArray(req.body.keys)
-        ? req.body.keys
-            .filter(isValidWrappedKey)
-            .filter(key =>
-              key.sender === username &&
-              allowedUsers.has(key.user)
-            )
-            .slice(0, 100)
-            .map(cleanWrappedKey)
-        : [];
-
-    const expectedUsers = [...allowedUsers].sort();
-    const submittedUsers = [...new Set(keys.map(key => key.user))].sort();
-    const commitIds = [...new Set(keys.map(key => key.commitId))];
-    if (
-      keys.length !== expectedUsers.length ||
-      submittedUsers.length !== expectedUsers.length ||
-      submittedUsers.some((user, index) => user !== expectedUsers[index]) ||
-      commitIds.length !== 1
-    ) {
-      return res.status(400).json({ error: "complete atomic key set required" });
-    }
-
-    let commit;
-    try {
-      commit = await E2EEConversation.findOneAndUpdate(
-        { conversationId },
-        {
-          $setOnInsert: {
-            conversationId,
-            commitId: commitIds[0],
-            participants: expectedUsers,
-            createdBy: username
-          }
-        },
-        { upsert: true, new: true }
-      ).lean();
-    } catch (err) {
-      if (err?.code !== 11000) throw err;
-      commit = await E2EEConversation.findOne({ conversationId }).lean();
-    }
-
-    if (!commit || commit.commitId !== commitIds[0]) {
-      return res.status(409).json({ error: "conversation key already committed" });
-    }
-
-    for (const key of keys) {
-      await E2EEKey.updateOne(
-        {
-          conversationId,
-          user: key.user
-        },
-        {
-          $set: {
-            conversationId,
-            user: key.user,
-            sender: key.sender,
-            commitId: key.commitId,
-            wrappedKey: key.wrappedKey,
-            iv: key.iv,
-            alg: key.alg || "ECDH-P256-AES-GCM",
-            version: 1
-          }
-        },
-        {
-          upsert: true
-        }
-      );
-    }
-
-    res.json({
-      ok: true,
-      count: keys.length
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
-  setIdentity,
-  getIdentityBackup,
-  setIdentityBackup,
   getIdentity,
   getIdentities,
   getConversationKey,
-  setConversationKeys,
   getDeviceIdentities
 };

@@ -2,6 +2,10 @@ const Group = require("../models/Group");
 const User = require("../models/User");
 const Message = require("../models/Messages");
 const E2EEKey = require("../models/E2EEKey");
+const CryptoConversation = require("../models/CryptoConversation");
+const CryptoEvent = require("../models/CryptoEvent");
+const CryptoOperation = require("../models/CryptoOperation");
+const AttachmentUpload = require("../models/AttachmentUpload");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
@@ -17,6 +21,7 @@ const {
 
 const emitToGroupMembers =
   require("../sockets/services/emitToGroupMembers");
+const MAX_GROUP_MEMBERS = Math.min(500, Math.max(2, Number(process.env.MAX_GROUP_MEMBERS) || 100));
 function withAvatarCacheBust(url) {
   if (!url) return "";
   const separator = String(url).includes("?") ? "&" : "?";
@@ -102,6 +107,12 @@ function emitGroupDeleted(req, group, deletedMediaKeys = []) {
 function canManageGroup(group, username) {
   return group.owner === username || group.admins.includes(username);
 }
+async function blockMlsGroup(groupId) {
+  await CryptoConversation.updateOne(
+    { lookupKey: `group:${groupId}` },
+    { $set: { blockedForEpochChange: true } }
+  );
+}
 async function deleteGroupMessageFiles(messages) {
   for (const message of messages) {
     await deleteUploadedFile({
@@ -129,6 +140,9 @@ async function createGroup(req, res, next) {
       });
     }
     const members = normalizeMembers(req.body.members, owner);
+    if (members.length > MAX_GROUP_MEMBERS) {
+      return res.status(400).json({ error: "group member limit exceeded" });
+    }
     const existingUsers = await User.find({
       username: {
         $in: members
@@ -314,6 +328,10 @@ async function addGroupMember(req, res, next) {
       });
     }
     if (!group.members.includes(member)) {
+      if (group.members.length >= MAX_GROUP_MEMBERS) {
+        return res.status(409).json({ error: "group member limit reached" });
+      }
+      await blockMlsGroup(group._id);
       group.members.push(member);
       group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
       await group.save();
@@ -345,6 +363,10 @@ async function removeGroupMember(req, res, next) {
         error: "cannot remove owner"
       });
     }
+    if (!group.members.includes(member)) {
+      return res.status(404).json({ error: "group member not found" });
+    }
+    await blockMlsGroup(group._id);
     group.members = group.members.filter(item => item !== member);
     group.admins = group.admins.filter(item => item !== member);
     group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
@@ -386,6 +408,7 @@ async function leaveGroup(req, res, next) {
         error: "owner must delete group"
       });
     }
+    await blockMlsGroup(group._id);
     group.members = group.members.filter(item => item !== username);
     group.admins = group.admins.filter(item => item !== username);
     group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
@@ -455,6 +478,19 @@ async function deleteGroup(req, res, next) {
         $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
       }
     });
+    const cryptoConversation = await CryptoConversation.findOne({ lookupKey: `group:${group._id}` }).lean();
+    if (cryptoConversation) {
+      const uploads = await AttachmentUpload.find({ cryptoConversationId: cryptoConversation.conversationId }).lean();
+      for (const upload of uploads) {
+        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
+      }
+      await Promise.all([
+        AttachmentUpload.deleteMany({ cryptoConversationId: cryptoConversation.conversationId }),
+        CryptoEvent.deleteMany({ conversationId: cryptoConversation.conversationId }),
+        CryptoOperation.deleteMany({ conversationId: cryptoConversation.conversationId }),
+        CryptoConversation.deleteOne({ _id: cryptoConversation._id })
+      ]);
+    }
     emitGroupDeleted(req, group, deletedMediaKeys);
     res.json({
       ok: true

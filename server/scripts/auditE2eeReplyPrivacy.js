@@ -62,23 +62,15 @@ function main() {
     "E2EE reply previews must not persist attachment names."
   );
 
-  mustInclude(
-    findings,
-    "server/sockets/handlers/private/sendPrivateMessage.js",
-    privateSend,
-    "currentContentMode: contentMode",
-    "critical",
-    "Private message send path must pass current content mode to reply builder."
-  );
+  mustInclude(findings, "server/sockets/handlers/private/sendPrivateMessage.js", privateSend,
+    "mls-v4-required", "critical", "Legacy private writes must be rejected.");
 
-  mustInclude(
-    findings,
-    "server/sockets/handlers/group/sendGroupMessage.js",
-    groupSend,
-    "currentContentMode: contentMode",
-    "critical",
-    "Group message send path must pass current content mode to reply builder."
-  );
+  mustInclude(findings, "server/sockets/handlers/group/sendGroupMessage.js", groupSend,
+    "mls-v4-required", "critical", "Legacy group writes must be rejected.");
+
+  if (/Message\.(create|insertMany)|new Message/.test(privateSend + groupSend)) {
+    addFinding(findings, "critical", "server/sockets/handlers", "Legacy send handlers must not persist messages.");
+  }
 
   mustInclude(
     findings,

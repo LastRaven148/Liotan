@@ -1,16 +1,10 @@
-import { playSentSound } from "../utils/notificationSound";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getChatId } from "../utils/chat";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
-import { uploadAttachmentApi } from "../services/api";
-import { encryptedTextToTransport, encryptAttachmentFileForChat, encryptTextForChat, getEffectiveE2EEChatKey } from "../utils/e2ee";
-export default function useChat({
-  username,
-  socketRef,
-  setUnread,
-  chats,
-  dialogs
-}) {
+import { getMlsEngine } from "../crypto/mlsEngine";
+import { getChatId } from "../utils/chat";
+import { playSentSound } from "../utils/notificationSound";
+
+export default function useChat({ username, socketRef, setUnread, chats, dialogs }) {
   const [activeChat, setActiveChat] = useState(null);
   const [text, setTextState] = useState("");
   const [editingMessage, setEditingMessage] = useState(null);
@@ -19,40 +13,26 @@ export default function useChat({
   const typingTimerRef = useRef(null);
   const typingChatRef = useRef(null);
   const sendingRef = useRef(false);
-  useEffect(() => {
-    activeChatRef.current = activeChat;
-  }, [activeChat]);
-  const activeDialog = useMemo(() => {
-    return dialogs?.find(dialog => dialog.chatKey === activeChat || dialog.username === activeChat);
-  }, [dialogs, activeChat]);
+
+  useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
+
+  const activeDialog = useMemo(
+    () => dialogs?.find(dialog => dialog.chatKey === activeChat || dialog.username === activeChat),
+    [dialogs, activeChat]
+  );
   const isGroupChat = activeDialog?.type === "group";
-  function getDialogForChat(target) {
-    return dialogs?.find(item => item.chatKey === target || item.username === target);
-  }
-  function getE2EEChatKey(target) {
-    return getEffectiveE2EEChatKey(target, getDialogForChat(target));
-  }
+  const getDialogForChat = target => dialogs?.find(item => item.chatKey === target || item.username === target);
+
   const stopTyping = useCallback((chat = activeChatRef.current) => {
-    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) {
-      return;
-    }
-    socketRef.current.emit(SOCKET_EVENTS.STOP_TYPING, {
-      to: chat
-    });
+    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) return;
+    socketRef.current.emit(SOCKET_EVENTS.STOP_TYPING, { to: chat });
     typingChatRef.current = null;
-    if (typingTimerRef.current) {
-      clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = null;
-    }
-  }, [
-    socketRef,
-    username
-  ]);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = null;
+  }, [socketRef, username]);
 
   useEffect(() => {
-    window.history.replaceState({
-      liotanScreen: "dialogs"
-    }, "");
+    window.history.replaceState({ liotanScreen: "dialogs" }, "");
     function handleBrowserBack() {
       if (!activeChatRef.current) return;
       stopTyping(activeChatRef.current);
@@ -62,35 +42,25 @@ export default function useChat({
       setTextState("");
     }
     window.addEventListener("popstate", handleBrowserBack);
-    return () => {
-      window.removeEventListener("popstate", handleBrowserBack);
-    };
+    return () => window.removeEventListener("popstate", handleBrowserBack);
   }, [stopTyping]);
+
   function startTyping(chat) {
-    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) {
-      return;
-    }
+    if (!socketRef.current || !chat || chat === username || chat.startsWith?.("group:")) return;
     if (typingChatRef.current !== chat) {
-      socketRef.current.emit(SOCKET_EVENTS.TYPING, {
-        to: chat
-      });
+      socketRef.current.emit(SOCKET_EVENTS.TYPING, { to: chat });
       typingChatRef.current = chat;
     }
-    if (typingTimerRef.current) {
-      clearTimeout(typingTimerRef.current);
-    }
-    typingTimerRef.current = setTimeout(() => {
-      stopTyping(chat);
-    }, 1200);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => stopTyping(chat), 1200);
   }
+
   function setText(value) {
     setTextState(value);
-    if (value.trim().length > 0) {
-      startTyping(activeChat);
-      return;
-    }
-    stopTyping(activeChat);
+    if (value.trim()) startTyping(activeChat);
+    else stopTyping(activeChat);
   }
+
   function openChat(chatKey) {
     if (activeChat === chatKey) return;
     stopTyping(activeChat);
@@ -98,32 +68,26 @@ export default function useChat({
     setEditingMessage(null);
     setReplyMessage(null);
     setTextState("");
-    window.history.pushState({
-      liotanScreen: "chat",
-      chat: chatKey
-    }, "");
-    setUnread(prev => ({
-      ...prev,
-      [chatKey]: 0
-    }));
+    window.history.pushState({ liotanScreen: "chat", chat: chatKey }, "");
+    setUnread(previous => ({ ...previous, [chatKey]: 0 }));
+
+    const dialog = getDialogForChat(chatKey);
+    getMlsEngine().ensureConversation(chatKey, dialog).catch(err => {
+      if (import.meta.env.DEV) console.warn("MLS conversation is not ready", err);
+    });
+
+    // Legacy history remains read-only during migration.
     const socket = socketRef.current;
     if (!socket) return;
-    const dialog = dialogs?.find(item => item.chatKey === chatKey || item.username === chatKey);
     if (dialog?.type === "group") {
-      socket.emit(SOCKET_EVENTS.JOIN_GROUP, {
-        groupId: dialog.groupId
-      });
-      socket.emit(SOCKET_EVENTS.GET_GROUP_CHAT, {
-        groupId: dialog.groupId
-      });
-      return;
+      socket.emit(SOCKET_EVENTS.JOIN_GROUP, { groupId: dialog.groupId });
+      socket.emit(SOCKET_EVENTS.GET_GROUP_CHAT, { groupId: dialog.groupId });
+    } else {
+      socket.emit(SOCKET_EVENTS.JOIN_CHAT, getChatId(username, chatKey));
+      socket.emit(SOCKET_EVENTS.GET_CHAT, { user2: chatKey });
     }
-    const chatId = getChatId(username, chatKey);
-    socket.emit(SOCKET_EVENTS.JOIN_CHAT, chatId);
-    socket.emit(SOCKET_EVENTS.GET_CHAT, {
-      user2: chatKey
-    });
   }
+
   function closeChat() {
     if (!activeChatRef.current) return;
     stopTyping(activeChatRef.current);
@@ -132,123 +96,32 @@ export default function useChat({
     setReplyMessage(null);
     setTextState("");
   }
-  function getConversationParticipants(target) {
-    const dialog = dialogs?.find(item => item.chatKey === target || item.username === target);
-    if (dialog?.type === "group") {
-      const members = Array.isArray(dialog.members) ? dialog.members : Array.isArray(dialog.memberUsers) ? dialog.memberUsers.map(user => user.username) : [];
-      return [...new Set([username, ...members.filter(Boolean)])];
-    }
-    return [...new Set([username, target].filter(Boolean))];
-  }
 
-  function emitWithAck(eventName, payload, timeoutMs = 12000) {
-    const socket = socketRef.current;
-
-    if (!socket || !socket.connected) {
-      return Promise.resolve({ ok: false, error: "socket-disconnected" });
-    }
-
-    return new Promise(resolve => {
-      let done = false;
-      const timer = window.setTimeout(() => {
-        if (done) {
-          return;
-        }
-        done = true;
-        resolve({ ok: false, error: "socket-timeout" });
-      }, timeoutMs);
-
-      socket.emit(eventName, payload, response => {
-        if (done) {
-          return;
-        }
-        done = true;
-        window.clearTimeout(timer);
-        resolve(response || { ok: true });
-      });
-    });
-  }
-
-  async function emitMessage({
-    target,
-    messageText = "",
-    attachment = null
-  }) {
-    if (!socketRef.current || !target) {
-      return false;
-    }
-    const dialog = getDialogForChat(target);
-    const encryptedText = await encryptTextForChat({
-      username,
-      chatKey: getE2EEChatKey(target),
-      participants: getConversationParticipants(target),
-      text: messageText
-    });
-    const encryptedPayload = encryptedTextToTransport(encryptedText);
-    if (dialog?.type === "group") {
-      const result = await emitWithAck(SOCKET_EVENTS.SEND_GROUP_MESSAGE, {
-        groupId: dialog.groupId,
-        text: encryptedPayload.text,
-        encryptedContent: encryptedPayload.encryptedContent,
-        attachment,
-        replyTo: replyMessage ? {
-          messageId: replyMessage._id
-        } : null
-      });
-      return Boolean(result?.ok);
-    }
-
-    const result = await emitWithAck(SOCKET_EVENTS.SEND_MESSAGE, {
-      to: target,
-      text: encryptedPayload.text,
-      encryptedContent: encryptedPayload.encryptedContent,
-      attachment,
-      replyTo: replyMessage ? {
-        messageId: replyMessage._id
-      } : null
-    });
-
-    return Boolean(result?.ok);
-  }
-  async function sendMessage(attachment = null) {
-    if (sendingRef.current) {
-      return false;
-    }
-    if (!socketRef.current || !activeChat) {
-      return false;
-    }
-    const hasText = text.trim().length > 0;
-    const hasAttachment = Boolean(attachment);
-    if (editingMessage && hasText) {
-      const encryptedEditText = await encryptTextForChat({
-        username,
-        chatKey: getE2EEChatKey(activeChat),
-        participants: getConversationParticipants(activeChat),
-        text
-      });
-      const encryptedEditPayload = encryptedTextToTransport(encryptedEditText);
-      socketRef.current.emit(SOCKET_EVENTS.EDIT_MESSAGE, {
-        messageId: editingMessage._id,
-        text: encryptedEditPayload.text,
-        encryptedContent: encryptedEditPayload.encryptedContent
-      });
-      stopTyping(activeChat);
-      setEditingMessage(null);
-      setReplyMessage(null);
-      setTextState("");
-      return true;
-    }
-    if (!hasText && !hasAttachment) {
-      return false;
-    }
+  async function sendMessage(file = null) {
+    if (sendingRef.current || !activeChat) return false;
+    const hasText = Boolean(text.trim());
+    const hasFile = file instanceof File;
+    if (!hasText && !hasFile) return false;
     sendingRef.current = true;
     try {
-      const ok = await emitMessage({
-        target: activeChat,
-        messageText: hasText ? text : "",
-        attachment
-      });
-      if (!ok) return false;
+      if (editingMessage && hasText) {
+        await getMlsEngine().sendControl({
+          chatKey: activeChat,
+          dialog: getDialogForChat(activeChat),
+          kind: "edit",
+          targetMessageId: editingMessage._id,
+          text
+        });
+        setEditingMessage(null);
+      } else {
+        await getMlsEngine().sendMessage({
+          chatKey: activeChat,
+          dialog: getDialogForChat(activeChat),
+          text: hasText ? text : "",
+          file: hasFile ? file : null,
+          replyTo: replyMessage
+        });
+      }
       playSentSound();
       stopTyping(activeChat);
       setReplyMessage(null);
@@ -256,60 +129,27 @@ export default function useChat({
       return true;
     } catch (err) {
       if (import.meta.env.DEV) console.warn(err);
-      alert(err?.message || "Сообщение не отправлено: безопасный ключ недоступен");
+      alert(err?.message || "Сообщение не отправлено: MLS-шифрование недоступно");
       return false;
     } finally {
-      window.setTimeout(() => {
-        sendingRef.current = false;
-      }, 350);
+      window.setTimeout(() => { sendingRef.current = false; }, 350);
     }
-  }
-  function sealEncryptedAttachmentForTransport(attachment, encryptedFile) {
-    if (!attachment || !encryptedFile?.metadata) return attachment;
-    return {
-      ...attachment,
-      e2eeMedia: encryptedFile.metadata,
-      type: "file",
-      mimeType: "application/octet-stream",
-      name: "Liotan encrypted media",
-      size: 0,
-      width: 0,
-      height: 0,
-      duration: 0,
-      waveform: []
-    };
   }
 
   async function sendAttachments(files, caption = "") {
-    if (sendingRef.current) {
-      return false;
-    }
-    if (!socketRef.current || !activeChat || !files?.length) {
-      return false;
-    }
-    const target = activeChat;
+    if (sendingRef.current || !activeChat || !files?.length) return false;
     const safeFiles = Array.from(files).slice(0, 10);
-    const captionText = caption.trim();
-    const captionIndex = safeFiles.length - 1;
+    const target = activeChat;
     sendingRef.current = true;
     try {
-      for (let i = 0; i < safeFiles.length; i += 1) {
-        const encryptedFile = await encryptAttachmentFileForChat({
-          username,
-          chatKey: getE2EEChatKey(target),
-          participants: getConversationParticipants(target),
-          file: safeFiles[i]
+      for (let index = 0; index < safeFiles.length; index += 1) {
+        await getMlsEngine().sendMessage({
+          chatKey: target,
+          dialog: getDialogForChat(target),
+          text: index === safeFiles.length - 1 ? caption.trim() : "",
+          file: safeFiles[index],
+          replyTo: replyMessage
         });
-        const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-        const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
-        const ok = await emitMessage({
-          target,
-          messageText: i === captionIndex ? captionText : "",
-          attachment: sealedAttachment
-        });
-        if (!ok) {
-          return false;
-        }
       }
       stopTyping(target);
       setReplyMessage(null);
@@ -317,70 +157,52 @@ export default function useChat({
       return true;
     } catch (err) {
       if (import.meta.env.DEV) console.warn(err);
-      alert(err?.message || "Не удалось отправить файл");
+      alert(err?.message || "Не удалось безопасно отправить файл");
       return false;
     } finally {
-      window.setTimeout(() => {
-        sendingRef.current = false;
-      }, 350);
+      window.setTimeout(() => { sendingRef.current = false; }, 350);
     }
   }
-  function deleteChat(chat = activeChat, options = {}) {
-    if (!socketRef.current || !chat) return;
-    const dialog = dialogs?.find(item => item.chatKey === chat || item.username === chat);
-    if (dialog?.type === "group") return;
-    stopTyping(chat);
-    socketRef.current.emit(SOCKET_EVENTS.DELETE_CHAT, {
-      user2: chat,
-      forEveryone: options.forEveryone !== false
-    });
-  }
+
   async function sendVoiceMessage(file, duration = 0, waveform = []) {
-    if (!file || !socketRef.current || !activeChat) {
-      return false;
-    }
+    if (!file || !activeChat) return false;
     try {
-      const encryptedFile = await encryptAttachmentFileForChat({
-        username,
-        chatKey: getE2EEChatKey(activeChat),
-        participants: getConversationParticipants(activeChat),
+      const result = await getMlsEngine().sendMessage({
+        chatKey: activeChat,
+        dialog: getDialogForChat(activeChat),
         file,
-        originalTypeOverride: "voice",
-        uploadExtension: ".liotanvoice",
-        privateMetadata: {
-          duration: Number(duration) || 0,
-          waveform: Array.isArray(waveform) ? waveform.slice(0, 64) : []
-        }
+        mediaOptions: {
+          originalTypeOverride: "voice",
+          privateMetadata: {
+            duration: Number(duration) || 0,
+            waveform: Array.isArray(waveform) ? waveform.slice(0, 64) : []
+          }
+        },
+        replyTo: replyMessage
       });
-      const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-      const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
-      return await sendMessage(sealedAttachment);
+      return Boolean(result?.ok);
     } catch (err) {
-      if (import.meta.env.DEV) console.warn(err);
-      alert(err?.message || "Не удалось отправить голосовое сообщение");
+      alert(err?.message || "Не удалось безопасно отправить голосовое сообщение");
       return false;
     }
   }
+
   async function sendAttachment(file) {
-    if (!file || !socketRef.current || !activeChat) {
-      return false;
-    }
+    if (!file || !activeChat) return false;
     try {
-      const encryptedFile = await encryptAttachmentFileForChat({
-        username,
-        chatKey: getE2EEChatKey(activeChat),
-        participants: getConversationParticipants(activeChat),
-        file
+      const result = await getMlsEngine().sendMessage({
+        chatKey: activeChat,
+        dialog: getDialogForChat(activeChat),
+        file,
+        replyTo: replyMessage
       });
-      const attachment = await uploadAttachmentApi(encryptedFile.uploadFile);
-      const sealedAttachment = sealEncryptedAttachmentForTransport(attachment, encryptedFile);
-      return await sendMessage(sealedAttachment);
+      return Boolean(result?.ok);
     } catch (err) {
-      if (import.meta.env.DEV) console.warn(err);
-      alert(err?.message || "Не удалось отправить файл");
+      alert(err?.message || "Не удалось безопасно отправить файл");
       return false;
     }
   }
+
   function startEditMessage(message) {
     if (!message || message.from !== username) return;
     stopTyping(activeChat);
@@ -393,72 +215,60 @@ export default function useChat({
     setEditingMessage(null);
     setReplyMessage(message);
   }
-  function cancelReplyMessage() {
-    setReplyMessage(null);
+  function cancelReplyMessage() { setReplyMessage(null); }
+  function cancelEditMessage() { stopTyping(activeChat); setEditingMessage(null); setTextState(""); }
+
+  function sendControl(kind, message, textValue = "") {
+    if (!activeChat || !message?._id) return;
+    getMlsEngine().sendControl({
+      chatKey: activeChat,
+      dialog: getDialogForChat(activeChat),
+      kind,
+      targetMessageId: message._id,
+      text: textValue
+    }).catch(err => alert(err?.message || "Защищённое действие не отправлено"));
   }
-  function cancelEditMessage() {
-    stopTyping(activeChat);
-    setEditingMessage(null);
-    setTextState("");
-  }
-  function pinMessage(message) {
-    if (!socketRef.current || !message?._id) {
-      return;
-    }
-    socketRef.current.emit(SOCKET_EVENTS.PIN_MESSAGE, {
-      messageId: message._id
-    });
-  }
+  function pinMessage(message) { sendControl("pin", message); }
   function deleteMessage(message, options = {}) {
-    if (!socketRef.current || !message) {
+    if (!message?._id) return;
+    if (message.from === username && options.forEveryone) {
+      sendControl("delete", message);
       return;
     }
-    socketRef.current.emit(SOCKET_EVENTS.DELETE_MESSAGE, {
-      messageId: message._id,
-      forEveryone: Boolean(options.forEveryone)
-    });
+    window.dispatchEvent(new CustomEvent("liotan:mls-event", {
+      detail: { type: "delete", chatId, messageId: message._id, localOnly: true }
+    }));
   }
-  function handleKey(e) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+
+  function deleteChat(chat = activeChat, options = {}) {
+    if (!socketRef.current || !chat) return;
+    const dialog = getDialogForChat(chat);
+    if (dialog?.type === "group") return;
+    stopTyping(chat);
+    // This deletes only legacy server history. MLS peers may retain authenticated copies.
+    socketRef.current.emit(SOCKET_EVENTS.DELETE_CHAT, { user2: chat, forEveryone: options.forEveryone !== false });
+  }
+
+  function handleKey(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       sendMessage();
-    }
-    if (e.key === "Escape" && editingMessage) {
-      e.preventDefault();
-      cancelEditMessage();
-    }
-    if (e.key === "Escape" && replyMessage) {
-      e.preventDefault();
-      cancelReplyMessage();
+    } else if (event.key === "Escape" && editingMessage) {
+      event.preventDefault(); cancelEditMessage();
+    } else if (event.key === "Escape" && replyMessage) {
+      event.preventDefault(); cancelReplyMessage();
     }
   }
-  const chatId = activeChat ? isGroupChat ? activeChat : getChatId(username, activeChat) : null;
-  const messages = useMemo(() => {
-    return chats[chatId] || [];
-  }, [chats, chatId]);
+
+  const chatId = activeChat ? (isGroupChat ? activeChat : getChatId(username, activeChat)) : null;
+  const messages = useMemo(() => chats[chatId] || [], [chats, chatId]);
+
   return {
-    activeChat,
-    setActiveChat,
-    closeChat,
-    text,
-    setText,
-    editingMessage,
-    startEditMessage,
-    cancelEditMessage,
-    replyMessage,
-    startReplyMessage,
-    cancelReplyMessage,
-    deleteMessage,
-    pinMessage,
-    deleteChat,
-    chatId,
-    messages,
-    activeDialog,
-    openChat,
-    sendMessage,
-    sendAttachment,
-    sendAttachments,
-    sendVoiceMessage,
-    handleKey
+    activeChat, setActiveChat, closeChat, text, setText,
+    editingMessage, startEditMessage, cancelEditMessage,
+    replyMessage, startReplyMessage, cancelReplyMessage,
+    deleteMessage, pinMessage, deleteChat,
+    chatId, messages, activeDialog, openChat,
+    sendMessage, sendAttachment, sendAttachments, sendVoiceMessage, handleKey
   };
 }

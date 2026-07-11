@@ -30,6 +30,12 @@ router.post(
   noStoreHeaders,
   async (req, res, next) => {
     try {
+      if (!realtimeFeatures.calls.enabled) {
+        return res.status(503).json({
+          ok: false,
+          error: "calls disabled until MLS-authenticated call E2EE is audited"
+        });
+      }
       const username =
         String(req.body?.username || "")
           .trim();

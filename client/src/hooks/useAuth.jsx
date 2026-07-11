@@ -16,14 +16,6 @@ import {
 } from "../services/api";
 
 import {
-  initE2EEAccountIdentity
-} from "../utils/e2ee";
-
-import {
-  devWarn
-} from "../utils/devLogger";
-
-import {
   clearApiRequestMemory,
   setApiAuthToken
 } from "../utils/apiRequest";
@@ -31,6 +23,7 @@ import {
 import {
   resetAppBootstrapGuard
 } from "./app/useAppInitialization";
+import { resetMlsEngine } from "../crypto/mlsEngine";
 
 export default function useAuth({
   showToast
@@ -70,6 +63,7 @@ export default function useAuth({
 
   useEffect(() => {
     function handleExpiredSession() {
+      resetMlsEngine();
       clearApiRequestMemory();
       resetAppBootstrapGuard();
       setApiAuthToken("");
@@ -132,18 +126,6 @@ export default function useAuth({
       cancelled = true;
     };
   }, []);
-
-  async function initializeE2EEAfterAuth({
-    username: nextUsername
-  }) {
-    try {
-      await initE2EEAccountIdentity({
-        username: nextUsername
-      });
-    } catch (err) {
-      devWarn("E2EE identity init failed after auth", err);
-    }
-  }
 
   async function saveSession(data) {
     clearApiRequestMemory();
@@ -238,10 +220,6 @@ export default function useAuth({
         );
 
       await saveSession(data);
-
-      await initializeE2EEAfterAuth({
-        username: data.username
-      });
 
       return { ok: true };
     } catch (err) {
@@ -357,10 +335,6 @@ export default function useAuth({
 
       await saveSession(data);
 
-      await initializeE2EEAfterAuth({
-        username: data.username
-      });
-
       showToast("Registered");
       return true;
     } catch (err) {
@@ -413,6 +387,7 @@ export default function useAuth({
   }
 
   function clearSession(socketRef) {
+    resetMlsEngine();
     if (socketRef?.current) {
       socketRef.current.disconnect();
       socketRef.current = null;

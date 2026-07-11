@@ -110,19 +110,6 @@ async function exportPublicKey(key) {
   return crypto.subtle.exportKey("jwk", key);
 }
 
-async function importPrivateKey(jwk, extractable = false) {
-  return crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {
-      name: "ECDH",
-      namedCurve: "P-256"
-    },
-    extractable,
-    ["deriveKey", "deriveBits"]
-  );
-}
-
 async function importPublicKey(jwk) {
   return crypto.subtle.importKey(
     "jwk",
@@ -158,37 +145,10 @@ async function createPair() {
   return stored;
 }
 
-async function loadLegacyPair() {
+function discardLegacyPair() {
   try {
-    const raw = localStorage.getItem(LEGACY_DEVICE_KEY_PAIR_KEY);
-    if (!raw) {
-      return null;
-    }
-
-    const parsed = JSON.parse(raw);
-
-    if (parsed?.publicKey?.kty !== "EC" || parsed?.privateKey?.kty !== "EC") {
-      return null;
-    }
-
-    const privateKey = await importPrivateKey(parsed.privateKey, false);
-    const stored = {
-      publicKey: parsed.publicKey,
-      privateKey,
-      createdAt: parsed.createdAt || new Date().toISOString(),
-      migratedAt: new Date().toISOString()
-    };
-
-    await idbSet(DEVICE_KEY_PAIR_KEY, stored);
     localStorage.removeItem(LEGACY_DEVICE_KEY_PAIR_KEY);
-
-    return stored;
-  } catch {
-    try {
-      localStorage.removeItem(LEGACY_DEVICE_KEY_PAIR_KEY);
-    } catch {}
-    return null;
-  }
+  } catch {}
 }
 
 async function getStoredPair() {
@@ -198,7 +158,8 @@ async function getStoredPair() {
     return stored;
   }
 
-  return loadLegacyPair();
+  discardLegacyPair();
+  return null;
 }
 
 export async function getDevicePublicKey() {

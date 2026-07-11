@@ -147,7 +147,20 @@ export default function ChatHeader({
     onlineUsers?.includes(activeChat);
 
   function renderedLockButton() {
-    return null;
+    return (
+      <button
+        type="button"
+        className="chat-e2ee-button is-enabled"
+        aria-label="Показать MLS safety number"
+        title="MLS E2EE · показать safety number"
+        onClick={event => {
+          event.stopPropagation();
+          onE2EESettings?.();
+        }}
+      >
+        🔒
+      </button>
+    );
   }
 
   return (

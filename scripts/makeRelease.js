@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require("fs");
+const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
@@ -9,6 +10,7 @@ const rootPackage = require(path.join(root, "package.json"));
 const version = String(rootPackage.version || "dev");
 const outDir = path.join(root, "release");
 const outFile = path.join(outDir, `Liotan-${version}-clean.zip`);
+const checksumFile = `${outFile}.sha256`;
 const tmpDir = path.join(os.tmpdir(), `liotan-release-${process.pid}-${Date.now()}`);
 const stagedRoot = path.join(tmpDir, "Liotan");
 const rootReal = fs.realpathSync.native(root);
@@ -22,6 +24,8 @@ const EXCLUDED_NAMES = new Set([
   "release",
   "README.md",
   "coverage",
+  "test-results",
+  "playwright-report",
   ".cache",
   "cache",
   ".DS_Store",
@@ -169,14 +173,18 @@ async function main() {
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
   if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
+  if (fs.existsSync(checksumFile)) fs.unlinkSync(checksumFile);
 
   copyDirectory(rootReal, stagedRoot);
   await createZip();
+  const digest = crypto.createHash("sha256").update(fs.readFileSync(outFile)).digest("hex").toUpperCase();
+  fs.writeFileSync(checksumFile, `${digest}  ${path.basename(outFile)}\n`, "utf8");
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
   const sizeMb = (fs.statSync(outFile).size / 1024 / 1024).toFixed(2);
   console.log(`Release archive created: ${outFile}`);
   console.log(`Size: ${sizeMb} MB`);
+  console.log(`SHA-256: ${digest}`);
   console.log("Excluded: .env*, .git, node_modules, build, dist, release, logs, cache, coverage, zip archives, README.md");
 }
 

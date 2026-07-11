@@ -1,0 +1,25 @@
+"use strict";
+
+const { defineConfig } = require("@playwright/test");
+
+module.exports = defineConfig({
+  testDir: "./client/test/browser",
+  testMatch: "**/*.spec.js",
+  fullyParallel: false,
+  workers: 1,
+  retries: process.env.CI ? 1 : 0,
+  timeout: 90_000,
+  reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
+  use: {
+    baseURL: "http://127.0.0.1:4174",
+    browserName: "chromium",
+    headless: true,
+    trace: "retain-on-failure"
+  },
+  webServer: {
+    command: "npm run dev --prefix client -- --host 127.0.0.1 --port 4174 --strictPort",
+    url: "http://127.0.0.1:4174/test/browser/fixture.html",
+    reuseExistingServer: false,
+    timeout: 120_000
+  }
+});

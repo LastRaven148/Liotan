@@ -25,10 +25,12 @@ const CONNECT_SOURCES = [
   "wss://tunnel.liotan.com",
   "wss://api-tunnel.liotan.com",
 
-  "http://localhost:*",
-  "http://127.0.0.1:*",
-  "ws://localhost:*",
-  "ws://127.0.0.1:*",
+  ...(process.env.NODE_ENV === "production" ? [] : [
+    "http://localhost:*",
+    "http://127.0.0.1:*",
+    "ws://localhost:*",
+    "ws://127.0.0.1:*",
+  ]),
 ];
 
 const MEDIA_SOURCES = [
@@ -58,11 +60,12 @@ const contentSecurityPolicyDirectives = {
   mediaSrc: MEDIA_SOURCES,
   connectSrc: CONNECT_SOURCES,
 
-  scriptSrc: ["'self'"],
+  scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
   scriptSrcAttr: ["'none'"],
-  styleSrc: ["'self'", "'unsafe-inline'"],
+  styleSrc: ["'self'"],
+  styleSrcAttr: ["'unsafe-inline'"],
   fontSrc: ["'self'", "data:"],
-  workerSrc: ["'self'", "blob:"],
+  workerSrc: ["'self'"],
   formAction: ["'self'"],
 
   upgradeInsecureRequests: [],

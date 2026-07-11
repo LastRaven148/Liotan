@@ -1,11 +1,15 @@
 {
   "name": "client",
-  "version": "49.4.10",
+  "version": "50.1.0",
+  "license": "GPL-3.0-only",
   "private": true,
   "dependencies": {
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "socket.io-client": "^4.8.3"
+    "@noble/ed25519": "3.0.0",
+    "@noble/hashes": "2.0.1",
+    "@wireapp/core-crypto": "10.0.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "socket.io-client": "4.8.3"
   },
   "scripts": {
     "start": "vite --host 0.0.0.0",
@@ -14,8 +18,8 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.2",
-    "vite": "^7.3.6"
+    "@vitejs/plugin-react": "5.1.2",
+    "vite": "7.3.6"
   },
   "engines": {
     "node": "22.x",

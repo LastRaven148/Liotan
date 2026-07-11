@@ -22,7 +22,8 @@ export default function useOfflineMedia({
   attachment,
   remoteUrl,
   shouldAutoCache,
-  decryptBlob
+  decryptBlob,
+  downloadBlob
 }) {
   const [localUrl, setLocalUrl] =
     useState("");
@@ -89,7 +90,7 @@ export default function useOfflineMedia({
     options = {}
   ) => {
     if (
-      !remoteUrl ||
+      (!remoteUrl && !downloadBlob) ||
       !mediaKey ||
       savingOffline
     ) {
@@ -99,17 +100,12 @@ export default function useOfflineMedia({
     try {
       setSavingOffline(true);
 
-      const response =
-        await fetch(remoteUrl, {
-          credentials: "include"
-        });
-
-      if (!response.ok) {
-        throw new Error("Media request failed");
-      }
-
-      const remoteBlob =
-        await response.blob();
+      const remoteBlob = downloadBlob
+        ? await downloadBlob()
+        : await fetch(remoteUrl, { credentials: "include" }).then(response => {
+            if (!response.ok) throw new Error("Media request failed");
+            return response.blob();
+          });
 
       const displayBlob = decryptBlob
         ? await decryptBlob(remoteBlob)
@@ -138,7 +134,8 @@ export default function useOfflineMedia({
     remoteUrl,
     mediaKey,
     savingOffline,
-    decryptBlob
+    decryptBlob,
+    downloadBlob
   ]);
 
   useEffect(() => {

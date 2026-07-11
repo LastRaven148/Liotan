@@ -21,9 +21,12 @@ function registerGroupHandlers({
     socket
   });
 
-  registerSendGroupMessage({
-    io,
-    socket
+  socket.on("sendGroupMessage", (_data, ack) => {
+    if (typeof ack === "function") ack({
+      ok: false,
+      error: "mls-v4-required",
+      protocol: "mls-1.0"
+    });
   });
 
 }

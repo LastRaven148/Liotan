@@ -43,6 +43,31 @@ const attachmentUploadSchema = new mongoose.Schema(
       default: false,
       index: true
     },
+    protocol: {
+      type: String,
+      enum: ["legacy-v3", "mls-media-1"],
+      default: "legacy-v3",
+      index: true
+    },
+    cryptoConversationId: {
+      type: String,
+      default: "",
+      index: true
+    },
+    cryptoClientId: {
+      type: String,
+      default: "",
+      index: true
+    },
+    bindingId: {
+      type: String,
+      default: "",
+      index: true
+    },
+    ciphertextHash: {
+      type: String,
+      default: ""
+    },
     width: {
       type: Number,
       default: 0
@@ -77,6 +102,11 @@ const attachmentUploadSchema = new mongoose.Schema(
   {
     timestamps: true
   }
+);
+
+attachmentUploadSchema.index(
+  { cryptoConversationId: 1, bindingId: 1 },
+  { unique: true, partialFilterExpression: { protocol: "mls-media-1" } }
 );
 
 module.exports = mongoose.model("AttachmentUpload", attachmentUploadSchema);

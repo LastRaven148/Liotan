@@ -23,6 +23,7 @@ const {
 const logger = require("../utils/logger");
 const privacy = require("../config/privacy");
 const { getCallRoom } = require("../utils/callPrivacy");
+const realtimeFeatures = require("../config/realtimeFeatures");
 
 const {
   isSessionActive,
@@ -170,10 +171,9 @@ function setupSocket(io) {
       socket
     });
 
-    registerCallHandlers({
-      io,
-      socket
-    });
+    if (realtimeFeatures.calls.enabled) {
+      registerCallHandlers({ io, socket });
+    }
 
     socket.on("disconnect", () => {
       clearInterval(authorizationTimer);

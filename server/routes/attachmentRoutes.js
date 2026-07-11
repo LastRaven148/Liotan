@@ -32,8 +32,10 @@ router.post(
   "/attachments/upload",
   authMiddleware,
   uploadLimiter,
-  attachmentUpload.single("attachment"),
-  uploadAttachment
+  (_req, res) => res.status(410).json({
+    error: "legacy media upload disabled; signed MLS media upload required",
+    endpoint: "/crypto/v4/media/upload"
+  })
 );
 
 router.get(

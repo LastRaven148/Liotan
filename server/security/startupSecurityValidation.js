@@ -24,6 +24,20 @@ function validateStartupSecurity(env, logger = console) {
   const findings = [];
 
   if (env.NODE_ENV === "production") {
+    if (process.env.AUTH_COOKIE_DOMAIN || process.env.COOKIE_DOMAIN) {
+      findings.push({
+        severity: "critical",
+        code: "domain_cookie_forbidden",
+        message: "Use a host-only __Host- auth cookie; remove AUTH_COOKIE_DOMAIN and COOKIE_DOMAIN."
+      });
+    }
+    if (!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/i.test(String(process.env.LIOTAN_CRYPTO_DOMAIN || ""))) {
+      findings.push({
+        severity: "critical",
+        code: "mls_crypto_domain_required",
+        message: "LIOTAN_CRYPTO_DOMAIN must be a stable production domain used in MLS ClientIds."
+      });
+    }
     if (looksLikeWeakSecret(env.JWT_SECRET)) {
       findings.push({
         severity: "critical",

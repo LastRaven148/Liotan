@@ -6,8 +6,9 @@ const MAX_PHOTO_SIZE = Number(process.env.MAX_PHOTO_SIZE_BYTES) || 10 * MB;
 const MAX_VIDEO_SIZE = Number(process.env.MAX_VIDEO_SIZE_BYTES) || 100 * MB;
 const MAX_AUDIO_SIZE = Number(process.env.MAX_AUDIO_SIZE_BYTES) || 50 * MB;
 const MAX_FILE_SIZE = Number(process.env.MAX_FILE_SIZE_BYTES) || 100 * MB;
+const MAX_ENCRYPTED_MEDIA_SIZE = Number(process.env.MAX_ENCRYPTED_MEDIA_SIZE_BYTES) || MAX_FILE_SIZE + 2 * MB;
 const MAX_AVATAR_SIZE = Number(process.env.MAX_AVATAR_SIZE_BYTES) || 5 * MB;
-const MAX_ATTACHMENT_SIZE = Math.max(MAX_PHOTO_SIZE, MAX_VIDEO_SIZE, MAX_AUDIO_SIZE, MAX_FILE_SIZE);
+const MAX_ATTACHMENT_SIZE = Math.max(MAX_PHOTO_SIZE, MAX_VIDEO_SIZE, MAX_AUDIO_SIZE, MAX_FILE_SIZE, MAX_ENCRYPTED_MEDIA_SIZE);
 
 const IMAGE_MIME_BY_EXT = {
   ".jpg": ["image/jpeg"],
@@ -97,7 +98,8 @@ function getMaxSizeByKind(kind) {
   if (kind === "photo") return MAX_PHOTO_SIZE;
   if (kind === "video") return MAX_VIDEO_SIZE;
   if (kind === "audio") return MAX_AUDIO_SIZE;
-  if (kind === "file" || kind === "encrypted") return MAX_FILE_SIZE;
+  if (kind === "encrypted") return MAX_ENCRYPTED_MEDIA_SIZE;
+  if (kind === "file") return MAX_FILE_SIZE;
   return 0;
 }
 
@@ -206,6 +208,7 @@ module.exports = {
   MAX_VIDEO_SIZE,
   MAX_AUDIO_SIZE,
   MAX_FILE_SIZE,
+  MAX_ENCRYPTED_MEDIA_SIZE,
   MAX_AVATAR_SIZE,
   normalizeMime,
   hasBlockedExtension,

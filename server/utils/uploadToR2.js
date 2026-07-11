@@ -125,7 +125,7 @@ function getRequestBody(file, method) {
   return Buffer.alloc(0);
 }
 
-function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "", storageClass = "private-media" }) {
+function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "", storageClass = "private-media", responseTarget = null, onResponse = null }) {
   const config = getR2Config(storageClass);
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
@@ -190,6 +190,20 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
         authorization
       }
     }, res => {
+      if (res.statusCode >= 200 && res.statusCode < 300 && responseTarget) {
+        try {
+          onResponse?.({ statusCode: res.statusCode, headers: res.headers });
+        } catch (err) {
+          res.destroy(err);
+          reject(err);
+          return;
+        }
+        res.on("error", err => responseTarget.destroy(err));
+        responseTarget.on("error", reject);
+        responseTarget.on("finish", () => resolve({ statusCode: res.statusCode, headers: res.headers }));
+        res.pipe(responseTarget);
+        return;
+      }
       const chunks = [];
       res.on("data", chunk => chunks.push(chunk));
       res.on("end", () => {
@@ -273,6 +287,22 @@ async function getFromR2(key, options = {}) {
   }
 
   return requestR2({ method: "GET", key, range: options.range || "", storageClass: options.storageClass || "private-media" });
+}
+
+async function streamFromR2(key, responseTarget, options = {}) {
+  if (!key || !responseTarget) {
+    const err = new Error("R2 streaming target and key are required");
+    err.status = 404;
+    throw err;
+  }
+  return requestR2({
+    method: "GET",
+    key,
+    range: options.range || "",
+    storageClass: options.storageClass || "private-media",
+    responseTarget,
+    onResponse: options.onResponse
+  });
 }
 
 async function deleteFromR2(key, options = {}) {
@@ -362,6 +392,7 @@ async function deleteR2Prefix(prefix, options = {}) {
 module.exports = {
   uploadToR2,
   getFromR2,
+  streamFromR2,
   deleteFromR2,
   listR2Objects,
   deleteR2Prefix,

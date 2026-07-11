@@ -1,0 +1,45 @@
+# Generate every secret independently. Never commit real values.
+NODE_ENV=production
+HOST=127.0.0.1
+PORT=3001
+TRUST_PROXY_HOPS=1
+LIOTAN_ENFORCE_PROXY_PROTO=true
+LIOTAN_ALLOW_PUBLIC_BIND=false
+
+# Immutable after the first MLS device is registered.
+LIOTAN_CRYPTO_DOMAIN=crypto.liotan.com
+
+# MongoDB must be a replica set. Use TLS and a least-privilege database user.
+MONGO_URI=mongodb+srv://USER:PASSWORD@CLUSTER/liotan?retryWrites=true&w=majority
+
+# Generate separately, at least 48 random bytes each.
+JWT_SECRET=REPLACE_WITH_INDEPENDENT_RANDOM_SECRET
+SECURITY_ENCRYPTION_SECRET=REPLACE_WITH_ANOTHER_INDEPENDENT_RANDOM_SECRET
+PRIVACY_HASH_SECRET=REPLACE_WITH_A_THIRD_INDEPENDENT_RANDOM_SECRET
+
+CLIENT_URL=https://liotan.com
+PUBLIC_CLIENT_URL=https://liotan.com
+PUBLIC_API_URL=https://api.liotan.com
+ALLOWED_ORIGINS=https://liotan.com,https://www.liotan.com,https://liotan.ru,https://www.liotan.ru
+API_ALLOWED_HOSTS=api.liotan.com,api.liotan.ru
+# Leave unset for a host-only __Host-style deployment on each API zone.
+AUTH_COOKIE_DOMAIN=
+
+# Private encrypted media. No r2.dev URL and no public custom domain.
+R2_MEDIA_ACCOUNT_ID=REPLACE
+R2_MEDIA_ACCESS_KEY_ID=REPLACE_BUCKET_SCOPED_TOKEN
+R2_MEDIA_SECRET_ACCESS_KEY=REPLACE
+R2_MEDIA_BUCKET=liotan-private-media
+
+# Public avatars: different bucket and different credentials.
+R2_AVATAR_ACCOUNT_ID=REPLACE
+R2_AVATAR_ACCESS_KEY_ID=REPLACE_DIFFERENT_BUCKET_SCOPED_TOKEN
+R2_AVATAR_SECRET_ACCESS_KEY=REPLACE
+R2_AVATAR_BUCKET=liotan-public-avatars
+R2_AVATAR_PUBLIC_URL=https://avatars.liotan.com
+
+MAX_GROUP_MEMBERS=100
+MAX_FILE_SIZE_BYTES=104857600
+MAX_ENCRYPTED_MEDIA_SIZE_BYTES=106954752
+SOCKET_AUTH_RECHECK_MS=15000
+RECENT_AUTH_WINDOW_MINUTES=15

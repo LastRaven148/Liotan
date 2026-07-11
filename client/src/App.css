@@ -17,3 +17,13 @@
   min-height: 100vh;
   background: #0e1621;
 }
+/* Crypto vault gate is deliberately self-contained so the messenger never
+   appears interactive before MLS and the encrypted database are ready. */
+.crypto-gate{min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top,#1d3147 0,#0d1722 52%,#080e15 100%);color:#f5f8fb}
+.crypto-gate-card{width:min(100%,520px);display:flex;flex-direction:column;gap:16px;padding:30px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:rgba(12,22,33,.94);box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.crypto-gate-card h1,.crypto-gate-card p{margin:0}.crypto-gate-card p{color:#b9c6d3;line-height:1.55}
+.crypto-gate-badge{align-self:flex-start;padding:6px 10px;border-radius:999px;background:#183d37;color:#8ff2d7;font-size:12px;font-weight:700;letter-spacing:.08em}
+.crypto-gate-input,.crypto-gate-recovery{box-sizing:border-box;width:100%;padding:14px;border:1px solid #34495e;border-radius:12px;background:#08111a;color:#f5f8fb;font:14px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+.crypto-gate-recovery{display:block;user-select:all;line-height:1.55}
+.crypto-gate-primary,.crypto-gate-secondary{min-height:44px;border:0;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}.crypto-gate-primary{background:#2a8f79;color:white}.crypto-gate-secondary{background:#233445;color:#e8f0f7}.crypto-gate-primary:disabled{cursor:not-allowed;opacity:.45}
+.crypto-gate-confirm{display:flex;align-items:center;gap:10px;color:#d7e0e8}.crypto-gate-error{padding:12px;border-radius:10px;background:#49202a;color:#ffbdc9}

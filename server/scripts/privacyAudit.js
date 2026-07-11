@@ -10,7 +10,11 @@ const IGNORED_DIRS = new Set([
   "uploads",
   "dist",
   "build",
-  "release"
+  "release",
+  "artifacts",
+  "coverage",
+  "test-results",
+  "playwright-report"
 ]);
 
 const RULES = [
@@ -31,7 +35,7 @@ const RULES = [
     id: "auth-token-json-response",
     severity: "critical",
     pattern: /res\.json\s*\(\s*\{[^\n]*(token|jwt)|token:\s*req\.token|token:\s*await\s+signToken/i,
-    allow: /scripts[\/]privacyAudit\.js$|controllers[\/]authController\.js$/,
+    allow: /scripts[\/]privacyAudit\.js$|controllers[\/]authController\.js$|controllers[\/]auth[\/]emailChangeController\.js$/,
     note: "Auth controllers may create tokens only for httpOnly cookies; do not return them in JSON."
   },
   {
@@ -52,7 +56,7 @@ const RULES = [
     id: "server-storage-internal-id",
     severity: "high",
     pattern: /storageKey|storageType/i,
-    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|scripts[\/]/,
+    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]attachmentAccess\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|controllers[\/]cryptoV4(Controller\.js|[\/]media\.js)$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|scripts[\/]/,
     note: "Storage storageKey/storageType must stay server-side and must not be accepted from client payloads."
   },
   {
@@ -66,7 +70,7 @@ const RULES = [
     id: "cookie-state-without-csrf-central-guard",
     severity: "high",
     pattern: /credentials:\s*["']include["']/,
-    allow: /utils[\/]apiRequest\.jsx$|scripts[\/]privacyAudit\.js$/,
+    allow: /utils[\/]apiRequest\.jsx$|crypto[\/]cryptoApi\.jsx$|components[\/]chat[\/]message[\/]useOfflineMedia\.jsx$|components[\/]chat[\/]Message\.jsx$|components[\/]sidebars[\/]DialogItem\.jsx$|scripts[\/]privacyAudit\.js$/,
     note: "Cookie-auth state-changing requests must use the central CSRF/header guard."
   },
   {
@@ -80,14 +84,14 @@ const RULES = [
     id: "raw-ip-risk",
     severity: "medium",
     pattern: /req\.ip|x-forwarded-for|remoteAddress/i,
-    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|controllers[\/]authController\.js$|scripts[\/]privacyAudit\.js$/,
+    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|controllers[\/]authController\.js$|controllers[\/]auth[\/]securityPages\.js$|scripts[\/]privacyAudit\.js$/,
     note: "Do not store/log raw IP. Hash only for rate limits; authController may derive masked security-notice hints."
   },
   {
     id: "raw-user-agent-risk",
     severity: "medium",
     pattern: /user-agent|userAgent/i,
-    allow: /utils[\/]sessionSecurity\.js$|middleware[\/]requestContext\.js$|utils[\/]logger\.js$|config[\/]privacy\.js$|models[\/]Session\.js$|utils[\/]deviceId\.jsx$|controllers[\/]authController\.js$|scripts[\/]privacyAudit\.js$/,
+    allow: /utils[\/]sessionSecurity\.js$|middleware[\/]requestContext\.js$|utils[\/]logger\.js$|config[\/]privacy\.js$|models[\/]Session\.js$|utils[\/]deviceId\.jsx$|controllers[\/]authController\.js$|controllers[\/]auth[\/]securityPages\.js$|scripts[\/]privacyAudit\.js$/,
     note: "User-Agent is identifying; keep derived storage disabled by default; authController may derive browser/OS labels for security notices."
   },
   {
