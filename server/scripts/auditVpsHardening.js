@@ -71,6 +71,10 @@ function main() {
     ["application/wasm", "WASM MIME smoke test is missing."],
     ["rollback", "Atomic rollback is missing."],
     ["shared/server.env", "Shared environment preservation is missing."],
+    ["wait_for_health", "Explicit backend health wait loop is missing."],
+    ["while (( SECONDS < deadline ))", "Backend health wait must have an explicit deadline."],
+    ["--max-time 5", "Each backend health request must have a bounded timeout."],
+    ["pm2 pid \"$process_name\"", "Backend health wait must detect an exited PM2 process."],
     ["shared/uploads", "Shared uploads preservation is missing."]
   ]) {
     mustInclude(findings, "server/deploy/install-release.sh", deployScript, token, "high", message);

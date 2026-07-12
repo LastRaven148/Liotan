@@ -85,6 +85,32 @@ restart_pm2() {
   pm2 save || return 1
 }
 
+wait_for_health() {
+  local timeout_seconds=90
+  local retry_delay=2
+  local deadline=$((SECONDS + timeout_seconds))
+  local pid=""
+
+  while (( SECONDS < deadline )); do
+    if curl --fail --silent --max-time 5 "$health_url" >/dev/null; then
+      return 0
+    fi
+
+    pid=$(pm2 pid "$process_name" 2>/dev/null | tail -n 1 | tr -d '[:space:]')
+    if [[ ! "$pid" =~ ^[1-9][0-9]*$ ]]; then
+      echo "PM2 process $process_name exited before the health endpoint became ready" >&2
+      pm2 describe "$process_name" >&2 || true
+      return 1
+    fi
+
+    sleep "$retry_delay"
+  done
+
+  echo "health endpoint did not become ready within ${timeout_seconds}s: $health_url" >&2
+  pm2 describe "$process_name" >&2 || true
+  return 1
+}
+
 frontend_smoke() {
   local response_index="$tmp_dir/index.html"
   local js_headers="$tmp_dir/js.headers"
@@ -116,7 +142,7 @@ ln -s "$release" "$deploy_root/current.next"
 mv -Tf "$deploy_root/current.next" "$current"
 
 if ! restart_pm2 \
-  || ! curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 2 "$health_url" >/dev/null \
+  || ! wait_for_health \
   || ! frontend_smoke; then
   rollback
   echo "deployment failed; backend and frontend were rolled back to the previous revision" >&2
