@@ -17,8 +17,8 @@ module.exports = defineConfig({
     trace: "retain-on-failure"
   },
   webServer: {
-    command: "npm run dev --prefix client -- --host 127.0.0.1 --port 4174 --strictPort",
-    url: "http://127.0.0.1:4174/test/browser/fixture.html",
+    command: "node scripts/serveProductionBrowserTests.js",
+    url: "http://127.0.0.1:4174/test/production/fixture.html",
     reuseExistingServer: false,
     timeout: 120_000
   }

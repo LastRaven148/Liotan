@@ -26,6 +26,24 @@ assert.match(e2ee, /Replayed E2EE envelope rejected/);
 assert.match(e2ee, /conversationId: meta\.kid/);
 assert.match(e2ee, /isExpectedConversation/);
 assert.doesNotMatch(e2ee, /deriveBackupKey|encryptIdentityBackup|decryptIdentityBackup/);
+assert.doesNotMatch(e2ee, /getE2EEConversationKeyApi|getE2EEIdentitiesApi/);
+
+const clientApi = read("client/src/services/api.jsx");
+assert.doesNotMatch(clientApi, /\/e2ee\/(identity(?:-backup)?|conversations\/[^`"']+\/key)/,
+  "client must not contain legacy E2EE identity/private-key delivery calls");
+const currentCryptoClient = [
+  "client/src/crypto/cryptoApi.jsx",
+  "client/src/crypto/mlsEngine.jsx",
+  "client/src/crypto/mls/identity.jsx",
+  "client/src/crypto/mls/media.jsx"
+].map(read).join("\n");
+assert.match(currentCryptoClient, /\/crypto\/v4\//, "client must use the MLS v4 API");
+const legacyRoutes = read("server/routes/e2eeRoutes.js");
+for (const endpoint of ["/e2ee/identity", "/e2ee/identity-backup", "/e2ee/conversations/:conversationId/key"]) {
+  const route = legacyRoutes.slice(legacyRoutes.indexOf(`\"${endpoint}\"`));
+  assert(route.indexOf("legacyWriteGone") >= 0 && route.indexOf("legacyWriteGone") < route.indexOf(");"),
+    `${endpoint} must remain permanently gone`);
+}
 
 const validV3 = normalizeEncryptedContent({
   ciphertext: "ciphertext",
@@ -101,6 +119,26 @@ const mlsClient = ["mlsEngine.jsx", "mls/constants.jsx", "mls/envelope.jsx", "ml
 assert.match(mlsClient, /Mls128Dhkemx25519Aes128gcmSha256Ed25519/);
 assert.match(mlsClient, /Safety number changed/);
 assert.match(mlsClient, /assertEnvelopeSchema/);
+assert.match(mlsClient, /initializeCoreCryptoRuntime/);
+assert.doesNotMatch(read("client/src/crypto/mlsEngine.jsx"), /initWasmModule/);
+assert.match(read("client/src/crypto/coreCryptoRuntime.jsx"), /runtimePromise/);
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /latestBootstrap\.device/);
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /reprovisionMlsDevice/);
+assert.doesNotMatch(read("client/src/crypto/CryptoGate.jsx"), /window\.location\.reload/);
+const transitionGate = read("client/src/crypto/SecureTransitionGate.jsx");
+for (const status of ["checking-session", "opening-storage", "preparing-messages", "closing-session"]) {
+  assert.match(transitionGate, new RegExp(status));
+}
+const useChat = read("client/src/hooks/useChat.jsx");
+assert.match(useChat, /getMlsEngine\(\)\.sendMessage/);
+assert.doesNotMatch(useChat, /socketRef\.current\.emit\([^\n]*(SEND_MESSAGE|sendMessage)/i,
+  "message send must never fall back to plaintext Socket.IO");
+const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })
+  .filter(entry => entry.isFile() && /\.(?:js|jsx|html)$/.test(entry.name))
+  .map(entry => read(path.relative(root, path.join(entry.parentPath, entry.name))))
+  .join("\n");
+assert.doesNotMatch(clientSources, /static\.cloudflareinsights\.com|beacon\.min\.js/,
+  "Cloudflare Insights beacon must not be injected by source code");
 assert.match(read("server/sockets/handlers/private/index.js"), /mls-v4-required/);
 
 const group = read("server/controllers/groupController.js");

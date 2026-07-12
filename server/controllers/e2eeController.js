@@ -1,12 +1,6 @@
 const User =
   require("../models/User");
 
-const E2EEKey =
-  require("../models/E2EEKey");
-
-const Group =
-  require("../models/Group");
-
 const Session =
   require("../models/Session");
 
@@ -19,36 +13,6 @@ const privacy =
 const {
   isValidUsername
 } = require("../utils/validators");
-
-const getChatId = require("../utils/getChatId");
-
-function isValidConversationId(value) {
-  return (
-    isValidUsername(value) ||
-    /^group:[a-fA-F0-9]{24}(?::v\d+)?$/.test(value) ||
-    getPrivateConversationParticipants(value).length === 2
-  );
-}
-
-function getPrivateConversationParticipants(value) {
-  const conversationId =
-    String(value || "").trim();
-
-  if (
-    !conversationId ||
-    conversationId.startsWith("group:")
-  ) {
-    return [];
-  }
-
-  const participants = getChatId.getPrivateChatParticipants(conversationId);
-  if (participants.length !== 2 || !participants.every(isValidUsername)) {
-    return [];
-  }
-  return getChatId(participants[0], participants[1]) === conversationId
-    ? participants
-    : [];
-}
 
 function getSafeDeviceName(session, requester, targetUser) {
   if (requester === targetUser || privacy.exposeDeviceNamesToContacts) {
@@ -88,39 +52,6 @@ function emptyDeviceList(username = "") {
     username: privacy.exposeE2eeUserEnumeration ? username : "",
     devices: []
   };
-}
-
-async function canAccessConversation({
-  conversationId,
-  username
-}) {
-  if (conversationId === username) {
-    return true;
-  }
-
-  if (conversationId.startsWith("group:")) {
-    const groupId =
-      conversationId
-        .slice("group:".length)
-        .split(":v")[0];
-
-    const group =
-      await Group.findById(groupId, "members");
-
-    return Boolean(
-      group &&
-      group.members.includes(username)
-    );
-  }
-
-  const participants =
-    getPrivateConversationParticipants(conversationId);
-
-  if (!participants.length) {
-    return false;
-  }
-
-  return participants.includes(username);
 }
 
 async function getDeviceIdentities(req, res, next) {
@@ -263,49 +194,8 @@ async function getIdentities(req, res, next) {
   }
 }
 
-async function getConversationKey(req, res, next) {
-  try {
-    const username =
-      req.user.username;
-
-    const conversationId =
-      String(req.params.conversationId || "").trim();
-
-    if (!isValidConversationId(conversationId)) {
-      return res.status(400).json({
-        error: "invalid conversation"
-      });
-    }
-
-    const allowed =
-      await canAccessConversation({
-        conversationId,
-        username
-      });
-
-    if (!allowed) {
-      return res.status(403).json({
-        error: "access denied"
-      });
-    }
-
-    const key =
-      await E2EEKey.findOne({
-        conversationId,
-        user: username
-      }, "conversationId user sender wrappedKey iv alg version commitId updatedAt").lean();
-
-    res.json({
-      key: key || null
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
 module.exports = {
   getIdentity,
   getIdentities,
-  getConversationKey,
   getDeviceIdentities
 };

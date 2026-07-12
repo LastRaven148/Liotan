@@ -166,6 +166,7 @@ async function performRequestToEndpoint(url, options = {}, endpoint = API) {
       const error = new Error(message);
       error.status = response.status;
       error.data = data;
+      error.suppressUnauthorized = response.status === 401 && Boolean(options.suppressUnauthorized);
       throw error;
     }
 
@@ -247,7 +248,7 @@ export async function apiRequest(url, options = {}) {
       setCachedResponse(key, data);
       return cloneData(data);
     } catch (err) {
-      recentFailedGetRequests.set(key, Date.now());
+      if (!err?.suppressUnauthorized) recentFailedGetRequests.set(key, Date.now());
       throw err;
     } finally {
       releaseGetSlot();

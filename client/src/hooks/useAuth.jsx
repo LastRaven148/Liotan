@@ -24,6 +24,7 @@ import {
   resetAppBootstrapGuard
 } from "./app/useAppInitialization";
 import { resetMlsEngine } from "../crypto/mlsEngine";
+import useSecureTransition from "./useSecureTransition";
 
 export default function useAuth({
   showToast
@@ -61,21 +62,16 @@ export default function useAuth({
   const [authReady, setAuthReady] =
     useState(false);
 
+  const {
+    secureTransition,
+    beginSecureTransition,
+    updateSecureTransition,
+    completeSecureTransition
+  } = useSecureTransition();
+
   useEffect(() => {
-    function handleExpiredSession() {
-      resetMlsEngine();
-      clearApiRequestMemory();
-      resetAppBootstrapGuard();
-      setApiAuthToken("");
-      setToken("");
-      setUsername("");
-      setPassword("");
-      setEmailCode("");
-      setMaskedLoginEmail("");
-      setSecondFactorRequired(false);
-      setTotpCode("");
-      setBackupCode("");
-      setAuthReady(true);
+    async function handleExpiredSession() {
+      await clearSession(null, { showTransition: true });
     }
 
     window.addEventListener(
@@ -95,6 +91,8 @@ export default function useAuth({
     let cancelled = false;
 
     async function restoreSession() {
+      let restored = false;
+      updateSecureTransition("checking-session");
       try {
         const data =
           await getCurrentSessionApi();
@@ -110,12 +108,18 @@ export default function useAuth({
         );
         setToken("cookie-session");
         setUsername(data.username);
-      } catch {
+        restored = true;
+        updateSecureTransition("opening-storage");
+      } catch (err) {
         setApiAuthToken("");
         localStorage.removeItem("username");
+        if (err?.status !== 401 && import.meta.env.DEV) {
+          console.warn("Session restore failed", { status: err?.status || 0, message: err?.message || "unknown" });
+        }
       } finally {
         if (!cancelled) {
           setAuthReady(true);
+          if (!restored) await completeSecureTransition();
         }
       }
     }
@@ -125,21 +129,27 @@ export default function useAuth({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [completeSecureTransition, updateSecureTransition]);
 
   async function saveSession(data) {
+    beginSecureTransition("checking-session", { minimumMs: 520 });
     clearApiRequestMemory();
     resetAppBootstrapGuard();
-
     setApiAuthToken("");
+
+    const confirmed = await getCurrentSessionApi();
+    if (!confirmed?.username || confirmed.username !== data?.username) {
+      throw new Error("Session cookie was not confirmed by the server");
+    }
+    updateSecureTransition("opening-storage");
 
     localStorage.setItem(
       "username",
-      data.username
+      confirmed.username
     );
 
     setToken("cookie-session");
-    setUsername(data.username);
+    setUsername(confirmed.username);
     setAuthReady(true);
     setPassword("");
     setEmailCode("");
@@ -233,6 +243,8 @@ export default function useAuth({
         err,
         "Login failed"
       );
+
+      await completeSecureTransition();
 
       return { ok: false };
     }
@@ -343,6 +355,8 @@ export default function useAuth({
         "Register failed"
       );
 
+      await completeSecureTransition();
+
       return false;
     }
   }
@@ -374,7 +388,7 @@ export default function useAuth({
     try {
       await deleteAccountApi(reauth);
       showToast("Account deleted");
-      clearSession(socketRef);
+      await clearSession(socketRef, { showTransition: true });
       return true;
     } catch (err) {
       handleAuthError(
@@ -386,8 +400,9 @@ export default function useAuth({
     }
   }
 
-  function clearSession(socketRef) {
-    resetMlsEngine();
+  async function clearSession(socketRef, { showTransition = false } = {}) {
+    if (showTransition) beginSecureTransition("closing-session", { minimumMs: 420 });
+    await resetMlsEngine();
     if (socketRef?.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
@@ -405,16 +420,19 @@ export default function useAuth({
     setSecondFactorRequired(false);
     setTotpCode("");
     setBackupCode("");
+    if (showTransition) await completeSecureTransition();
   }
 
   async function logout(socketRef) {
+    beginSecureTransition("closing-session", { minimumMs: 520 });
     try {
       await logoutCurrentSessionApi();
     } catch {
       // Local logout must still work when the session is already expired.
     }
 
-    clearSession(socketRef);
+    await clearSession(socketRef, { showTransition: false });
+    await completeSecureTransition();
   }
 
   return {
@@ -446,6 +464,11 @@ export default function useAuth({
     setToken,
 
     authReady,
+
+    secureTransition,
+    beginSecureTransition,
+    updateSecureTransition,
+    completeSecureTransition,
 
     sendLoginCode,
     login,

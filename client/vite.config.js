@@ -1,5 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const clientRoot = fileURLToPath(new URL(".", import.meta.url));
+const productionTestBuild = process.env.LIOTAN_PRODUCTION_TEST === "1";
 
 export default defineConfig({
   plugins: [react()],
@@ -12,6 +17,10 @@ export default defineConfig({
   build: {
     outDir: "build",
     rollupOptions: {
+      input: productionTestBuild ? {
+        app: resolve(clientRoot, "index.html"),
+        productionCrypto: resolve(clientRoot, "test/production/fixture.html"),
+      } : undefined,
       output: {
         manualChunks(id) {
           if (id.includes("@wireapp/core-crypto") || id.includes("@noble/")) return "crypto-vendor";

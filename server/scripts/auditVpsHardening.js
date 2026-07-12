@@ -29,6 +29,8 @@ function main() {
   const httpHardeningJs = read("server/security/httpServerHardening.js");
   const startupValidationJs = read("server/security/startupSecurityValidation.js");
   const socketGuardJs = read("server/security/socketHandshakeGuard.js");
+  const deployScript = read("server/deploy/install-release.sh");
+  const nginxTemplate = read("server/deploy/nginx-liotan-api.conf");
 
   mustInclude(findings, "server/config/env.js", envJs, "HOST:", "critical", "HOST is not defined in env config.");
   mustInclude(findings, "server/config/env.js", envJs, "127.0.0.1", "critical", "Production localhost bind fallback is missing.");
@@ -59,6 +61,29 @@ function main() {
   mustInclude(findings, "server/middleware/proxyProtocolGuard.js", proxyGuardJs, "x-forwarded-proto", "high", "Proxy protocol guard does not validate X-Forwarded-Proto.");
   mustInclude(findings, "server/security/socketHandshakeGuard.js", socketGuardJs, "isOriginAllowed", "high", "Socket handshake guard does not validate origins.");
   mustInclude(findings, "server/security/socketHandshakeGuard.js", socketGuardJs, "host not allowed", "high", "Socket handshake guard does not validate Host.");
+
+  for (const [token, message] of [
+    ["flock -n", "Deployment lock is missing."],
+    ["client/build/index.html", "Frontend index preflight is missing."],
+    ["*.wasm", "CoreCrypto WASM preflight is missing."],
+    ["frontend_smoke", "Frontend smoke test is missing."],
+    ["cmp -s", "Active revision index comparison is missing."],
+    ["application/wasm", "WASM MIME smoke test is missing."],
+    ["rollback", "Atomic rollback is missing."],
+    ["shared/server.env", "Shared environment preservation is missing."],
+    ["shared/uploads", "Shared uploads preservation is missing."]
+  ]) {
+    mustInclude(findings, "server/deploy/install-release.sh", deployScript, token, "high", message);
+  }
+
+  for (const [token, message] of [
+    ["no-cache, must-revalidate", "HTML revalidation policy is missing."],
+    ["max-age=31536000, immutable", "Immutable hashed-asset policy is missing."],
+    ["try_files $uri =404", "Real asset 404 policy is missing."],
+    ["application/wasm", "Nginx WASM MIME policy is missing."]
+  ]) {
+    mustInclude(findings, "server/deploy/nginx-liotan-api.conf", nginxTemplate, token, "high", message);
+  }
 
   const ok = findings.length === 0;
   const result = { ok, findings };

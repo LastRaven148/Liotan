@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const PROJECT_ROOT = path.join(ROOT, "..");
@@ -185,6 +186,19 @@ function relative(file) {
   return path.relative(PROJECT_ROOT, file).replace(/\\/g, "/");
 }
 
+function isGitIgnored(file) {
+  try {
+    execFileSync("git", ["check-ignore", "--quiet", "--", file], {
+      cwd: PROJECT_ROOT,
+      stdio: "ignore",
+      shell: false
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function run() {
   const findings = [];
 
@@ -192,7 +206,8 @@ function run() {
     const rel = relative(file);
 
     for (const rule of RULES) {
-      if (rule.filePattern && rule.filePattern.test(rel)) {
+      if (rule.filePattern && rule.filePattern.test(rel) &&
+          !(rule.id === "env-file-present" && isGitIgnored(file))) {
         findings.push({ rule: rule.id, severity: rule.severity, file: rel, line: 1, note: rule.note });
       }
     }

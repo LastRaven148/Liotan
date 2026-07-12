@@ -3,19 +3,17 @@ import {
   CoreCrypto,
   Credential,
   CredentialType,
-  Database,
-  DatabaseKey,
   DeviceId,
   KeyPackage,
   Uuid,
-  Welcome,
-  initWasmModule
+  Welcome
 } from "@wireapp/core-crypto/browser";
-import { deriveAccountKeys } from "./accountKeys";
+import { deriveAccountKeys, signCanonical } from "./accountKeys";
 import {
   base64UrlToBytes,
   bytesToBase64Url,
   canonicalJson,
+  randomId,
   randomBytes,
   sha256Base64Url,
   textDecoder,
@@ -23,14 +21,21 @@ import {
   wipe
 } from "./encoding";
 import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest } from "./cryptoApi";
+import { initializeCoreCryptoRuntime } from "./coreCryptoRuntime";
 import { getEncryptedRecord, listEncryptedRecords, putEncryptedRecord } from "./recoveryStore";
 import {
-  CORE_CRYPTO_WASM_URL,
   MLS_CIPHER_SUITE as SUITE,
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
 import { assertEnvelopeSchema, dispatchCryptoMessage, envelopeToUiMessage } from "./mls/envelope";
-import { bytesToHex, clientIdText, conversationObject, parseClientId } from "./mls/identifiers";
+import { bytesToHex, clientIdText, constantTimeTextEqual, conversationObject, parseClientId } from "./mls/identifiers";
+import {
+  deleteCoreCryptoDatabase,
+  getCoreCryptoDatabaseName,
+  openCoreCryptoDatabase,
+  shouldAutomaticallyRepairDatabase
+} from "./mls/databaseStorage";
+import { MlsStorageError, reportCryptoDiagnostic } from "./mls/storageError";
 import {
   listCryptoDevices,
   publishKeyPackagesIfNeeded,
@@ -43,6 +48,9 @@ const conversationByChat = new Map();
 const conversationById = new Map();
 const loadedHistory = new Set();
 let engine = null;
+let engineInitialization = null;
+let engineInitializationUsername = "";
+let engineGeneration = 0;
 
 function deviceIdRecordName(username) {
   return `liotan:mls-device-id:${encodeURIComponent(username)}`;
@@ -55,6 +63,12 @@ function getOrCreateDeviceId(username) {
   const created = bytesToHex(randomBytes(8));
   localStorage.setItem(recordName, created);
   return created;
+}
+
+function removeDeviceId(username, expectedDeviceId) {
+  const recordName = deviceIdRecordName(username);
+  const current = String(localStorage.getItem(recordName) || "").toLowerCase();
+  if (current === String(expectedDeviceId || "").toLowerCase()) localStorage.removeItem(recordName);
 }
 
 class LiotanMlsEngine {
@@ -75,14 +89,21 @@ class LiotanMlsEngine {
     this.credentialRef = null;
     this.syncing = new Map();
     this.pollTimer = null;
+    this.initializationStage = "created";
+    this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
   }
 
   async initialize() {
-    await initWasmModule(CORE_CRYPTO_WASM_URL);
-    this.database = await Database.open(
-      `liotan-mls-${this.bootstrap.identity.cryptoUserId}-${this.deviceId}`,
-      new DatabaseKey(this.keys.databaseKey)
-    );
+    this.initializationStage = "wasm";
+    await initializeCoreCryptoRuntime();
+    this.initializationStage = "database-open";
+    const opened = await openCoreCryptoDatabase({
+      cryptoUserId: this.bootstrap.identity.cryptoUserId,
+      deviceId: this.deviceId,
+      databaseKey: this.keys.databaseKey
+    });
+    this.database = opened.database;
+    this.initializationStage = "core-create";
     this.core = CoreCrypto.new(this.database);
     const transport = {
       sendCommitBundle: bundle => this.sendCommitBundle(bundle),
@@ -90,7 +111,9 @@ class LiotanMlsEngine {
         throw new Error("MLS history-secret transport is disabled by policy");
       }
     };
+    this.initializationStage = "mls-init";
     await this.core.transaction(ctx => ctx.mlsInit(this.clientId, transport));
+    this.initializationStage = "credential-load";
     const credentials = await this.core.findCredentials({
       clientId: this.clientId,
       cipherSuite: SUITE,
@@ -102,9 +125,21 @@ class LiotanMlsEngine {
       const credential = Credential.basic(SUITE, this.clientId);
       this.credentialRef = await this.core.transaction(ctx => ctx.addCredential(credential));
     }
+    this.initializationStage = "device-registration";
     await this.registerCryptographicIdentity();
+    this.initializationStage = "key-package-publication";
     await this.publishKeyPackagesIfNeeded();
     this.pollTimer = window.setInterval(() => this.syncAll().catch(() => {}), 15000);
+    this.initializationStage = "ready";
+  }
+
+  async closeDatabase() {
+    if (this.pollTimer) window.clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    const database = this.database;
+    this.database = null;
+    this.core = null;
+    if (database) await database.close().catch(() => {});
   }
 
   async registerCryptographicIdentity() {
@@ -521,24 +556,138 @@ class LiotanMlsEngine {
   }
 }
 
-export async function initializeMlsEngine({ username, recoveryKey }) {
-  if (engine?.username === username) return engine;
+function wipeEngineKeys(keys) {
+  if (!keys) return;
+  wipe(keys.rootSecretKey);
+  wipe(keys.requestSecretKey);
+  wipe(keys.databaseKey);
+  wipe(keys.cacheKey);
+}
+
+async function createInitializedEngine({ username, recoveryKey, generation }) {
   const deviceId = getOrCreateDeviceId(username);
   const bootstrap = await cryptoBootstrap(deviceId);
   const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
-  const next = new LiotanMlsEngine({ username, bootstrap, deviceId, keys });
+  let next = new LiotanMlsEngine({ username, bootstrap, deviceId, keys });
+  let automaticRepairAttempted = false;
   try {
-    await next.initialize();
+    try {
+      await next.initialize();
+    } catch (firstError) {
+      const failedStage = next.initializationStage;
+      await next.closeDatabase();
+      const latestBootstrap = await cryptoBootstrap(deviceId).catch(() => bootstrap);
+      const mayRepair = shouldAutomaticallyRepairDatabase(failedStage, latestBootstrap.device);
+      if (!mayRepair) {
+        throw new MlsStorageError(
+          latestBootstrap.device
+            ? "Зарегистрированное MLS-хранилище не удалось открыть. Требуется безопасное восстановление устройства."
+            : "Не удалось открыть локальное MLS-хранилище.",
+          {
+            code: latestBootstrap.device ? "registered-storage-unavailable" : "mls-initialization-failed",
+            stage: failedStage,
+            registeredDevice: Boolean(latestBootstrap.device),
+            cause: firstError
+          }
+        );
+      }
+
+      automaticRepairAttempted = true;
+      await deleteCoreCryptoDatabase(next.databaseName);
+      next = new LiotanMlsEngine({ username, bootstrap: latestBootstrap, deviceId, keys });
+      try {
+        await next.initialize();
+      } catch (retryError) {
+        const retryStage = next.initializationStage;
+        await next.closeDatabase();
+        const afterRetry = await cryptoBootstrap(deviceId).catch(() => latestBootstrap);
+        throw new MlsStorageError(
+          afterRetry.device
+            ? "MLS-устройство зарегистрировано, но его хранилище недоступно. Используйте безопасное восстановление."
+            : "Повторное создание локального MLS-хранилища не удалось.",
+          {
+            code: afterRetry.device ? "registered-storage-unavailable" : "mls-storage-repair-failed",
+            stage: retryStage,
+            registeredDevice: Boolean(afterRetry.device),
+            automaticRepairAttempted,
+            cause: retryError
+          }
+        );
+      }
+    }
+    if (generation !== engineGeneration) {
+      await next.closeDatabase();
+      throw new MlsStorageError("Инициализация защищённой сессии была отменена.", {
+        code: "mls-initialization-cancelled",
+        stage: next.initializationStage
+      });
+    }
     engine = next;
     window.dispatchEvent(new CustomEvent("liotan:mls-ready"));
     return engine;
   } catch (err) {
-    wipe(keys.rootSecretKey);
-    wipe(keys.requestSecretKey);
-    wipe(keys.databaseKey);
-    wipe(keys.cacheKey);
+    reportCryptoDiagnostic(err, { stage: next.initializationStage });
+    await next.closeDatabase();
+    wipeEngineKeys(keys);
     throw err;
   }
+}
+
+export function initializeMlsEngine({ username, recoveryKey }) {
+  const cleanUsername = String(username || "").trim();
+  if (!cleanUsername) return Promise.reject(new TypeError("Authenticated username is required"));
+  if (engine?.username === cleanUsername) return Promise.resolve(engine);
+  if (engineInitialization) {
+    if (engineInitializationUsername !== cleanUsername) {
+      return Promise.reject(new Error("Another MLS account is already initializing"));
+    }
+    return engineInitialization;
+  }
+  const generation = engineGeneration;
+  engineInitializationUsername = cleanUsername;
+  engineInitialization = createInitializedEngine({ username: cleanUsername, recoveryKey, generation })
+    .finally(() => {
+      engineInitialization = null;
+      engineInitializationUsername = "";
+    });
+  return engineInitialization;
+}
+
+export async function reprovisionMlsDevice({ username, recoveryKey }) {
+  const cleanUsername = String(username || "").trim();
+  if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required for device recovery");
+  if (engine || engineInitialization) throw new Error("Close the active MLS session before device recovery");
+
+  const oldDeviceId = getOrCreateDeviceId(cleanUsername);
+  const bootstrap = await cryptoBootstrap(oldDeviceId);
+  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, oldDeviceId);
+  try {
+    const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
+    if (!bootstrap.identity.rootPublicKey || !constantTimeTextEqual(bootstrap.identity.rootPublicKey, derivedRoot)) {
+      throw new Error("Recovery key does not match the account identity");
+    }
+    if (bootstrap.device?.status === "active") {
+      configureCryptoSigner({ deviceId: oldDeviceId, requestSecretKey: keys.requestSecretKey });
+      const revocation = {
+        cryptoUserId: bootstrap.identity.cryptoUserId,
+        deviceId: oldDeviceId,
+        revokedAt: new Date().toISOString(),
+        nonce: randomId(24)
+      };
+      const signature = await signCanonical(keys.rootSecretKey, "liotan-device-revocation-v1", revocation);
+      await signedCryptoRequest(`/crypto/v4/devices/${encodeURIComponent(oldDeviceId)}/revoke`, {
+        method: "POST",
+        body: { revocation, signature }
+      });
+    }
+    configureCryptoSigner(null);
+    await deleteCoreCryptoDatabase(getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, oldDeviceId));
+    removeDeviceId(cleanUsername, oldDeviceId);
+  } finally {
+    configureCryptoSigner(null);
+    wipeEngineKeys(keys);
+  }
+  return initializeMlsEngine({ username: cleanUsername, recoveryKey });
 }
 
 export function getMlsEngine() {
@@ -563,16 +712,16 @@ export function getConversationSecurityInfo(chatKey) {
   };
 }
 
-export function resetMlsEngine() {
-  if (engine?.pollTimer) window.clearInterval(engine.pollTimer);
-  engine?.database?.close?.().catch?.(() => {});
-  if (engine?.keys) {
-    wipe(engine.keys.rootSecretKey);
-    wipe(engine.keys.requestSecretKey);
-    wipe(engine.keys.databaseKey);
-    wipe(engine.keys.cacheKey);
-  }
+export async function resetMlsEngine() {
+  engineGeneration += 1;
+  const pending = engineInitialization;
+  if (pending) await pending.catch(() => {});
+  const current = engine;
   engine = null;
+  if (current) {
+    await current.closeDatabase();
+    wipeEngineKeys(current.keys);
+  }
   configureCryptoSigner(null);
   conversationByChat.clear();
   conversationById.clear();

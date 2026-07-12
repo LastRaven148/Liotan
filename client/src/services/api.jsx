@@ -480,19 +480,3 @@ export async function deleteGroupApi(groupId) {
     method: "DELETE"
   });
 }
-
-export async function getE2EEIdentitiesApi(users) {
-  return apiRequest(`${API}/e2ee/identities`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      users
-    })
-  });
-}
-
-export async function getE2EEConversationKeyApi(conversationId) {
-  return apiRequest(`${API}/e2ee/conversations/${encodeURIComponent(conversationId)}/key`);
-}
