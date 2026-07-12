@@ -30,6 +30,8 @@ function main() {
   const startupValidationJs = read("server/security/startupSecurityValidation.js");
   const socketGuardJs = read("server/security/socketHandshakeGuard.js");
   const deployScript = read("server/deploy/install-release.sh");
+  const cleanupScript = read("server/deploy/cleanup-known-curl-artifacts.sh");
+  const deployWorkflow = read(".github/workflows/deploy-vps.yml");
   const nginxTemplate = read("server/deploy/nginx-liotan-api.conf");
 
   mustInclude(findings, "server/config/env.js", envJs, "HOST:", "critical", "HOST is not defined in env config.");
@@ -65,10 +67,10 @@ function main() {
   for (const [token, message] of [
     ["flock -n", "Deployment lock is missing."],
     ["client/build/index.html", "Frontend index preflight is missing."],
-    ["test-only production fixture is forbidden", "Deployment bundle does not reject browser-test fixtures."],
-    ["test-only productionCrypto chunk is forbidden", "Deployment bundle does not reject browser-test chunks."],
+    ["test-only production fixture is present", "Deployment bundle does not reject browser-test fixtures."],
+    ["test-only productionCrypto chunk is present", "Deployment bundle does not reject browser-test chunks."],
     ["*.wasm", "CoreCrypto WASM preflight is missing."],
-    ["frontend_smoke", "Frontend smoke test is missing."],
+    ["validate_frontend", "Frontend smoke test is missing."],
     ["cmp -s", "Active revision index comparison is missing."],
     ["application/wasm", "WASM MIME smoke test is missing."],
     ["rollback", "Atomic rollback is missing."],
@@ -79,10 +81,34 @@ function main() {
     ["pm2 pid \"$process_name\"", "Backend health wait must detect an exited PM2 process."],
     ["expected_public_target=\"$current/client/build\"", "Frontend link preflight must require the atomic current path."],
     ["backend was not restarted", "Invalid frontend wiring must fail before backend restart."],
-    ["frontend smoke failed:", "Frontend smoke failures must identify the failing stage."],
-    ["shared/uploads", "Shared uploads preservation is missing."]
+    ["fail_invariant", "Deployment invariant failures must identify the failing stage."],
+    ["shared/uploads", "Shared uploads preservation is missing."],
+    ["legacy_checkout=/home/liotan/apps/Liotan", "Legacy checkout rejection is missing."],
+    ["current target is outside", "Current target containment validation is missing."],
+    ["current target basename is not a Git SHA", "Current release SHA validation is missing."],
+    ["validate_pm2_runtime", "PM2 path, cwd, status, and version validation is missing."],
+    ["running version", "Running PM2 version is not compared with package.json."],
+    ["preflight health check failed; current was not changed", "Preflight health validation is missing."],
+    ["rollback PM2", "Rollback PM2 validation is missing."],
+    ["verified rollback both failed", "Critical rollback failure diagnostic is missing."],
+    ["shared runtime data and secrets", "Release rotation does not document shared-data isolation."]
   ]) {
     mustInclude(findings, "server/deploy/install-release.sh", deployScript, token, "high", message);
+  }
+
+  if (/(?:^|\s)>\s*--retry(?:-delay|-connrefused)?\b/m.test(deployScript)) {
+    addFinding(findings, "critical", "server/deploy/install-release.sh", "curl retry option is used as an output redirection target.");
+  }
+  if (/\/home\/liotan\/apps\/Liotan(?:\/|["'])/.test(deployWorkflow)) {
+    addFinding(findings, "critical", ".github/workflows/deploy-vps.yml", "Production workflow references the legacy checkout.");
+  }
+
+  for (const artifact of ["--retry", "--retry-connrefused", "--retry-delay"]) {
+    mustInclude(findings, "server/deploy/cleanup-known-curl-artifacts.sh", cleanupScript, artifact, "high", `Bounded cleanup does not name ${artifact}.`);
+  }
+  mustInclude(findings, "server/deploy/cleanup-known-curl-artifacts.sh", cleanupScript, "refusing to remove unexpected", "high", "Bounded cleanup does not refuse unexpected artifact types or contents.");
+  if (cleanupScript.includes("git clean")) {
+    addFinding(findings, "critical", "server/deploy/cleanup-known-curl-artifacts.sh", "Bounded cleanup must not use git clean.");
   }
 
   for (const [token, message] of [
