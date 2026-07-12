@@ -65,6 +65,8 @@ function main() {
   for (const [token, message] of [
     ["flock -n", "Deployment lock is missing."],
     ["client/build/index.html", "Frontend index preflight is missing."],
+    ["test-only production fixture is forbidden", "Deployment bundle does not reject browser-test fixtures."],
+    ["test-only productionCrypto chunk is forbidden", "Deployment bundle does not reject browser-test chunks."],
     ["*.wasm", "CoreCrypto WASM preflight is missing."],
     ["frontend_smoke", "Frontend smoke test is missing."],
     ["cmp -s", "Active revision index comparison is missing."],

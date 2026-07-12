@@ -53,6 +53,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          npm run test:deployment-bundle
           test -f client/build/index.html
           find client/build/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
           find client/build/assets -maxdepth 1 -type f -name '*.wasm' -print -quit | grep -q .
