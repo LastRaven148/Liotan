@@ -18,7 +18,20 @@ Secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_HOST_KEY`.
 ## Однократная подготовка VPS
 
 1. `/var/www/liotan` должен быть символической ссылкой на
-   `/home/liotan/apps/Liotan-deploy/current/client/build`.
+   `/home/liotan/apps/Liotan-deploy/current/client/build`. Нельзя создавать её
+   через `readlink -f current`: это навсегда закрепит Nginx за одной старой
+   ревизией и разрушит атомарное переключение.
+
+   Безопасное создание или исправление ссылки:
+
+   ```bash
+   sudo ln -s /home/liotan/apps/Liotan-deploy/current/client/build /var/www/liotan.next
+   sudo mv -Tf /var/www/liotan.next /var/www/liotan
+   readlink /var/www/liotan
+   ```
+
+   Последняя команда должна вывести путь с буквальным сегментом `/current/`, а
+   не `/releases/<SHA>/`.
 2. `/home/liotan/apps/Liotan-deploy/shared/server.env` принадлежит deploy-user и
    имеет режим `0600`.
 3. Постоянные uploads находятся в `shared/uploads`; внутри release создаётся
@@ -33,6 +46,7 @@ Secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_HOST_KEY`.
 ## Что проверяет installer
 
 - блокирует параллельный deployment через `.deploy.lock`;
+- до перезапуска PM2 требует, чтобы Nginx-ссылка следовала за общей `current`;
 - отклоняет небезопасные пути архива;
 - требует `client/build/index.html`, hashed JS и CoreCrypto WASM;
 - устанавливает backend зависимости до переключения;
