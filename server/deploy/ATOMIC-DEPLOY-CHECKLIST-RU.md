@@ -72,4 +72,56 @@ curl --fail http://127.0.0.1:3001/health
 curl --fail -H 'Host: tunnel.liotan.com' http://127.0.0.1:8080/
 ```
 
+## Инварианты production deployment
+
+Installer требует `curl`, `flock`, `npm`, `pm2` и `python3`. До распаковки новой
+ревизии он проверяет, что `current` является symlink на прямой дочерний каталог
+`Liotan-deploy/releases/<40-символьный SHA>`, а Nginx следует за буквальным
+путём `Liotan-deploy/current/client/build`. Старый checkout
+`/home/liotan/apps/Liotan` явно запрещён как `DEPLOY_ROOT`.
+
+До переключения также проверяются рабочий health endpoint и безопасно извлечённые
+из `pm2 jlist` поля: script path, exec cwd, status и version. Полный JSON PM2 не
+печатается, потому что он может содержать переменные окружения. После переключения
+те же проверки повторяются, а PM2 state сохраняется только после успешных backend
+и frontend smoke tests. При ошибке symlink возвращается на предыдущий SHA, PM2
+запускается через `current`, после чего rollback отдельно проверяется по health,
+PM2 metadata, `index.html`, JS и WASM.
+
+`server/.env` и `server/uploads` каждого release обязаны быть symlink на
+`Liotan-deploy/shared`. MLS identity/conversation state хранится в MongoDB, а
+браузерная MLS database — в IndexedDB устройства; они не находятся в release.
+Ротация ограничена прямыми дочерними каталогами `Liotan-deploy/releases` и не
+может затронуть `shared`.
+
+## Точечная очистка старого checkout
+
+Три пустых файла `server/--retry*` появились не из workflow: в shell была
+вставлена строка terminal transcript, где символы `>` перед curl options стали
+операторами перенаправления. После merge удалить только эти известные пустые
+файлы можно скриптом из активного release:
+
+```bash
+bash /home/liotan/apps/Liotan-deploy/current/server/deploy/cleanup-known-curl-artifacts.sh \
+  /home/liotan/apps/Liotan
+```
+
+Скрипт проверяет точный корень Git worktree, удаляет только три известных пустых
+обычных файла и отказывается удалять symlink, каталог или непустой файл. Он не
+использует `git clean` и не затрагивает остальные untracked-файлы. Не вставляйте
+в shell строки вместе с prompt (`user@host$`) или continuation prompt (`>`).
+
+Старый внешний скрипт `~/deploy-liotan.sh` не вызывается текущим GitHub workflow,
+но всё ещё содержит неатомарные `git pull`, очистку `/var/www/liotan`, `rsync` и
+перезапуск PM2 из `~/apps/Liotan`. После merge и успешного атомарного deployment
+выведите его из эксплуатации, не запуская:
+
+```bash
+mv "$HOME/deploy-liotan.sh" "$HOME/deploy-liotan.sh.disabled-legacy"
+chmod 0600 "$HOME/deploy-liotan.sh.disabled-legacy"
+```
+
+Этот шаг не является deployment и не меняет `current`; он исключает случайный
+запуск устаревшего production-пути.
+
 Не удаляйте `shared`, `.env`, uploads или предыдущий release до успешного smoke-test.
