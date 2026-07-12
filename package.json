@@ -23,10 +23,11 @@
     "test:media-storage": "node scripts/mediaStorageRegression.js",
     "test:deploy-installer": "bash scripts/deployInstallerPreflightRegression.sh",
     "test:deployment-bundle": "node scripts/deploymentBundleRegression.js",
+    "test:archive-factory": "node scripts/archiveFactoryRegression.js",
     "test:server": "npm test --prefix server",
     "test:browser": "playwright test",
     "test:coverage": "c8 --check-coverage --lines 80 --functions 80 --branches 70 --reporter=text --reporter=json-summary --include=server/utils/canonicalJson.js --include=server/security/cryptoV4.js node --test server/test/unit/cryptoPrimitives.test.js",
-    "test": "npm run test:security && npm run test:media-storage && npm run test:deploy-installer && npm run test:server && npm run test:browser && npm run test:deployment-bundle && npm run test:coverage",
+    "test": "npm run test:security && npm run test:media-storage && npm run test:deploy-installer && npm run test:archive-factory && npm run test:server && npm run test:browser && npm run test:deployment-bundle && npm run test:coverage",
     "licenses:check": "node scripts/checkLicenses.js",
     "sbom:generate": "node scripts/generateSbom.js",
     "supply-chain": "npm run licenses:check && npm run sbom:generate"
