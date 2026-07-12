@@ -35,15 +35,25 @@ shared_uploads="$shared/uploads"
 previous=""
 [[ -f "$shared_env" ]] || { echo "shared production environment not found: $shared_env" >&2; exit 2; }
 if [[ -L "$current" ]]; then previous=$(readlink -f "$current" || true); fi
-if [[ "$previous" == "$release" ]]; then
-  echo "revision $revision is already active"
-  rm -f -- "$archive"
-  exit 0
-fi
 
 tmp_dir=$(mktemp -d)
 cleanup() { rm -rf -- "$tmp_dir"; rm -f -- "$archive"; }
 trap cleanup EXIT
+
+expected_public_target="$current/client/build"
+actual_public_target=$(readlink "$public_link" 2>/dev/null || true)
+if [[ "$actual_public_target" != "$expected_public_target" ]]; then
+  echo "PUBLIC_FRONTEND_LINK is not wired to the atomic current release" >&2
+  echo "expected symlink: $public_link -> $expected_public_target" >&2
+  echo "actual target: ${actual_public_target:-not a readable symbolic link}" >&2
+  echo "repair the root-owned link before deploying; backend was not restarted" >&2
+  exit 2
+fi
+
+if [[ "$previous" == "$release" ]]; then
+  echo "revision $revision is already active"
+  exit 0
+fi
 
 if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
   echo "unsafe path in deployment archive" >&2
@@ -115,14 +125,46 @@ frontend_smoke() {
   local response_index="$tmp_dir/index.html"
   local js_headers="$tmp_dir/js.headers"
   local wasm_headers="$tmp_dir/wasm.headers"
-  [[ "$(readlink -f "$public_link")" == "$release/client/build" ]] || return 1
-  curl --fail --silent --show-error -H "Host: $frontend_host" "$frontend_url/" -o "$response_index" || return 1
-  cmp -s "$index" "$response_index" || return 1
-  grep -Fq "${js_assets[0]}" "$response_index" || return 1
-  curl --fail --silent --show-error --head -H "Host: $frontend_host" "$frontend_url/${js_assets[0]}" -o "$js_headers" || return 1
-  grep -Eiq '^Content-Type:[[:space:]]*(application|text)/(javascript|x-javascript)' "$js_headers" || return 1
-  curl --fail --silent --show-error --head -H "Host: $frontend_host" "$frontend_url/${wasm_assets[0]}" -o "$wasm_headers" || return 1
-  grep -Eiq '^Content-Type:[[:space:]]*application/wasm' "$wasm_headers" || return 1
+  local active_public_target=""
+
+  active_public_target=$(readlink -f "$public_link" 2>/dev/null || true)
+  if [[ "$active_public_target" != "$release/client/build" ]]; then
+    echo "frontend smoke failed: public link resolved to '${active_public_target:-unavailable}', expected '$release/client/build'" >&2
+    return 1
+  fi
+
+  if ! curl --fail --silent --show-error -H "Host: $frontend_host" "$frontend_url/" -o "$response_index"; then
+    echo "frontend smoke failed: Nginx index request failed for Host '$frontend_host'" >&2
+    return 1
+  fi
+  if ! cmp -s "$index" "$response_index"; then
+    echo "frontend smoke failed: Nginx index.html does not match revision $revision" >&2
+    return 1
+  fi
+  if ! grep -Fq "${js_assets[0]}" "$response_index"; then
+    echo "frontend smoke failed: active index.html does not reference ${js_assets[0]}" >&2
+    return 1
+  fi
+
+  if ! curl --fail --silent --show-error --head -H "Host: $frontend_host" "$frontend_url/${js_assets[0]}" -o "$js_headers"; then
+    echo "frontend smoke failed: JavaScript asset is unavailable: ${js_assets[0]}" >&2
+    return 1
+  fi
+  if ! grep -Eiq '^Content-Type:[[:space:]]*(application|text)/(javascript|x-javascript)' "$js_headers"; then
+    echo "frontend smoke failed: invalid JavaScript Content-Type for ${js_assets[0]}" >&2
+    grep -Ei '^Content-Type:' "$js_headers" >&2 || true
+    return 1
+  fi
+
+  if ! curl --fail --silent --show-error --head -H "Host: $frontend_host" "$frontend_url/${wasm_assets[0]}" -o "$wasm_headers"; then
+    echo "frontend smoke failed: CoreCrypto WASM asset is unavailable: ${wasm_assets[0]}" >&2
+    return 1
+  fi
+  if ! grep -Eiq '^Content-Type:[[:space:]]*application/wasm' "$wasm_headers"; then
+    echo "frontend smoke failed: invalid WASM Content-Type for ${wasm_assets[0]}" >&2
+    grep -Ei '^Content-Type:' "$wasm_headers" >&2 || true
+    return 1
+  fi
 }
 
 rollback() {

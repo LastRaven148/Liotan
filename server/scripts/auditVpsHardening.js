@@ -75,6 +75,9 @@ function main() {
     ["while (( SECONDS < deadline ))", "Backend health wait must have an explicit deadline."],
     ["--max-time 5", "Each backend health request must have a bounded timeout."],
     ["pm2 pid \"$process_name\"", "Backend health wait must detect an exited PM2 process."],
+    ["expected_public_target=\"$current/client/build\"", "Frontend link preflight must require the atomic current path."],
+    ["backend was not restarted", "Invalid frontend wiring must fail before backend restart."],
+    ["frontend smoke failed:", "Frontend smoke failures must identify the failing stage."],
     ["shared/uploads", "Shared uploads preservation is missing."]
   ]) {
     mustInclude(findings, "server/deploy/install-release.sh", deployScript, token, "high", message);
