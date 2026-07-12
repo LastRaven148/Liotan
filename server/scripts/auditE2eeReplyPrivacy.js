@@ -21,8 +21,8 @@ function main() {
   const findings = [];
 
   const buildReplyTo = read("server/sockets/services/buildReplyTo.js");
-  const privateSend = read("server/sockets/handlers/private/sendPrivateMessage.js");
-  const groupSend = read("server/sockets/handlers/group/sendGroupMessage.js");
+  const privateHandler = read("server/sockets/handlers/private/index.js");
+  const groupHandler = read("server/sockets/handlers/group/index.js");
   const messageModel = read("server/models/Messages.js");
   const messageReply = read("client/src/components/chat/message/MessageReply.jsx");
 
@@ -62,14 +62,23 @@ function main() {
     "E2EE reply previews must not persist attachment names."
   );
 
-  mustInclude(findings, "server/sockets/handlers/private/sendPrivateMessage.js", privateSend,
+  mustInclude(findings, "server/sockets/handlers/private/index.js", privateHandler,
     "mls-v4-required", "critical", "Legacy private writes must be rejected.");
 
-  mustInclude(findings, "server/sockets/handlers/group/sendGroupMessage.js", groupSend,
+  mustInclude(findings, "server/sockets/handlers/group/index.js", groupHandler,
     "mls-v4-required", "critical", "Legacy group writes must be rejected.");
 
-  if (/Message\.(create|insertMany)|new Message/.test(privateSend + groupSend)) {
+  if (/Message\.(create|insertMany)|new Message/.test(privateHandler + groupHandler)) {
     addFinding(findings, "critical", "server/sockets/handlers", "Legacy send handlers must not persist messages.");
+  }
+
+  for (const removedDuplicate of [
+    "server/sockets/handlers/private/sendPrivateMessage.js",
+    "server/sockets/handlers/group/sendGroupMessage.js"
+  ]) {
+    if (fs.existsSync(path.join(rootDir, removedDuplicate))) {
+      addFinding(findings, "high", removedDuplicate, "Dead duplicate legacy write handler must stay removed.");
+    }
   }
 
   mustInclude(

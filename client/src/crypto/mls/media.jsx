@@ -27,22 +27,26 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
       const plaintext = new Uint8Array(MEDIA_CHUNK_SIZE);
       plaintext.set(source);
       wipe(source);
-      for (let offset = Math.min(file.size - start, MEDIA_CHUNK_SIZE); offset < MEDIA_CHUNK_SIZE; offset += 65536) {
-        crypto.getRandomValues(plaintext.subarray(offset, Math.min(MEDIA_CHUNK_SIZE, offset + 65536)));
+      let encrypted;
+      try {
+        for (let offset = Math.min(file.size - start, MEDIA_CHUNK_SIZE); offset < MEDIA_CHUNK_SIZE; offset += 65536) {
+          crypto.getRandomValues(plaintext.subarray(offset, Math.min(MEDIA_CHUNK_SIZE, offset + 65536)));
+        }
+        const iv = new Uint8Array(12);
+        iv.set(noncePrefix, 0);
+        new DataView(iv.buffer).setUint32(8, index, false);
+        const aad = textEncoder.encode(canonicalJson([
+          "liotan-mls-media-chunk-v1",
+          state.conversationId,
+          clientMessageId,
+          bindingId,
+          index,
+          chunks
+        ]));
+        encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, plaintext));
+      } finally {
+        wipe(plaintext);
       }
-      const iv = new Uint8Array(12);
-      iv.set(noncePrefix, 0);
-      new DataView(iv.buffer).setUint32(8, index, false);
-      const aad = textEncoder.encode(canonicalJson([
-        "liotan-mls-media-chunk-v1",
-        state.conversationId,
-        clientMessageId,
-        bindingId,
-        index,
-        chunks
-      ]));
-      const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, plaintext));
-      wipe(plaintext);
       encryptedParts.push(encrypted);
       hasher.update(encrypted);
     }
@@ -88,6 +92,7 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     };
   } finally {
     wipe(keyBytes);
+    wipe(noncePrefix);
   }
 }
 
@@ -134,26 +139,32 @@ export async function decryptMlsMediaBlob(attachment, blob) {
   const noncePrefix = base64UrlToBytes(descriptor.noncePrefix, 8);
   const plaintextParts = [];
   let offset = MEDIA_MAGIC.length;
-  for (let index = 0; index < descriptor.chunks; index += 1) {
-    const ciphertextLength = descriptor.chunkSize + 16;
-    const chunk = new Uint8Array(await blob.slice(offset, offset + ciphertextLength).arrayBuffer());
-    if (chunk.length !== ciphertextLength) throw new Error("Truncated MLS media ciphertext");
-    const iv = new Uint8Array(12);
-    iv.set(noncePrefix, 0);
-    new DataView(iv.buffer).setUint32(8, index, false);
-    const aad = textEncoder.encode(canonicalJson([
-      "liotan-mls-media-chunk-v1",
-      descriptor.conversationId,
-      descriptor.messageId,
-      descriptor.bindingId,
-      index,
-      descriptor.chunks
-    ]));
-    plaintextParts.push(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, key, chunk));
-    offset += ciphertextLength;
+  try {
+    for (let index = 0; index < descriptor.chunks; index += 1) {
+      const ciphertextLength = descriptor.chunkSize + 16;
+      const chunk = new Uint8Array(await blob.slice(offset, offset + ciphertextLength).arrayBuffer());
+      if (chunk.length !== ciphertextLength) throw new Error("Truncated MLS media ciphertext");
+      const iv = new Uint8Array(12);
+      iv.set(noncePrefix, 0);
+      new DataView(iv.buffer).setUint32(8, index, false);
+      const aad = textEncoder.encode(canonicalJson([
+        "liotan-mls-media-chunk-v1",
+        descriptor.conversationId,
+        descriptor.messageId,
+        descriptor.bindingId,
+        index,
+        descriptor.chunks
+      ]));
+      plaintextParts.push(new Uint8Array(
+        await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, key, chunk)
+      ));
+      offset += ciphertextLength;
+    }
+    if (offset !== blob.size) throw new Error("Unexpected MLS media trailing data");
+    return new Blob(plaintextParts, { type: descriptor.original.mimeType || "application/octet-stream" })
+      .slice(0, originalSize, descriptor.original.mimeType || "application/octet-stream");
+  } finally {
+    wipe(noncePrefix);
+    plaintextParts.forEach(wipe);
   }
-  wipe(noncePrefix);
-  if (offset !== blob.size) throw new Error("Unexpected MLS media trailing data");
-  return new Blob(plaintextParts, { type: descriptor.original.mimeType || "application/octet-stream" })
-    .slice(0, originalSize, descriptor.original.mimeType || "application/octet-stream");
 }

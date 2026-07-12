@@ -1,9 +1,6 @@
 const registerGetPrivateChat =
   require("./getPrivateChat");
 
-const registerSendPrivateMessage =
-  require("./sendPrivateMessage");
-
 const registerMarkPrivateChatRead =
   require("./markPrivateChatRead");
 

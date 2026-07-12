@@ -391,7 +391,7 @@ export async function decryptTextForChat({
   }
   text = encryptedText;
   if (text.startsWith(LEGACY_E2EE_PREFIX)) {
-    return "РЎС‚Р°СЂРѕРµ E2EE-СЃРѕРѕР±С‰РµРЅРёРµ. РћРЅРѕ Р±С‹Р»Рѕ СЃРѕР·РґР°РЅРѕ РґРѕ Р°РІС‚Рѕ-РєР»СЋС‡РµР№.";
+    return "Старое E2EE-сообщение. Оно было создано до авто-ключей.";
   }
   try {
     const payload = JSON.parse(atob(text.slice(E2EE_PREFIX.length)));
@@ -429,7 +429,7 @@ export async function decryptTextForChat({
       setChatSecret(username, secretKey, secret);
     }
     if (!secret) {
-      return "Р—Р°С€РёС„СЂРѕРІР°РЅРЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ. РљР»СЋС‡ СЌС‚РѕРіРѕ С‡Р°С‚Р° РµС‰С‘ РЅРµ РїРѕР»СѓС‡РµРЅ.";
+      return "Зашифрованное сообщение. Ключ этого чата ещё не получен.";
     }
     const salt = fromBase64(payload.salt);
     const iv = fromBase64(payload.iv);
@@ -452,6 +452,6 @@ export async function decryptTextForChat({
     if (import.meta.env.DEV) {
       console.warn("E2EE decrypt failed", err);
     }
-    return "РќРµ СѓРґР°Р»РѕСЃСЊ СЂР°СЃС€РёС„СЂРѕРІР°С‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ.";
+    return "Не удалось расшифровать сообщение.";
   }
 }

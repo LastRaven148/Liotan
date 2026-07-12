@@ -5,9 +5,6 @@ const {
 const registerGetGroupChat =
   require("./getGroupChat");
 
-const registerSendGroupMessage =
-  require("./sendGroupMessage");
-
 function registerGroupHandlers({
   io,
   socket

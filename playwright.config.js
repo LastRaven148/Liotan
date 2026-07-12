@@ -11,9 +11,13 @@ module.exports = defineConfig({
   retries: process.env.CI ? 1 : 0,
   timeout: 90_000,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    { name: "firefox", use: { browserName: "firefox" } },
+    { name: "webkit", use: { browserName: "webkit" } }
+  ],
   use: {
     baseURL: "http://127.0.0.1:4174",
-    browserName: "chromium",
     headless: true,
     trace: "retain-on-failure"
   },

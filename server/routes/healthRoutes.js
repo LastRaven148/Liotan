@@ -29,6 +29,8 @@ function isMongoReady() {
 router.get("/health", (req, res) => {
   res.json({
     ok: true,
+    service: "liotan-api",
+    version,
     requestId: req.id
   });
 });
@@ -38,6 +40,8 @@ router.get("/health/ready", (req, res) => {
 
   res.status(ready ? 200 : 503).json({
     ok: ready,
+    service: "liotan-api",
+    version,
     requestId: req.id
   });
 });

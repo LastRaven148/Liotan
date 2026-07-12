@@ -1,3 +1,3 @@
-module.exports = {
-  version: "50.0.0"
-};
+const { version } = require("../package.json");
+
+module.exports = { version };

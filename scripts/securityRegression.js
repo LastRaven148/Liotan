@@ -114,7 +114,7 @@ assert.match(cryptoControllers, /MLS ciphertext media required/);
 assert.match(cryptoControllers, /unexpected MLS epoch/);
 assert.match(cryptoControllers, /manifestExpiresAt/);
 assert.match(read("server/models/CryptoRequestNonce.js"), /unique: true/);
-const mlsClient = ["mlsEngine.jsx", "mls/constants.jsx", "mls/envelope.jsx", "mls/trust.jsx"]
+const mlsClient = ["mlsEngine.jsx", "mls/constants.jsx", "mls/envelope.jsx", "mls/trust.jsx", "mls/identifiers.jsx"]
   .map(name => read(`client/src/crypto/${name}`)).join("\n");
 assert.match(mlsClient, /Mls128Dhkemx25519Aes128gcmSha256Ed25519/);
 assert.match(mlsClient, /Safety number changed/);
@@ -122,8 +122,27 @@ assert.match(mlsClient, /assertEnvelopeSchema/);
 assert.match(mlsClient, /initializeCoreCryptoRuntime/);
 assert.doesNotMatch(read("client/src/crypto/mlsEngine.jsx"), /initWasmModule/);
 assert.match(read("client/src/crypto/coreCryptoRuntime.jsx"), /runtimePromise/);
+const mlsEngineSource = read("client/src/crypto/mlsEngine.jsx");
+const engineConstructor = mlsEngineSource.slice(
+  mlsEngineSource.indexOf("constructor({ username"),
+  mlsEngineSource.indexOf("async initialize()")
+);
+assert.doesNotMatch(engineConstructor, /new (?:ClientId|Uuid)|DeviceId\.fromHexString/,
+  "LiotanMlsEngine constructor must not touch UniFFI before WASM initialization");
+const identifierSource = read("client/src/crypto/mls/identifiers.jsx");
+assert(identifierSource.indexOf("await initializeCoreCryptoRuntime()") < identifierSource.indexOf("const clientId = createClientId"),
+  "application ClientId creation must follow awaited WASM initialization");
+const recoveryStore = read("client/src/crypto/recoveryStore.jsx");
+assert.match(recoveryStore, /wrappingKeyPromises/);
+assert.match(recoveryStore, /idbAdd\("keys"/);
+assert.doesNotMatch(recoveryStore, /localStorage/,
+  "recovery material must never use localStorage");
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /latestBootstrap\.device/);
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /reprovisionMlsDevice/);
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /isStorageStage/,
+  "non-storage startup failures must not trigger IndexedDB repair or reprovision guidance");
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /configureCryptoSigner\(null\);\s*wipeEngineKeys\(keys\)/,
+  "failed initialization must clear the device request signer before wiping key bytes");
 assert.doesNotMatch(read("client/src/crypto/CryptoGate.jsx"), /window\.location\.reload/);
 const transitionGate = read("client/src/crypto/SecureTransitionGate.jsx");
 for (const status of ["checking-session", "opening-storage", "preparing-messages", "closing-session"]) {
@@ -140,6 +159,15 @@ const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursi
 assert.doesNotMatch(clientSources, /static\.cloudflareinsights\.com|beacon\.min\.js/,
   "Cloudflare Insights beacon must not be injected by source code");
 assert.match(read("server/sockets/handlers/private/index.js"), /mls-v4-required/);
+assert(!fs.existsSync(path.join(root, "server/sockets/handlers/private/sendPrivateMessage.js")),
+  "dead duplicate legacy private write handler must stay removed");
+assert(!fs.existsSync(path.join(root, "server/sockets/handlers/group/sendGroupMessage.js")),
+  "dead duplicate legacy group write handler must stay removed");
+
+assert.match(read("server/config/version.js"), /require\("\.\.\/package\.json"\)/,
+  "runtime version must be sourced from server/package.json");
+assert.match(read("server/routes/healthRoutes.js"), /service: "liotan-api",\s*version/,
+  "health endpoint must expose the actual package version");
 
 const group = read("server/controllers/groupController.js");
 const addBlock = group.slice(group.indexOf("async function addGroupMember"), group.indexOf("async function removeGroupMember"));
