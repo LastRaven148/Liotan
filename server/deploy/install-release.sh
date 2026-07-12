@@ -67,6 +67,11 @@ tar -xzf "$archive" -C "$release" --no-same-owner --no-same-permissions
 build="$release/client/build"
 index="$build/index.html"
 [[ -f "$index" ]] || { echo "client/build/index.html is missing" >&2; exit 2; }
+[[ ! -f "$build/test/production/fixture.html" ]] || { echo "test-only production fixture is forbidden in a deployment bundle" >&2; exit 2; }
+if find "$build/assets" -maxdepth 1 -type f -name 'productionCrypto-*.js' -print -quit | grep -q .; then
+  echo "test-only productionCrypto chunk is forbidden in a deployment bundle" >&2
+  exit 2
+fi
 mapfile -t js_assets < <(grep -oE 'assets/[A-Za-z0-9._-]+\.js' "$index" | sort -u)
 mapfile -t wasm_assets < <(find "$build" -type f -name '*.wasm' -printf '%P\n' | sort)
 ((${#js_assets[@]} > 0)) || { echo "hashed JavaScript chunk is missing from index.html" >&2; exit 2; }

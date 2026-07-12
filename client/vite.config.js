@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const clientRoot = fileURLToPath(new URL(".", import.meta.url));
 const productionTestBuild = process.env.LIOTAN_PRODUCTION_TEST === "1";
+const productionTestOutDir = resolve(clientRoot, "../test-results/production-build");
 
 export default defineConfig({
   plugins: [react()],
@@ -15,7 +16,8 @@ export default defineConfig({
     port: 3000,
   },
   build: {
-    outDir: "build",
+    outDir: productionTestBuild ? productionTestOutDir : "build",
+    emptyOutDir: true,
     rollupOptions: {
       input: productionTestBuild ? {
         app: resolve(clientRoot, "index.html"),
