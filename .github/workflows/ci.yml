@@ -53,6 +53,9 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          test -f client/build/index.html
+          find client/build/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
+          find client/build/assets -maxdepth 1 -type f -name '*.wasm' -print -quit | grep -q .
           tar --exclude='server/node_modules' --exclude='server/test' --exclude='server/.env*' \
             -czf "release/Liotan-${VERSION}-deploy.tar.gz" server client/build LICENSE THIRD-PARTY-NOTICES.md
 

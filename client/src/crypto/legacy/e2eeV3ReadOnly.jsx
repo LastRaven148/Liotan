@@ -1,4 +1,3 @@
-import { getE2EEConversationKeyApi, getE2EEIdentitiesApi } from "../../services/api";
 import { decryptMlsMediaBlob } from "../mlsEngine";
 import { getChatId } from "../../utils/chat";
 const E2EE_PREFIX = "__LIOTAN_E2EE_V2__";
@@ -6,26 +5,13 @@ const LEGACY_E2EE_PREFIX = "__LIOTAN_E2EE_V1__";
 const E2EE_ITERATIONS = 200000;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const identityCache = new Map();
 const chatSecretMemory = new Map();
-const pendingConversationKeys = new Map();
 const ATTACHMENT_E2EE_PREFIX = "__LIOTAN_E2EE_FILE_V1__";
 const E2EE_DB_NAME = "liotan-e2ee-v2";
 const E2EE_DB_VERSION = 3;
 const IDENTITY_STORE = "identities";
 const TRUST_STORE = "trusted-public-keys";
 const REPLAY_STORE = "replay-envelopes";
-
-function getRandomBytes(length) {
-  const bytes = new Uint8Array(length);
-  const chunkSize = 65536;
-
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    crypto.getRandomValues(bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
-  }
-
-  return bytes;
-}
 
 function toBase64(bytes) {
   let binary = "";
@@ -43,14 +29,6 @@ function fromBase64(value) {
   }
   return bytes;
 }
-function normalizePublicJwk(jwk = {}) {
-  return JSON.stringify({
-    crv: jwk.crv || "",
-    kty: jwk.kty || "",
-    x: jwk.x || "",
-    y: jwk.y || ""
-  });
-}
 async function sha256Base64Url(value) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(value || "")));
   return toBase64(new Uint8Array(digest))
@@ -58,34 +36,6 @@ async function sha256Base64Url(value) {
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
-async function fingerprintPublicJwk(jwk) {
-  return sha256Base64Url(normalizePublicJwk(jwk));
-}
-function getTrustedKeyStoreKey(username) {
-  return `trusted:${encodeURIComponent(username || "")}`;
-}
-async function assertTrustedPublicKey(username, publicJwk) {
-  if (!username || !publicJwk || !crypto?.subtle) {
-    return "";
-  }
-  const fingerprint = await fingerprintPublicJwk(publicJwk);
-  const key = getTrustedKeyStoreKey(username);
-  const existing = await idbGet(TRUST_STORE, key);
-  if (existing?.fingerprint && existing.fingerprint !== fingerprint) {
-    throw new Error("E2EE identity key changed for this user");
-  }
-  if (!existing?.fingerprint) {
-    await idbSet(TRUST_STORE, key, {
-      fingerprint,
-      trustedAt: new Date().toISOString()
-    });
-  }
-  return fingerprint;
-}
-function randomNonce() {
-  return toBase64(crypto.getRandomValues(new Uint8Array(24)));
-}
-
 function canonicalAad({ conversationId, sender, contentType, nonce }) {
   return encoder.encode(JSON.stringify([
     "liotan-e2ee-v3",
@@ -152,16 +102,6 @@ async function idbSet(storeName, key, value) {
     tx.onerror = () => { db.close(); reject(tx.error || new Error("IndexedDB set failed")); };
   });
 }
-async function idbDelete(storeName, key) {
-  const db = await openE2EEDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite");
-    tx.objectStore(storeName).delete(key);
-    tx.oncomplete = () => { db.close(); resolve(); };
-    tx.onerror = () => { db.close(); reject(tx.error || new Error("IndexedDB delete failed")); };
-  });
-}
-
 async function assertNotReplayed({ username, conversationId, sender, nonce, messageId, ciphertext }) {
   if (!messageId || !nonce) return;
   const replayKey = await sha256Base64Url(JSON.stringify([
@@ -206,9 +146,6 @@ function safeE2EEVaultId(username, chatKey) {
 }
 export function getE2EEVaultId(username, chatKey) {
   return `liotan:e2ee-secret:${safeE2EEVaultId(username, chatKey)}`;
-}
-function getIdentityVaultId(username) {
-  return `liotan:e2ee-identity:${encodeURIComponent(username || "")}`;
 }
 export function getChatSecret(username, chatKey) {
   if (!username || !chatKey) {
@@ -275,74 +212,6 @@ async function deriveMessageKey(secret, salt) {
     length: 256
   }, false, ["encrypt", "decrypt"]);
 }
-async function deriveWrapKey({
-  privateKey,
-  publicKey
-}) {
-  return crypto.subtle.deriveKey({
-    name: "ECDH",
-    public: publicKey
-  }, privateKey, {
-    name: "AES-GCM",
-    length: 256
-  }, false, ["encrypt", "decrypt"]);
-}
-async function importPublicKey(jwk) {
-  return crypto.subtle.importKey("jwk", jwk, {
-    name: "ECDH",
-    namedCurve: "P-256"
-  }, true, []);
-}
-async function loadLocalIdentity(username) {
-  if (!username) {
-    return null;
-  }
-  if (identityCache.has(username)) {
-    return identityCache.get(username);
-  }
-  try {
-    const stored = await idbGet(IDENTITY_STORE, getIdentityVaultId(username));
-    if (stored?.privateKey && stored?.publicKey) {
-      const identity = {
-        privateKey: stored.privateKey,
-        publicKey: stored.publicKey,
-        publicJwk: stored.publicJwk
-      };
-      identityCache.set(username, identity);
-      return identity;
-    }
-  } catch {}
-
-  try { localStorage.removeItem(getIdentityVaultId(username)); } catch {}
-  return null;
-}
-async function unwrapSecret({
-  identity,
-  sender,
-  senderPublicJwk,
-  wrappedKey,
-  iv,
-  conversationId,
-  recipient,
-  alg
-}) {
-  await assertTrustedPublicKey(sender, senderPublicJwk);
-  const senderPublicKey = await importPublicKey(senderPublicJwk);
-  const wrapKey = await deriveWrapKey({
-    privateKey: identity.privateKey,
-    publicKey: senderPublicKey
-  });
-  const decrypted = await crypto.subtle.decrypt({
-    name: "AES-GCM",
-    iv: fromBase64(iv),
-    ...(alg === "ECDH-P256-AES-GCM-AAD-V2" ? {
-      additionalData: encoder.encode(JSON.stringify([
-        "liotan-key-wrap-v2", conversationId, sender, recipient
-      ]))
-    } : {})
-  }, wrapKey, fromBase64(wrappedKey));
-  return decoder.decode(decrypted);
-}
 export async function ensureConversationSecret({ username, chatKey }) {
   if (!username || !chatKey) return "";
   const current = getChatSecret(username, chatKey);
@@ -350,39 +219,7 @@ export async function ensureConversationSecret({ username, chatKey }) {
     setChatSecret(username, chatKey, current);
     return current;
   }
-  const pendingKey = `${username}:${chatKey}`;
-  if (pendingConversationKeys.has(pendingKey)) return pendingConversationKeys.get(pendingKey);
-  const promise = (async () => {
-    const identity = await loadLocalIdentity(username);
-    if (!identity) throw new Error("Legacy E2EE identity is unavailable on this device");
-    const conversationId = getConversationId(username, chatKey);
-    const response = await getE2EEConversationKeyApi(conversationId);
-    const wrapped = response?.key;
-    if (!wrapped?.wrappedKey || !wrapped?.sender) {
-      throw new Error("Legacy E2EE conversation key is unavailable");
-    }
-    const identities = await getE2EEIdentitiesApi([wrapped.sender]);
-    const sender = identities?.users?.find(item => item.username === wrapped.sender);
-    if (!sender?.publicKey) throw new Error("Legacy E2EE sender identity is unavailable");
-    const unlockedSecret = await unwrapSecret({
-      identity,
-      sender: sender.username,
-      senderPublicJwk: sender.publicKey,
-      wrappedKey: wrapped.wrappedKey,
-      iv: wrapped.iv,
-      conversationId,
-      recipient: username,
-      alg: wrapped.alg
-    });
-    setChatSecret(username, chatKey, unlockedSecret);
-    return unlockedSecret;
-  })();
-  pendingConversationKeys.set(pendingKey, promise);
-  try {
-    return await promise;
-  } finally {
-    pendingConversationKeys.delete(pendingKey);
-  }
+  throw new Error("Legacy E2EE private-key delivery is disabled; MLS v4 is required");
 }
 export function isEncryptedAttachment(attachment) {
   return Boolean(

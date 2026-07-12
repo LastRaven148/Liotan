@@ -11,8 +11,7 @@ const {
 const {
   getIdentity,
   getIdentities,
-  getDeviceIdentities,
-  getConversationKey
+  getDeviceIdentities
 } = require("../controllers/e2eeController");
 
 const router =
@@ -71,7 +70,7 @@ router.get(
   "/e2ee/conversations/:conversationId/key",
   authMiddleware,
   e2eeLimiter,
-  getConversationKey
+  legacyWriteGone
 );
 
 router.post(

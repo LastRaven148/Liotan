@@ -44,6 +44,9 @@ jobs:
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
           PM2_PROCESS: ${{ vars.PM2_PROCESS }}
           HEALTH_URL: ${{ vars.HEALTH_URL }}
+          FRONTEND_SMOKE_URL: ${{ vars.FRONTEND_SMOKE_URL }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          PUBLIC_FRONTEND_LINK: ${{ vars.PUBLIC_FRONTEND_LINK }}
         run: |
           test -n "$VPS_HOST"
           test -n "$VPS_HOST_KEY"
@@ -52,6 +55,9 @@ jobs:
           test -n "$DEPLOY_ROOT"
           test -n "$PM2_PROCESS"
           test -n "$HEALTH_URL"
+          test -n "$FRONTEND_SMOKE_URL"
+          test -n "$FRONTEND_HOST"
+          test -n "$PUBLIC_FRONTEND_LINK"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
@@ -65,11 +71,14 @@ jobs:
           DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
           PM2_PROCESS: ${{ vars.PM2_PROCESS }}
           HEALTH_URL: ${{ vars.HEALTH_URL }}
+          FRONTEND_SMOKE_URL: ${{ vars.FRONTEND_SMOKE_URL }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          PUBLIC_FRONTEND_LINK: ${{ vars.PUBLIC_FRONTEND_LINK }}
         run: |
           BUNDLE=$(find release-evidence -name '*-deploy.tar.gz' -type f -print -quit)
           test -n "$BUNDLE"
           REMOTE_BUNDLE="/tmp/liotan-${{ github.event.workflow_run.head_sha }}.tar.gz"
           scp -i ~/.ssh/id_ed25519 "$BUNDLE" "$VPS_USER@$VPS_HOST:$REMOTE_BUNDLE"
           ssh -i ~/.ssh/id_ed25519 "$VPS_USER@$VPS_HOST" \
-            "bash -s -- '$REMOTE_BUNDLE' '$DEPLOY_ROOT' '$PM2_PROCESS' '$HEALTH_URL' '${{ github.event.workflow_run.head_sha }}'" \
+            "bash -s -- '$REMOTE_BUNDLE' '$DEPLOY_ROOT' '$PM2_PROCESS' '$HEALTH_URL' '${{ github.event.workflow_run.head_sha }}' '$FRONTEND_SMOKE_URL' '$FRONTEND_HOST' '$PUBLIC_FRONTEND_LINK'" \
             < server/deploy/install-release.sh
