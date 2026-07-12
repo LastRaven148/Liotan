@@ -3,6 +3,32 @@ const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 
+test("application cold start initializes WASM before creating its MLS ClientId", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const result = await page.evaluate(() => window.runColdStartClientIdentityProbe());
+  expect(result).toEqual({
+    ok: true,
+    clientId: "00000000-0000-4000-8000-000000000009:0000000000000009@browser.test.invalid",
+    matches: true
+  });
+});
+
+test("recovery key survives concurrent save and full reload in browser IndexedDB", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const probe = await page.evaluate(async () => {
+    const username = `recovery-${crypto.randomUUID()}`;
+    const key = window.createProductionRecoveryKey();
+    await Promise.all([
+      window.saveProductionRecoveryKey(username, key),
+      window.saveProductionRecoveryKey(username, key)
+    ]);
+    return { username, key };
+  });
+  await page.reload();
+  await expect(page.locator("#status")).toHaveText("production-fixture-loaded");
+  expect(await page.evaluate(username => window.loadProductionRecoveryKey(username), probe.username)).toBe(probe.key);
+});
+
 test("CoreCrypto performs two-device MLS add, messaging, update, tamper and replay checks", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   await expect(page.locator("#status")).toHaveText("production-fixture-loaded");

@@ -3,6 +3,7 @@ import { configureCryptoSigner, signedCryptoRequest, unsignedCryptoPost } from "
 import { bytesToBase64Url, canonicalJson, randomId, sha256Base64Url } from "../encoding";
 import { KEY_PACKAGE_LIFETIME_SECONDS } from "./constants";
 import { constantTimeTextEqual } from "./identifiers";
+import { destroyUniffi } from "./uniffiLifecycle";
 
 export async function registerCryptographicIdentity(engine) {
   const cryptoUserId = engine.bootstrap.identity.cryptoUserId;
@@ -59,8 +60,12 @@ export async function publishKeyPackagesIfNeeded(engine) {
     const output = [];
     for (let index = 0; index < 10; index += 1) {
       const keyPackage = await ctx.generateKeyPackage(engine.credentialRef, KEY_PACKAGE_LIFETIME_SECONDS);
-      const payload = keyPackage.serialize();
-      output.push({ payload: bytesToBase64Url(payload), packageHash: sha256Base64Url(payload) });
+      try {
+        const payload = keyPackage.serialize();
+        output.push({ payload: bytesToBase64Url(payload), packageHash: sha256Base64Url(payload) });
+      } finally {
+        destroyUniffi(keyPackage);
+      }
     }
     return output;
   });

@@ -1,11 +1,8 @@
 import {
-  ClientId,
   CoreCrypto,
   Credential,
   CredentialType,
-  DeviceId,
   KeyPackage,
-  Uuid,
   Welcome
 } from "@wireapp/core-crypto/browser";
 import { deriveAccountKeys, signCanonical } from "./accountKeys";
@@ -21,14 +18,20 @@ import {
   wipe
 } from "./encoding";
 import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest } from "./cryptoApi";
-import { initializeCoreCryptoRuntime } from "./coreCryptoRuntime";
 import { getEncryptedRecord, listEncryptedRecords, putEncryptedRecord } from "./recoveryStore";
 import {
   MLS_CIPHER_SUITE as SUITE,
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
 import { assertEnvelopeSchema, dispatchCryptoMessage, envelopeToUiMessage } from "./mls/envelope";
-import { bytesToHex, clientIdText, constantTimeTextEqual, conversationObject, parseClientId } from "./mls/identifiers";
+import {
+  bytesToHex,
+  clientIdText,
+  constantTimeTextEqual,
+  conversationObject,
+  createInitializedClientIdentity,
+  parseClientId
+} from "./mls/identifiers";
 import {
   deleteCoreCryptoDatabase,
   getCoreCryptoDatabaseName,
@@ -44,6 +47,7 @@ import {
 } from "./mls/identity";
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
 import { validateLocalRoster, verifyDirectory } from "./mls/trust";
+import { destroyUniffi, destroyUniffiAll } from "./mls/uniffiLifecycle";
 const conversationByChat = new Map();
 const conversationById = new Map();
 const loadedHistory = new Set();
@@ -77,12 +81,11 @@ class LiotanMlsEngine {
     this.bootstrap = bootstrap;
     this.deviceId = deviceId;
     this.keys = keys;
-    this.clientId = new ClientId(
-      new Uuid(bootstrap.identity.cryptoUserId),
-      DeviceId.fromHexString(deviceId),
-      bootstrap.domain
-    );
-    this.clientIdString = clientIdText(this.clientId);
+    // No UniFFI object may be constructed before CoreCrypto WASM is ready.
+    // Keeping the constructor data-only makes the production cold-start path
+    // obey the same ordering as the browser probes.
+    this.clientId = null;
+    this.clientIdString = "";
     this.pendingOperation = null;
     this.core = null;
     this.database = null;
@@ -95,7 +98,13 @@ class LiotanMlsEngine {
 
   async initialize() {
     this.initializationStage = "wasm";
-    await initializeCoreCryptoRuntime();
+    const identity = await createInitializedClientIdentity({
+      cryptoUserId: this.bootstrap.identity.cryptoUserId,
+      deviceId: this.deviceId,
+      domain: this.bootstrap.domain
+    });
+    this.clientId = identity.clientId;
+    this.clientIdString = identity.clientIdString;
     this.initializationStage = "database-open";
     const opened = await openCoreCryptoDatabase({
       cryptoUserId: this.bootstrap.identity.cryptoUserId,
@@ -121,9 +130,14 @@ class LiotanMlsEngine {
     });
     if (credentials.length) {
       this.credentialRef = credentials[0];
+      destroyUniffiAll(credentials.slice(1));
     } else {
       const credential = Credential.basic(SUITE, this.clientId);
-      this.credentialRef = await this.core.transaction(ctx => ctx.addCredential(credential));
+      try {
+        this.credentialRef = await this.core.transaction(ctx => ctx.addCredential(credential));
+      } finally {
+        destroyUniffi(credential);
+      }
     }
     this.initializationStage = "device-registration";
     await this.registerCryptographicIdentity();
@@ -137,9 +151,21 @@ class LiotanMlsEngine {
     if (this.pollTimer) window.clearInterval(this.pollTimer);
     this.pollTimer = null;
     const database = this.database;
+    const core = this.core;
+    const credentialRef = this.credentialRef;
+    const clientId = this.clientId;
     this.database = null;
     this.core = null;
-    if (database) await database.close().catch(() => {});
+    this.credentialRef = null;
+    this.clientId = null;
+    this.clientIdString = "";
+    destroyUniffi(credentialRef);
+    destroyUniffi(core);
+    destroyUniffi(clientId);
+    if (database) {
+      await database.close().catch(() => {});
+      destroyUniffi(database);
+    }
   }
 
   async registerCryptographicIdentity() {
@@ -161,22 +187,26 @@ class LiotanMlsEngine {
   async sendCommitBundle(bundle) {
     const operation = this.pendingOperation;
     if (!operation) throw new Error("Unexpected MLS commit without an authorized server operation");
-    const groupInfo = bundle.groupInfo;
-    const body = {
-      epoch: operation.expectedEpoch,
-      commit: bytesToBase64Url(bundle.commit),
-      welcome: bundle.welcome ? bytesToBase64Url(bundle.welcome.serialize()) : "",
-      groupInfo: {
-        encryptionType: Number(groupInfo.encryptionType),
-        ratchetTreeType: Number(groupInfo.ratchetTreeType),
-        payload: bytesToBase64Url(groupInfo.payload)
-      }
-    };
-    await putEncryptedRecord(`pending-commit:${operation.conversationId}`, body, this.keys.cacheKey);
-    await signedCryptoRequest(
-      `/crypto/v4/conversations/${encodeURIComponent(operation.conversationId)}/operations/${encodeURIComponent(operation.operationId)}/commit`,
-      { method: "POST", body }
-    );
+    try {
+      const groupInfo = bundle.groupInfo;
+      const body = {
+        epoch: operation.expectedEpoch,
+        commit: bytesToBase64Url(bundle.commit),
+        welcome: bundle.welcome ? bytesToBase64Url(bundle.welcome.serialize()) : "",
+        groupInfo: {
+          encryptionType: Number(groupInfo.encryptionType),
+          ratchetTreeType: Number(groupInfo.ratchetTreeType),
+          payload: bytesToBase64Url(groupInfo.payload)
+        }
+      };
+      await putEncryptedRecord(`pending-commit:${operation.conversationId}`, body, this.keys.cacheKey);
+      await signedCryptoRequest(
+        `/crypto/v4/conversations/${encodeURIComponent(operation.conversationId)}/operations/${encodeURIComponent(operation.operationId)}/commit`,
+        { method: "POST", body }
+      );
+    } finally {
+      destroyUniffi(bundle.welcome);
+    }
   }
 
   async verifyDirectory(conversation) {
@@ -230,6 +260,7 @@ class LiotanMlsEngine {
     }
     const operation = response.operation;
     const conversationId = conversationObject(state.conversationId);
+    const operationObjects = [];
     this.pendingOperation = operation;
     try {
       await this.core.transaction(async ctx => {
@@ -237,22 +268,37 @@ class LiotanMlsEngine {
           const exists = await ctx.conversationExists(conversationId);
           if (!exists) await ctx.createConversation(conversationId, this.credentialRef);
           if (operation.keyPackages.length) {
+            const keyPackages = operation.keyPackages.map(item => {
+              const keyPackage = new KeyPackage(base64UrlToBytes(item.payload));
+              operationObjects.push(keyPackage);
+              return keyPackage;
+            });
             await ctx.addClientsToConversation(
               conversationId,
-              operation.keyPackages.map(item => new KeyPackage(base64UrlToBytes(item.payload)))
+              keyPackages
             );
           } else {
             await ctx.updateKeyingMaterial(conversationId);
           }
         } else if (operation.type === "add") {
+          const keyPackages = operation.keyPackages.map(item => {
+            const keyPackage = new KeyPackage(base64UrlToBytes(item.payload));
+            operationObjects.push(keyPackage);
+            return keyPackage;
+          });
           await ctx.addClientsToConversation(
             conversationId,
-            operation.keyPackages.map(item => new KeyPackage(base64UrlToBytes(item.payload)))
+            keyPackages
           );
         } else if (operation.type === "remove") {
+          const removeClientIds = operation.removeClientIds.map(item => {
+            const clientId = parseClientId(item);
+            operationObjects.push(clientId);
+            return clientId;
+          });
           await ctx.removeClientsFromConversation(
             conversationId,
-            operation.removeClientIds.map(parseClientId)
+            removeClientIds
           );
         } else if (operation.type === "update") {
           await ctx.updateKeyingMaterial(conversationId);
@@ -262,6 +308,8 @@ class LiotanMlsEngine {
       });
     } finally {
       this.pendingOperation = null;
+      destroyUniffiAll(operationObjects);
+      destroyUniffi(conversationId);
     }
     return this.resolveConversation(state.chatKey, state.dialog);
   }
@@ -349,34 +397,38 @@ class LiotanMlsEngine {
   }
 
   async handleApplicationMessage(state, event, decrypted) {
-    if (!decrypted.message) return;
-    const envelope = JSON.parse(textDecoder.decode(decrypted.message));
-    this.validateEnvelope(state, event, decrypted, envelope);
-    if (["edit", "delete"].includes(envelope.kind)) {
-      const targetRecord = await getEncryptedRecord(
-        `message:${state.conversationId}:${envelope.targetMessageId}`,
-        this.keys.cacheKey
-      );
-      const target = targetRecord?.envelope;
-      if (!target || target.kind !== "message" || target.senderUsername !== envelope.senderUsername) {
-        throw new Error("Unauthorized MLS message mutation rejected");
-      }
-    }
     try {
-      await this.cacheEnvelope(state, event.sequence, envelope);
-    } catch (error) {
-      if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
-    }
-    if (envelope.kind === "message") {
-      dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt) });
-    } else {
-      dispatchCryptoMessage({
-        type: envelope.kind,
-        chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt).chatId,
-        messageId: envelope.targetMessageId,
-        text: envelope.text || "",
-        from: envelope.senderUsername
-      });
+      if (!decrypted.message) return;
+      const envelope = JSON.parse(textDecoder.decode(decrypted.message));
+      this.validateEnvelope(state, event, decrypted, envelope);
+      if (["edit", "delete"].includes(envelope.kind)) {
+        const targetRecord = await getEncryptedRecord(
+          `message:${state.conversationId}:${envelope.targetMessageId}`,
+          this.keys.cacheKey
+        );
+        const target = targetRecord?.envelope;
+        if (!target || target.kind !== "message" || target.senderUsername !== envelope.senderUsername) {
+          throw new Error("Unauthorized MLS message mutation rejected");
+        }
+      }
+      try {
+        await this.cacheEnvelope(state, event.sequence, envelope);
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
+      }
+      if (envelope.kind === "message") {
+        dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt) });
+      } else {
+        dispatchCryptoMessage({
+          type: envelope.kind,
+          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt).chatId,
+          messageId: envelope.targetMessageId,
+          text: envelope.text || "",
+          from: envelope.senderUsername
+        });
+      }
+    } finally {
+      destroyUniffi(decrypted.senderClientId);
     }
   }
 
@@ -395,47 +447,56 @@ class LiotanMlsEngine {
         }
         for (const event of response.events) {
           const conversationId = conversationObject(state.conversationId);
-          if (event.kind === "commit") {
-            const exists = await this.core.transaction(ctx => ctx.conversationExists(conversationId));
-            const localEpoch = exists
-              ? Number(await this.core.transaction(ctx => ctx.conversationEpoch(conversationId)))
-              : -1;
-            if (!exists) {
-              if (!event.welcome) throw new Error("MLS Welcome is missing for this device");
-              await this.core.transaction(ctx => ctx.processWelcomeMessage(new Welcome(base64UrlToBytes(event.welcome))));
-              localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
-            } else if (localEpoch < event.epoch) {
-              const result = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.commit)));
-              localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
-              for (const buffered of result.bufferedMessages || []) {
-                await this.handleApplicationMessage(state, event, buffered);
-              }
-            }
-          } else if (event.kind === "message") {
-            if (event.senderClientId === this.clientIdString) {
-              const cachedRecord = await getEncryptedRecord(
-                `message:${state.conversationId}:${event.clientMessageId}`,
-                this.keys.cacheKey
-              );
-              const cached = cachedRecord?.envelope;
-              if (cached) {
-                if (cached.kind === "message") {
-                  dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt) });
-                } else {
-                  dispatchCryptoMessage({
-                    type: cached.kind,
-                    chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt).chatId,
-                    messageId: cached.targetMessageId,
-                    text: cached.text || "",
-                    from: cached.senderUsername
-                  });
+          try {
+            if (event.kind === "commit") {
+              const exists = await this.core.transaction(ctx => ctx.conversationExists(conversationId));
+              const localEpoch = exists
+                ? Number(await this.core.transaction(ctx => ctx.conversationEpoch(conversationId)))
+                : -1;
+              if (!exists) {
+                if (!event.welcome) throw new Error("MLS Welcome is missing for this device");
+                const welcome = new Welcome(base64UrlToBytes(event.welcome));
+                try {
+                  await this.core.transaction(ctx => ctx.processWelcomeMessage(welcome));
+                } finally {
+                  destroyUniffi(welcome);
+                }
+                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
+              } else if (localEpoch < event.epoch) {
+                const result = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.commit)));
+                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
+                for (const buffered of result.bufferedMessages || []) {
+                  await this.handleApplicationMessage(state, event, buffered);
                 }
               }
-            } else {
-              const decrypted = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.ciphertext)));
-              localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
-              await this.handleApplicationMessage(state, event, decrypted);
+            } else if (event.kind === "message") {
+              if (event.senderClientId === this.clientIdString) {
+                const cachedRecord = await getEncryptedRecord(
+                  `message:${state.conversationId}:${event.clientMessageId}`,
+                  this.keys.cacheKey
+                );
+                const cached = cachedRecord?.envelope;
+                if (cached) {
+                  if (cached.kind === "message") {
+                    dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt) });
+                  } else {
+                    dispatchCryptoMessage({
+                      type: cached.kind,
+                      chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt).chatId,
+                      messageId: cached.targetMessageId,
+                      text: cached.text || "",
+                      from: cached.senderUsername
+                    });
+                  }
+                }
+              } else {
+                const decrypted = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.ciphertext)));
+                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
+                await this.handleApplicationMessage(state, event, decrypted);
+              }
             }
+          } finally {
+            destroyUniffi(conversationId);
           }
           after = event.sequence;
           localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
@@ -479,11 +540,17 @@ class LiotanMlsEngine {
 
   async sendEnvelope(state, envelope) {
     const conversationId = conversationObject(state.conversationId);
-    const epoch = Number(await this.core.transaction(ctx => ctx.conversationEpoch(conversationId)));
-    const ciphertext = await this.core.transaction(ctx => ctx.encryptMessage(
-      conversationId,
-      textEncoder.encode(canonicalJson(envelope))
-    ));
+    let epoch;
+    let ciphertext;
+    try {
+      epoch = Number(await this.core.transaction(ctx => ctx.conversationEpoch(conversationId)));
+      ciphertext = await this.core.transaction(ctx => ctx.encryptMessage(
+        conversationId,
+        textEncoder.encode(canonicalJson(envelope))
+      ));
+    } finally {
+      destroyUniffi(conversationId);
+    }
     const response = await signedCryptoRequest(
       `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/messages`,
       {
@@ -577,6 +644,19 @@ async function createInitializedEngine({ username, recoveryKey, generation }) {
       const failedStage = next.initializationStage;
       await next.closeDatabase();
       const latestBootstrap = await cryptoBootstrap(deviceId).catch(() => bootstrap);
+      const isStorageStage = shouldAutomaticallyRepairDatabase(failedStage, null);
+      if (!isStorageStage) {
+        throw new MlsStorageError(
+          failedStage === "wasm"
+            ? "The browser could not initialize the CoreCrypto runtime"
+            : "The protected messaging service could not finish initialization",
+          {
+            code: failedStage === "wasm" ? "mls-runtime-unavailable" : "mls-startup-failed",
+            stage: failedStage,
+            cause: firstError
+          }
+        );
+      }
       const mayRepair = shouldAutomaticallyRepairDatabase(failedStage, latestBootstrap.device);
       if (!mayRepair) {
         throw new MlsStorageError(
@@ -628,6 +708,7 @@ async function createInitializedEngine({ username, recoveryKey, generation }) {
   } catch (err) {
     reportCryptoDiagnostic(err, { stage: next.initializationStage });
     await next.closeDatabase();
+    configureCryptoSigner(null);
     wipeEngineKeys(keys);
     throw err;
   }

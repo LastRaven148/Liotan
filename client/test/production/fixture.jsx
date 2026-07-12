@@ -1,16 +1,20 @@
 import {
   CipherSuite,
-  ClientId,
   ConversationId,
   CoreCrypto,
   Credential,
   Database,
   DatabaseKey,
-  DeviceId,
-  Uuid,
   Welcome
 } from "@wireapp/core-crypto/browser";
 import { initializeCoreCryptoRuntime } from "../../src/crypto/coreCryptoRuntime";
+import { createInitializedClientIdentity } from "../../src/crypto/mls/identifiers";
+import { destroyUniffi } from "../../src/crypto/mls/uniffiLifecycle";
+import {
+  createRecoveryKey,
+  loadRecoveryKey,
+  saveRecoveryKey
+} from "../../src/crypto/recoveryStore";
 import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import CryptoGate from "../../src/crypto/CryptoGate";
@@ -41,17 +45,41 @@ function deleteDatabase(name) {
 }
 
 async function createMlsClient(uuid, deviceHex) {
-  const database = await Database.inMemory(new DatabaseKey(randomBytes(32)));
+  const databaseKey = new DatabaseKey(randomBytes(32));
+  let database;
+  try {
+    database = await Database.inMemory(databaseKey);
+  } finally {
+    destroyUniffi(databaseKey);
+  }
   const core = CoreCrypto.new(database);
-  const clientId = new ClientId(new Uuid(uuid), DeviceId.fromHexString(deviceHex), "browser.test.invalid");
+  const { clientId } = await createInitializedClientIdentity({
+    cryptoUserId: uuid,
+    deviceId: deviceHex,
+    domain: "browser.test.invalid"
+  });
   const commits = [];
   const transport = {
     async sendCommitBundle(bundle) { commits.push(bundle); },
     async prepareForTransport() { throw new Error("history-secret transport must stay disabled"); }
   };
   await core.transaction(ctx => ctx.mlsInit(clientId, transport));
-  const credentialRef = await core.transaction(ctx => ctx.addCredential(Credential.basic(SUITE, clientId)));
+  const credential = Credential.basic(SUITE, clientId);
+  let credentialRef;
+  try {
+    credentialRef = await core.transaction(ctx => ctx.addCredential(credential));
+  } finally {
+    destroyUniffi(credential);
+  }
   return { database, core, clientId, credentialRef, commits };
+}
+
+async function closeMlsClient(client) {
+  destroyUniffi(client.credentialRef);
+  destroyUniffi(client.clientId);
+  destroyUniffi(client.core);
+  await client.database.close();
+  destroyUniffi(client.database);
 }
 
 async function decryptText(client, conversationId, ciphertext) {
@@ -60,6 +88,22 @@ async function decryptText(client, conversationId, ciphertext) {
 }
 
 window.getProductionWasmUrl = () => WASM_URL;
+window.runColdStartClientIdentityProbe = async function runColdStartClientIdentityProbe() {
+  const expected = "00000000-0000-4000-8000-000000000009:0000000000000009@browser.test.invalid";
+  const identity = await createInitializedClientIdentity({
+    cryptoUserId: "00000000-0000-4000-8000-000000000009",
+    deviceId: "0000000000000009",
+    domain: "browser.test.invalid"
+  });
+  try {
+    return { ok: true, clientId: identity.clientIdString, matches: identity.clientIdString === expected };
+  } finally {
+    destroyUniffi(identity.clientId);
+  }
+};
+window.createProductionRecoveryKey = () => createRecoveryKey();
+window.saveProductionRecoveryKey = (username, key) => saveRecoveryKey(username, key);
+window.loadProductionRecoveryKey = username => loadRecoveryKey(username);
 window.getDatabaseRepairPolicy = () => ({
   unregisteredEarlyFailure: shouldAutomaticallyRepairDatabase("database-open", null),
   registeredEarlyFailure: shouldAutomaticallyRepairDatabase("database-open", { status: "active" }),
@@ -75,25 +119,43 @@ window.runPersistentDatabaseProbe = async function runPersistentDatabaseProbe({ 
     if (!concurrentInit) await initializeCoreCryptoRuntime();
     const openAfterInit = async (databaseName, bytes) => {
       await initializeCoreCryptoRuntime();
-      return Database.open(databaseName, new DatabaseKey(bytes));
+      const key = new DatabaseKey(bytes);
+      try {
+        return await Database.open(databaseName, key);
+      } finally {
+        destroyUniffi(key);
+      }
     };
     const [first, concurrent] = concurrentInit
       ? await Promise.all([
           openAfterInit(name, keyBytes),
           openAfterInit(concurrentName, concurrentKeyBytes)
         ])
-      : [await Database.open(name, new DatabaseKey(keyBytes)), null];
-    if (concurrent) await concurrent.close();
-    const memory = await Database.inMemory(new DatabaseKey(randomBytes(32)));
+      : [await openAfterInit(name, keyBytes), null];
+    if (concurrent) {
+      await concurrent.close();
+      destroyUniffi(concurrent);
+    }
+    const memoryKey = new DatabaseKey(randomBytes(32));
+    let memory;
+    try {
+      memory = await Database.inMemory(memoryKey);
+    } finally {
+      destroyUniffi(memoryKey);
+    }
     const memoryCore = CoreCrypto.new(memory);
+    destroyUniffi(memoryCore);
     await memory.close();
+    destroyUniffi(memory);
     const firstLocation = await first.getLocation();
-    CoreCrypto.new(first);
+    destroyUniffi(CoreCrypto.new(first));
     await first.close();
-    const reopened = await Database.open(name, new DatabaseKey(keyBytes));
+    destroyUniffi(first);
+    const reopened = await openAfterInit(name, keyBytes);
     const secondLocation = await reopened.getLocation();
-    CoreCrypto.new(reopened);
+    destroyUniffi(CoreCrypto.new(reopened));
     await reopened.close();
+    destroyUniffi(reopened);
     return {
       ok: true,
       memoryCoreCreated: Boolean(memoryCore),
@@ -119,7 +181,13 @@ window.runMlsInterop = async function runMlsInterop() {
     await alice.core.transaction(ctx => ctx.addClientsToConversation(conversationId, [bobPackage]));
     const addBundle = alice.commits.shift();
     if (!addBundle?.welcome) throw new Error("add commit did not produce Welcome");
-    await bob.core.transaction(ctx => ctx.processWelcomeMessage(new Welcome(addBundle.welcome.serialize())));
+    const welcome = new Welcome(addBundle.welcome.serialize());
+    try {
+      await bob.core.transaction(ctx => ctx.processWelcomeMessage(welcome));
+    } finally {
+      destroyUniffi(welcome);
+    }
+    destroyUniffi(bobPackage);
     const ciphertext = await alice.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("production-mls")));
     if (await decryptText(bob, conversationId, ciphertext) !== "production-mls") throw new Error("MLS mismatch");
     const reply = await bob.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("production-reply")));
@@ -141,8 +209,9 @@ window.runMlsInterop = async function runMlsInterop() {
     const roster = await alice.core.transaction(ctx => ctx.getClientIds(conversationId));
     return { ok: true, epoch, rosterSize: roster.length, tamperRejected, replayRejected };
   } finally {
-    await alice.database.close();
-    await bob.database.close();
+    destroyUniffi(conversationId);
+    await closeMlsClient(alice);
+    await closeMlsClient(bob);
   }
 };
 

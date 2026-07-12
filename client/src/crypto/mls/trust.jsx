@@ -3,6 +3,7 @@ import { verifyCanonical } from "../accountKeys";
 import { base64UrlToBytes, sha256Base64Url } from "../encoding";
 import { getEncryptedRecord, putEncryptedRecord } from "../recoveryStore";
 import { clientIdText, constantTimeTextEqual, conversationObject } from "./identifiers";
+import { destroyUniffi, destroyUniffiAll } from "./uniffiLifecycle";
 
 export async function verifyDirectory(engine, conversation) {
   if (!Array.isArray(conversation.directory) || !conversation.directory.length) {
@@ -42,25 +43,33 @@ export async function verifyDirectory(engine, conversation) {
 
 export async function validateLocalRoster(engine, conversation) {
   const id = conversationObject(conversation.conversationId);
-  const exists = await engine.core.transaction(ctx => ctx.conversationExists(id));
-  if (!exists) return;
-  const clientIds = await engine.core.transaction(ctx => ctx.getClientIds(id));
-  const actualIds = clientIds.map(clientIdText).sort();
-  const expectedIds = [...conversation.activeClientIds].sort();
-  if (actualIds.length !== expectedIds.length || actualIds.some((item, index) => item !== expectedIds[index])) {
-    throw new Error("MLS roster does not match the root-signed device directory");
-  }
-  const identities = await engine.core.transaction(ctx => ctx.getDeviceIdentities(id, clientIds));
-  const manifestByClient = new Map(
-    conversation.directory.flatMap(user => user.devices || []).map(device => [device.clientId, device])
-  );
-  identities.forEach((identity, index) => {
-    const client = clientIdText(clientIds[index]);
-    const manifest = manifestByClient.get(client);
-    const expectedThumbprint = manifest?.credentialThumbprint || "";
-    if (!manifest || identity.status !== 1 || identity.credentialType !== CredentialType.Basic ||
-      !constantTimeTextEqual(identity.thumbprint, expectedThumbprint)) {
-      throw new Error("MLS credential is not bound to a root-signed device manifest");
+  let clientIds = [];
+  let identities = [];
+  try {
+    const exists = await engine.core.transaction(ctx => ctx.conversationExists(id));
+    if (!exists) return;
+    clientIds = await engine.core.transaction(ctx => ctx.getClientIds(id));
+    const actualIds = clientIds.map(clientIdText).sort();
+    const expectedIds = [...conversation.activeClientIds].sort();
+    if (actualIds.length !== expectedIds.length || actualIds.some((item, index) => item !== expectedIds[index])) {
+      throw new Error("MLS roster does not match the root-signed device directory");
     }
-  });
+    identities = await engine.core.transaction(ctx => ctx.getDeviceIdentities(id, clientIds));
+    const manifestByClient = new Map(
+      conversation.directory.flatMap(user => user.devices || []).map(device => [device.clientId, device])
+    );
+    identities.forEach((identity, index) => {
+      const client = clientIdText(clientIds[index]);
+      const manifest = manifestByClient.get(client);
+      const expectedThumbprint = manifest?.credentialThumbprint || "";
+      if (!manifest || identity.status !== 1 || identity.credentialType !== CredentialType.Basic ||
+        !constantTimeTextEqual(identity.thumbprint, expectedThumbprint)) {
+        throw new Error("MLS credential is not bound to a root-signed device manifest");
+      }
+    });
+  } finally {
+    destroyUniffiAll(identities);
+    destroyUniffiAll(clientIds);
+    destroyUniffi(id);
+  }
 }
