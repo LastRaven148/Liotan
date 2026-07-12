@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { createArchive } = require("./archiveFactory");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
@@ -96,17 +97,18 @@ function copyDirectory(source, destination) {
   }
 }
 
-function zipWithArchiver() {
-  let archiver;
+async function zipWithArchiver() {
+  let archiverModule;
   try {
-    archiver = require("archiver");
-  } catch {
+    archiverModule = await import("archiver");
+  } catch (error) {
+    if (error?.code !== "ERR_MODULE_NOT_FOUND" && error?.code !== "MODULE_NOT_FOUND") throw error;
     return false;
   }
 
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outFile);
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const archive = createArchive(archiverModule, "zip", { zlib: { level: 9 } });
 
     output.on("close", resolve);
     archive.on("error", reject);
@@ -114,6 +116,7 @@ function zipWithArchiver() {
     archive.directory(stagedRoot, "Liotan");
     archive.finalize();
   });
+  return true;
 }
 
 function zipWithSystemZip() {
@@ -152,11 +155,7 @@ function zipWithPowerShell() {
 }
 
 async function createZip() {
-  const archiverResult = zipWithArchiver();
-  if (archiverResult) {
-    await archiverResult;
-    return;
-  }
+  if (await zipWithArchiver()) return;
 
   if (zipWithSystemZip()) {
     return;
