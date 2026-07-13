@@ -2420,6 +2420,14 @@
     },
     {
       "project": "root",
+      "name": "pend",
+      "version": "1.2.0",
+      "license": "MIT",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "root",
       "name": "picomatch",
       "version": "4.0.5",
       "license": "MIT",
@@ -3158,6 +3166,14 @@
       "project": "root",
       "name": "yargs",
       "version": "17.7.3",
+      "license": "MIT",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "root",
+      "name": "yauzl",
+      "version": "3.4.0",
       "license": "MIT",
       "development": true,
       "optional": false
