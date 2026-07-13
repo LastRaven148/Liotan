@@ -20,9 +20,16 @@ jobs:
     name: Release gate (Node 22)
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble@sha256:5b8f294aff9041b7191c34a4bab3ac270157a28774d4b0660e9743297b697e48
+      options: --ipc=host
+    defaults:
+      run:
+        shell: bash
     env:
       CI: "true"
       MONGOMS_VERSION: "8.0.14"
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
       - name: Check out exact revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -43,10 +50,33 @@ jobs:
           npm ci --prefix client
           npm ci --prefix server
 
-      - name: Install browser runtime
-        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Verify pinned browser runtime
+        env:
+          HOME: /root
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const { chromium, firefox, webkit } = require("@playwright/test");
+
+          (async () => {
+            for (const browserType of [chromium, firefox, webkit]) {
+              const executable = browserType.executablePath();
+              if (!fs.existsSync(executable)) {
+                throw new Error(`Pinned Playwright runtime is missing: ${executable}`);
+              }
+
+              const browser = await browserType.launch({ headless: true });
+              await browser.close();
+            }
+          })().catch(error => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
 
       - name: Run complete release gate
+        env:
+          HOME: /root
         run: npm run release:check
 
       - name: Build immutable deployment bundle

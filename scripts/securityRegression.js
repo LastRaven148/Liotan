@@ -10,6 +10,30 @@ const { canonicalJson } = require("../server/utils/canonicalJson");
 const { verifyEd25519 } = require("../server/security/cryptoV4");
 const crypto = require("crypto");
 
+const rootPackage = JSON.parse(read("package.json"));
+const ciWorkflow = read(".github/workflows/ci.yml");
+const playwrightVersion = rootPackage.devDependencies?.["@playwright/test"];
+assert.match(playwrightVersion || "", /^\d+\.\d+\.\d+$/,
+  "Playwright must be pinned to an exact version");
+assert.match(
+  ciWorkflow,
+  new RegExp(`mcr\\.microsoft\\.com/playwright:v${playwrightVersion}-noble@sha256:[a-f0-9]{64}`),
+  "CI browser image must be immutable and exactly match the project Playwright version"
+);
+assert.match(ciWorkflow, /options:\s*--ipc=host/,
+  "the Playwright job container must use the recommended shared IPC namespace");
+assert.match(ciWorkflow, /name:\s*Verify pinned browser runtime[\s\S]*?HOME:\s*\/root[\s\S]*?browserType\.launch/,
+  "CI must launch every pinned browser with a home directory owned by the container user");
+assert.match(ciWorkflow, /name:\s*Run complete release gate\s+env:\s+HOME:\s*\/root/,
+  "the release gate must preserve the Firefox-compatible container home directory");
+assert.doesNotMatch(ciWorkflow, /playwright\s+install(?:-deps)?|playwright\s+install\s+--with-deps/,
+  "CI must not install browser OS dependencies dynamically from an Ubuntu mirror");
+const releaseCheck = read("scripts/checkRelease.js");
+assert.match(releaseCheck, /require\("yauzl"\)/,
+  "release ZIP validation must use a locked cross-platform implementation");
+assert.doesNotMatch(releaseCheck, /execFileSync\("(?:unzip|bsdtar|tar)"/,
+  "release validation must not depend on runner-specific ZIP commands");
+
 const first = getChatId("abc", "def_ghi");
 const second = getChatId("abc_def", "ghi");
 assert.notStrictEqual(first, second, "private conversation IDs must be collision-free");

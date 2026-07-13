@@ -1,7 +1,7 @@
 const PRODUCTION_API_PATTERN = /^https:\/\/(?:api\.liotan\.(?:com|ru)|api-tunnel\.liotan\.com)(?:\/|$)/i;
 
 function installProductionApiGuard(test) {
-  let escapedRequests;
+  let escapedRequests = [];
 
   test.beforeEach(async ({ context }) => {
     escapedRequests = [];

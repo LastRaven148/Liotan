@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const yauzl = require("yauzl");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
@@ -21,29 +22,18 @@ function runNpm(label, args, cwd = root) {
   });
 }
 
-function listZipEntries() {
-  const commands = process.platform === "win32"
-    ? [["tar", ["-tf", releaseZip]]]
-    : [
-        ["unzip", ["-Z1", releaseZip]],
-        ["bsdtar", ["-tf", releaseZip]]
-      ];
-  let lastError;
+async function listZipEntries() {
+  const zipFile = await yauzl.openPromise(releaseZip);
+  const entries = [];
 
-  for (const [command, args] of commands) {
-    try {
-      return execFileSync(command, args, { encoding: "utf8", shell: false })
-        .split(/\r?\n/)
-        .filter(Boolean);
-    } catch (error) {
-      lastError = error;
-    }
+  for await (const entry of zipFile.eachEntry()) {
+    entries.push(entry.fileName);
   }
 
-  throw new Error(`Unable to inspect release ZIP: ${lastError?.message || "no compatible ZIP reader found"}`);
+  return entries;
 }
 
-function testZip() {
+async function testZip() {
   if (!fs.existsSync(releaseZip)) {
     throw new Error(`Release ZIP was not created: ${releaseZip}`);
   }
@@ -65,14 +55,14 @@ function testZip() {
   if (expected !== actual) {
     throw new Error("Release checksum does not match ZIP contents");
   }
-  const entries = listZipEntries();
+  const entries = await listZipEntries();
   const forbidden = entries.filter(entry => /(^|\/)(node_modules|\.git|build|dist|coverage|test-results|playwright-report)(\/|$)|(^|\/)\.env(?:\.|$)|\.zip$/i.test(entry));
   if (forbidden.length) {
     throw new Error(`Forbidden release entries: ${forbidden.slice(0, 10).join(", ")}`);
   }
 }
 
-function main() {
+async function main() {
   runNpm("client build", ["run", "check:client"]);
   runNpm("server syntax check", ["run", "check:server"]);
   runNpm("unit, integration, browser, and coverage tests", ["test"]);
@@ -84,8 +74,11 @@ function main() {
   runNpm("encrypted reply privacy audit", ["run", "audit:e2ee-replies"]);
   runNpm("VPS hardening configuration audit", ["run", "audit:vps"]);
   runNpm("make clean release", ["run", "make-release"]);
-  testZip();
+  await testZip();
   console.log("\nRelease check passed.");
 }
 
-main();
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
