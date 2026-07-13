@@ -12,6 +12,7 @@ const EmailCode =
 
 const E2EEKey =
   require("../models/E2EEKey");
+const E2EEConversation = require("../models/E2EEConversation");
 
 const Session =
   require("../models/Session");
@@ -51,7 +52,7 @@ async function deleteAccountData(username) {
     url: user.avatar,
     storageKey: user.avatarStorageKey,
     storageType: user.avatarStorageType
-  });
+  }, { strict: true });
 
   const messages =
     await Message.find({
@@ -78,7 +79,7 @@ async function deleteAccountData(username) {
       storageType: message.attachment?.storageType,
       uploadId: message.attachment?.uploadId,
       mediaId: message.attachment?.mediaId
-    });
+    }, { strict: true });
   }
 
   await Message.deleteMany({
@@ -147,7 +148,7 @@ async function deleteAccountData(username) {
         storageType: message.attachment?.storageType,
         uploadId: message.attachment?.uploadId,
         mediaId: message.attachment?.mediaId
-      });
+      }, { strict: true });
     }
 
     await Message.deleteMany({
@@ -159,7 +160,7 @@ async function deleteAccountData(username) {
       url: group.avatar,
       storageKey: group.avatarStorageKey,
       storageType: group.avatarStorageType
-    });
+    }, { strict: true });
 
     await E2EEKey.deleteMany({
       conversationId: `group:${group._id}`
@@ -172,7 +173,7 @@ async function deleteAccountData(username) {
         cryptoConversationId: cryptoConversation.conversationId
       }).lean();
       for (const upload of uploads) {
-        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
+        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType }, { strict: true });
       }
       await Promise.all([
         AttachmentUpload.deleteMany({ cryptoConversationId: cryptoConversation.conversationId }),
@@ -189,9 +190,34 @@ async function deleteAccountData(username) {
     }
   });
 
-  await E2EEKey.deleteMany({
-    user: username
-  });
+  const legacyConversations = await E2EEConversation.find({ participants: username }, "conversationId").lean();
+  const legacyConversationIds = legacyConversations.map(item => item.conversationId);
+  await Promise.all([
+    E2EEKey.deleteMany({
+      $or: [
+        { user: username },
+        { conversationId: { $in: legacyConversationIds } }
+      ]
+    }),
+    E2EEConversation.deleteMany({ conversationId: { $in: legacyConversationIds } })
+  ]);
+
+  // Old encrypted uploads may predate the protocol discriminator or may no
+  // longer be referenced by a message. Account deletion must still remove
+  // every object owned by the account instead of leaving ciphertext or avatar
+  // remnants in R2 until a TTL happens to expire.
+  const remainingOwnedUploads = await AttachmentUpload.find({ owner: username }).lean();
+  for (const upload of remainingOwnedUploads) {
+    await deleteUploadedFile({
+      uploadId: upload.uploadId,
+      mediaId: upload.uploadId,
+      url: upload.url,
+      mediaUrl: upload.mediaUrl,
+      storageKey: upload.storageKey,
+      storageType: upload.storageType
+    }, { strict: true });
+  }
+  await AttachmentUpload.deleteMany({ owner: username });
 
   const cryptoDevices = await CryptoDevice.find({ userId: user._id }).lean();
   const cryptoClientIds = cryptoDevices.map(device => device.clientId);
@@ -203,7 +229,7 @@ async function deleteAccountData(username) {
     cryptoConversationId: { $in: privateConversationIds }
   }).lean();
   for (const upload of privateUploads) {
-    await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
+    await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType }, { strict: true });
   }
   await Promise.all([
     AttachmentUpload.deleteMany({ protocol: "mls-media-1", cryptoConversationId: { $in: privateConversationIds } }),

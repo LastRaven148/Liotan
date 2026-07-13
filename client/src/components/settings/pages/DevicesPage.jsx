@@ -7,6 +7,8 @@ export default function DevicesPage({ back, state, actions, labels }) {
   const [cryptoDevices, setCryptoDevices] = useState([]);
   const [currentCryptoDeviceId, setCurrentCryptoDeviceId] = useState("");
   const [cryptoError, setCryptoError] = useState("");
+  const [sessionError, setSessionError] = useState("");
+  const [sessionAction, setSessionAction] = useState("");
   useEffect(() => {
     let active = true;
     getMlsEngine().listCryptoDevices().then(result => {
@@ -28,16 +30,33 @@ export default function DevicesPage({ back, state, actions, labels }) {
   }
   const current = state.sessions.find((item) => item.current);
   const others = state.sessions.filter((item) => !item.current);
+  async function runSessionAction(name, action) {
+    if (sessionAction) return;
+    setSessionError("");
+    setSessionAction(name);
+    try {
+      await action();
+    } catch (error) {
+      setSessionError(
+        error?.status === 403
+          ? labels.restrictedSessionMessage
+          : error?.message || "Не удалось изменить активные сессии"
+      );
+    } finally {
+      setSessionAction("");
+    }
+  }
   return (
     <>
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.devices}</div></div>
       <SettingsSection title={labels.thisDevice}>
         {current ? <DeviceRow session={current} labels={labels} /> : <div className="settings-muted-text">{labels.noDevices}</div>}
-        {others.length > 0 && <button type="button" className="settings-terminate-button" onClick={actions.logoutOthers}>{labels.terminateOthers}</button>}
+        {others.length > 0 && <button type="button" className="settings-terminate-button" disabled={Boolean(sessionAction)} onClick={() => runSessionAction("others", actions.logoutOthers)}>{labels.terminateOthers}</button>}
+        {sessionError && <div className="settings-action-error" role="alert">{sessionError}</div>}
       </SettingsSection>
       <SettingsSection title={labels.activeSessions}>
         {others.length === 0 && <div className="settings-muted-text">{labels.noOtherDevices}</div>}
-        {others.map((session) => <DeviceRow key={session.id} session={session} labels={labels} onRevoke={() => actions.revoke(session.id)} />)}
+        {others.map((session) => <DeviceRow key={session.id} session={session} labels={labels} disabled={Boolean(sessionAction)} onRevoke={() => runSessionAction(session.id, () => actions.revoke(session.id))} />)}
       </SettingsSection>
       <SettingsSection title="MLS E2EE devices">
         <div className="settings-muted-text">Отзыв устройства запускает обязательный Remove commit во всех чатах.</div>
@@ -62,14 +81,14 @@ export default function DevicesPage({ back, state, actions, labels }) {
   );
 }
 
-function DeviceRow({ session, labels, onRevoke }) {
+function DeviceRow({ session, labels, onRevoke, disabled = false }) {
   return (
     <div className="settings-device-row">
       <div className="settings-device-main">
         <div className="settings-device-name">{formatDeviceName(session.deviceName, labels)}{session.current ? ` • ${labels.current}` : ""}</div>
         <div className="settings-device-meta">{labels.lastActive}: {formatSessionTime(session.lastSeenAt)}</div>
       </div>
-      {onRevoke && <button type="button" className="settings-mini-danger" onClick={onRevoke}>{labels.disconnect}</button>}
+      {onRevoke && <button type="button" className="settings-mini-danger" disabled={disabled} onClick={onRevoke}>{labels.disconnect}</button>}
     </div>
   );
 }

@@ -20,21 +20,6 @@ export function useComposerBehavior({
   useEffect(() => {
 
     if (
-      text === "" &&
-      textareaRef.current
-    ) {
-      textareaRef.current.style.height =
-        "48px";
-    }
-
-  }, [
-    text,
-    textareaRef
-  ]);
-
-  useEffect(() => {
-
-    if (
       (editingMessage || replyMessage) &&
       textareaRef.current
     ) {
@@ -54,11 +39,6 @@ export function useComposerBehavior({
     }
 
     sendMessage();
-
-    if (textareaRef.current) {
-      textareaRef.current.style.height =
-        "48px";
-    }
 
   }
 

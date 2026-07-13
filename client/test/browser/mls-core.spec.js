@@ -2,6 +2,9 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
+const { installProductionApiGuard } = require("./production-network-guard");
+
+installProductionApiGuard(test);
 
 test("application cold start initializes WASM before creating its MLS ClientId", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
@@ -69,13 +72,25 @@ test("production application bundle contains MLS v4 paths and no legacy private-
   const index = await page.request.get("/");
   expect(index.ok()).toBeTruthy();
   const html = await index.text();
-  const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(match => match[1]);
-  expect(scripts.length).toBeGreaterThan(0);
-  const sources = await Promise.all(scripts.map(async source => {
+  const chunks = [
+    ...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+\.js)"/g)
+  ].map(match => match[1]);
+  expect(chunks.length).toBeGreaterThan(1);
+  const pending = [...chunks];
+  const visited = new Set();
+  const sources = [];
+  while (pending.length) {
+    const source = pending.shift();
+    if (visited.has(source)) continue;
+    visited.add(source);
     const response = await page.request.get(source);
     expect(response.ok()).toBeTruthy();
-    return response.text();
-  }));
+    const javascript = await response.text();
+    sources.push(javascript);
+    for (const match of javascript.matchAll(/(?:from\s*|import\s*\()\s*["'](\.\/[^"']+\.js)["']/g)) {
+      pending.push(new URL(match[1], new URL(source, "http://127.0.0.1:4174")).pathname);
+    }
+  }
   const bundle = sources.join("\n");
   expect(bundle).toContain("/crypto/v4/");
   expect(bundle).not.toMatch(/\/e2ee\/(?:identity(?:-backup)?|conversations\/[^"']+\/key)/);

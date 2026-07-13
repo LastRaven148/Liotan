@@ -186,15 +186,31 @@ export function useAttachmentDraft({
 
     setSendingDraft(true);
 
-    const ok =
+    const result =
       await sendAttachments(
         attachmentDraft.map(item => item.file),
-        attachmentCaption
+        attachmentCaption,
+        attachmentDraft.map(item => ({
+          width: item.width,
+          height: item.height
+        }))
       );
 
-    if (ok !== false) {
+    if (result?.ok || result === true) {
       closeAttachmentDraft();
       return;
+    }
+
+    const sentCount = Math.max(0, Math.min(
+      attachmentDraft.length,
+      Number(result?.sentCount) || 0
+    ));
+
+    if (sentCount) {
+      setAttachmentDraft(prev => {
+        prev.slice(0, sentCount).forEach(item => URL.revokeObjectURL(item.url));
+        return prev.slice(sentCount);
+      });
     }
 
     setSendingDraft(false);

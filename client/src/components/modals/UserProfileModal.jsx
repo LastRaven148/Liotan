@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { getProfile, getGroupApi, searchUsers, updateGroupApi, uploadGroupAvatarApi, addGroupMemberApi, removeGroupMemberApi } from "../../services/api";
+import LiotanIcon from "../common/LiotanIcon";
 export default function UserProfileModal({
   user,
   username,
@@ -16,6 +17,7 @@ export default function UserProfileModal({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [loadError, setLoadError] = useState("");
   const fileInputRef = useRef(null);
   const isGroup = user?.type === "group";
   useEffect(() => {
@@ -23,6 +25,7 @@ export default function UserProfileModal({
     setSearch("");
     setUsers([]);
     setEditing(false);
+    setLoadError("");
     let alive = true;
     async function load() {
       if (isGroup) {
@@ -42,9 +45,10 @@ export default function UserProfileModal({
             setName(normalized.name || "");
             setDescription(normalized.description || "");
           }
-        } catch {
+        } catch (error) {
           if (alive) {
             setProfile(user);
+            setLoadError(error?.message || "Не удалось обновить информацию о группе");
           }
         }
         return;
@@ -54,13 +58,14 @@ export default function UserProfileModal({
         if (alive) {
           setProfile(data);
         }
-      } catch {
+      } catch (error) {
         if (alive) {
           setProfile(user);
+          setLoadError(error?.message || "Не удалось обновить профиль");
         }
       }
     }
-    if (user?.username) {
+    if (isGroup ? user?.groupId : user?.username) {
       load();
     }
     return () => {
@@ -192,7 +197,7 @@ export default function UserProfileModal({
   return <aside className="profile-drawer">
       <div className="drawer-topbar">
         <button type="button" className="drawer-icon-button" onClick={onClose}>
-          ×
+          <LiotanIcon name="close" size={21} />
         </button>
 
         <div className="drawer-title">
@@ -221,6 +226,8 @@ export default function UserProfileModal({
             {memberCount} участников
           </div>}
       </div>
+
+      {loadError && <div className="profile-load-error" role="alert">{loadError}</div>}
 
       {isGroup ? <>
           <div className="profile-info-card">
@@ -320,14 +327,14 @@ export default function UserProfileModal({
                 </button>
 
                 {canManageGroup && member.username !== profile.owner && <button type="button" className="group-member-remove" onClick={() => removeMember(member.username)}>
-                    ×
+                    <LiotanIcon name="close" size={17} />
                   </button>}
               </div>)}
           </div>
 
           <div className="profile-info-card">
             <button type="button" className="settings-row button-row danger-row" onClick={handleGroupDelete}>
-              <span>×</span>
+              <span><LiotanIcon name="trash" size={20} /></span>
 
               <div className="settings-row-main">
                 {profile.owner === username ? "Удалить группу" : "Выйти из группы"}

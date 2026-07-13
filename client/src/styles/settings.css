@@ -489,6 +489,67 @@
   line-height:1.35;
 }
 
+.settings-action-error,
+.profile-load-error{
+  margin:10px 12px;
+  padding:10px 12px;
+  border:1px solid rgba(239,68,68,.3);
+  border-radius:10px;
+  background:rgba(127,29,29,.22);
+  color:#ffb4b4;
+  font-size:13px;
+  line-height:1.45;
+}
+
+.twofactor-card{
+  box-sizing:border-box;
+  margin:0 16px 18px;
+  padding:18px;
+  border-radius:16px;
+  background:#202b36;
+}
+
+.twofactor-section-title{
+  margin-bottom:12px;
+  color:#8da2b5;
+  font-size:15px;
+  line-height:1.25;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.twofactor-status{
+  box-sizing:border-box;
+  width:100%;
+  min-height:112px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:12px;
+  padding:17px 18px;
+  border:1px solid transparent;
+  border-radius:15px;
+}
+
+.twofactor-status.is-enabled{background:rgba(53,217,132,.14);border-color:rgba(53,217,132,.28)}
+.twofactor-status.is-disabled{background:rgba(255,107,107,.14);border-color:rgba(255,107,107,.28)}
+.twofactor-status-line{display:flex;align-items:center;gap:12px}
+.twofactor-status-dot{width:12px!important;min-width:12px!important;height:12px;border-radius:50%;flex-shrink:0}
+.twofactor-status.is-enabled .twofactor-status-dot{background:#35d984}
+.twofactor-status.is-disabled .twofactor-status-dot{background:#ff8b8b}
+.twofactor-status-label{width:auto!important;min-width:0!important;font-size:16px;line-height:1.2;font-weight:700}
+.twofactor-status.is-enabled .twofactor-status-label{color:#35d984!important}
+.twofactor-status.is-disabled .twofactor-status-label{color:#ff8b8b!important}
+.twofactor-status-text{color:#d5dee8;font-size:15px;line-height:1.45}
+.twofactor-manage-title{color:#fff;font-size:16px;line-height:1.25;font-weight:700}
+.twofactor-manage-hint{margin-top:8px;color:#9fb0c1;font-size:14.5px;line-height:1.4}
+.twofactor-action{width:100%;min-height:52px;margin-top:17px;border:1px solid transparent;border-radius:14px;font-family:inherit;font-size:16px;line-height:1.2;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.twofactor-action.is-safe{color:#35d984;background:rgba(53,217,132,.16);border-color:rgba(53,217,132,.3)}
+.twofactor-action.is-safe:hover{background:rgba(53,217,132,.22)}
+.twofactor-action.is-danger{color:#ff8b8b;background:rgba(255,107,107,.14);border-color:rgba(255,107,107,.28)}
+.twofactor-action.is-danger:hover{background:rgba(255,107,107,.2)}
+
 .settings-device-row{
   min-height:58px;
   padding:10px 12px 10px 16px;

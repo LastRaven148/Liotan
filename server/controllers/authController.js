@@ -43,8 +43,7 @@ const {
 const { verifySecondFactorIfEnabled } = require("./auth/secondFactorService");
 
 
-function getRegistrationCancelUrl(token) {
-  const normalizeBaseUrl = (value) => {
+const normalizeBaseUrl = (value) => {
   if (typeof value !== "string") {
     return "";
   }
@@ -52,17 +51,13 @@ function getRegistrationCancelUrl(token) {
   return value.trim().replace(/\/+$/, "");
 };
 
-const PUBLIC_API_URL = normalizeBaseUrl(
-  process.env.PUBLIC_API_URL ||
-  "https://api.liotan.ru"
-);
+function getRegistrationCancelUrl(token) {
+  const publicSecurityUrl = normalizeBaseUrl(
+    process.env.PUBLIC_SECURITY_URL ||
+    "https://security.liotan.com"
+  );
 
-const PUBLIC_CLIENT_URL = normalizeBaseUrl(
-  process.env.PUBLIC_CLIENT_URL ||
-  "https://liotan.ru"
-);
-
-  return `${PUBLIC_API_URL}/auth/register/cancel/${encodeURIComponent(token)}`;
+  return `${publicSecurityUrl}/auth/register/cancel/${encodeURIComponent(token)}`;
 }
 
 const {
@@ -497,6 +492,7 @@ async function resetPassword(req, res, next) {
   }
 }
 module.exports = {
+  getRegistrationCancelUrl,
   sendAuthCode,
   verifyAuthCode,
   sendLoginCode,

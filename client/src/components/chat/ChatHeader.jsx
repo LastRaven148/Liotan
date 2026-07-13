@@ -104,9 +104,7 @@ export default function ChatHeader({
   typingUsers,
   openProfile,
   username,
-  onBack,
-  e2eeEnabled = false,
-  onE2EESettings
+  onBack
 }) {
 
   const { t } =
@@ -145,23 +143,6 @@ export default function ChatHeader({
   const isOnline =
     !isGroup &&
     onlineUsers?.includes(activeChat);
-
-  function renderedLockButton() {
-    return (
-      <button
-        type="button"
-        className="chat-e2ee-button is-enabled"
-        aria-label="Показать MLS safety number"
-        title="MLS E2EE · показать safety number"
-        onClick={event => {
-          event.stopPropagation();
-          onE2EESettings?.();
-        }}
-      >
-        🔒
-      </button>
-    );
-  }
 
   return (
     <div
@@ -222,8 +203,6 @@ export default function ChatHeader({
           </div>
         )}
       </div>
-
-      {renderedLockButton()}
 
     </div>
   );

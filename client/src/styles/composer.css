@@ -263,6 +263,18 @@
   animation:voice-record-wave 900ms ease-in-out infinite alternate;
 }
 
+.voice-record-wave span:nth-child(6n + 1){height:8px}
+.voice-record-wave span:nth-child(6n + 2){height:21px}
+.voice-record-wave span:nth-child(6n + 3){height:12px}
+.voice-record-wave span:nth-child(6n + 4){height:25px}
+.voice-record-wave span:nth-child(6n + 5){height:16px}
+.voice-record-wave span:nth-child(6n){height:28px}
+
+.composer textarea{
+  field-sizing:content;
+  max-height:160px;
+}
+
 .voice-record-wave span:nth-child(2n){
   animation-delay:120ms;
 }

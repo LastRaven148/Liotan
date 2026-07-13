@@ -41,7 +41,7 @@
 }
 
 .video-message .message-video{
-  aspect-ratio:var(--video-ratio);
+  aspect-ratio:auto;
   min-width:220px;
   min-height:140px;
 }

@@ -51,9 +51,6 @@ export default function MessageText({
   const [footerMode, setFooterMode] =
     useState("inline");
 
-  const [minWidth, setMinWidth] =
-    useState(0);
-
   useLayoutEffect(() => {
     if (!footer) {
       return undefined;
@@ -97,7 +94,6 @@ export default function MessageText({
 
         if (!lastRect) {
           setFooterMode("inline");
-          setMinWidth(0);
           return;
         }
 
@@ -122,15 +118,9 @@ export default function MessageText({
             .length <= 1;
 
         if (isSingleLine) {
-          const textWidth =
-            Math.ceil(lastRect.width);
-
-          setMinWidth(textWidth + footerWidth + gap);
-          setFooterMode("right");
+          setFooterMode(availableOnLastLine >= footerWidth + gap ? "right" : "line");
           return;
         }
-
-        setMinWidth(0);
 
         if (availableOnLastLine >= footerWidth + gap) {
           setFooterMode("right");
@@ -176,11 +166,6 @@ export default function MessageText({
         footer ? "message-text-with-footer" : "",
         footer ? `message-text-footer-${footerMode}` : ""
       ].filter(Boolean).join(" ")}
-      style={
-        minWidth > 0
-          ? { minWidth: `${minWidth}px` }
-          : undefined
-      }
     >
       <span
         ref={textRef}

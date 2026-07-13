@@ -19,6 +19,7 @@ const env = {
   JWT_SECRET: requireEnv("JWT_SECRET"),
   MONGO_URI: requireEnv("MONGO_URI"),
   CLIENT_URL: process.env.CLIENT_URL || "",
+  PUBLIC_SECURITY_URL: process.env.PUBLIC_SECURITY_URL || "",
   LIOTAN_KEEP_LEGACY_ACCOUNTS: process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false",
   LIOTAN_ALLOW_PUBLIC_BIND: process.env.LIOTAN_ALLOW_PUBLIC_BIND || "false",
   LIOTAN_ENFORCE_PROXY_PROTO: process.env.LIOTAN_ENFORCE_PROXY_PROTO || "true",

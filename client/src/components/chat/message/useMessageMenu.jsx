@@ -10,11 +10,8 @@ export default function useMessageMenu({
   const [menuOpen, setMenuOpen] =
     useState(false);
 
-  const [menuPos, setMenuPos] =
-    useState({
-      top: 0,
-      left: 0
-    });
+  const [menuPlacement, setMenuPlacement] =
+    useState("below");
 
   const [mobileMenu, setMobileMenu] =
     useState(false);
@@ -72,24 +69,8 @@ export default function useMessageMenu({
     const point =
       getEventPoint(e);
 
-    const menuWidth = 178;
     const menuHeight = 270;
     const gap = 8;
-    const padding = 10;
-
-    let left =
-      isMine
-        ? point.x - menuWidth
-        : point.x;
-
-    left =
-      Math.max(
-        padding,
-        Math.min(
-          left,
-          window.innerWidth - menuWidth - padding
-        )
-      );
 
     const spaceBelow =
       window.innerHeight - point.y;
@@ -97,27 +78,13 @@ export default function useMessageMenu({
     const spaceAbove =
       point.y;
 
-    let top;
-
     if (spaceBelow >= menuHeight + gap) {
-      top = point.y + gap;
+      setMenuPlacement("below");
     } else if (spaceAbove >= menuHeight + gap) {
-      top = point.y - menuHeight - gap;
+      setMenuPlacement("above");
     } else {
-      top =
-        Math.max(
-          padding,
-          Math.min(
-            point.y - menuHeight / 2,
-            window.innerHeight - menuHeight - padding
-          )
-        );
+      setMenuPlacement(point.y > window.innerHeight / 2 ? "above" : "below");
     }
-
-    setMenuPos({
-      top,
-      left
-    });
   }
 
   function openMenu(e) {
@@ -285,7 +252,7 @@ export default function useMessageMenu({
 
   return {
     menuOpen,
-    menuPos,
+    menuPlacement,
     mobileMenu,
     menuRef,
     messageRef,

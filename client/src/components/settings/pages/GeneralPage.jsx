@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SettingsRadio, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
 
 import LiotanIcon from "../../common/LiotanIcon";
+import { applyMessageScale, normalizeMessageScale } from "../../../utils/uiPreferences";
 export default function GeneralPage({ back, labels }) {
-  const [textSize, setTextSize] = useState(() => Math.min(150, Math.max(50, Number(localStorage.getItem("liotan_text_size") || 100))));
+  const [textSize, setTextSize] = useState(() => normalizeMessageScale(localStorage.getItem("liotan_text_size") || 100));
   const [theme, setTheme] = useState(localStorage.getItem("liotan_theme") || "dark");
   const [timeFormat, setTimeFormat] = useState(localStorage.getItem("liotan_time_format") || "24");
   const [wallpaper, setWallpaper] = useState(localStorage.getItem("liotan_wallpaper_mode") || "builtIn");
+  useEffect(() => applyMessageScale(textSize), [textSize]);
   function saveTextSize(value) {
-    setTextSize(value);
-    localStorage.setItem("liotan_text_size", String(value));
-    document.documentElement.style.setProperty("--liotan-message-scale", `${value / 100}`);
+    const normalized = normalizeMessageScale(value);
+    setTextSize(normalized);
+    localStorage.setItem("liotan_text_size", String(normalized));
   }
   function saveTheme(value) {
     setTheme(value);
@@ -29,7 +31,7 @@ export default function GeneralPage({ back, labels }) {
     <>
       <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.general}</div></div>
       <SettingsSection title={labels.textSize}>
-        <SettingsSlider label={labels.messageTextSize} value={textSize} min={50} max={150} suffix="%" onChange={saveTextSize} />
+        <SettingsSlider label={labels.messageTextSize} value={textSize} min={50} max={150} step={10} suffix="%" onChange={saveTextSize} />
       </SettingsSection>
       <SettingsSection title={labels.theme}>
         <SettingsRadio active={theme === "dark"} title={labels.dark} onClick={() => saveTheme("dark")} />

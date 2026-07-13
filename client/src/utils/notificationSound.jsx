@@ -29,13 +29,13 @@ export function sentSoundEnabled() {
   return notificationSoundEnabled() && localStorage.getItem("liotan_sound_sent") !== "0";
 }
 
-export function unlockNotificationSound() {
+export async function unlockNotificationSound() {
   if (unlocked) return;
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
-    if (ctx.state === "suspended") ctx.resume();
-    unlocked = true;
+    if (ctx.state === "suspended") await ctx.resume();
+    unlocked = ctx.state === "running";
   } catch {
     unlocked = false;
   }
@@ -43,8 +43,11 @@ export function unlockNotificationSound() {
 
 export function playTone({ frequency = 740, duration = 0.18, gainValue = 0.12 } = {}) {
   try {
-    const ctx = getAudioContext();
-    if (!ctx) return;
+    // Creating or resuming AudioContext outside a user gesture produces noisy
+    // browser warnings and is blocked by autoplay policy. Incoming events stay
+    // silent until the first explicit click/key gesture unlocks audio.
+    const ctx = audioContext;
+    if (!unlocked || !ctx || ctx.state !== "running") return;
 
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();

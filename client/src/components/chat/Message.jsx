@@ -39,7 +39,6 @@ function Message({
     t
   } = useLanguage();
   const [videoDuration, setVideoDuration] = useState(0);
-  const [videoRatio, setVideoRatio] = useState("16 / 9");
   const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
@@ -106,7 +105,7 @@ function Message({
   const fileUrl = encryptedMedia ? localUrl : localUrl || remoteUrl;
   const {
     menuOpen,
-    menuPos,
+    menuPlacement,
     mobileMenu,
     menuRef,
     messageRef,
@@ -180,9 +179,6 @@ function Message({
   }, [username, activeChat, attachment?.e2eeMedia, encryptedMedia, e2eeRevision]);
 
   useEffect(() => {
-    if (attachment?.width && attachment?.height) {
-      setVideoRatio(`${attachment.width} / ${attachment.height}`);
-    }
     if (attachmentDuration) {
       setVideoDuration(attachmentDuration);
       setAudioDuration(attachmentDuration);
@@ -376,9 +372,6 @@ function Message({
   }
   function handleVideoMetadata(e) {
     const video = e.currentTarget;
-    if (video.videoWidth && video.videoHeight) {
-      setVideoRatio(`${video.videoWidth} / ${video.videoHeight}`);
-    }
     if (Number.isFinite(video.duration)) {
       setVideoDuration(video.duration);
     }
@@ -428,12 +421,9 @@ function Message({
     if (!menuOpen) {
       return null;
     }
-    return createPortal(<div ref={menuRef} className="message-menu telegram-action-menu" style={{
-      top: `${menuPos.top}px`,
-      left: `${menuPos.left}px`
-    }}>
+    return <div ref={menuRef} className={`message-menu telegram-action-menu is-${menuPlacement}`}>
         <MessageActions t={t} message={{ ...message, text: decryptedText || message.text }} hasAttachment={hasAttachment} canEdit={canEdit} canCopy={hasUsableText} closeMenus={closeMenus} copyMessage={copyMessage} downloadFile={requestDownloadFile} onReply={onReply} onEdit={onEdit} onDelete={requestDeleteMessage} onPin={onPin} />
-      </div>, document.body);
+      </div>;
   }
   function renderPhoto() {
     return <div className="message-photo-wrap" onClick={openViewer}>
@@ -445,10 +435,8 @@ function Message({
   }
   function renderVideo() {
     const needsManualDownload = attachment.size > AUTO_CACHE_LIMIT && !isOfflineSaved;
-    return <div className="message-video-wrap" onClick={() => isOfflineSaved || !needsManualDownload ? openViewer() : downloadFile()} style={{
-      "--video-ratio": videoRatio
-    }}>
-        {fileUrl ? <video src={fileUrl} className="message-video" preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-media-pending" />}
+    return <div className="message-video-wrap" onClick={() => isOfflineSaved || !needsManualDownload ? openViewer() : downloadFile()}>
+        {fileUrl ? <video src={fileUrl} className="message-video" width={attachmentForDisplay?.width || undefined} height={attachmentForDisplay?.height || undefined} preload="metadata" muted playsInline loop onLoadedMetadata={handleVideoMetadata} /> : <div className="message-media-pending" />}
 
         <button type="button" className="message-video-play" aria-label={t.openVideo || "Открыть видео"} />
 
@@ -486,9 +474,9 @@ function Message({
         </div>
 
         {hasAttachment && !isPhoto && !isVideo && !isAudio && !isVoice && !isFile && renderMessageTime("message-footer-block")}
-      </div>
 
-      {renderDesktopMenu()}
+        {renderDesktopMenu()}
+      </div>
 
       {renderDeleteConfirmModal()}
 
@@ -498,7 +486,7 @@ function Message({
           </div>
         </div>}
 
-      <MessageViewer open={viewerOpen} attachment={attachment || {}} fileUrl={fileUrl} isPhoto={isPhoto} isVideo={isVideo} videoRatio={videoRatio} onClose={closeViewer} onDownload={downloadFile} onVideoMetadata={handleVideoMetadata} />
+      <MessageViewer open={viewerOpen} attachment={attachmentForDisplay || attachment || {}} fileUrl={fileUrl} isPhoto={isPhoto} isVideo={isVideo} onClose={closeViewer} onDownload={downloadFile} onVideoMetadata={handleVideoMetadata} />
 
       <DownloadConfirmModal open={downloadConfirmOpen} fileName={attachmentForDisplay?.name} fileSize={attachmentForDisplay?.size} onCancel={() => setDownloadConfirmOpen(false)} onConfirm={() => {
       setDownloadConfirmOpen(false);

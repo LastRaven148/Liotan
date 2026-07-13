@@ -10,7 +10,13 @@ const npmCli = process.platform === "win32"
   : "";
 const npmCommand = npmCli ? process.execPath : "npm";
 const npmArgs = args => npmCli ? [npmCli, ...args] : args;
-const env = { ...process.env, LIOTAN_PRODUCTION_TEST: "1" };
+const env = {
+  ...process.env,
+  LIOTAN_PRODUCTION_TEST: "1",
+  VITE_PRODUCTION_TEST: "1",
+  VITE_API_URL: "http://127.0.0.1:4174/__liotan_test_api__",
+  VITE_API_FALLBACK_URLS: ""
+};
 const build = spawnSync(npmCommand, npmArgs(["run", "build", "--prefix", "client"]), {
   cwd: root,
   env,

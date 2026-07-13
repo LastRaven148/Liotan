@@ -175,7 +175,7 @@ export default function useSocket({
         activeSocketIndex = (activeSocketIndex + 1) % socketEndpoints.length;
         const nextEndpoint = socketEndpoints[activeSocketIndex];
 
-        console.warn(`[Liotan Socket] switching endpoint after ${reason}: ${nextEndpoint}`);
+        if (import.meta.env.DEV) console.warn(`[Liotan Socket] switching endpoint after ${reason}: ${nextEndpoint}`);
 
         socket.removeAllListeners();
         socket.disconnect();
@@ -190,13 +190,15 @@ export default function useSocket({
 
     function attachSocketHandlers(currentSocket) {
       currentSocket.on("connect", () => {
-        console.info(`[Liotan Socket] connected: ${currentSocket.io.uri}`);
+        if (import.meta.env.DEV) console.info(`[Liotan Socket] connected: ${currentSocket.io.uri}`);
       });
       currentSocket.on("disconnect", reason => {
-        console.warn(`[Liotan Socket] disconnected: ${reason}`);
+        if (import.meta.env.DEV && reason !== "io client disconnect") {
+          console.warn(`[Liotan Socket] disconnected: ${reason}`);
+        }
       });
       currentSocket.on("connect_error", err => {
-        console.warn("[Liotan Socket] connect_error:", err?.message || err);
+        if (import.meta.env.DEV) console.warn("[Liotan Socket] connect_error:", err?.message || err);
         switchSocketEndpoint(err?.message || "connect_error");
       });
 

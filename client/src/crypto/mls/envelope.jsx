@@ -30,6 +30,8 @@ export function assertMediaDescriptor(envelope, descriptor) {
   const expectedBytes = MEDIA_MAGIC.length + expectedChunks * (MEDIA_CHUNK_SIZE + 16);
   const originalType = descriptor?.original?.type;
   const originalMime = descriptor?.original?.mimeType;
+  const originalWidth = Number(descriptor?.original?.width);
+  const originalHeight = Number(descriptor?.original?.height);
   const mimeMatchesType = originalType === "file"
     ? originalMime === "application/octet-stream"
     : originalType === "voice"
@@ -52,7 +54,9 @@ export function assertMediaDescriptor(envelope, descriptor) {
     typeof originalMime !== "string" || originalMime.length > 120 || !mimeMatchesType ||
     !Number.isFinite(Number(descriptor.original.duration)) || Number(descriptor.original.duration) < 0 ||
     !Array.isArray(descriptor.original.waveform) || descriptor.original.waveform.length > 64 ||
-    descriptor.original.waveform.some(value => !Number.isFinite(Number(value)))
+    descriptor.original.waveform.some(value => !Number.isFinite(Number(value))) ||
+    !Number.isSafeInteger(originalWidth) || originalWidth < 0 || originalWidth > 16384 ||
+    !Number.isSafeInteger(originalHeight) || originalHeight < 0 || originalHeight > 16384
   ) {
     throw new Error("Invalid authenticated MLS media descriptor");
   }

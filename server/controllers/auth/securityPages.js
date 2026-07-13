@@ -240,21 +240,24 @@ function sendHtml(res, statusCode, html) {
   res.end(html);
 }
 
+const SECURITY_STYLESHEET_URL = "/security/security-pages.css";
+
+function securityStylesheetLink() {
+  return `<link rel="stylesheet" href="${SECURITY_STYLESHEET_URL}" />`;
+}
+
 function sendSimpleSecurityPage(res, { ok, title, message }) {
   const safeTitle = escapeHtml(title || "Liotan");
   const safeMessage = escapeHtml(message || "");
+  const htmlLang = /[А-Яа-яЁё]/.test(`${title || ""}${message || ""}`) ? "ru" : "en";
 
   sendHtml(res, ok ? 200 : 400, `<!doctype html>
-<html lang="ru">
+<html lang="${htmlLang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${safeTitle}</title>
-  <style>
-    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0e1621;color:#fff;font-family:Arial,Helvetica,sans-serif}
-    .card{width:min(520px,calc(100vw - 32px));background:#17212b;border:1px solid #243447;border-radius:18px;padding:28px;box-shadow:0 18px 60px rgba(0,0,0,.35)}
-    h1{margin:0 0 12px;font-size:25px}.text{color:#9aaabc;line-height:1.55;font-size:16px}.ok{color:#6ee7a8}.bad{color:#ff8f8f}
-  </style>
+  ${securityStylesheetLink()}
 </head>
 <body><main class="card"><h1 class="${ok ? "ok" : "bad"}">${safeTitle}</h1><div class="text">${safeMessage}</div></main></body>
 </html>`);
@@ -276,11 +279,7 @@ function sendRegistrationSecurityPage(res, { token, record, req }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Liotan security notice</title>
-  <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{width:min(620px,100%);background:#17212b;border:1px solid #243447;border-radius:22px;padding:28px;box-shadow:0 18px 70px rgba(0,0,0,.38)}
-    h1{font-size:27px;margin:0 0 12px}.muted{color:#9aaabc;line-height:1.55}.details{margin:20px 0;padding:16px;border-radius:16px;background:#101923;border:1px solid #243447}.row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.row:last-child{border-bottom:0}.label{color:#8da2b5}.value{text-align:right;color:#fff;font-weight:700}.btn{width:100%;border:0;border-radius:16px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;box-shadow:0 10px 28px rgba(0,0,0,.18);transition:transform .12s ease,filter .12s ease}.btn:hover{filter:brightness(1.06)}.btn:active{transform:translateY(1px)}.safe{background:#22c55e;color:#06220f}.danger{background:#ef4444;color:#fff}.danger.secondary{background:#7f1d1d}.tiny{font-size:13px;color:#7f93a6;margin-top:16px;line-height:1.45}
-  </style>
+  ${securityStylesheetLink()}
 </head>
 <body>
   <main class="card">
@@ -317,7 +316,21 @@ function securityPageStyle() {
     .small{font-size:13px;color:#8da2b5;margin-top:16px;line-height:1.5}
     .input{width:100%;border:1px solid #2b4056;background:#0f1a25;color:#fff;border-radius:14px;padding:14px 15px;font-size:15px;margin-top:10px;outline:none}.input:focus{border-color:#3390ec}
     .error{background:#3b1619;border:1px solid #7f1d1d;color:#fecaca;border-radius:14px;padding:12px 14px;margin:12px 0;font-size:14px;line-height:1.45}
+    .text{color:#a9bacb;line-height:1.6;font-size:16px}.ok{color:#6ee7a8}.bad{color:#ff8f8f}
+    .details{margin:20px 0;padding:16px;border-radius:16px;background:#101923;border:1px solid #243447}
+    .row{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}.row:last-child{border-bottom:0}
+    .label{color:#8da2b5}.value{text-align:right;color:#fff;font-weight:700}.tiny{font-size:13px;color:#7f93a6;margin-top:16px;line-height:1.45}
+    .card.is-danger{border-color:#7f1d1d}.card.is-danger h1{color:#ff8f8f}.card.is-danger .muted{color:#ffb4b4}
+    @media(max-width:520px){body{padding:14px}.card{padding:22px;border-radius:20px}.row{display:grid;gap:4px}.value{text-align:left;overflow-wrap:anywhere}}
+    @media(prefers-reduced-motion:reduce){.btn{transition:none}}
   `;
+}
+
+function sendSecurityPageCss(_req, res) {
+  res.status(200);
+  res.set("Content-Type", "text/css; charset=utf-8");
+  res.set("Cache-Control", "public, max-age=300, must-revalidate");
+  res.end(securityPageStyle());
 }
 
 function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
@@ -329,7 +342,7 @@ function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(copy.confirmTitle)}</title>
-  <style>${securityPageStyle()}</style>
+  ${securityStylesheetLink()}
 </head>
 <body>
   <main class="card">
@@ -393,7 +406,7 @@ async function sendSuspiciousRegistrationPage(res, { token, record, req }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(copy.suspiciousTitle)}</title>
-  <style>${securityPageStyle()}</style>
+  ${securityStylesheetLink()}
 </head>
 <body>
   <main class="card">
@@ -426,7 +439,7 @@ function sendChangePasswordPage(res, { token, req, error = "" }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
-  <style>${securityPageStyle()}</style>
+  ${securityStylesheetLink()}
 </head>
 <body>
   <main class="card">
@@ -450,13 +463,13 @@ function sendChangePasswordPage(res, { token, req, error = "" }) {
 function sendDeleteStepOnePage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#ef4444;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
+  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepOneTitle)}</title>${securityStylesheetLink()}</head><body><main class="card is-danger"><h1>${escapeHtml(copy.deleteStepOneTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepOneText)}</p><form method="get" action="${getRegistrationActionUrl(token, "delete-step-2")}"><button class="btn danger" type="submit">${escapeHtml(copy.deleteStepOneButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.back)}</button></form></main></body></html>`);
 }
 
 function sendDeleteStepTwoPage(res, { token, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
-  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title><style>body{margin:0;min-height:100vh;background:#0e1621;color:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(560px,100%);background:#17212b;border:1px solid #7f1d1d;border-radius:22px;padding:28px}h1{color:#ff8f8f}.muted{color:#ffb4b4;line-height:1.55}.btn{width:100%;border:0;border-radius:14px;padding:15px 18px;font-size:15px;font-weight:850;letter-spacing:.01em;cursor:pointer;margin-top:12px;background:#dc2626;color:#fff}.ghost{background:#243447}</style></head><body><main class="card"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><input type="hidden" name="confirm" value="1" /><button class="btn" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
+  sendHtml(res, 200, `<!doctype html><html lang="${copy.htmlLang}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${escapeHtml(copy.deleteStepTwoTitle)}</title>${securityStylesheetLink()}</head><body><main class="card is-danger"><h1>${escapeHtml(copy.deleteStepTwoTitle)}</h1><p class="muted">${escapeHtml(copy.deleteStepTwoText)}</p><form method="post" action="${getRegistrationActionUrl(token, "delete-final")}"><input type="hidden" name="confirm" value="1" /><button class="btn danger-dark" type="submit">${escapeHtml(copy.deleteFinalButton)}</button></form><form method="get" action="${getRegistrationActionUrl(token, "suspicious")}"><button class="btn ghost" type="submit">${escapeHtml(copy.cancel)}</button></form></main></body></html>`);
 }
 
 module.exports = {
@@ -466,6 +479,7 @@ module.exports = {
   normalizeRegistrationSecurityAction,
   normalizeRegistrationToken,
   securityText,
+  sendSecurityPageCss,
   sendChangePasswordPage,
   sendDeleteStepOnePage,
   sendDeleteStepTwoPage,

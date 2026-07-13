@@ -70,6 +70,11 @@ function getRuntimeClientUrl() {
 function resolvePrimaryApiUrl() {
   const envApiUrl = normalizeApiUrl(import.meta.env.VITE_API_URL);
 
+  if (import.meta.env.VITE_PRODUCTION_TEST === "1") {
+    if (!envApiUrl) throw new Error("VITE_API_URL is required for production browser tests");
+    return envApiUrl;
+  }
+
   if (!import.meta.env.PROD) {
     return envApiUrl || DEVELOPMENT_API_URL;
   }
@@ -82,6 +87,9 @@ function resolvePrimaryApiUrl() {
 }
 
 function resolveBuiltInFallbacks() {
+  if (import.meta.env.VITE_PRODUCTION_TEST === "1") {
+    return [];
+  }
   if (!import.meta.env.PROD) {
     return [];
   }

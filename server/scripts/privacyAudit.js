@@ -57,7 +57,7 @@ const RULES = [
     id: "server-storage-internal-id",
     severity: "high",
     pattern: /storageKey|storageType/i,
-    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]attachmentAccess\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|controllers[\/]cryptoV4(Controller\.js|[\/]media\.js)$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|scripts[\/]/,
+    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]attachmentAccess\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|controllers[\/]cryptoV4(Controller\.js|[\/]media\.js)$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|test[\/]|scripts[\/]/,
     note: "Storage storageKey/storageType must stay server-side and must not be accepted from client payloads."
   },
   {

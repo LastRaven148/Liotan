@@ -20,8 +20,9 @@ PRIVACY_HASH_SECRET=REPLACE_WITH_A_THIRD_INDEPENDENT_RANDOM_SECRET
 CLIENT_URL=https://liotan.com
 PUBLIC_CLIENT_URL=https://liotan.com
 PUBLIC_API_URL=https://api.liotan.com
+PUBLIC_SECURITY_URL=https://security.liotan.com
 ALLOWED_ORIGINS=https://liotan.com,https://www.liotan.com,https://liotan.ru,https://www.liotan.ru
-API_ALLOWED_HOSTS=api.liotan.com,api.liotan.ru
+API_ALLOWED_HOSTS=api.liotan.com,api.liotan.ru,security.liotan.com
 # Leave unset for a host-only __Host-style deployment on each API zone.
 AUTH_COOKIE_DOMAIN=
 

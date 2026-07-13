@@ -29,9 +29,7 @@
     border-radius:10px;
   }
 }
-.audio-range{
-  background:linear-gradient(to right, rgba(255,255,255,.82) 0 var(--audio-progress, 0%), rgba(255,255,255,.25) var(--audio-progress, 0%) 100%);
-}
+.audio-range{background:transparent}
 .audio-range::-webkit-slider-runnable-track{
   background:transparent;
 }

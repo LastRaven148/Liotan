@@ -48,12 +48,7 @@ function VoiceWave() {
   return (
     <div className="voice-record-wave" aria-hidden="true">
       {Array.from({ length: 18 }).map((_, index) => (
-        <span
-          key={index}
-          style={{
-            "--voice-bar": `${8 + ((index * 13) % 22)}px`
-          }}
-        />
+        <span key={index} />
       ))}
     </div>
   );
@@ -141,8 +136,6 @@ export default function Composer({
 
   function handleTextChange(e) {
     setText(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
   }
 
   return (

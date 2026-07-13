@@ -41,6 +41,18 @@
   font-size:14px;
 }
 
+html.liotan-message-scale-50 .message-text{font-size:7px}
+html.liotan-message-scale-60 .message-text{font-size:8.4px}
+html.liotan-message-scale-70 .message-text{font-size:9.8px}
+html.liotan-message-scale-80 .message-text{font-size:11.2px}
+html.liotan-message-scale-90 .message-text{font-size:12.6px}
+html.liotan-message-scale-100 .message-text{font-size:14px}
+html.liotan-message-scale-110 .message-text{font-size:15.4px}
+html.liotan-message-scale-120 .message-text{font-size:16.8px}
+html.liotan-message-scale-130 .message-text{font-size:18.2px}
+html.liotan-message-scale-140 .message-text{font-size:19.6px}
+html.liotan-message-scale-150 .message-text{font-size:21px}
+
 .message-text-content{
   white-space:inherit;
 }
@@ -167,7 +179,7 @@
 }
 
 .message-menu{
-  position:fixed;
+  position:absolute;
   width:178px;
   padding:4px;
   background:#17212b;
@@ -180,6 +192,10 @@
   -webkit-user-select:none;
   touch-action:manipulation;
 }
+
+.message-menu.is-below{top:calc(100% + 8px);bottom:auto;left:0}
+.message-menu.is-above{bottom:calc(100% + 8px);top:auto;left:0}
+.message.me .message-menu{left:auto;right:0}
 
 .telegram-action-menu{
   backdrop-filter:blur(18px);
