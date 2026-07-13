@@ -2,6 +2,7 @@ const DEFAULT_ALLOWED_API_HOSTS = new Set([
   "api.liotan.com",
   "api.liotan.ru",
   "api-tunnel.liotan.com",
+  "security.liotan.com",
   "localhost",
   "127.0.0.1",
   "::1"

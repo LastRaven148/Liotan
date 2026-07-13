@@ -35,7 +35,7 @@ export default function SecureTransitionGate({ active, stage = "site-loading" })
           <p>{copy.detail}</p>
         </div>
         <div className="secure-transition-progress" aria-hidden="true">
-          <span style={{ width: `${copy.progress}%` }} />
+          <progress value={copy.progress} max="100" />
         </div>
         <p className="secure-transition-note">Не закрывайте эту вкладку</p>
       </section>

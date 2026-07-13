@@ -41,6 +41,13 @@ const {
 const router =
   express.Router();
 
+const { sendSecurityPageCss } = require("../controllers/auth/securityPages");
+
+router.get(
+  "/security/security-pages.css",
+  sendSecurityPageCss
+);
+
 router.post(
   "/auth/email-code",
   codeLimiter,

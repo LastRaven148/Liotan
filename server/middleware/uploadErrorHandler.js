@@ -16,6 +16,13 @@ function uploadErrorHandler(err, req, res, next) {
       });
     }
 
+    if (err.code === "LIMIT_FIELD_COUNT" || err.code === "LIMIT_PART_COUNT") {
+      return res.status(400).json({
+        error: "too many upload fields",
+        requestId: req.id
+      });
+    }
+
     return res.status(400).json({
       error: "upload error",
       requestId: req.id

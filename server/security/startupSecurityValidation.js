@@ -24,6 +24,28 @@ function validateStartupSecurity(env, logger = console) {
   const findings = [];
 
   if (env.NODE_ENV === "production") {
+    let publicSecurityUrl;
+    try {
+      publicSecurityUrl = new URL(String(env.PUBLIC_SECURITY_URL || ""));
+    } catch {
+      publicSecurityUrl = null;
+    }
+    if (
+      !publicSecurityUrl ||
+      publicSecurityUrl.protocol !== "https:" ||
+      publicSecurityUrl.username ||
+      publicSecurityUrl.password ||
+      publicSecurityUrl.pathname !== "/" ||
+      publicSecurityUrl.search ||
+      publicSecurityUrl.hash
+    ) {
+      findings.push({
+        severity: "critical",
+        code: "public_security_url_required",
+        message: "PUBLIC_SECURITY_URL must be an HTTPS origin used exclusively for security email actions."
+      });
+    }
+
     if (process.env.AUTH_COOKIE_DOMAIN || process.env.COOKIE_DOMAIN) {
       findings.push({
         severity: "critical",

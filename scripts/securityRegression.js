@@ -158,6 +158,11 @@ const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursi
   .join("\n");
 assert.doesNotMatch(clientSources, /static\.cloudflareinsights\.com|beacon\.min\.js/,
   "Cloudflare Insights beacon must not be injected by source code");
+assert.doesNotMatch(clientSources, /\bstyle\s*=|\.style\./,
+  "strict client CSP forbids inline style attributes and CSSOM style mutations");
+assert.match(read("server/middleware/contentSecurityPolicy.js"), /styleSrcAttr:\s*\["'none'"\]/);
+assert.doesNotMatch(read("server/controllers/auth/securityPages.js"), /<style\b|\sstyle=/i,
+  "security email action pages must load a same-origin stylesheet under CSP");
 assert.match(read("server/sockets/handlers/private/index.js"), /mls-v4-required/);
 assert(!fs.existsSync(path.join(root, "server/sockets/handlers/private/sendPrivateMessage.js")),
   "dead duplicate legacy private write handler must stay removed");

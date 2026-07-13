@@ -29,15 +29,12 @@ function VoiceWave({
       {Array.from({ length: 28 }).map((_, index) => {
         const raw = Number(waveform[index % waveform.length]) || 0;
         const normalized = raw > 1 ? raw / 100 : raw;
-        const height = 3 + Math.round(Math.max(0.04, Math.min(1, normalized)) * 24);
+        const level = 1 + Math.min(5, Math.floor(Math.max(0.04, Math.min(1, normalized)) * 6));
         const played = index / 28 <= playedRatio;
         return (
           <span
             key={index}
-            className={(active && played) ? "is-active" : ""}
-            style={{
-              "--voice-wave-height": `${height}px`
-            }}
+            className={[`level-${level}`, (active && played) ? "is-active" : ""].filter(Boolean).join(" ")}
           />
         );
       })}

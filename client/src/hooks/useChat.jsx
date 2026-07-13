@@ -136,10 +136,11 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
     }
   }
 
-  async function sendAttachments(files, caption = "") {
+  async function sendAttachments(files, caption = "", metadata = []) {
     if (sendingRef.current || !activeChat || !files?.length) return false;
     const safeFiles = Array.from(files).slice(0, 10);
     const target = activeChat;
+    let sentCount = 0;
     sendingRef.current = true;
     try {
       for (let index = 0; index < safeFiles.length; index += 1) {
@@ -148,17 +149,21 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
           dialog: getDialogForChat(target),
           text: index === safeFiles.length - 1 ? caption.trim() : "",
           file: safeFiles[index],
+          mediaOptions: {
+            privateMetadata: metadata[index] || {}
+          },
           replyTo: replyMessage
         });
+        sentCount += 1;
       }
       stopTyping(target);
       setReplyMessage(null);
       setTextState("");
-      return true;
+      return { ok: true, sentCount };
     } catch (err) {
       if (import.meta.env.DEV) console.warn(err);
       alert(err?.message || "Не удалось безопасно отправить файл");
-      return false;
+      return { ok: false, sentCount };
     } finally {
       window.setTimeout(() => { sendingRef.current = false; }, 350);
     }

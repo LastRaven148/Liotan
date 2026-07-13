@@ -19,6 +19,10 @@ import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import CryptoGate from "../../src/crypto/CryptoGate";
 import SecureTransitionGate from "../../src/crypto/SecureTransitionGate";
+import AttachmentDraftModal from "../../src/components/chat/AttachmentDraftModal";
+import UserProfileModal from "../../src/components/modals/UserProfileModal";
+import ChatSecurityNotice from "../../src/components/chat/ChatSecurityNotice";
+import LiotanIcon from "../../src/components/common/LiotanIcon";
 import useSecureTransition from "../../src/hooks/useSecureTransition";
 import { shouldAutomaticallyRepairDatabase } from "../../src/crypto/mls/databaseStorage";
 import "../../src/App.css";
@@ -265,6 +269,65 @@ window.mountFailingCryptoGate = function mountFailingCryptoGate() {
       <div id="messenger-sentinel">messenger must stay blocked</div>
     </CryptoGate>
   );
+};
+
+window.mountAttachmentPreview = function mountAttachmentPreview(kind = "file") {
+  const item = kind === "file"
+    ? {
+        file: new File(["patch"], "release-fix.patch", { type: "text/plain" }),
+        type: "file",
+        url: "fixture-file",
+        name: "release-fix.patch",
+        size: 5,
+        mimeType: "text/plain",
+        width: 0,
+        height: 0
+      }
+    : {
+        file: new File([new Uint8Array(16)], "portrait.mp4", { type: "video/mp4" }),
+        type: "video",
+        url: "data:video/mp4;base64,",
+        name: "portrait.mp4",
+        size: 16,
+        mimeType: "video/mp4",
+        width: 720,
+        height: 1280,
+        orientation: "portrait"
+      };
+  createRoot(document.querySelector("#root")).render(
+    <AttachmentDraftModal
+      attachmentDraft={[item]}
+      attachmentCaption=""
+      setAttachmentCaption={() => {}}
+      sendingDraft={false}
+      onClose={() => {}}
+      onRemove={() => {}}
+      onSend={() => {}}
+      onAddMore={() => {}}
+      onMediaMeta={() => {}}
+    />
+  );
+};
+
+window.mountUserProfile = function mountUserProfile(user) {
+  createRoot(document.querySelector("#root")).render(
+    <UserProfileModal
+      user={user}
+      username="Alice"
+      deleteGroupDialog={() => {}}
+      updateGroup={() => {}}
+      openUserProfile={() => {}}
+      onClose={() => {}}
+    />
+  );
+};
+
+window.mountChatSecurityNotice = function mountChatSecurityNotice(ready) {
+  createRoot(document.querySelector("#root")).render(<ChatSecurityNotice ready={Boolean(ready)} />);
+};
+
+window.mountSettingsIcon = function mountSettingsIcon() {
+  createRoot(document.querySelector("#root")).render(<LiotanIcon name="settings" size={48} title="Настройки" />);
 };
 
 document.querySelector("#status").textContent = "production-fixture-loaded";

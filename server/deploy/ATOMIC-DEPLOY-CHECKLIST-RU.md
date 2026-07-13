@@ -42,6 +42,18 @@ Secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_HOST_KEY`.
 5. Скопировать `nginx-liotan-security-headers.conf` в
    `/etc/nginx/snippets/liotan-security-headers.conf`, установить основной
    template и проверить: `sudo nginx -t`, затем `sudo systemctl reload nginx`.
+6. Выполнить подготовку выделенного security-origin по
+   `server/deploy/SECURITY-ORIGIN-RU.md` до следующего запуска production.
+7. Установить системную ротацию PM2-логов (нужны права администратора VPS):
+
+   ```bash
+   sudo install -o root -g root -m 0644 \
+     server/deploy/liotan-pm2.logrotate /etc/logrotate.d/liotan-pm2
+   sudo logrotate --debug /etc/logrotate.d/liotan-pm2
+   ```
+
+   Штатный `logrotate.timer` должен быть active. Не используйте `pm2 flush` как
+   замену ротации: он уничтожает диагностическую историю без архивирования.
 
 ## Что проверяет installer
 

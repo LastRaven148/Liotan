@@ -392,6 +392,33 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
   const cookie = registered.headers["set-cookie"]?.[0]?.split(";")[0];
   assert.match(cookie || "", /^liotan_auth=/);
 
+  const E2EEConversation = require("../../models/E2EEConversation");
+  const E2EEKey = require("../../models/E2EEKey");
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  await User.updateOne({ username }, { $set: { e2eePublicKey: { legacy: true } } });
+  await E2EEConversation.create({
+    conversationId: "legacy-auth-flow",
+    commitId: "legacy-commit",
+    participants: [username],
+    createdBy: username
+  });
+  await E2EEKey.create({
+    conversationId: "legacy-auth-flow",
+    user: username,
+    sender: username,
+    commitId: "legacy-commit",
+    wrappedKey: "legacy-wrapped-key",
+    iv: "legacy-iv"
+  });
+  await AttachmentUpload.collection.insertOne({
+    uploadId: "legacy-unversioned-upload",
+    owner: username,
+    storageKey: "",
+    storageType: "private-media",
+    encrypted: true,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+
   await supertest(app)
     .get("/auth/session")
     .set("Cookie", cookie)
@@ -432,9 +459,98 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
     .send({ currentPassword: password })
     .expect(200);
   assert.equal(await User.exists({ username }), null);
+  assert.equal(await E2EEConversation.exists({ participants: username }), null);
+  assert.equal(await E2EEKey.exists({ user: username }), null);
+  assert.equal(await AttachmentUpload.exists({ owner: username }), null);
 
   await supertest(app)
     .get("/auth/session")
     .set("Cookie", cookie)
     .expect(401);
+});
+
+test("profile endpoint does not expose private fields to unrelated users", async () => {
+  const viewer = await createAuthenticatedUser("profile_viewer");
+  const target = await createAuthenticatedUser("profile_target");
+  await User.updateOne({ _id: target.user._id }, {
+    $set: {
+      displayName: "Public target",
+      avatar: "https://avatars.example.invalid/private-object",
+      bio: "Private until related",
+      e2eePublicKey: { legacy: "must-not-leak" }
+    }
+  });
+
+  const response = await requestFor(viewer, "GET", "/profile/profile_target");
+  assert.equal(response.status, 200, response.text);
+  assert.deepEqual(Object.keys(response.body).sort(), ["avatar", "bio", "displayName", "limited", "username"]);
+  assert.equal(response.body.username, "profile_target");
+  assert.equal(response.body.displayName, "Public target");
+  assert.equal(response.body.avatar, "");
+  assert.equal(response.body.bio, "");
+  assert.equal(response.body.limited, true);
+});
+
+test("security email pages expose styled, confirmed actions without inline CSP exceptions", async () => {
+  const account = await createAuthenticatedUser("security_page_user");
+  const RegistrationCancel = require("../../models/RegistrationCancel");
+  const { encryptJson, sha256 } = require("../../security/crypto/secureEnvelope");
+  const token = crypto.randomBytes(32).toString("base64url");
+  const email = "security-page@example.invalid";
+  await Session.collection.updateOne(
+    { sessionIdHash: hashSessionId(account.sessionId) },
+    { $set: { createdAt: new Date(Date.now() - 73 * 60 * 60 * 1000) } }
+  );
+  await RegistrationCancel.create({
+    userId: account.user._id,
+    username: account.username,
+    emailHash: account.user.emailHash,
+    emailEnvelope: encryptJson({ email }, `registration-email:${account.user._id}`),
+    tokenHash: sha256(token),
+    sessionIdHash: hashSessionId(account.sessionId),
+    deviceName: "Windows · Edge",
+    browserName: "Edge",
+    osName: "Windows",
+    ipHint: "203.0.xxx.xxx",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+
+  const base = `/auth/register/cancel/${token}`;
+  const landing = await supertest(app).get(base).set("Accept-Language", "ru").expect(200);
+  assert.match(landing.text, /security\/security-pages\.css/);
+  assert.doesNotMatch(landing.text, /<style\b|\sstyle=/i);
+
+  const stylesheet = await supertest(app).get("/security/security-pages.css").expect(200);
+  assert.match(stylesheet.headers["content-type"], /^text\/css/);
+
+  const suspicious = await supertest(app).get(`${base}/action/suspicious`).set("Accept-Language", "ru").expect(200);
+  for (const action of ["revoke-session", "logout-all", "change-password", "delete-step-1"]) {
+    assert.match(suspicious.text, new RegExp(`/action/${action}`));
+  }
+
+  await supertest(app).get(`${base}/action/delete-step-1`).set("Accept-Language", "ru").expect(200)
+    .expect(response => assert.match(response.text, /delete-step-2/));
+  await supertest(app).get(`${base}/action/delete-step-2`).set("Accept-Language", "ru").expect(200)
+    .expect(response => assert.match(response.text, /delete-final/));
+  await supertest(app).get(`${base}/action/change-password`).set("Accept-Language", "ru").expect(200)
+    .expect(response => assert.match(response.text, /name="confirm"/));
+  await supertest(app)
+    .post(`${base}/action/change-password`)
+    .type("form")
+    .send({ confirm: "1" })
+    .expect(200)
+    .expect(response => {
+      assert.match(response.text, /name="code"/);
+      assert.match(response.text, /name="passwordConfirm"/);
+    });
+
+  await supertest(app).get(`${base}/action/revoke-session`).set("Accept-Language", "ru").expect(200);
+  await supertest(app)
+    .post(`${base}/action/revoke-session`)
+    .set("Accept-Language", "ru")
+    .type("form")
+    .send({ confirm: "1" })
+    .expect(200)
+    .expect(response => assert.match(response.text, /Сессия завершена/));
+  assert(await Session.exists({ username: account.username, revokedAt: { $ne: null } }));
 });

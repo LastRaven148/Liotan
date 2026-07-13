@@ -100,6 +100,22 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
         </Svg>
       );
 
+    case "close":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <path d="m6.4 6.4 11.2 11.2" />
+          <path d="m17.6 6.4-11.2 11.2" />
+        </Svg>
+      );
+
+    case "send":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <path d="M4.2 5.2 20 12 4.2 18.8l2.15-6.8L4.2 5.2Z" />
+          <path d="M6.35 12H20" />
+        </Svg>
+      );
+
     case "profile":
       return (
         <Svg size={size} className={className} title={title}>
@@ -173,23 +189,8 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
     case "settings":
       return (
         <Svg size={size} className={className} title={title}>
-          <circle cx="12" cy="12" r="3.15" />
-          <path d="M12 3.85v2.05" />
-          <path d="M12 18.1v2.05" />
-          <path d="M20.15 12H18.1" />
-          <path d="M5.9 12H3.85" />
-          <path d="m17.75 6.25-1.45 1.45" />
-          <path d="m7.7 16.3-1.45 1.45" />
-          <path d="m17.75 17.75-1.45-1.45" />
-          <path d="m7.7 7.7-1.45-1.45" />
-          <path d="M15.95 4.85 14.98 6.7" />
-          <path d="M9.02 17.3l-.97 1.85" />
-          <path d="M19.15 15.95l-1.85-.97" />
-          <path d="M6.7 9.02l-1.85-.97" />
-          <path d="m19.15 8.05-1.85.97" />
-          <path d="m6.7 14.98-1.85.97" />
-          <path d="m15.95 19.15-.97-1.85" />
-          <path d="m9.02 6.7-.97-1.85" />
+          <path d="M9.7 3.8h4.6l.55 2.05c.55.2 1.08.5 1.55.9l2.05-.58 2.3 3.98-1.5 1.48c.1.62.1 1.12 0 1.74l1.5 1.48-2.3 3.98-2.05-.58c-.47.4-1 .7-1.55.9l-.55 2.05H9.7l-.55-2.05a7.25 7.25 0 0 1-1.55-.9l-2.05.58-2.3-3.98 1.5-1.48a5.7 5.7 0 0 1 0-1.74l-1.5-1.48 2.3-3.98 2.05.58c.47-.4 1-.7 1.55-.9L9.7 3.8Z" />
+          <circle cx="12" cy="12.5" r="3" />
         </Svg>
       );
 

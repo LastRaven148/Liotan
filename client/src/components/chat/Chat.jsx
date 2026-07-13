@@ -3,6 +3,7 @@ import PinnedBar from "./PinnedBar";
 import AttachmentDraftModal from "./AttachmentDraftModal";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
+import ChatSecurityNotice from "./ChatSecurityNotice";
 
 import {
   memo,
@@ -181,6 +182,7 @@ const Chat = memo(function Chat({
       handleE2EEUpdated
     );
     window.addEventListener("liotan:mls-conversation-ready", handleE2EEUpdated);
+    window.addEventListener("liotan:mls-conversation-unavailable", handleE2EEUpdated);
 
     return () => {
       window.removeEventListener(
@@ -188,23 +190,11 @@ const Chat = memo(function Chat({
         handleE2EEUpdated
       );
       window.removeEventListener("liotan:mls-conversation-ready", handleE2EEUpdated);
+      window.removeEventListener("liotan:mls-conversation-unavailable", handleE2EEUpdated);
     };
   }, []);
 
   const mlsSecurityInfo = getConversationSecurityInfo(renderedActiveChat);
-
-  function showMlsSecurityInfo() {
-    if (!mlsSecurityInfo) {
-      alert("MLS-сессия ещё синхронизируется. Отправка останется заблокированной до завершения проверки.");
-      return;
-    }
-    alert([
-      mlsSecurityInfo.protocol,
-      `Участники: ${mlsSecurityInfo.participants.join(", ")}`,
-      "Сверьте этот safety number по независимому каналу:",
-      mlsSecurityInfo.formatted
-    ].join("\n\n"));
-  }
 
   useChatScroll({
     activeChat: renderedActiveChat,
@@ -231,8 +221,6 @@ const Chat = memo(function Chat({
             openProfile={openProfile}
             username={username}
             onBack={onBack}
-            e2eeEnabled={true}
-            onE2EESettings={showMlsSecurityInfo}
           />
 
           <PinnedBar
@@ -240,6 +228,8 @@ const Chat = memo(function Chat({
             t={t}
             onClick={handlePinnedBarClick}
           />
+
+          <ChatSecurityNotice ready={Boolean(mlsSecurityInfo)} />
 
           <MessageList
             messages={renderedMessages}

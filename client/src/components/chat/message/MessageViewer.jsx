@@ -6,7 +6,6 @@ export default function MessageViewer({
   fileUrl,
   isPhoto,
   isVideo,
-  videoRatio,
   onClose,
   onDownload,
   onVideoMetadata
@@ -41,7 +40,8 @@ export default function MessageViewer({
             autoPlay
             playsInline
             loop
-            style={{ "--video-ratio": videoRatio }}
+            width={attachment.width || undefined}
+            height={attachment.height || undefined}
             onLoadedMetadata={onVideoMetadata}
             onClick={(e) => e.stopPropagation()}
           />

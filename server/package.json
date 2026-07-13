@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --test --test-concurrency=1 test/unit/cryptoPrimitives.test.js",
+    "test:unit": "node --test --test-concurrency=1 test/unit/*.test.js",
     "test:integration": "node --test --test-concurrency=1 --test-timeout=120000 test/integration/cryptoV4.integration.test.js",
     "start": "node server.js",
     "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js",
@@ -13,6 +13,7 @@
     "audit:privacy": "node scripts/privacyAudit.js",
     "audit:vps": "node scripts/auditVpsHardening.js",
     "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js",
+    "audit:data-inventory": "node scripts/auditDataInventory.js",
     "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js",
     "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js"
   },

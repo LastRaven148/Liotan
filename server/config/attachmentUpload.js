@@ -69,8 +69,11 @@ const upload = multer({
   limits: {
     fileSize: MAX_ENCRYPTED_MEDIA_SIZE,
     files: 1,
-    fields: 5,
-    parts: 6
+    // Busboy raises the limit event when the configured value is reached.
+    // A valid MLS upload has exactly five text fields and one file part, so
+    // the ceiling must be one greater than the accepted wire shape.
+    fields: 6,
+    parts: 7
   },
   fileFilter: (_req, file, callback) => {
     const valid = file.mimetype === "application/octet-stream" &&

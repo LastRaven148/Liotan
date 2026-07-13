@@ -1,0 +1,11 @@
+/home/liotan/.pm2/logs/liotan-api-*.log {
+    daily
+    size 20M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su liotan liotan
+}

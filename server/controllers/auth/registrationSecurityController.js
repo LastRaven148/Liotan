@@ -326,8 +326,14 @@ async function handleRegistrationSecurityAction(req, res, next) {
         return sendDeleteStepTwoPage(res, { token: token, req });
       }
       const email = getRecordEmail(record);
-      await markRegistrationActionUsed(record, "delete-final");
       const result = await deleteAccountData(record.username);
+
+      // Successful account deletion removes every security record itself. If
+      // storage deletion fails, keep this one-time link unconsumed so the user
+      // can safely retry instead of stranding R2 objects behind a dead token.
+      if (!result.ok) {
+        await markRegistrationActionUsed(record, "delete-final-not-found");
+      }
 
       if (email) {
         await sendAccountDeletedNotice({

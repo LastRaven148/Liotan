@@ -1,4 +1,7 @@
 const { test, expect } = require("@playwright/test");
+const { installProductionApiGuard } = require("./production-network-guard");
+
+installProductionApiGuard(test);
 
 async function mockAnonymousSession(page, state = { authenticated: false, username: "alice_prod" }) {
   await page.route("**/auth/session", async route => {
@@ -125,4 +128,70 @@ test("CryptoGate blocks Messenger on storage failure and offers explicit reprovi
   await expect(page.getByRole("button", { name: "Восстановить это устройство" })).toBeVisible();
   await expect(page.getByRole("button", { name: /перезагруз/i })).toHaveCount(0);
   await expect(page.locator(".crypto-gate")).not.toContainText("technical detail");
+});
+
+for (const kind of ["file", "video"]) {
+  test(`attachment ${kind} preview stays inside the production viewport without a single-item scrollbar`, async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await page.goto("/test/production/fixture.html");
+    await page.evaluate(value => window.mountAttachmentPreview(value), kind);
+    const modal = page.locator(".attachment-preview-modal");
+    const list = page.locator(".attachment-preview-list");
+    await expect(modal).toBeVisible();
+    const bounds = await modal.boundingBox();
+    expect(bounds.width).toBeLessThanOrEqual(520);
+    expect(bounds.height).toBeLessThanOrEqual(696);
+    const overflow = await list.evaluate(element => ({
+      x: element.scrollWidth > element.clientWidth,
+      y: element.scrollHeight > element.clientHeight,
+      overflowX: getComputedStyle(element).overflowX,
+      overflowY: getComputedStyle(element).overflowY
+    }));
+    expect(overflow).toEqual({ x: false, y: false, overflowX: "hidden", overflowY: "hidden" });
+    await expect(page.locator(".attachment-preview-file-remove svg, .attachment-preview-remove svg")).toBeVisible();
+  });
+}
+
+test("other-user profile renders only the API-safe public fields", async ({ page }) => {
+  await page.route("**/profile/Bob", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ username: "Bob", displayName: "Боб", avatar: "", bio: "Публичное описание", limited: false })
+  }));
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountUserProfile({ type: "private", username: "Bob" }));
+  await expect(page.locator(".profile-drawer-name")).toHaveText("Боб");
+  await expect(page.locator(".profile-drawer")).toContainText("Публичное описание");
+  await expect(page.locator(".profile-drawer")).not.toContainText(/email|password|recovery/i);
+});
+
+test("group profile refreshes by groupId even when it has no username", async ({ page }) => {
+  await page.route("**/groups/group-1", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ _id: "group-1", name: "Обновлённая группа", members: ["Alice"], memberUsers: [], owner: "Alice", admins: ["Alice"] })
+  }));
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountUserProfile({ type: "group", groupId: "group-1", title: "Старое имя" }));
+  await expect(page.locator(".profile-drawer-name")).toHaveText("Обновлённая группа");
+  await expect(page.locator(".profile-load-error")).toHaveCount(0);
+});
+
+test("chat security notice never claims E2EE readiness before MLS is ready", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountChatSecurityNotice(false));
+  await expect(page.locator(".chat-security-notice")).toContainText("подготавливается");
+  await expect(page.locator(".chat-security-notice")).not.toContainText("защищены сквозным");
+  await page.evaluate(() => window.mountChatSecurityNotice(true));
+  await expect(page.locator(".chat-security-notice")).toContainText("защищены сквозным шифрованием");
+  await expect(page.locator(".chat-e2ee-button")).toHaveCount(0);
+});
+
+test("settings uses the unified gear icon instead of the old sunburst", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountSettingsIcon());
+  const icon = page.getByRole("img", { name: "Настройки" });
+  await expect(icon).toBeVisible();
+  await expect(icon.locator("path")).toHaveCount(1);
+  await expect(icon.locator("circle")).toHaveCount(1);
 });

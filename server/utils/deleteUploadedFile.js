@@ -108,7 +108,7 @@ async function removeAttachmentUploadMetadata(file, storageKeys) {
   }
 }
 
-async function deleteUploadedFile(file) {
+async function deleteUploadedFile(file, options = {}) {
   if (!file) return { deletedR2: 0, deletedLocal: false };
 
   if (typeof file === "string") {
@@ -135,17 +135,24 @@ async function deleteUploadedFile(file) {
   if (mediaUrlKey) storageKeys.add(mediaUrlKey);
 
   let deletedR2 = 0;
+  const r2Failures = [];
 
   for (const key of storageKeys) {
     try {
       await deleteFromR2(key, { storageClass: storageClassFor(file) });
       deletedR2 += 1;
     } catch (err) {
+      r2Failures.push(err);
       logger.warn("delete R2 file failed", { code: err.code, status: err.status });
     }
   }
 
-  await removeAttachmentUploadMetadata(file, storageKeys);
+  // Keep ownership metadata when object deletion fails so a retry/cleanup job
+  // can still locate the orphan. Never turn a temporary R2 error into an
+  // untraceable object.
+  if (!r2Failures.length) {
+    await removeAttachmentUploadMetadata(file, storageKeys);
+  }
 
   if (file.url) {
     await deleteLocalFile(file.url);
@@ -155,10 +162,20 @@ async function deleteUploadedFile(file) {
     await deleteLocalFile(file.mediaUrl);
   }
 
-  return {
+  const result = {
     deletedR2,
-    deletedLocal: Boolean(file.url || file.mediaUrl)
+    deletedLocal: Boolean(file.url || file.mediaUrl),
+    failedR2: r2Failures.length
   };
+
+  if (options.strict && r2Failures.length) {
+    const error = new Error("Account storage deletion is incomplete; retry after R2 recovers");
+    error.code = "R2_DELETE_INCOMPLETE";
+    error.failures = r2Failures.length;
+    throw error;
+  }
+
+  return result;
 }
 
 module.exports = deleteUploadedFile;

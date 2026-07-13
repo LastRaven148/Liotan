@@ -63,7 +63,7 @@ const contentSecurityPolicyDirectives = {
   scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
   scriptSrcAttr: ["'none'"],
   styleSrc: ["'self'"],
-  styleSrcAttr: ["'unsafe-inline'"],
+  styleSrcAttr: ["'none'"],
   fontSrc: ["'self'", "data:"],
   workerSrc: ["'self'"],
   formAction: ["'self'"],

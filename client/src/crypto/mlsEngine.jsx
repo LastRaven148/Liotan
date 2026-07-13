@@ -443,6 +443,18 @@ class LiotanMlsEngine {
           response = await signedCryptoRequest(path);
         } catch (err) {
           if (err.status === 403 && !state.initialized) return;
+          if (err.status === 403) {
+            if (conversationById.get(state.conversationId) === state) {
+              conversationById.delete(state.conversationId);
+            }
+            if (conversationByChat.get(state.chatKey) === state) {
+              conversationByChat.delete(state.chatKey);
+            }
+            window.dispatchEvent(new CustomEvent("liotan:mls-conversation-unavailable", {
+              detail: { chatKey: state.chatKey, conversationId: state.conversationId }
+            }));
+            throw new Error("MLS-доступ к чату изменился. Откройте чат повторно для безопасной синхронизации.");
+          }
           throw err;
         }
         for (const event of response.events) {

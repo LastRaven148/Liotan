@@ -2,6 +2,7 @@ import {
   useEffect,
   useState
 } from "react";
+import LiotanIcon from "../common/LiotanIcon";
 
 function getDraftTitle(items) {
   if (items.length === 1) {
@@ -77,12 +78,25 @@ export default function AttachmentDraftModal({
         if (e.target === e.currentTarget && !sendingDraft) onClose?.();
       }}
     >
-      <div className={["attachment-preview-modal", onlyFiles ? "is-file-preview" : "is-media-preview"].join(" ")}>
+      <div
+        className={[
+          "attachment-preview-modal",
+          onlyFiles ? "is-file-preview" : "is-media-preview",
+          attachmentDraft.length > 1 ? "has-multiple-items" : "has-single-item"
+        ].join(" ")}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="attachment-preview-title"
+      >
         <div className="attachment-preview-header">
-          <button type="button" className="attachment-preview-close" onClick={onClose}>×</button>
-          <div className="attachment-preview-title">{getDraftTitle(attachmentDraft)}</div>
+          <button type="button" className="attachment-preview-close" onClick={onClose} aria-label="Закрыть">
+            <LiotanIcon name="close" size={21} />
+          </button>
+          <div className="attachment-preview-title" id="attachment-preview-title">{getDraftTitle(attachmentDraft)}</div>
           <div className="attachment-preview-menu-wrap">
-            <button type="button" className="attachment-preview-more" onClick={() => setMenuOpen(prev => !prev)}>⋮</button>
+            <button type="button" className="attachment-preview-more" onClick={() => setMenuOpen(prev => !prev)} aria-label="Дополнительные действия">
+              <LiotanIcon name="moreVertical" size={21} />
+            </button>
 
             {menuOpen && (
               <div className="attachment-preview-menu">
@@ -104,7 +118,6 @@ export default function AttachmentDraftModal({
             <div
               key={item.url}
               className={getItemClass(item)}
-              style={item.ratio ? { "--draft-media-ratio": item.ratio } : undefined}
             >
               {item.type === "video" ? (
                 <video
@@ -139,12 +152,16 @@ export default function AttachmentDraftModal({
                     className="attachment-preview-file-remove"
                     onClick={() => onRemove(index)}
                     aria-label="Удалить файл"
-                  />
+                  >
+                    <LiotanIcon name="trash" size={20} />
+                  </button>
                 </div>
               )}
 
               {["photo", "video"].includes(item.type) && (
-                <button type="button" className="attachment-preview-remove" onClick={() => onRemove(index)}>×</button>
+                <button type="button" className="attachment-preview-remove" onClick={() => onRemove(index)} aria-label="Удалить вложение">
+                  <LiotanIcon name="close" size={18} />
+                </button>
               )}
             </div>
           ))}
@@ -162,7 +179,9 @@ export default function AttachmentDraftModal({
             }}
             placeholder="Добавить подпись..."
           />
-          <button type="button" className="attachment-preview-send" onClick={onSend} disabled={sendingDraft}>{sendingDraft ? "…" : "➤"}</button>
+          <button type="button" className="attachment-preview-send" onClick={onSend} disabled={sendingDraft} aria-label="Отправить">
+            {sendingDraft ? <span className="attachment-preview-sending" aria-hidden="true" /> : <LiotanIcon name="send" size={22} />}
+          </button>
         </div>
       </div>
     </div>

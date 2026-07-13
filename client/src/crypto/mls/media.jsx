@@ -86,8 +86,8 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
         size: file.size,
         duration: Number(options.privateMetadata?.duration) || 0,
         waveform: Array.isArray(options.privateMetadata?.waveform) ? options.privateMetadata.waveform.slice(0, 64) : [],
-        width: 0,
-        height: 0
+        width: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.width) || 0))),
+        height: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.height) || 0)))
       }
     };
   } finally {
