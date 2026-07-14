@@ -18,7 +18,14 @@ import {
   wipe
 } from "./encoding";
 import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest } from "./cryptoApi";
-import { getEncryptedRecord, listEncryptedRecords, putEncryptedRecord } from "./recoveryStore";
+import {
+  getEncryptedRecord,
+  getEncryptedHistoryRecord,
+  listEncryptedHistoryRecords,
+  migrateEncryptedHistoryRecords,
+  putEncryptedHistoryRecord,
+  putEncryptedRecord
+} from "./recoveryStore";
 import {
   MLS_CIPHER_SUITE as SUITE,
   SELF_UPDATE_INTERVAL_MS
@@ -51,6 +58,9 @@ import { destroyUniffi, destroyUniffiAll } from "./mls/uniffiLifecycle";
 const conversationByChat = new Map();
 const conversationById = new Map();
 const loadedHistory = new Set();
+const CONVERSATION_DIRECTORY_TTL_MS = 60 * 1000;
+const CONVERSATION_FAST_SYNC_TTL_MS = 3000;
+const INITIAL_HISTORY_LIMIT = 80;
 let engine = null;
 let engineInitialization = null;
 let engineInitializationUsername = "";
@@ -91,6 +101,11 @@ class LiotanMlsEngine {
     this.database = null;
     this.credentialRef = null;
     this.syncing = new Map();
+    this.resolving = new Map();
+    this.ensuring = new Map();
+    this.sendQueues = new Map();
+    this.historyMigrations = new Map();
+    this.closing = false;
     this.pollTimer = null;
     this.initializationStage = "created";
     this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
@@ -143,7 +158,9 @@ class LiotanMlsEngine {
     await this.registerCryptographicIdentity();
     this.initializationStage = "key-package-publication";
     await this.publishKeyPackagesIfNeeded();
-    this.pollTimer = window.setInterval(() => this.syncAll().catch(() => {}), 15000);
+    this.pollTimer = window.setInterval(() => this.syncAll().catch(error => {
+      if (import.meta.env.DEV) console.warn("MLS periodic sync failed", error);
+    }), 15000);
     this.initializationStage = "ready";
   }
 
@@ -224,20 +241,42 @@ class LiotanMlsEngine {
     return { chatType: "private", targetUsername: String(dialog?.username || chatKey) };
   }
 
-  async resolveConversation(chatKey, dialog = null) {
-    const response = await signedCryptoRequest("/crypto/v4/conversations/resolve", {
-      method: "POST",
-      body: this.chatDescriptor(chatKey, dialog)
-    });
-    await this.verifyDirectory(response);
-    const state = { ...response, chatKey: String(chatKey), dialog };
-    conversationByChat.set(String(chatKey), state);
-    conversationById.set(response.conversationId, state);
-    await this.loadCachedHistory(state);
-    window.dispatchEvent(new CustomEvent("liotan:mls-conversation-ready", {
-      detail: { chatKey: String(chatKey), conversationId: response.conversationId }
-    }));
-    return state;
+  async resolveConversation(chatKey, dialog = null, options = {}) {
+    const key = String(chatKey);
+    const cached = conversationByChat.get(key);
+    const cacheFresh = cached && Date.now() - Number(cached.resolvedAt || 0) < CONVERSATION_DIRECTORY_TTL_MS;
+    if (!options.force && cacheFresh) {
+      if (dialog && cached.dialog !== dialog) cached.dialog = dialog;
+      return cached;
+    }
+    if (this.resolving.has(key)) return this.resolving.get(key);
+    const promise = (async () => {
+      const response = await signedCryptoRequest("/crypto/v4/conversations/resolve", {
+        method: "POST",
+        body: this.chatDescriptor(key, dialog)
+      });
+      await this.verifyDirectory(response);
+      const state = {
+        ...response,
+        chatKey: key,
+        dialog,
+        ready: false,
+        resolvedAt: Date.now(),
+        lastSyncedAt: 0
+      };
+      conversationByChat.set(key, state);
+      conversationById.set(response.conversationId, state);
+      try {
+        await this.loadCachedHistory(state);
+      } catch (error) {
+        // Local history is an encrypted convenience cache. A transient cache
+        // failure must not make an otherwise healthy MLS conversation unusable.
+        if (import.meta.env.DEV) console.warn("Encrypted MLS history cache unavailable", error);
+      }
+      return state;
+    })().finally(() => this.resolving.delete(key));
+    this.resolving.set(key, promise);
+    return promise;
   }
 
   async reconcileConversation(state, options = {}) {
@@ -311,71 +350,179 @@ class LiotanMlsEngine {
       destroyUniffiAll(operationObjects);
       destroyUniffi(conversationId);
     }
-    return this.resolveConversation(state.chatKey, state.dialog);
+    return this.resolveConversation(state.chatKey, state.dialog, { force: true });
   }
 
-  async ensureConversation(chatKey, dialog = null) {
-    let state = await this.resolveConversation(chatKey, dialog);
-    if (state.initialized && !state.activeClientIds.includes(this.clientIdString)) {
-      throw new Error("Это устройство ожидает добавления существующим MLS-устройством участника");
+  async ensureConversation(chatKey, dialog = null, options = {}) {
+    const key = String(chatKey);
+    const cached = conversationByChat.get(key);
+    if (!options.forceDirectory && cached?.ready &&
+      Date.now() - Number(cached.resolvedAt || 0) < CONVERSATION_DIRECTORY_TTL_MS) {
+      if (Date.now() - Number(cached.lastSyncedAt || 0) >= CONVERSATION_FAST_SYNC_TTL_MS) {
+        await this.syncConversation(cached);
+      }
+      return cached;
     }
-    await this.syncConversation(state);
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const desiredClientIds = state.directory
-        .flatMap(user => user.devices || [])
-        .map(device => device.clientId)
-        .sort();
-      const activeClientIds = [...state.activeClientIds].sort();
-      const rosterDiffers = desiredClientIds.length !== activeClientIds.length ||
-        desiredClientIds.some((item, index) => item !== activeClientIds[index]);
-      if (state.initialized && !state.blockedForEpochChange && !rosterDiffers) break;
-      state = await this.reconcileConversation(state);
-    }
-    if (!state.initialized || state.blockedForEpochChange) {
-      throw new Error("MLS epoch change is pending; message was not sent");
-    }
-    await this.validateLocalRoster(state);
-    const lastCommitAt = Date.parse(state.lastCommitAt || "");
-    if (!Number.isFinite(lastCommitAt) || Date.now() - lastCommitAt >= SELF_UPDATE_INTERVAL_MS) {
-      state = await this.reconcileConversation(state, { forceUpdate: true });
+    if (this.ensuring.has(key)) return this.ensuring.get(key);
+    const promise = (async () => {
+      let state = await this.resolveConversation(key, dialog, { force: Boolean(options.forceDirectory) });
+      if (state.initialized && !state.activeClientIds.includes(this.clientIdString)) {
+        throw new Error("Это устройство ожидает добавления существующим MLS-устройством участника");
+      }
+      await this.syncConversation(state);
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const desiredClientIds = state.directory
+          .flatMap(user => user.devices || [])
+          .map(device => device.clientId)
+          .sort();
+        const activeClientIds = [...state.activeClientIds].sort();
+        const rosterDiffers = desiredClientIds.length !== activeClientIds.length ||
+          desiredClientIds.some((item, index) => item !== activeClientIds[index]);
+        if (state.initialized && !state.blockedForEpochChange && !rosterDiffers) break;
+        state = await this.reconcileConversation(state);
+      }
+      if (!state.initialized || state.blockedForEpochChange) {
+        throw new Error("MLS epoch change is pending; message was not sent");
+      }
       await this.validateLocalRoster(state);
-    }
-    return state;
+      const lastCommitAt = Date.parse(state.lastCommitAt || "");
+      if (!Number.isFinite(lastCommitAt) || Date.now() - lastCommitAt >= SELF_UPDATE_INTERVAL_MS) {
+        state = await this.reconcileConversation(state, { forceUpdate: true });
+        await this.validateLocalRoster(state);
+      }
+      state.ready = true;
+      state.readyAt = Date.now();
+      state.lastSyncedAt = Date.now();
+      conversationByChat.set(key, state);
+      conversationById.set(state.conversationId, state);
+      window.dispatchEvent(new CustomEvent("liotan:mls-conversation-ready", {
+        detail: { chatKey: key, conversationId: state.conversationId }
+      }));
+      return state;
+    })().catch(error => {
+      const state = conversationByChat.get(key);
+      if (state) state.ready = false;
+      window.dispatchEvent(new CustomEvent("liotan:mls-conversation-unavailable", {
+        detail: { chatKey: key, conversationId: state?.conversationId || "" }
+      }));
+      throw error;
+    }).finally(() => this.ensuring.delete(key));
+    this.ensuring.set(key, promise);
+    return promise;
   }
 
   async cacheEnvelope(state, sequence, envelope) {
-    await putEncryptedRecord(
-      `message:${state.conversationId}:${envelope.clientMessageId}`,
-      { sequence, envelope },
-      this.keys.cacheKey
-    );
+    const record = { sequence, envelope };
+    await putEncryptedHistoryRecord({
+      conversationId: state.conversationId,
+      sequence,
+      clientMessageId: envelope.clientMessageId
+    }, record, this.keys.cacheKey);
     localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(sequence));
+  }
+
+  findCachedEnvelope(conversationId, clientMessageId) {
+    return getEncryptedHistoryRecord(conversationId, clientMessageId, this.keys.cacheKey)
+      .then(record => record || getEncryptedRecord(
+        `message:${conversationId}:${clientMessageId}`,
+        this.keys.cacheKey
+      ));
+  }
+
+  startHistoryMigration(state) {
+    if (this.historyMigrations.has(state.conversationId)) {
+      return this.historyMigrations.get(state.conversationId);
+    }
+    const migration = migrateEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
+      batchSize: 128,
+      shouldContinue: () => !this.closing
+    }).then(result => {
+      if (result.completed && result.latest.length) {
+        this.dispatchHistoryRecords(state, result.latest, "initial");
+      }
+      return result;
+    }).catch(error => {
+      if (import.meta.env.DEV) console.warn("Encrypted MLS history migration failed", error);
+      return { completed: false, written: 0, latest: [] };
+    }).finally(() => {
+      this.historyMigrations.delete(state.conversationId);
+    });
+    this.historyMigrations.set(state.conversationId, migration);
+    return migration;
   }
 
   async loadCachedHistory(state) {
     if (loadedHistory.has(state.conversationId)) return;
-    loadedHistory.add(state.conversationId);
-    const records = await listEncryptedRecords(`message:${state.conversationId}:`, this.keys.cacheKey);
-    records.sort((left, right) => Number(left?.sequence || 0) - Number(right?.sequence || 0));
+    try {
+      const records = await listEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
+        limit: INITIAL_HISTORY_LIMIT
+      });
+      this.dispatchHistoryRecords(state, records, "initial");
+      loadedHistory.add(state.conversationId);
+      this.startHistoryMigration(state);
+    } catch (error) {
+      loadedHistory.delete(state.conversationId);
+      throw error;
+    }
+  }
+
+  dispatchHistoryRecords(state, records, direction = "initial") {
+    const messages = [];
+    const controls = [];
     for (const record of records) {
       const envelope = record?.envelope;
       if (!envelope) continue;
       if (envelope.kind === "message") {
-        dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope) });
+        messages.push(this.envelopeToUiMessage(state, envelope, "", record.sequence));
       } else {
-        dispatchCryptoMessage({
+        controls.push({
           type: envelope.kind,
-          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,
+          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, "", record.sequence).chatId,
           messageId: envelope.targetMessageId,
           text: envelope.text || "",
           from: envelope.senderUsername
         });
       }
     }
+    if (messages.length) {
+      dispatchCryptoMessage({ type: "history-page", direction, messages });
+    }
+    controls.forEach(dispatchCryptoMessage);
   }
 
-  envelopeToUiMessage(state, envelope, eventCreatedAt = "") {
-    return envelopeToUiMessage(state, envelope, this.username, eventCreatedAt);
+  async loadOlderHistory(chatKey, beforeSequence, limit = INITIAL_HISTORY_LIMIT) {
+    const state = conversationByChat.get(String(chatKey)) || await this.ensureConversation(chatKey);
+    const migration = this.historyMigrations.get(state.conversationId);
+    if (migration) await migration;
+    const records = await listEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
+      beforeSequence: Number(beforeSequence),
+      limit
+    });
+    this.dispatchHistoryRecords(state, records, "older");
+    return { loaded: records.length, hasMore: records.length >= limit };
+  }
+
+  async loadNewerHistory(chatKey, afterSequence, limit = INITIAL_HISTORY_LIMIT) {
+    const state = conversationByChat.get(String(chatKey)) || await this.ensureConversation(chatKey);
+    const records = await listEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
+      afterSequence: Number(afterSequence),
+      limit
+    });
+    this.dispatchHistoryRecords(state, records, "newer");
+    const latestSequence = Number(localStorage.getItem(`liotan:mls-sequence:${state.conversationId}`) || 0);
+    const loadedThrough = records.length ? Number(records[records.length - 1]?.sequence || 0) : Number(afterSequence || 0);
+    return { loaded: records.length, hasMore: loadedThrough < latestSequence };
+  }
+
+  envelopeToUiMessage(state, envelope, eventCreatedAt = "", sequence = 0) {
+    const message = envelopeToUiMessage(state, envelope, this.username, eventCreatedAt);
+    return {
+      ...message,
+      mls: {
+        ...message.mls,
+        sequence: Number(sequence) || 0
+      }
+    };
   }
 
   validateEnvelope(state, event, decrypted, envelope) {
@@ -402,10 +549,7 @@ class LiotanMlsEngine {
       const envelope = JSON.parse(textDecoder.decode(decrypted.message));
       this.validateEnvelope(state, event, decrypted, envelope);
       if (["edit", "delete"].includes(envelope.kind)) {
-        const targetRecord = await getEncryptedRecord(
-          `message:${state.conversationId}:${envelope.targetMessageId}`,
-          this.keys.cacheKey
-        );
+        const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
         const target = targetRecord?.envelope;
         if (!target || target.kind !== "message" || target.senderUsername !== envelope.senderUsername) {
           throw new Error("Unauthorized MLS message mutation rejected");
@@ -417,11 +561,11 @@ class LiotanMlsEngine {
         if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
       }
       if (envelope.kind === "message") {
-        dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt) });
+        dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence) });
       } else {
         dispatchCryptoMessage({
           type: envelope.kind,
-          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt).chatId,
+          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt, event.sequence).chatId,
           messageId: envelope.targetMessageId,
           text: envelope.text || "",
           from: envelope.senderUsername
@@ -444,6 +588,7 @@ class LiotanMlsEngine {
         } catch (err) {
           if (err.status === 403 && !state.initialized) return;
           if (err.status === 403) {
+            state.ready = false;
             if (conversationById.get(state.conversationId) === state) {
               conversationById.delete(state.conversationId);
             }
@@ -483,18 +628,15 @@ class LiotanMlsEngine {
               }
             } else if (event.kind === "message") {
               if (event.senderClientId === this.clientIdString) {
-                const cachedRecord = await getEncryptedRecord(
-                  `message:${state.conversationId}:${event.clientMessageId}`,
-                  this.keys.cacheKey
-                );
+                const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
                 const cached = cachedRecord?.envelope;
                 if (cached) {
                   if (cached.kind === "message") {
-                    dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt) });
+                    dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt, event.sequence) });
                   } else {
                     dispatchCryptoMessage({
                       type: cached.kind,
-                      chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt).chatId,
+                      chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt, event.sequence).chatId,
                       messageId: cached.targetMessageId,
                       text: cached.text || "",
                       from: cached.senderUsername
@@ -515,6 +657,7 @@ class LiotanMlsEngine {
         }
         if (!response.hasMore) break;
       }
+      state.lastSyncedAt = Date.now();
     })().finally(() => this.syncing.delete(state.conversationId));
     this.syncing.set(state.conversationId, promise);
     return promise;
@@ -527,7 +670,10 @@ class LiotanMlsEngine {
 
   async refreshRosterById(conversationId) {
     const state = conversationById.get(String(conversationId));
-    if (state) await this.ensureConversation(state.chatKey, state.dialog);
+    if (state) {
+      state.ready = false;
+      await this.ensureConversation(state.chatKey, state.dialog, { forceDirectory: true });
+    }
   }
 
   async syncAll() {
@@ -535,11 +681,14 @@ class LiotanMlsEngine {
   }
 
   async prepareDialogs(dialogs = []) {
-    for (const dialog of dialogs.slice(0, 50)) {
+    // Resolve only a tiny preview window. Preparing every dialog used to run
+    // full MLS reconciliation for up to 50 chats during startup and competed
+    // with the conversation the user was actually opening.
+    for (const dialog of dialogs.slice(0, 3)) {
       const chatKey = dialog.chatKey || dialog.username || (dialog.groupId ? `group:${dialog.groupId}` : "");
       if (!chatKey) continue;
       try {
-        await this.ensureConversation(chatKey, dialog);
+        await this.resolveConversation(chatKey, dialog);
       } catch (err) {
         if (import.meta.env.DEV) console.warn("MLS dialog sync failed", chatKey, err);
       }
@@ -548,6 +697,18 @@ class LiotanMlsEngine {
 
   async encryptAndUploadMedia(state, file, clientMessageId, options = {}) {
     return encryptAndUploadMedia(state, file, clientMessageId, options);
+  }
+
+  async enqueueEnvelope(state, envelope) {
+    const key = state.conversationId;
+    const previous = this.sendQueues.get(key) || Promise.resolve();
+    const queued = previous.catch(() => {}).then(() => this.sendEnvelope(state, envelope));
+    this.sendQueues.set(key, queued);
+    try {
+      return await queued;
+    } finally {
+      if (this.sendQueues.get(key) === queued) this.sendQueues.delete(key);
+    }
   }
 
   async sendEnvelope(state, envelope) {
@@ -585,17 +746,17 @@ class LiotanMlsEngine {
     return response;
   }
 
-  async sendMessage({ chatKey, dialog, text = "", file = null, mediaOptions = {}, replyTo = null }) {
+  async sendMessage({ chatKey, dialog, text = "", file = null, mediaOptions = {}, replyTo = null, clientMessageId = "" }) {
     const state = await this.ensureConversation(chatKey, dialog);
-    const clientMessageId = crypto.randomUUID();
+    const messageId = clientMessageId || crypto.randomUUID();
     const attachment = file
-      ? await this.encryptAndUploadMedia(state, file, clientMessageId, mediaOptions)
+      ? await this.encryptAndUploadMedia(state, file, messageId, mediaOptions)
       : null;
     const envelope = {
       v: 1,
       kind: "message",
       conversationId: state.conversationId,
-      clientMessageId,
+      clientMessageId: messageId,
       senderUsername: this.username,
       senderClientId: this.clientIdString,
       sentAt: new Date().toISOString(),
@@ -603,8 +764,8 @@ class LiotanMlsEngine {
       attachment,
       replyTo: replyTo ? { messageId: String(replyTo._id || replyTo.messageId || "") } : null
     };
-    const response = await this.sendEnvelope(state, envelope);
-    const message = this.envelopeToUiMessage(state, envelope, new Date().toISOString());
+    const response = await this.enqueueEnvelope(state, envelope);
+    const message = this.envelopeToUiMessage(state, envelope, new Date().toISOString(), response.sequence);
     dispatchCryptoMessage({ type: "message", message });
     return { ok: true, response, message };
   }
@@ -623,7 +784,7 @@ class LiotanMlsEngine {
       targetMessageId: String(targetMessageId || ""),
       text: kind === "edit" ? String(text || "").slice(0, 20000) : ""
     };
-    await this.sendEnvelope(state, envelope);
+    await this.enqueueEnvelope(state, envelope);
     dispatchCryptoMessage({
       type: kind,
       chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,
@@ -790,7 +951,7 @@ export function getMlsEngine() {
 
 export function getConversationSecurityInfo(chatKey) {
   const state = conversationByChat.get(String(chatKey || ""));
-  if (!state?.directory?.length) return null;
+  if (!state?.ready || !state.initialized || state.blockedForEpochChange || !state.directory?.length) return null;
   const roots = state.directory
     .map(user => ({ username: user.username, rootFingerprint: user.identity?.rootFingerprint || "" }))
     .sort((left, right) => left.username.localeCompare(right.username));
@@ -812,7 +973,11 @@ export async function resetMlsEngine() {
   const current = engine;
   engine = null;
   if (current) {
+    current.closing = true;
+    await Promise.allSettled(current.historyMigrations.values());
     await current.closeDatabase();
+    current.sendQueues.clear();
+    current.historyMigrations.clear();
     wipeEngineKeys(current.keys);
   }
   configureCryptoSigner(null);

@@ -9,6 +9,7 @@ export const CORE_CRYPTO_WASM_URL = new URL(
 export const KEY_PACKAGE_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 export const MEDIA_MAGIC = textEncoder.encode("LIOTANMLS1\0\0");
 export const MEDIA_CHUNK_SIZE = 1024 * 1024;
+export const MEDIA_CHUNK_SIZES = Object.freeze([256 * 1024, 512 * 1024, MEDIA_CHUNK_SIZE]);
 export const SELF_UPDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MESSAGE_REFERENCE_RE = /^[A-Za-z0-9_-]{1,80}$/;

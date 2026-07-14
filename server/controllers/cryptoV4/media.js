@@ -1,6 +1,5 @@
 "use strict";
 
-const crypto = require("crypto");
 const fs = require("fs/promises");
 const AttachmentUpload = require("../../models/AttachmentUpload");
 const { uploadToR2, streamFromR2 } = require("../../utils/uploadToR2");
@@ -10,26 +9,6 @@ const { canonicalJson } = require("../../utils/canonicalJson");
 const { assertConversationAccess } = require("./shared");
 
 const BINDING_ID_RE = /^[A-Za-z0-9_-]{22,96}$/;
-const MLS_MEDIA_MAGIC = Buffer.from("LIOTANMLS1\0\0", "binary");
-
-async function hashFile(filePath) {
-  const handle = await fs.open(filePath, "r");
-  const hash = crypto.createHash("sha256");
-  try {
-    const buffer = Buffer.allocUnsafe(1024 * 1024);
-    let position = 0;
-    while (true) {
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
-      if (!bytesRead) break;
-      hash.update(buffer.subarray(0, bytesRead));
-      position += bytesRead;
-    }
-    return hash.digest("base64url");
-  } finally {
-    await handle.close();
-  }
-}
-
 async function removeTempFile(file) {
   if (!file?.path) return;
   try { await fs.unlink(file.path); } catch {}
@@ -55,19 +34,11 @@ async function uploadMedia(req, res, next) {
     if (!conversation.initialized || conversation.blockedForEpochChange || !conversation.activeClientIds.includes(req.cryptoDevice.clientId)) {
       return res.status(409).json({ error: "MLS conversation is not ready for media" });
     }
-    const actualHash = await hashFile(req.file.path);
-    if (actualHash !== ciphertextHash) return res.status(400).json({ error: "encrypted media hash mismatch" });
-    const handle = await fs.open(req.file.path, "r");
-    let magic;
-    try {
-      magic = Buffer.alloc(MLS_MEDIA_MAGIC.length);
-      const result = await handle.read(magic, 0, magic.length, 0);
-      if (result.bytesRead !== MLS_MEDIA_MAGIC.length || !crypto.timingSafeEqual(magic, MLS_MEDIA_MAGIC)) {
-        return res.status(415).json({ error: "invalid MLS media ciphertext framing" });
-      }
-    } finally {
-      await handle.close();
+    const actualHash = String(req.file.ciphertextHash || "");
+    if (!/^[A-Za-z0-9_-]{43}$/.test(actualHash)) {
+      return res.status(400).json({ error: "encrypted media hash unavailable" });
     }
+    if (actualHash !== ciphertextHash) return res.status(400).json({ error: "encrypted media hash mismatch" });
     if (await AttachmentUpload.exists({ cryptoConversationId: conversationId, bindingId })) {
       return res.status(409).json({ error: "encrypted media binding already used" });
     }

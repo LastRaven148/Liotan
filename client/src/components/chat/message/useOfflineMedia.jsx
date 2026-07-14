@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -34,12 +35,26 @@ export default function useOfflineMedia({
   const [isOfflineSaved, setIsOfflineSaved] =
     useState(false);
 
+  const objectUrlRef =
+    useRef("");
+
+  const replaceObjectUrl =
+    useCallback((nextUrl) => {
+      const previous = objectUrlRef.current;
+      objectUrlRef.current = nextUrl;
+      setLocalUrl(nextUrl);
+      if (previous && previous !== nextUrl) URL.revokeObjectURL(previous);
+    }, []);
+
   const mediaKey =
     getMediaKey(attachment);
 
   useEffect(() => {
     let alive = true;
     let objectUrl = "";
+
+    replaceObjectUrl("");
+    setIsOfflineSaved(false);
 
     async function loadOffline() {
       if (!mediaKey) {
@@ -65,7 +80,7 @@ export default function useOfflineMedia({
         objectUrl =
           URL.createObjectURL(displayBlob);
 
-        setLocalUrl(objectUrl);
+        replaceObjectUrl(objectUrl);
         setIsOfflineSaved(true);
       } catch (err) {
         if (import.meta.env.DEV) console.warn(err);
@@ -77,14 +92,21 @@ export default function useOfflineMedia({
     return () => {
       alive = false;
 
-      if (objectUrl) {
+      if (objectUrl && objectUrlRef.current === objectUrl) {
         URL.revokeObjectURL(objectUrl);
+        objectUrlRef.current = "";
       }
     };
   }, [
     mediaKey,
-    decryptBlob
+    decryptBlob,
+    replaceObjectUrl
   ]);
+
+  useEffect(() => () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = "";
+  }, []);
 
   const saveOffline = useCallback(async (
     options = {}
@@ -121,7 +143,7 @@ export default function useOfflineMedia({
       const objectUrl =
         URL.createObjectURL(displayBlob);
 
-      setLocalUrl(objectUrl);
+      replaceObjectUrl(objectUrl);
       setIsOfflineSaved(true);
     } catch (err) {
       if (!options.silent) {
@@ -135,7 +157,8 @@ export default function useOfflineMedia({
     mediaKey,
     savingOffline,
     decryptBlob,
-    downloadBlob
+    downloadBlob,
+    replaceObjectUrl
   ]);
 
   useEffect(() => {

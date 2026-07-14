@@ -33,7 +33,8 @@ function Message({
   onEdit,
   onDelete,
   onReply,
-  onPin
+  onPin,
+  autoLoadMedia = true
 }) {
   const {
     t
@@ -60,7 +61,11 @@ function Message({
     decryptedText === "Старое E2EE-сообщение. Оно было создано до авто-ключей.";
   const hasUsableText = Boolean(decryptedText && !isPendingDecryptionText);
   const canEdit = isMine && hasUsableText && !hasAttachment;
-  const remoteUrl = hasAttachment ? mediaUrl(attachment.url) : "";
+  const remoteUrl = hasAttachment
+    ? attachment?.pending && String(attachment.url).startsWith("blob:")
+      ? attachment.url
+      : mediaUrl(attachment.url)
+    : "";
   const attachmentForDisplay = privateAttachmentMeta ? {
   ...attachment,
   type: privateAttachmentMeta.originalType || attachment?.type,
@@ -74,7 +79,7 @@ function Message({
 } : attachment;
   const attachmentDuration = Number(attachmentForDisplay?.duration) || 0;
   const attachmentSizeText = formatFileSize(attachmentForDisplay?.size);
-  const shouldAutoCache = hasAttachment && (encryptedMedia ? Boolean(privateAttachmentMeta && ["photo", "video", "audio", "voice"].includes(displayAttachmentType)) : attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice));
+  const shouldAutoCache = !attachment?.pending && autoLoadMedia && hasAttachment && (encryptedMedia ? Boolean(privateAttachmentMeta && ["photo", "video", "audio", "voice"].includes(displayAttachmentType)) : attachment.size > 0 && attachment.size <= AUTO_CACHE_LIMIT && (isPhoto || isVideo || isAudio || isVoice));
   const decryptMediaBlob = useCallback(
   (blob) => decryptAttachmentBlobForChat({
     username,
@@ -88,7 +93,8 @@ function Message({
     attachment?.url,
     attachment?.mediaId,
     attachment?.uploadId,
-    attachment?.e2eeMedia
+    attachment?.e2eeMedia,
+    attachment?.mlsMedia
   ]
 );
   const {
@@ -238,6 +244,20 @@ function Message({
       return null;
     }
     const status = message.status || "sent";
+    if (status === "sending") {
+      const progress = Number(message.progress);
+      const label = Number.isFinite(progress) && progress > 0
+        ? `${Math.min(99, Math.max(1, Math.round(progress * 100)))}%`
+        : "…";
+      return <span className="message-status sending" aria-label="Отправляется" title="Отправляется">
+          {label}
+        </span>;
+    }
+    if (status === "failed") {
+      return <span className="message-status failed" aria-label="Не отправлено" title={message.error || "Не удалось отправить"}>
+          !
+        </span>;
+    }
     if (status === "read") {
       return <span className="message-status read">
           ✓✓

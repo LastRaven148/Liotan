@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -36,6 +37,11 @@ async function main() {
   const accepted = await store(framedBytes);
   assert.ifError(accepted.error);
   assert.strictEqual(accepted.result.size, framedBytes.length);
+  assert.strictEqual(
+    accepted.result.ciphertextHash,
+    crypto.createHash("sha256").update(framedBytes).digest("base64url"),
+    "the upload stream must expose the exact hash without rereading the temporary file"
+  );
   assert.deepStrictEqual(fs.readFileSync(accepted.result.path), framedBytes);
   await remove(accepted.result);
 

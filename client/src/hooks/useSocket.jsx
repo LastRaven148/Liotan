@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import io from "socket.io-client";
 import { getApiCandidates } from "../config/api";
-import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
+import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, mergeHistoryPageIntoChat, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
 import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
@@ -59,7 +59,10 @@ function mergeChatHistory(prevChats, chatId, msgs) {
       readAt: existing.readAt || msg.readAt
     };
   });
-  return replaceChatHistory(prevChats, chatId, merged);
+  if (!merged.length && !current.length) {
+    return replaceChatHistory(prevChats, chatId, []);
+  }
+  return mergeHistoryPageIntoChat(prevChats, merged, "initial");
 }
 export default function useSocket({
   token,
@@ -106,6 +109,10 @@ export default function useSocket({
 
     function handleMlsEvent(event) {
       const detail = event?.detail || {};
+      if (detail.type === "history-page" && Array.isArray(detail.messages)) {
+        setChats(previous => mergeHistoryPageIntoChat(previous, detail.messages, detail.direction));
+        return;
+      }
       if (detail.type === "message" && detail.message) {
         const msg = detail.message;
         const chatKey = getMessageChatKey(msg, username);
@@ -114,6 +121,16 @@ export default function useSocket({
           setUnread(previous => ({ ...previous, [chatKey]: (previous[chatKey] || 0) + 1 }));
         }
         updateDialog(msg, username);
+        return;
+      }
+      if (detail.type === "status" && detail.chatId && detail.messageId) {
+        setChats(previous => updateMessagesStatus(previous, {
+          chatId: detail.chatId,
+          messageIds: [detail.messageId],
+          status: detail.status,
+          progress: detail.progress,
+          error: detail.error || ""
+        }));
         return;
       }
       if (!detail.chatId || !detail.messageId) return;
@@ -143,14 +160,26 @@ export default function useSocket({
 
     function handleCryptoEventAvailable(data) {
       try {
-        getMlsEngine().syncConversationById(data?.conversationId).catch(() => {});
-      } catch {}
+        getMlsEngine().syncConversationById(data?.conversationId).catch(error => {
+          if (import.meta.env.DEV) console.warn("MLS background sync failed", error);
+        });
+      } catch (error) {
+        if (import.meta.env.DEV && error?.message !== "End-to-end encryption is locked") {
+          console.warn("MLS event could not reach the active engine", error);
+        }
+      }
     }
 
     function handleCryptoRosterChanged(data) {
       try {
-        getMlsEngine().refreshRosterById(data?.conversationId).catch(() => {});
-      } catch {}
+        getMlsEngine().refreshRosterById(data?.conversationId).catch(error => {
+          if (import.meta.env.DEV) console.warn("MLS roster refresh failed", error);
+        });
+      } catch (error) {
+        if (import.meta.env.DEV && error?.message !== "End-to-end encryption is locked") {
+          console.warn("MLS roster event could not reach the active engine", error);
+        }
+      }
     }
 
     function createSocketConnection(endpoint = socketEndpoints[activeSocketIndex]) {

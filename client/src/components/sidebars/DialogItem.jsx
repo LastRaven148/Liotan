@@ -5,6 +5,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
 import LiotanIcon from "../common/LiotanIcon";
 import { decryptAttachmentBlobForChat, decryptTextForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
+import { downloadMlsCiphertext } from "../../crypto/mlsEngine";
 function DialogMenuIcon({ name }) {
   const iconName = name === "delete" ? "trash" : name;
   return <LiotanIcon name={iconName} size={21} />;
@@ -64,7 +65,9 @@ export default function DialogItem({
   const lastAttachmentUrl = lastAttachment?.thumbnailUrl || lastAttachment?.previewUrl || lastAttachment?.url || dialog.lastAttachmentThumbnail || dialog.lastAttachmentUrl || "";
   const [decryptedPreviewUrl, setDecryptedPreviewUrl] = useState("");
   const [decryptedPreviewText, setDecryptedPreviewText] = useState("");
-  const previewUrl = decryptedPreviewUrl || lastAttachmentUrl;
+  const encryptedPreview = isEncryptedAttachment(lastAttachment) ||
+    String(lastAttachmentUrl).startsWith("/crypto/v4/media/");
+  const previewUrl = encryptedPreview ? decryptedPreviewUrl : (decryptedPreviewUrl || lastAttachmentUrl);
 
 
   useEffect(() => {
@@ -134,11 +137,12 @@ export default function DialogItem({
       }
 
       try {
-        const response = await fetch(mediaUrl(lastAttachmentUrl), {
-          credentials: "include"
-        });
-        if (!response.ok) return;
-        const blob = await response.blob();
+        const blob = lastAttachment?.mlsMedia?.v === 1
+          ? await downloadMlsCiphertext(lastAttachment)
+          : await fetch(mediaUrl(lastAttachmentUrl), { credentials: "include" }).then(response => {
+              if (!response.ok) throw new Error("Encrypted preview download failed");
+              return response.blob();
+            });
         const decrypted = await decryptAttachmentBlobForChat({
           username,
           chatKey: getEffectiveE2EEChatKey(chatKey, dialog),
@@ -203,9 +207,7 @@ export default function DialogItem({
       messages.scrollTop = snapshot.top + heightDiff;
     };
     apply();
-    requestAnimationFrame(apply);
-    setTimeout(apply, 80);
-    setTimeout(apply, 250);
+    requestAnimationFrame(() => requestAnimationFrame(apply));
   }, []);
   const closeDeleteConfirm = useCallback(() => {
     window.__liotanModalEscHandledAt = Date.now();

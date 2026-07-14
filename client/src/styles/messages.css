@@ -178,6 +178,27 @@ html.liotan-message-scale-150 .message-text{font-size:21px}
   color:#4fb3ff;
 }
 
+.message-status.sending{
+  min-width:18px;
+  justify-content:center;
+  color:#9fb0c0;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:0;
+}
+
+.message-status.failed{
+  width:15px;
+  height:15px;
+  justify-content:center;
+  border-radius:50%;
+  color:#fff;
+  background:#e05252;
+  font-size:11px;
+  line-height:15px;
+  letter-spacing:0;
+}
+
 .message-menu{
   position:absolute;
   width:178px;

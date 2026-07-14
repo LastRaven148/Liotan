@@ -334,14 +334,19 @@ function readXmlTags(xml, tag) {
   return result;
 }
 
-async function listR2Objects({ prefix = "", continuationToken = "", maxKeys = 1000 } = {}) {
+async function listR2Objects({
+  prefix = "",
+  continuationToken = "",
+  maxKeys = 1000,
+  storageClass = "private-media"
+} = {}) {
   const params = new URLSearchParams();
   params.set("list-type", "2");
   params.set("max-keys", String(Math.max(1, Math.min(Number(maxKeys) || 1000, 1000))));
   if (prefix) params.set("prefix", prefix);
   if (continuationToken) params.set("continuation-token", continuationToken);
 
-  const response = await requestR2({ method: "GET", key: "", query: params.toString(), storageClass: "private-media" });
+  const response = await requestR2({ method: "GET", key: "", query: params.toString(), storageClass });
   const body = response.body || "";
 
   return {
@@ -361,11 +366,12 @@ async function deleteR2Prefix(prefix, options = {}) {
 
   const dryRun = options.dryRun !== false;
   const maxObjects = Number(options.maxObjects) || 10000;
+  const storageClass = options.storageClass || "private-media";
   let continuationToken = "";
   const keys = [];
 
   do {
-    const page = await listR2Objects({ prefix: normalizedPrefix, continuationToken });
+    const page = await listR2Objects({ prefix: normalizedPrefix, continuationToken, storageClass });
     keys.push(...page.keys);
     continuationToken = page.nextContinuationToken;
     if (!page.isTruncated || keys.length >= maxObjects) break;
@@ -375,7 +381,7 @@ async function deleteR2Prefix(prefix, options = {}) {
 
   if (!dryRun) {
     for (const key of limitedKeys) {
-      await deleteFromR2(key);
+      await deleteFromR2(key, { storageClass });
     }
   }
 

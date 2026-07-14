@@ -6,13 +6,17 @@ function normalizeAttachment(attachment) {
   }
   return {
     url: attachment.url || "",
+    mediaId: attachment.mediaId || "",
+    uploadId: attachment.uploadId || "",
     name: attachment.name || "",
     type: attachment.type || "",
     mimeType: attachment.mimeType || "",
     size: attachment.size || 0,
     width: attachment.width || 0,
     height: attachment.height || 0,
-    duration: attachment.duration || 0
+    duration: attachment.duration || 0,
+    e2eeMedia: attachment.e2eeMedia || null,
+    mlsMedia: attachment.mlsMedia || null
   };
 }
 function getDialogAttachment(dialog) {

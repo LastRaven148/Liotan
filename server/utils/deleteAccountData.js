@@ -22,6 +22,8 @@ const UserSecurity =
 
 const RegistrationCancel =
   require("../models/RegistrationCancel");
+const PendingEmailChange =
+  require("../models/PendingEmailChange");
 const CryptoIdentity = require("../models/CryptoIdentity");
 const CryptoDevice = require("../models/CryptoDevice");
 const CryptoKeyPackage = require("../models/CryptoKeyPackage");
@@ -275,6 +277,16 @@ async function deleteAccountData(username) {
     $or: [
       { userId: user._id },
       { username }
+    ]
+  });
+
+  await PendingEmailChange.deleteMany({
+    $or: [
+      { userId: user._id },
+      { username },
+      ...(user.emailHash
+        ? [{ oldEmailHash: user.emailHash }, { newEmailHash: user.emailHash }]
+        : [])
     ]
   });
 

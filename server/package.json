@@ -9,6 +9,7 @@
     "test:integration": "node --test --test-concurrency=1 --test-timeout=120000 test/integration/cryptoV4.integration.test.js",
     "start": "node server.js",
     "cleanup:accounts": "node scripts/cleanupDeletedAccounts.js",
+    "cleanup:all-account-data": "node scripts/purgeAllAccountData.js",
     "check": "node scripts/checkSyntax.js",
     "audit:privacy": "node scripts/privacyAudit.js",
     "audit:vps": "node scripts/auditVpsHardening.js",

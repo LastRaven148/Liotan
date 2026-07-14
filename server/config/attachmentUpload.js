@@ -21,11 +21,13 @@ for (const entry of fs.readdirSync(uploadTmpDir, { withFileTypes: true })) {
   } catch {}
 }
 
-function ciphertextFramingValidator() {
+function ciphertextFramingValidator(onDigest) {
   let prefix = Buffer.alloc(0);
   let validated = false;
+  const hash = crypto.createHash("sha256");
   return new Transform({
     transform(chunk, _encoding, callback) {
+      hash.update(chunk);
       if (validated) return callback(null, chunk);
       prefix = Buffer.concat([prefix, chunk]);
       if (prefix.length < MLS_MEDIA_MAGIC.length) return callback();
@@ -39,6 +41,7 @@ function ciphertextFramingValidator() {
     },
     flush(callback) {
       if (!validated) return callback(new Error("MLS ciphertext media framing required"));
+      onDigest(hash.digest("base64url"));
       return callback();
     }
   });
@@ -49,13 +52,20 @@ const ciphertextDiskStorage = {
     const filename = `${Date.now()}-${crypto.randomBytes(16).toString("hex")}.upload`;
     const filePath = path.join(uploadTmpDir, filename);
     const output = fs.createWriteStream(filePath, { flags: "wx", mode: 0o600 });
-    const validator = ciphertextFramingValidator();
+    let ciphertextHash = "";
+    const validator = ciphertextFramingValidator(value => { ciphertextHash = value; });
     pipeline(file.stream, validator, output, err => {
       if (err) {
         fs.unlink(filePath, () => callback(err));
         return;
       }
-      callback(null, { destination: uploadTmpDir, filename, path: filePath, size: output.bytesWritten });
+      callback(null, {
+        destination: uploadTmpDir,
+        filename,
+        path: filePath,
+        size: output.bytesWritten,
+        ciphertextHash
+      });
     });
   },
   _removeFile(_req, file, callback) {

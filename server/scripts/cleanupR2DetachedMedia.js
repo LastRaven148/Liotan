@@ -13,6 +13,7 @@ const SAFE_PREFIXES = [
   "photos/",
   "videos/",
   "audio/",
+  "liotan/mls/",
   "liotan/u/",
   "liotan/uploads/"
 ];
