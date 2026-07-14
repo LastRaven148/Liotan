@@ -136,12 +136,25 @@ export default function useAppController() {
   useEffect(() => {
     if (!token || !username || !dialogs.dialogs?.length) return;
     const prepare = () => {
-      try { getMlsEngine().prepareDialogs(dialogs.dialogs); } catch {}
+      let mls;
+      try {
+        mls = getMlsEngine();
+      } catch {
+        return;
+      }
+      if (chat.activeChat) {
+        mls.ensureConversation(chat.activeChat, chat.activeDialog).catch(error => {
+          if (import.meta.env.DEV) console.warn("Active MLS conversation preparation failed", error);
+        });
+      }
+      mls.prepareDialogs(dialogs.dialogs).catch(error => {
+        if (import.meta.env.DEV) console.warn("MLS dialog preparation failed", error);
+      });
     };
     prepare();
     window.addEventListener("liotan:mls-ready", prepare, { once: true });
     return () => window.removeEventListener("liotan:mls-ready", prepare);
-  }, [token, username, dialogs.dialogs]);
+  }, [token, username, dialogs.dialogs, chat.activeChat, chat.activeDialog]);
 
   useAppInitialization({
     token,

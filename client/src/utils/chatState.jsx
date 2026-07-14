@@ -1,3 +1,31 @@
+export const MAX_CHAT_WINDOW_MESSAGES = 240;
+
+function messageTimestamp(message) {
+  const parsed = Date.parse(message?.createdAt || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortMessages(messages) {
+  return [...messages].sort((left, right) => {
+    const leftSequence = Number(left?.mls?.sequence || 0);
+    const rightSequence = Number(right?.mls?.sequence || 0);
+    if (leftSequence && rightSequence && leftSequence !== rightSequence) return leftSequence - rightSequence;
+    const timeDifference = messageTimestamp(left) - messageTimestamp(right);
+    if (timeDifference) return timeDifference;
+    return String(left?._id || "").localeCompare(String(right?._id || ""));
+  });
+}
+
+function mergeMessages(current, incoming) {
+  const byId = new Map(current.map(message => [String(message?._id || ""), message]));
+  for (const message of incoming) {
+    const id = String(message?._id || "");
+    if (!id) continue;
+    byId.set(id, byId.has(id) ? { ...byId.get(id), ...message } : message);
+  }
+  return sortMessages([...byId.values()]);
+}
+
 export function addMessageToChat(
   prevChats,
   msg
@@ -9,23 +37,27 @@ export function addMessageToChat(
   const current =
     prevChats[chatId] || [];
 
-  const exists =
-    current.some(item =>
-      String(item._id) === String(msg._id)
-    );
-
-  if (exists) {
-    return prevChats;
-  }
+  const merged = mergeMessages(current, [msg]).slice(-MAX_CHAT_WINDOW_MESSAGES);
 
   return {
     ...prevChats,
-    [chatId]: [
-      ...current,
-      msg
-    ]
+    [chatId]: merged
   };
 
+}
+
+export function mergeHistoryPageIntoChat(prevChats, messages, direction = "initial") {
+  if (!Array.isArray(messages) || !messages.length) return prevChats;
+  const chatId = messages[0]?.chatId;
+  if (!chatId) return prevChats;
+  const merged = mergeMessages(prevChats[chatId] || [], messages);
+  const windowed = direction === "older"
+    ? merged.slice(0, MAX_CHAT_WINDOW_MESSAGES)
+    : merged.slice(-MAX_CHAT_WINDOW_MESSAGES);
+  return {
+    ...prevChats,
+    [chatId]: windowed
+  };
 }
 
 export function editMessageInChat(
@@ -92,7 +124,9 @@ export function updateMessagesStatus(
     messageIds,
     status,
     deliveredAt,
-    readAt
+    readAt,
+    progress,
+    error
   }
 ) {
 
@@ -114,6 +148,14 @@ export function updateMessagesStatus(
         return {
           ...item,
           status,
+          progress:
+            progress !== undefined
+              ? progress
+              : item.progress,
+          error:
+            error !== undefined
+              ? error
+              : item.error,
           deliveredAt:
             deliveredAt ||
             item.deliveredAt,
@@ -164,7 +206,7 @@ export function replaceChatHistory(
 
   return {
     ...prevChats,
-    [chatId]: msgs || []
+    [chatId]: sortMessages(msgs || []).slice(-MAX_CHAT_WINDOW_MESSAGES)
   };
 
 }

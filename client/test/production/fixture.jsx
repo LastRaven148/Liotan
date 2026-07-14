@@ -9,10 +9,18 @@ import {
 } from "@wireapp/core-crypto/browser";
 import { initializeCoreCryptoRuntime } from "../../src/crypto/coreCryptoRuntime";
 import { createInitializedClientIdentity } from "../../src/crypto/mls/identifiers";
+import { assertEnvelopeSchema } from "../../src/crypto/mls/envelope";
+import { MEDIA_MAGIC } from "../../src/crypto/mls/constants";
 import { destroyUniffi } from "../../src/crypto/mls/uniffiLifecycle";
 import {
   createRecoveryKey,
+  getEncryptedHistoryRecord,
+  listEncryptedRecords,
+  listEncryptedHistoryRecords,
   loadRecoveryKey,
+  migrateEncryptedHistoryRecords,
+  putEncryptedHistoryRecord,
+  putEncryptedRecords,
   saveRecoveryKey
 } from "../../src/crypto/recoveryStore";
 import React, { useEffect } from "react";
@@ -108,6 +116,113 @@ window.runColdStartClientIdentityProbe = async function runColdStartClientIdenti
 window.createProductionRecoveryKey = () => createRecoveryKey();
 window.saveProductionRecoveryKey = (username, key) => saveRecoveryKey(username, key);
 window.loadProductionRecoveryKey = username => loadRecoveryKey(username);
+window.runEncryptedHistoryPagingProbe = async function runEncryptedHistoryPagingProbe() {
+  const conversationId = `history-${crypto.randomUUID()}`;
+  const cacheKey = randomBytes(32);
+  try {
+    for (let sequence = 1; sequence <= 5; sequence += 1) {
+      const clientMessageId = `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
+      await putEncryptedHistoryRecord({ conversationId, sequence, clientMessageId }, {
+        sequence,
+        envelope: { clientMessageId, kind: "message", text: `message-${sequence}` }
+      }, cacheKey);
+    }
+    const latest = await listEncryptedHistoryRecords(conversationId, cacheKey, { limit: 2 });
+    const older = await listEncryptedHistoryRecords(conversationId, cacheKey, { beforeSequence: 4, limit: 2 });
+    const newer = await listEncryptedHistoryRecords(conversationId, cacheKey, { afterSequence: 2, limit: 2 });
+    const exactId = "00000000-0000-4000-8000-000000000004";
+    const exact = await getEncryptedHistoryRecord(conversationId, exactId, cacheKey);
+    return {
+      latest: latest.map(record => record.sequence),
+      older: older.map(record => record.sequence),
+      newer: newer.map(record => record.sequence),
+      exact: exact?.sequence || 0
+    };
+  } finally {
+    cacheKey.fill(0);
+  }
+};
+window.runAdaptiveMediaDescriptorProbe = function runAdaptiveMediaDescriptorProbe() {
+  const accepted = [];
+  for (const chunkSize of [256 * 1024, 512 * 1024, 1024 * 1024]) {
+    const originalSize = chunkSize + 1;
+    const chunks = 2;
+    const messageId = crypto.randomUUID();
+    const envelope = {
+      v: 1,
+      kind: "message",
+      conversationId: crypto.randomUUID(),
+      clientMessageId: messageId,
+      senderUsername: "fixture-user",
+      senderClientId: "fixture-client@example.test",
+      sentAt: new Date().toISOString(),
+      text: "",
+      attachment: {
+        v: 1,
+        conversationId: "",
+        messageId,
+        uploadId: "A".repeat(24),
+        bindingId: "B".repeat(24),
+        ciphertextHash: "C".repeat(43),
+        key: "D".repeat(43),
+        noncePrefix: "E".repeat(11),
+        chunkSize,
+        chunks,
+        ciphertextBytes: MEDIA_MAGIC.length + chunks * (chunkSize + 16),
+        original: {
+          name: "fixture.bin",
+          type: "file",
+          mimeType: "application/octet-stream",
+          size: originalSize,
+          duration: 0,
+          waveform: [],
+          width: 0,
+          height: 0
+        }
+      },
+      replyTo: null
+    };
+    envelope.attachment.conversationId = envelope.conversationId;
+    assertEnvelopeSchema(envelope);
+    accepted.push(chunkSize);
+  }
+  return accepted;
+};
+window.runLargeHistoryMigrationProbe = async function runLargeHistoryMigrationProbe() {
+  const conversationId = `large-history-${crypto.randomUUID()}`;
+  const cacheKey = randomBytes(32);
+  const entries = Array.from({ length: 1000 }, (_, index) => {
+    const sequence = index + 1;
+    const clientMessageId = crypto.randomUUID();
+    return {
+      recordKey: `message:${conversationId}:${clientMessageId}`,
+      value: {
+        sequence,
+        envelope: { clientMessageId, kind: "message", text: `migration-${sequence}` }
+      }
+    };
+  });
+  try {
+    await putEncryptedRecords(entries, cacheKey, { batchSize: 64 });
+    const startedAt = performance.now();
+    let eventLoopTicks = 0;
+    const responsivenessTimer = setInterval(() => { eventLoopTicks += 1; }, 50);
+    const migration = await migrateEncryptedHistoryRecords(conversationId, cacheKey, { batchSize: 128 });
+    clearInterval(responsivenessTimer);
+    const latest = await listEncryptedHistoryRecords(conversationId, cacheKey, { limit: 3 });
+    const legacy = await listEncryptedRecords(`message:${conversationId}:`, cacheKey);
+    return {
+      completed: migration.completed,
+      written: migration.written,
+      latest: latest.map(record => record.sequence),
+      legacyRecords: legacy.length,
+      eventLoopTicks,
+      elapsedMs: performance.now() - startedAt
+    };
+  } finally {
+    cacheKey.fill(0);
+  }
+};
 window.getDatabaseRepairPolicy = () => ({
   unregisteredEarlyFailure: shouldAutomaticallyRepairDatabase("database-open", null),
   registeredEarlyFailure: shouldAutomaticallyRepairDatabase("database-open", { status: "active" }),

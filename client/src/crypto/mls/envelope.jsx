@@ -1,7 +1,7 @@
 import { getChatId } from "../../utils/chat";
 import { base64UrlToBytes } from "../encoding";
 import {
-  MEDIA_CHUNK_SIZE,
+  MEDIA_CHUNK_SIZES,
   MEDIA_MAGIC,
   MESSAGE_REFERENCE_RE,
   SAFE_MEDIA_MIMES,
@@ -26,8 +26,9 @@ export function mediaType(file, override = "") {
 
 export function assertMediaDescriptor(envelope, descriptor) {
   const originalSize = Number(descriptor?.original?.size);
-  const expectedChunks = Math.max(1, Math.ceil(originalSize / MEDIA_CHUNK_SIZE));
-  const expectedBytes = MEDIA_MAGIC.length + expectedChunks * (MEDIA_CHUNK_SIZE + 16);
+  const chunkSize = Number(descriptor?.chunkSize);
+  const expectedChunks = Math.max(1, Math.ceil(originalSize / chunkSize));
+  const expectedBytes = MEDIA_MAGIC.length + expectedChunks * (chunkSize + 16);
   const originalType = descriptor?.original?.type;
   const originalMime = descriptor?.original?.mimeType;
   const originalWidth = Number(descriptor?.original?.width);
@@ -45,7 +46,8 @@ export function assertMediaDescriptor(envelope, descriptor) {
     !/^[A-Za-z0-9_-]{22,96}$/.test(String(descriptor.bindingId || "")) ||
     !/^[A-Za-z0-9_-]{43}$/.test(String(descriptor.ciphertextHash || "")) ||
     !Number.isSafeInteger(originalSize) || originalSize < 0 || originalSize > 100 * 1024 * 1024 ||
-    descriptor.chunkSize !== MEDIA_CHUNK_SIZE || descriptor.chunks !== expectedChunks ||
+    !MEDIA_CHUNK_SIZES.includes(chunkSize) || descriptor.chunkSize !== chunkSize ||
+    descriptor.chunks !== expectedChunks ||
     descriptor.ciphertextBytes !== expectedBytes ||
     typeof descriptor.key !== "string" || typeof descriptor.noncePrefix !== "string" ||
     !descriptor.original || typeof descriptor.original !== "object" ||

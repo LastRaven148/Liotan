@@ -8,7 +8,9 @@ export default function GeneralPage({ back, labels }) {
   const [theme, setTheme] = useState(localStorage.getItem("liotan_theme") || "dark");
   const [timeFormat, setTimeFormat] = useState(localStorage.getItem("liotan_time_format") || "24");
   const [wallpaper, setWallpaper] = useState(localStorage.getItem("liotan_wallpaper_mode") || "builtIn");
-  useEffect(() => applyMessageScale(textSize), [textSize]);
+  useEffect(() => {
+    applyMessageScale(textSize);
+  }, [textSize]);
   function saveTextSize(value) {
     const normalized = normalizeMessageScale(value);
     setTextSize(normalized);

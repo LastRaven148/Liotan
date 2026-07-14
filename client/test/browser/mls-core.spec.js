@@ -32,6 +32,37 @@ test("recovery key survives concurrent save and full reload in browser IndexedDB
   expect(await page.evaluate(username => window.loadProductionRecoveryKey(username), probe.username)).toBe(probe.key);
 });
 
+test("encrypted local history supports bounded cursor paging in production IndexedDB", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const result = await page.evaluate(() => window.runEncryptedHistoryPagingProbe());
+  expect(result).toEqual({
+    latest: [4, 5],
+    older: [2, 3],
+    newer: [3, 4],
+    exact: 4
+  });
+});
+
+test("production MLS envelope accepts every authenticated adaptive media chunk size", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runAdaptiveMediaDescriptorProbe())).toEqual([
+    256 * 1024,
+    512 * 1024,
+    1024 * 1024
+  ]);
+});
+
+test("production IndexedDB migrates a thousand encrypted history records in bounded batches", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const result = await page.evaluate(() => window.runLargeHistoryMigrationProbe());
+  expect(result.completed).toBe(true);
+  expect(result.written).toBe(1000);
+  expect(result.latest).toEqual([998, 999, 1000]);
+  expect(result.legacyRecords).toBe(0);
+  expect(result.eventLoopTicks).toBeGreaterThan(5);
+  expect(result.elapsedMs).toBeLessThan(90_000);
+});
+
 test("CoreCrypto performs two-device MLS add, messaging, update, tamper and replay checks", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   await expect(page.locator("#status")).toHaveText("production-fixture-loaded");

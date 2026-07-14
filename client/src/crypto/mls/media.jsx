@@ -9,28 +9,49 @@ import {
   textEncoder,
   wipe
 } from "../encoding";
-import { MEDIA_CHUNK_SIZE, MEDIA_MAGIC } from "./constants";
+import { MEDIA_CHUNK_SIZE, MEDIA_CHUNK_SIZES, MEDIA_MAGIC } from "./constants";
 import { mediaType, safeMediaMime } from "./envelope";
+
+function selectChunkSize(size) {
+  if (size <= 512 * 1024) return MEDIA_CHUNK_SIZES[0];
+  if (size <= 8 * 1024 * 1024) return MEDIA_CHUNK_SIZES[1];
+  return MEDIA_CHUNK_SIZE;
+}
+
+function reportProgress(callback, detail) {
+  try {
+    callback?.(detail);
+  } catch (error) {
+    if (import.meta.env.DEV) console.warn("Media progress callback failed", error);
+  }
+}
+
+function yieldToBrowser() {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
+}
 
 export async function encryptAndUploadMedia(state, file, clientMessageId, options = {}) {
   const keyBytes = randomBytes(32);
   const noncePrefix = randomBytes(8);
   const bindingId = randomId(24);
-  const chunks = Math.max(1, Math.ceil(file.size / MEDIA_CHUNK_SIZE));
+  const chunkSize = selectChunkSize(file.size);
+  const chunks = Math.max(1, Math.ceil(file.size / chunkSize));
   const aesKey = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt"]);
   const encryptedParts = [MEDIA_MAGIC];
   const hasher = sha256.create().update(MEDIA_MAGIC);
   try {
-    for (let index = 0; index < chunks; index += 1) {
-      const start = index * MEDIA_CHUNK_SIZE;
-      const source = new Uint8Array(await file.slice(start, Math.min(file.size, start + MEDIA_CHUNK_SIZE)).arrayBuffer());
-      const plaintext = new Uint8Array(MEDIA_CHUNK_SIZE);
+    async function encryptChunk(index) {
+      const start = index * chunkSize;
+      const source = new Uint8Array(await file.slice(start, Math.min(file.size, start + chunkSize)).arrayBuffer());
+      const plaintext = new Uint8Array(chunkSize);
       plaintext.set(source);
       wipe(source);
-      let encrypted;
       try {
-        for (let offset = Math.min(file.size - start, MEDIA_CHUNK_SIZE); offset < MEDIA_CHUNK_SIZE; offset += 65536) {
-          crypto.getRandomValues(plaintext.subarray(offset, Math.min(MEDIA_CHUNK_SIZE, offset + 65536)));
+        for (let offset = Math.min(file.size - start, chunkSize); offset < chunkSize; offset += 65536) {
+          crypto.getRandomValues(plaintext.subarray(offset, Math.min(chunkSize, offset + 65536)));
         }
         const iv = new Uint8Array(12);
         iv.set(noncePrefix, 0);
@@ -43,12 +64,28 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
           index,
           chunks
         ]));
-        encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, plaintext));
+        return new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, aesKey, plaintext));
       } finally {
         wipe(plaintext);
       }
-      encryptedParts.push(encrypted);
-      hasher.update(encrypted);
+    }
+
+    for (let index = 0; index < chunks; index += 2) {
+      const batch = [];
+      for (let offset = 0; offset < 2 && index + offset < chunks; offset += 1) {
+        batch.push(encryptChunk(index + offset));
+      }
+      const encryptedBatch = await Promise.all(batch);
+      for (const encrypted of encryptedBatch) {
+        encryptedParts.push(encrypted);
+        hasher.update(encrypted);
+      }
+      reportProgress(options.onProgress, {
+        stage: "encrypting",
+        completed: Math.min(index + encryptedBatch.length, chunks),
+        total: chunks
+      });
+      if (index + encryptedBatch.length < chunks) await yieldToBrowser();
     }
     const ciphertextHash = bytesToBase64Url(hasher.digest());
     const blob = new Blob(encryptedParts, { type: "application/octet-stream" });
@@ -62,11 +99,13 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     const formData = new FormData();
     Object.entries(signingBody).forEach(([name, value]) => formData.set(name, value));
     formData.set("attachment", new File([blob], `${bindingId}.liotanmedia`, { type: "application/octet-stream" }));
+    reportProgress(options.onProgress, { stage: "uploading", completed: 0, total: blob.size });
     const upload = await signedCryptoRequest("/crypto/v4/media/upload", {
       method: "POST",
       body: signingBody,
       formData
     });
+    reportProgress(options.onProgress, { stage: "uploading", completed: blob.size, total: blob.size });
     return {
       v: 1,
       conversationId: state.conversationId,
@@ -76,7 +115,7 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
       ciphertextHash,
       key: bytesToBase64Url(keyBytes),
       noncePrefix: bytesToBase64Url(noncePrefix),
-      chunkSize: MEDIA_CHUNK_SIZE,
+      chunkSize,
       chunks,
       ciphertextBytes: blob.size,
       original: {
@@ -105,15 +144,17 @@ export async function downloadMlsCiphertext(attachment) {
 
 export async function decryptMlsMediaBlob(attachment, blob) {
   const descriptor = attachment?.mlsMedia;
-  if (!descriptor || descriptor.v !== 1 || descriptor.uploadId !== attachment.uploadId) {
+  const chunkSize = Number(descriptor?.chunkSize);
+  if (!descriptor || descriptor.v !== 1 || descriptor.uploadId !== attachment.uploadId ||
+    !MEDIA_CHUNK_SIZES.includes(chunkSize)) {
     throw new Error("Invalid MLS media descriptor");
   }
   const originalSize = Number(descriptor.original?.size);
-  const expectedChunks = Math.max(1, Math.ceil(originalSize / MEDIA_CHUNK_SIZE));
-  const expectedCiphertextBytes = MEDIA_MAGIC.length + expectedChunks * (MEDIA_CHUNK_SIZE + 16);
+  const expectedChunks = Math.max(1, Math.ceil(originalSize / chunkSize));
+  const expectedCiphertextBytes = MEDIA_MAGIC.length + expectedChunks * (chunkSize + 16);
   if (
     !Number.isSafeInteger(originalSize) || originalSize < 0 || originalSize > 100 * 1024 * 1024 ||
-    descriptor.chunkSize !== MEDIA_CHUNK_SIZE || descriptor.chunks !== expectedChunks ||
+    descriptor.chunks !== expectedChunks ||
     descriptor.ciphertextBytes !== expectedCiphertextBytes ||
     !/^[A-Za-z0-9_-]{22,96}$/.test(String(descriptor.bindingId || "")) ||
     !/^[0-9a-f-]{36}$/i.test(String(descriptor.messageId || ""))
@@ -141,7 +182,7 @@ export async function decryptMlsMediaBlob(attachment, blob) {
   let offset = MEDIA_MAGIC.length;
   try {
     for (let index = 0; index < descriptor.chunks; index += 1) {
-      const ciphertextLength = descriptor.chunkSize + 16;
+      const ciphertextLength = chunkSize + 16;
       const chunk = new Uint8Array(await blob.slice(offset, offset + ciphertextLength).arrayBuffer());
       if (chunk.length !== ciphertextLength) throw new Error("Truncated MLS media ciphertext");
       const iv = new Uint8Array(12);

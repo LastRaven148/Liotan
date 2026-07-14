@@ -142,6 +142,8 @@ export default function MessengerLayout({
         sendAttachment={chat.sendAttachment}
         sendAttachments={chat.sendAttachments}
         sendVoiceMessage={chat.sendVoiceMessage}
+        loadOlderMessages={chat.loadOlderMessages}
+        loadNewerMessages={chat.loadNewerMessages}
         openProfile={() =>
           setProfileUser(chat.activeDialog)
         }

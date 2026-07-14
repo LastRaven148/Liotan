@@ -42,7 +42,7 @@ const RULES = [
   {
     id: "e2ee-localstorage-secret",
     severity: "critical",
-    pattern: /localStorage\.(setItem|getItem)\([^\n]*(e2ee|identity|secret|privateKey|chatKey)/i,
+    pattern: /localStorage\.(?:setItem|getItem)\(\s*[^,\n]*(e2ee|identity|secret|privateKey|recovery|databaseKey|cacheKey)|localStorage\.setItem\(\s*[^,\n]+,\s*[^\n]*(e2ee|identity|secret|privateKey|recoveryKey|databaseKey|cacheKey)/i,
     allow: /utils[\/]e2ee\.jsx$|services[\/]e2eeStorage\.jsx$|scripts[\/]privacyAudit\.js$/,
     note: "Do not persist E2EE secrets/plain private keys in localStorage."
   },

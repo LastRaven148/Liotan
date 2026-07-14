@@ -59,6 +59,8 @@ const Chat = memo(function Chat({
   sendAttachment,
   sendAttachments,
   sendVoiceMessage,
+  loadOlderMessages,
+  loadNewerMessages,
   onBack,
   openProfile
 }) {
@@ -199,7 +201,9 @@ const Chat = memo(function Chat({
   useChatScroll({
     activeChat: renderedActiveChat,
     messages: renderedMessages,
-    messagesRef
+    messagesRef,
+    loadOlderMessages,
+    loadNewerMessages
   });
 
   return (

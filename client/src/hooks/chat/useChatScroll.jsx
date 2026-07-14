@@ -1,5 +1,6 @@
 import {
   useLayoutEffect,
+  useEffect,
   useRef
 } from "react";
 
@@ -60,7 +61,9 @@ function restoreChatScroll(chatId, el) {
 export function useChatScroll({
   activeChat,
   messages,
-  messagesRef
+  messagesRef,
+  loadOlderMessages,
+  loadNewerMessages
 }) {
 
   const currentChatRef =
@@ -74,6 +77,31 @@ export function useChatScroll({
 
   const shouldStickToBottomRef =
     useRef(true);
+
+  const paginationRef =
+    useRef({
+      loadingOlder: false,
+      loadingNewer: false,
+      olderExhausted: false,
+      newerExhausted: false
+    });
+
+  const loadersRef =
+    useRef({ loadOlderMessages, loadNewerMessages });
+
+  loadersRef.current = {
+    loadOlderMessages,
+    loadNewerMessages
+  };
+
+  useEffect(() => {
+    paginationRef.current = {
+      loadingOlder: false,
+      loadingNewer: false,
+      olderExhausted: false,
+      newerExhausted: false
+    };
+  }, [activeChat]);
 
   useLayoutEffect(() => {
     const el =
@@ -94,6 +122,47 @@ export function useChatScroll({
         activeChat,
         el
       );
+
+      if (el.scrollHeight <= el.clientHeight + 120) {
+        return;
+      }
+
+      const pagination = paginationRef.current;
+      if (
+        el.scrollTop < 180 &&
+        !pagination.loadingOlder &&
+        !pagination.olderExhausted &&
+        typeof loadersRef.current.loadOlderMessages === "function"
+      ) {
+        pagination.loadingOlder = true;
+        Promise.resolve(loadersRef.current.loadOlderMessages())
+          .then(result => {
+            pagination.olderExhausted = !result?.hasMore;
+            if (result?.loaded) pagination.newerExhausted = false;
+          })
+          .catch(() => {})
+          .finally(() => {
+            pagination.loadingOlder = false;
+          });
+      }
+
+      if (
+        distanceFromBottom < 180 &&
+        !pagination.loadingNewer &&
+        !pagination.newerExhausted &&
+        typeof loadersRef.current.loadNewerMessages === "function"
+      ) {
+        pagination.loadingNewer = true;
+        Promise.resolve(loadersRef.current.loadNewerMessages())
+          .then(result => {
+            pagination.newerExhausted = !result?.hasMore;
+            if (result?.loaded) pagination.olderExhausted = false;
+          })
+          .catch(() => {})
+          .finally(() => {
+            pagination.loadingNewer = false;
+          });
+      }
     }
 
     el.addEventListener(

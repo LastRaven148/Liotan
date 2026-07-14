@@ -6,6 +6,7 @@ const DEFAULT_SAFE_PREFIX = "liotan/u/";
 const CONFIRM_VALUE = "YES_DELETE_R2_PREFIX";
 
 const SAFE_MEDIA_PREFIXES = new Set([
+  "liotan/mls/",
   "liotan/u/",
   "liotan/uploads/",
   "files/",

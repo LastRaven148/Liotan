@@ -395,6 +395,8 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
   const E2EEConversation = require("../../models/E2EEConversation");
   const E2EEKey = require("../../models/E2EEKey");
   const AttachmentUpload = require("../../models/AttachmentUpload");
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const registeredUser = await User.findOne({ username }).lean();
   await User.updateOne({ username }, { $set: { e2eePublicKey: { legacy: true } } });
   await E2EEConversation.create({
     conversationId: "legacy-auth-flow",
@@ -417,6 +419,20 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
     storageType: "private-media",
     encrypted: true,
     expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+  await PendingEmailChange.collection.insertOne({
+    userId: registeredUser._id,
+    username,
+    oldEmailHash: registeredUser.emailHash,
+    newEmailHash: "integration-new-email-hash",
+    newEmailEnvelope: { encrypted: "integration-test-only" },
+    cancelTokenHash: "integration-cancel-token-hash",
+    status: "pending",
+    requestedAt: new Date(),
+    applyAfter: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    cancelExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+    createdAt: new Date(),
+    updatedAt: new Date()
   });
 
   await supertest(app)
@@ -462,6 +478,7 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
   assert.equal(await E2EEConversation.exists({ participants: username }), null);
   assert.equal(await E2EEKey.exists({ user: username }), null);
   assert.equal(await AttachmentUpload.exists({ owner: username }), null);
+  assert.equal(await PendingEmailChange.exists({ username }), null);
 
   await supertest(app)
     .get("/auth/session")

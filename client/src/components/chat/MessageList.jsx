@@ -34,6 +34,20 @@ export default function MessageList({
       messages
     ]);
 
+  const autoMediaIds =
+    useMemo(() => {
+      const candidates = messages.filter(item =>
+        item?.attachment?.url &&
+        ["photo", "video", "audio", "voice"].includes(item?.attachment?.type)
+      );
+
+      return new Set(
+        candidates
+          .slice(-24)
+          .map(item => item._id)
+      );
+    }, [messages]);
+
   const items =
     useMemo(() => {
 
@@ -78,6 +92,10 @@ export default function MessageList({
             onReply={onReply}
             onDelete={onDelete}
             onPin={onPin}
+            autoLoadMedia={
+              item.message.status === "sending" ||
+              autoMediaIds.has(item.message._id)
+            }
           />
         );
 

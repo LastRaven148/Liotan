@@ -144,6 +144,8 @@ assert.match(mlsClient, /Mls128Dhkemx25519Aes128gcmSha256Ed25519/);
 assert.match(mlsClient, /Safety number changed/);
 assert.match(mlsClient, /assertEnvelopeSchema/);
 assert.match(mlsClient, /initializeCoreCryptoRuntime/);
+assert.match(mlsClient, /MEDIA_CHUNK_SIZES/,
+  "MLS envelope validation must share the authenticated adaptive media chunk contract");
 assert.doesNotMatch(read("client/src/crypto/mlsEngine.jsx"), /initWasmModule/);
 assert.match(read("client/src/crypto/coreCryptoRuntime.jsx"), /runtimePromise/);
 const mlsEngineSource = read("client/src/crypto/mlsEngine.jsx");
@@ -176,12 +178,36 @@ const useChat = read("client/src/hooks/useChat.jsx");
 assert.match(useChat, /getMlsEngine\(\)\.sendMessage/);
 assert.doesNotMatch(useChat, /socketRef\.current\.emit\([^\n]*(SEND_MESSAGE|sendMessage)/i,
   "message send must never fall back to plaintext Socket.IO");
+assert.match(useChat, /status:\s*"sending"/,
+  "outgoing messages must enter an explicit pending state before MLS delivery completes");
+assert.match(read("client/src/utils/chatState.jsx"), /MAX_CHAT_WINDOW_MESSAGES\s*=\s*240/,
+  "rendered chat history must remain bounded independently of encrypted local history");
+assert.match(read("client/src/crypto/recoveryStore.jsx"), /byConversationSequence/,
+  "encrypted local history must expose a compound conversation cursor index");
+assert.match(read("client/src/crypto/recoveryStore.jsx"), /putEncryptedHistoryRecords/,
+  "legacy encrypted history migration must use bounded IndexedDB batches");
+assert.match(read("client/src/crypto/recoveryStore.jsx"), /migrateEncryptedHistoryRecords/,
+  "legacy encrypted history must use a resumable paged migration");
+assert.match(read("client/src/crypto/recoveryStore.jsx"), /idbDeletePrefix\("records", legacyPrefix\)/,
+  "legacy encrypted history must be removed only after a completed migration");
+const mlsHistoryEngineSource = read("client/src/crypto/mlsEngine.jsx");
+assert.doesNotMatch(mlsHistoryEngineSource, /putEncryptedRecord\(\s*`message:/,
+  "new messages must not keep dual-writing the legacy history cache");
+assert.match(mlsHistoryEngineSource, /loadedHistory\.add\(state\.conversationId\);\s*this\.startHistoryMigration\(state\);/,
+  "legacy history migration must run after the initial indexed page without blocking chat startup");
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /state\?\.ready \|\| !state\.initialized/,
+  "the E2EE notice must require a fully ready MLS conversation");
 const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })
   .filter(entry => entry.isFile() && /\.(?:js|jsx|html)$/.test(entry.name))
   .map(entry => read(path.relative(root, path.join(entry.parentPath, entry.name))))
   .join("\n");
 assert.doesNotMatch(clientSources, /static\.cloudflareinsights\.com|beacon\.min\.js/,
   "Cloudflare Insights beacon must not be injected by source code");
+const privacyAudit = read("server/scripts/privacyAudit.js");
+assert.doesNotMatch(privacyAudit, /privateKey\|chatKey/,
+  "privacy audit must not confuse a non-secret chat route with private key material");
+assert.match(privacyAudit, /recoveryKey\|databaseKey\|cacheKey/,
+  "privacy audit must continue rejecting real E2EE secrets in localStorage values");
 assert.doesNotMatch(clientSources, /\bstyle\s*=|\.style\./,
   "strict client CSP forbids inline style attributes and CSSOM style mutations");
 assert.match(read("server/middleware/contentSecurityPolicy.js"), /styleSrcAttr:\s*\["'none'"\]/);
@@ -197,6 +223,23 @@ assert.match(read("server/config/version.js"), /require\("\.\.\/package\.json"\)
   "runtime version must be sourced from server/package.json");
 assert.match(read("server/routes/healthRoutes.js"), /service: "liotan-api",\s*version/,
   "health endpoint must expose the actual package version");
+
+const accountCleanup = read("server/scripts/cleanupDeletedAccounts.js");
+assert.match(accountCleanup, /deleteAccountData\(username\)/,
+  "administrative account cleanup must use the canonical MLS, session and R2 erasure path");
+assert.match(accountCleanup, /LIOTAN_CLEANUP_CONFIRM/,
+  "administrative account cleanup must remain a dry-run without explicit confirmation");
+assert.doesNotMatch(accountCleanup, /Message\.deleteMany|E2EEKey\.deleteMany|aliveEmailHashes/,
+  "administrative cleanup must not maintain a second incomplete or broad deletion implementation");
+
+const accountDeletion = read("server/utils/deleteAccountData.js");
+assert.match(accountDeletion, /PendingEmailChange\.deleteMany/,
+  "account deletion must remove pending email-change hashes and envelopes");
+const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
+assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
+  "full account purge must require an explicit destructive confirmation");
+assert.match(fullAccountPurge, /dry-run/,
+  "full account purge must default to a dry-run");
 
 const group = read("server/controllers/groupController.js");
 const addBlock = group.slice(group.indexOf("async function addGroupMember"), group.indexOf("async function removeGroupMember"));
