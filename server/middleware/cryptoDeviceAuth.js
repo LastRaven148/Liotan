@@ -1,8 +1,8 @@
 "use strict";
 
 const CryptoDevice = require("../models/CryptoDevice");
-const CryptoConversation = require("../models/CryptoConversation");
 const CryptoRequestNonce = require("../models/CryptoRequestNonce");
+const { transitionUserConversations } = require("../security/cryptoRosterState");
 const { canonicalJson } = require("../utils/canonicalJson");
 const { decodeBase64Url, sha256Base64Url, verifyEd25519, isDeviceId } = require("../security/cryptoV4");
 
@@ -44,15 +44,13 @@ async function cryptoDeviceAuth(req, res, next) {
     if (!device) return res.status(401).json({ error: "valid crypto device signature required" });
     const manifestExpiresAt = Date.parse(device.manifestExpiresAt || device.manifest?.expiresAt || "");
     if (!Number.isFinite(manifestExpiresAt) || manifestExpiresAt <= Date.now()) {
-      await Promise.all([
-        CryptoDevice.updateOne({ _id: device._id, status: "active" }, {
-          $set: { status: "expired", manifestExpiresAt: Number.isFinite(manifestExpiresAt) ? new Date(manifestExpiresAt) : null }
-        }),
-        CryptoConversation.updateMany(
-          { participantUserIds: req.user.userId },
-          { $set: { blockedForEpochChange: true } }
-        )
-      ]);
+      await transitionUserConversations(req.user.userId, {
+        removeClientIds: [device.clientId],
+        reason: "cryptographic device manifest expired"
+      });
+      await CryptoDevice.updateOne({ _id: device._id, status: "active" }, {
+        $set: { status: "expired", manifestExpiresAt: Number.isFinite(manifestExpiresAt) ? new Date(manifestExpiresAt) : null }
+      });
       return res.status(401).json({ error: "crypto device manifest expired" });
     }
 

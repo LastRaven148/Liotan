@@ -91,6 +91,7 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     const blob = new Blob(encryptedParts, { type: "application/octet-stream" });
     const signingBody = {
       conversationId: state.conversationId,
+      clientMessageId,
       bindingId,
       ciphertextHash,
       bytes: String(blob.size),
@@ -107,26 +108,33 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     });
     reportProgress(options.onProgress, { stage: "uploading", completed: blob.size, total: blob.size });
     return {
-      v: 1,
-      conversationId: state.conversationId,
-      messageId: clientMessageId,
-      uploadId: upload.uploadId,
-      bindingId,
-      ciphertextHash,
-      key: bytesToBase64Url(keyBytes),
-      noncePrefix: bytesToBase64Url(noncePrefix),
-      chunkSize,
-      chunks,
-      ciphertextBytes: blob.size,
-      original: {
-        name: String(file.name || "file").slice(0, 160),
-        type: mediaType(file, options.originalTypeOverride),
-        mimeType: safeMediaMime(file),
-        size: file.size,
-        duration: Number(options.privateMetadata?.duration) || 0,
-        waveform: Array.isArray(options.privateMetadata?.waveform) ? options.privateMetadata.waveform.slice(0, 64) : [],
-        width: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.width) || 0))),
-        height: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.height) || 0)))
+      descriptor: {
+        v: 1,
+        conversationId: state.conversationId,
+        messageId: clientMessageId,
+        uploadId: upload.uploadId,
+        deleteToken: upload.uploadDeleteToken,
+        bindingId,
+        ciphertextHash,
+        key: bytesToBase64Url(keyBytes),
+        noncePrefix: bytesToBase64Url(noncePrefix),
+        chunkSize,
+        chunks,
+        ciphertextBytes: blob.size,
+        original: {
+          name: String(file.name || "file").slice(0, 160),
+          type: mediaType(file, options.originalTypeOverride),
+          mimeType: safeMediaMime(file),
+          size: file.size,
+          duration: Number(options.privateMetadata?.duration) || 0,
+          waveform: Array.isArray(options.privateMetadata?.waveform) ? options.privateMetadata.waveform.slice(0, 64) : [],
+          width: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.width) || 0))),
+          height: Math.max(0, Math.min(16384, Math.trunc(Number(options.privateMetadata?.height) || 0)))
+        }
+      },
+      commit: {
+        uploadId: upload.uploadId,
+        token: upload.uploadCommitToken
       }
     };
   } finally {

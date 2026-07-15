@@ -5,7 +5,6 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 const getChatId = require("../server/utils/getChatId");
-const { normalizeEncryptedContent } = require("../server/sockets/services/encryptedContent");
 const { canonicalJson } = require("../server/utils/canonicalJson");
 const { verifyEd25519 } = require("../server/security/cryptoV4");
 const crypto = require("crypto");
@@ -40,17 +39,17 @@ assert.notStrictEqual(first, second, "private conversation IDs must be collision
 assert.deepStrictEqual(getChatId.getPrivateChatParticipants(first), ["abc", "def_ghi"]);
 
 const getPrivateChat = read("server/sockets/handlers/private/getPrivateChat.js");
-assert.match(getPrivateChat, /from: user1, to: user2/);
-assert.match(getPrivateChat, /from: user2, to: user1/);
-
-const e2ee = read("client/src/crypto/legacy/e2eeV3ReadOnly.jsx");
-assert.doesNotMatch(e2ee, /if \(!secret\) \{\s*return text;/);
-assert.match(e2ee, /additionalData: canonicalAad/);
-assert.match(e2ee, /Replayed E2EE envelope rejected/);
-assert.match(e2ee, /conversationId: meta\.kid/);
-assert.match(e2ee, /isExpectedConversation/);
-assert.doesNotMatch(e2ee, /deriveBackupKey|encryptIdentityBackup|decryptIdentityBackup/);
-assert.doesNotMatch(e2ee, /getE2EEConversationKeyApi|getE2EEIdentitiesApi/);
+assert.doesNotMatch(getPrivateChat, /models\/Messages|chatHistory|serializeMessages/,
+  "v4-only private sockets must not read or emit legacy message history");
+const getGroupChat = read("server/sockets/handlers/group/getGroupChat.js");
+assert.doesNotMatch(getGroupChat, /models\/Messages|chatHistory|serializeMessages/,
+  "v4-only group sockets must not read or emit legacy message history");
+assert(!fs.existsSync(path.join(root, "client/src/crypto/legacy/e2eeV3ReadOnly.jsx")),
+  "the executable v3 crypto client must be removed after the v4 cutover");
+const e2eeFacade = read("client/src/utils/e2ee.jsx");
+assert.match(e2eeFacade, /MLS v4-only UI facade/);
+assert.doesNotMatch(e2eeFacade, /PBKDF2|deriveMessageKey|ensureConversationSecret|legacy\/e2ee/,
+  "the v4 UI facade must not contain legacy key derivation or delivery");
 
 const clientApi = read("client/src/services/api.jsx");
 assert.doesNotMatch(clientApi, /\/e2ee\/(identity(?:-backup)?|conversations\/[^`"']+\/key)/,
@@ -63,27 +62,18 @@ const currentCryptoClient = [
 ].map(read).join("\n");
 assert.match(currentCryptoClient, /\/crypto\/v4\//, "client must use the MLS v4 API");
 const legacyRoutes = read("server/routes/e2eeRoutes.js");
-for (const endpoint of ["/e2ee/identity", "/e2ee/identity-backup", "/e2ee/conversations/:conversationId/key"]) {
+for (const endpoint of [
+  "/e2ee/identity",
+  "/e2ee/identity-backup",
+  "/e2ee/identity/:username",
+  "/e2ee/identities",
+  "/e2ee/devices/:username",
+  "/e2ee/conversations/:conversationId/key"
+]) {
   const route = legacyRoutes.slice(legacyRoutes.indexOf(`\"${endpoint}\"`));
   assert(route.indexOf("legacyWriteGone") >= 0 && route.indexOf("legacyWriteGone") < route.indexOf(");"),
     `${endpoint} must remain permanently gone`);
 }
-
-const validV3 = normalizeEncryptedContent({
-  ciphertext: "ciphertext",
-  iv: "iv-value",
-  salt: "salt-value",
-  nonce: "1234567890123456",
-  alg: "AES-GCM-256",
-  kdf: "PBKDF2-SHA256",
-  iter: 200000,
-  kid: "private:v2:alice:bob",
-  sender: "alice",
-  contentType: "text",
-  version: 3
-});
-assert(validV3, "server must accept a structurally valid v3 envelope");
-assert.strictEqual(normalizeEncryptedContent({ ...validV3, version: 2 }), null, "server must reject legacy writes");
 
 assert.strictEqual(
   canonicalJson({ z: [3, { b: true, a: "x" }], a: 1 }),
@@ -178,6 +168,15 @@ const useChat = read("client/src/hooks/useChat.jsx");
 assert.match(useChat, /getMlsEngine\(\)\.sendMessage/);
 assert.doesNotMatch(useChat, /socketRef\.current\.emit\([^\n]*(SEND_MESSAGE|sendMessage)/i,
   "message send must never fall back to plaintext Socket.IO");
+assert.doesNotMatch(useChat, /SOCKET_EVENTS\.(?:GET_CHAT|GET_GROUP_CHAT|DELETE_CHAT)/,
+  "v4-only chat flow must not request, mutate, or delete legacy history");
+const useSocket = read("client/src/hooks/useSocket.jsx");
+for (const event of ["NEW_MESSAGE", "CHAT_HISTORY", "MESSAGE_EDITED", "MESSAGE_DELETED", "MESSAGE_PINNED"]) {
+  assert.doesNotMatch(useSocket, new RegExp(`currentSocket\\.on\\(SOCKET_EVENTS\\.${event}`),
+    `legacy ${event} payloads must not enter the trusted client state`);
+}
+assert.doesNotMatch(read("server/controllers/dialogController.js"), /models\/Messages|encryptedContent|lastMessageAttachment:\s*attachment/,
+  "dialog discovery must use MLS conversation metadata, never legacy message content");
 assert.match(useChat, /status:\s*"sending"/,
   "outgoing messages must enter an explicit pending state before MLS delivery completes");
 assert.match(read("client/src/utils/chatState.jsx"), /MAX_CHAT_WINDOW_MESSAGES\s*=\s*240/,
@@ -195,6 +194,16 @@ assert.doesNotMatch(mlsHistoryEngineSource, /putEncryptedRecord\(\s*`message:/,
   "new messages must not keep dual-writing the legacy history cache");
 assert.match(mlsHistoryEngineSource, /loadedHistory\.add\(state\.conversationId\);\s*this\.startHistoryMigration\(state\);/,
   "legacy history migration must run after the initial indexed page without blocking chat startup");
+assert.match(mlsHistoryEngineSource, /sync-checkpoint:/,
+  "MLS event progress must have an encrypted per-device checkpoint");
+assert.match(mlsHistoryEngineSource, /localStorage is deliberately treated as an[\s\S]*untrusted display hint/,
+  "localStorage must never be the cryptographic cursor source of truth");
+assert.doesNotMatch(mlsHistoryEngineSource, /handleApplicationMessage\(state, event, buffered\)/,
+  "buffered plaintext must never inherit metadata from the commit event");
+assert.match(mlsHistoryEngineSource, /mls-buffered-metadata-unavailable/,
+  "buffered plaintext without its immutable server event context must fail closed");
+assert.match(read("server/controllers/cryptoV4/conversations.js"), /recipientHead/,
+  "event reconciliation must expose the authoritative per-recipient head");
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /state\?\.ready \|\| !state\.initialized/,
   "the E2EE notice must require a fully ready MLS conversation");
 const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })

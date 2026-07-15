@@ -214,6 +214,16 @@ class LiotanMlsEngine {
           encryptionType: Number(groupInfo.encryptionType),
           ratchetTreeType: Number(groupInfo.ratchetTreeType),
           payload: bytesToBase64Url(groupInfo.payload)
+        },
+        result: {
+          v: 1,
+          operationId: operation.operationId,
+          baseRosterVersion: operation.baseRosterVersion,
+          baseEpoch: operation.baseEpoch,
+          operationGeneration: operation.operationGeneration,
+          intentHash: operation.intentHash,
+          activeClientIds: operation.expectedActiveClientIds,
+          activeClientIdsHash: operation.expectedActiveClientIdsHash
         }
       };
       await putEncryptedRecord(`pending-commit:${operation.conversationId}`, body, this.keys.cacheKey);
@@ -345,6 +355,11 @@ class LiotanMlsEngine {
           throw new Error("Unsupported MLS membership operation");
         }
       });
+    } catch (error) {
+      if (error?.status === 409 && /stale|no longer current|operation intent/i.test(error.message || "")) {
+        return this.resolveConversation(state.chatKey, state.dialog, { force: true });
+      }
+      throw error;
     } finally {
       this.pendingOperation = null;
       destroyUniffiAll(operationObjects);
@@ -418,7 +433,88 @@ class LiotanMlsEngine {
       sequence,
       clientMessageId: envelope.clientMessageId
     }, record, this.keys.cacheKey);
+  }
+
+  syncCheckpointKey(conversationId) {
+    return `sync-checkpoint:${conversationId}:${this.clientIdString}`;
+  }
+
+  async writeSyncCheckpoint(state, processedSequence, serverHead = processedSequence) {
+    const sequence = Math.max(0, Number(processedSequence) || 0);
+    const head = Math.max(sequence, Number(serverHead) || 0);
+    await putEncryptedRecord(this.syncCheckpointKey(state.conversationId), {
+      v: 1,
+      conversationId: state.conversationId,
+      clientId: this.clientIdString,
+      processedSequence: sequence,
+      serverHead: head,
+      rosterVersion: Number(state.rosterVersion || 0),
+      updatedAt: new Date().toISOString()
+    }, this.keys.cacheKey);
     localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(sequence));
+  }
+
+  async readSyncCheckpoint(state) {
+    const record = await getEncryptedRecord(
+      this.syncCheckpointKey(state.conversationId),
+      this.keys.cacheKey
+    );
+    const valid = record?.v === 1 &&
+      record.conversationId === state.conversationId &&
+      record.clientId === this.clientIdString &&
+      Number.isSafeInteger(Number(record.processedSequence)) &&
+      Number(record.processedSequence) >= 0;
+    if (valid) return record;
+
+    // One-time migration: derive the restart point only from authenticated,
+    // encrypted history. localStorage is deliberately treated as an
+    // untrusted display hint and can never advance the cryptographic cursor.
+    const migration = this.historyMigrations.get(state.conversationId);
+    if (migration) await migration;
+    const latest = await listEncryptedHistoryRecords(
+      state.conversationId,
+      this.keys.cacheKey,
+      { limit: 1 }
+    );
+    const processedSequence = Math.max(0, Number(latest[0]?.sequence) || 0);
+    const migrated = {
+      v: 1,
+      conversationId: state.conversationId,
+      clientId: this.clientIdString,
+      processedSequence,
+      serverHead: processedSequence,
+      rosterVersion: Number(state.rosterVersion || 0),
+      migratedFromLegacyHint: true
+    };
+    await putEncryptedRecord(
+      this.syncCheckpointKey(state.conversationId),
+      migrated,
+      this.keys.cacheKey
+    );
+    localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(processedSequence));
+    return migrated;
+  }
+
+  dispatchCachedEnvelope(state, event, envelope) {
+    if (envelope.kind === "message") {
+      dispatchCryptoMessage({
+        type: "message",
+        message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence)
+      });
+      return;
+    }
+    dispatchCryptoMessage({
+      type: envelope.kind,
+      chatId: this.envelopeToUiMessage(
+        state,
+        { ...envelope, attachment: null },
+        event.createdAt,
+        event.sequence
+      ).chatId,
+      messageId: envelope.targetMessageId,
+      text: envelope.text || "",
+      from: envelope.senderUsername
+    });
   }
 
   findCachedEnvelope(conversationId, clientMessageId) {
@@ -579,7 +675,9 @@ class LiotanMlsEngine {
   async syncConversation(state) {
     if (this.syncing.has(state.conversationId)) return this.syncing.get(state.conversationId);
     const promise = (async () => {
-      let after = Number(localStorage.getItem(`liotan:mls-sequence:${state.conversationId}`) || 0);
+      let checkpoint = await this.readSyncCheckpoint(state);
+      let after = Number(checkpoint.processedSequence || 0);
+      localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
       while (true) {
         const path = `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/events?after=${after}&limit=100`;
         let response;
@@ -602,6 +700,21 @@ class LiotanMlsEngine {
           }
           throw err;
         }
+        const recipientHead = Math.max(0, Number(response.recipientHead) || 0);
+        if (Number(checkpoint.serverHead || 0) > recipientHead || after > recipientHead) {
+          const error = new Error("MLS recipient event log moved backwards; synchronization stopped");
+          error.code = "mls-recipient-log-rollback";
+          reportCryptoDiagnostic(error, { stage: "conversation-sync" });
+          state.ready = false;
+          throw error;
+        }
+        if (!response.events.length && after < recipientHead) {
+          const error = new Error("MLS recipient event log has an unexpected gap");
+          error.code = "mls-recipient-log-gap";
+          reportCryptoDiagnostic(error, { stage: "conversation-sync" });
+          state.ready = false;
+          throw error;
+        }
         for (const event of response.events) {
           const conversationId = conversationObject(state.conversationId);
           try {
@@ -621,31 +734,26 @@ class LiotanMlsEngine {
                 localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
               } else if (localEpoch < event.epoch) {
                 const result = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.commit)));
-                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
-                for (const buffered of result.bufferedMessages || []) {
-                  await this.handleApplicationMessage(state, event, buffered);
+                const bufferedMessages = result.bufferedMessages || [];
+                if (bufferedMessages.length) {
+                  for (const buffered of bufferedMessages) destroyUniffi(buffered.senderClientId);
+                  const error = new Error("MLS returned messages without authenticated server event metadata");
+                  error.code = "mls-buffered-metadata-unavailable";
+                  reportCryptoDiagnostic(error, { stage: "conversation-sync" });
+                  throw error;
                 }
               }
             } else if (event.kind === "message") {
-              if (event.senderClientId === this.clientIdString) {
-                const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
-                const cached = cachedRecord?.envelope;
-                if (cached) {
-                  if (cached.kind === "message") {
-                    dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt, event.sequence) });
-                  } else {
-                    dispatchCryptoMessage({
-                      type: cached.kind,
-                      chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt, event.sequence).chatId,
-                      messageId: cached.targetMessageId,
-                      text: cached.text || "",
-                      from: cached.senderUsername
-                    });
-                  }
-                }
+              const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
+              const cached = cachedRecord?.envelope;
+              if (cached) {
+                this.dispatchCachedEnvelope(state, event, cached);
+              } else if (event.senderClientId === this.clientIdString) {
+                const error = new Error("An acknowledged local MLS message is missing from encrypted history");
+                error.code = "mls-local-history-gap";
+                reportCryptoDiagnostic(error, { stage: "conversation-sync" });
               } else {
                 const decrypted = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.ciphertext)));
-                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
                 await this.handleApplicationMessage(state, event, decrypted);
               }
             }
@@ -653,7 +761,16 @@ class LiotanMlsEngine {
             destroyUniffi(conversationId);
           }
           after = event.sequence;
-          localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
+          await this.writeSyncCheckpoint(state, after, recipientHead);
+          checkpoint = {
+            ...checkpoint,
+            processedSequence: after,
+            serverHead: recipientHead
+          };
+        }
+        if (!response.events.length) {
+          await this.writeSyncCheckpoint(state, after, recipientHead);
+          checkpoint = { ...checkpoint, serverHead: recipientHead };
         }
         if (!response.hasMore) break;
       }
@@ -699,10 +816,10 @@ class LiotanMlsEngine {
     return encryptAndUploadMedia(state, file, clientMessageId, options);
   }
 
-  async enqueueEnvelope(state, envelope) {
+  async enqueueEnvelope(state, envelope, transport = {}) {
     const key = state.conversationId;
     const previous = this.sendQueues.get(key) || Promise.resolve();
-    const queued = previous.catch(() => {}).then(() => this.sendEnvelope(state, envelope));
+    const queued = previous.catch(() => {}).then(() => this.sendEnvelope(state, envelope, transport));
     this.sendQueues.set(key, queued);
     try {
       return await queued;
@@ -711,7 +828,7 @@ class LiotanMlsEngine {
     }
   }
 
-  async sendEnvelope(state, envelope) {
+  async sendEnvelope(state, envelope, transport = {}) {
     const conversationId = conversationObject(state.conversationId);
     let epoch;
     let ciphertext;
@@ -731,7 +848,9 @@ class LiotanMlsEngine {
         body: {
           clientMessageId: envelope.clientMessageId,
           epoch,
-          ciphertext: bytesToBase64Url(ciphertext)
+          ciphertext: bytesToBase64Url(ciphertext),
+          ...(transport.attachmentCommit ? { attachmentCommit: transport.attachmentCommit } : {}),
+          ...(transport.attachmentDelete ? { attachmentDelete: transport.attachmentDelete } : {})
         }
       }
     );
@@ -740,7 +859,6 @@ class LiotanMlsEngine {
     } catch (error) {
       // Delivery already committed. Never retry as a second message merely
       // because the encrypted local cache is full/unavailable.
-      localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(response.sequence));
       if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
     }
     return response;
@@ -749,9 +867,10 @@ class LiotanMlsEngine {
   async sendMessage({ chatKey, dialog, text = "", file = null, mediaOptions = {}, replyTo = null, clientMessageId = "" }) {
     const state = await this.ensureConversation(chatKey, dialog);
     const messageId = clientMessageId || crypto.randomUUID();
-    const attachment = file
+    const uploadedMedia = file
       ? await this.encryptAndUploadMedia(state, file, messageId, mediaOptions)
       : null;
+    const attachment = uploadedMedia?.descriptor || null;
     const envelope = {
       v: 1,
       kind: "message",
@@ -764,13 +883,15 @@ class LiotanMlsEngine {
       attachment,
       replyTo: replyTo ? { messageId: String(replyTo._id || replyTo.messageId || "") } : null
     };
-    const response = await this.enqueueEnvelope(state, envelope);
+    const response = await this.enqueueEnvelope(state, envelope, {
+      attachmentCommit: uploadedMedia?.commit || null
+    });
     const message = this.envelopeToUiMessage(state, envelope, new Date().toISOString(), response.sequence);
     dispatchCryptoMessage({ type: "message", message });
     return { ok: true, response, message };
   }
 
-  async sendControl({ chatKey, dialog, kind, targetMessageId, text = "" }) {
+  async sendControl({ chatKey, dialog, kind, targetMessageId, text = "", attachmentDelete = null }) {
     if (!["edit", "delete", "pin"].includes(kind)) throw new Error("Invalid MLS control event");
     const state = await this.ensureConversation(chatKey, dialog);
     const envelope = {
@@ -784,7 +905,9 @@ class LiotanMlsEngine {
       targetMessageId: String(targetMessageId || ""),
       text: kind === "edit" ? String(text || "").slice(0, 20000) : ""
     };
-    await this.enqueueEnvelope(state, envelope);
+    await this.enqueueEnvelope(state, envelope, {
+      attachmentDelete: kind === "delete" ? attachmentDelete : null
+    });
     dispatchCryptoMessage({
       type: kind,
       chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,

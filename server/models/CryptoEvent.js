@@ -9,6 +9,9 @@ const cryptoEventSchema = new mongoose.Schema({
   senderClientId: { type: String, required: true },
   clientMessageId: { type: String, default: "", index: true },
   ciphertext: { type: String, default: "" },
+  ciphertextHash: { type: String, default: "" },
+  attachmentUploadId: { type: String, default: "" },
+  attachmentDeleteUploadId: { type: String, default: "" },
   commit: { type: String, default: "" },
   welcome: { type: String, default: "" },
   groupInfo: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -18,6 +21,7 @@ const cryptoEventSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 cryptoEventSchema.index({ conversationId: 1, sequence: 1 }, { unique: true });
+cryptoEventSchema.index({ conversationId: 1, recipients: 1, sequence: -1 });
 cryptoEventSchema.index({ conversationId: 1, clientMessageId: 1 }, {
   unique: true,
   partialFilterExpression: { clientMessageId: { $type: "string", $gt: "" } }

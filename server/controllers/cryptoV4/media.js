@@ -2,9 +2,11 @@
 
 const fs = require("fs/promises");
 const AttachmentUpload = require("../../models/AttachmentUpload");
-const { uploadToR2, streamFromR2 } = require("../../utils/uploadToR2");
+const { uploadToR2, streamFromR2, deleteFromR2 } = require("../../utils/uploadToR2");
 const { registerAttachmentUpload } = require("../../services/attachmentOwnership");
-const { sha256Base64Url } = require("../../security/cryptoV4");
+const { sha256Base64Url, isUuid } = require("../../security/cryptoV4");
+const { randomId } = require("./shared");
+const { authorizedClientIds, clientIdsHash, normalizeClientIds } = require("../../security/cryptoRosterState");
 const { canonicalJson } = require("../../utils/canonicalJson");
 const { assertConversationAccess } = require("./shared");
 
@@ -15,6 +17,7 @@ async function removeTempFile(file) {
 }
 
 async function uploadMedia(req, res, next) {
+  let uploadedObject = null;
   try {
     if (!req.cryptoSignedBody || canonicalJson(req.body || {}) !== canonicalJson(req.cryptoSignedBody)) {
       return res.status(400).json({ error: "multipart fields do not match the signed crypto body" });
@@ -25,13 +28,18 @@ async function uploadMedia(req, res, next) {
     const conversationId = String(req.body.conversationId || "");
     const bindingId = String(req.body.bindingId || "");
     const ciphertextHash = String(req.body.ciphertextHash || "");
+    const clientMessageId = String(req.body.clientMessageId || "").toLowerCase();
     const declaredBytes = Number(req.body.bytes);
-    if (!BINDING_ID_RE.test(bindingId) || !/^[A-Za-z0-9_-]{43}$/.test(ciphertextHash) ||
+    if (!BINDING_ID_RE.test(bindingId) || !isUuid(clientMessageId) || !/^[A-Za-z0-9_-]{43}$/.test(ciphertextHash) ||
       !Number.isSafeInteger(declaredBytes) || declaredBytes !== req.file.size) {
       return res.status(400).json({ error: "invalid encrypted media binding" });
     }
     const conversation = await assertConversationAccess(req, conversationId);
-    if (!conversation.initialized || conversation.blockedForEpochChange || !conversation.activeClientIds.includes(req.cryptoDevice.clientId)) {
+    const activeIds = normalizeClientIds(conversation.activeClientIds);
+    const policyIds = authorizedClientIds(conversation);
+    if (!conversation.initialized || conversation.blockedForEpochChange ||
+      clientIdsHash(activeIds) !== clientIdsHash(policyIds) ||
+      !activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(409).json({ error: "MLS conversation is not ready for media" });
     }
     const actualHash = String(req.file.ciphertextHash || "");
@@ -47,6 +55,9 @@ async function uploadMedia(req, res, next) {
       mimeType: "application/octet-stream",
       storageClass: "private-media"
     });
+    uploadedObject = result;
+    const uploadCommitToken = randomId(32);
+    const uploadDeleteToken = randomId(32);
     const upload = await registerAttachmentUpload({
       owner: req.user.username,
       result,
@@ -59,16 +70,31 @@ async function uploadMedia(req, res, next) {
       cryptoConversationId: conversationId,
       cryptoClientId: req.cryptoDevice.clientId,
       bindingId,
-      ciphertextHash
+      ciphertextHash,
+      boundClientMessageId: clientMessageId,
+      commitTokenHash: sha256Base64Url(Buffer.from(uploadCommitToken, "utf8")),
+      deleteTokenHash: sha256Base64Url(Buffer.from(uploadDeleteToken, "utf8")),
+      lifecycleState: "temporary"
     });
+    uploadedObject = null;
     return res.status(201).json({
       uploadId: upload.uploadId,
+      uploadCommitToken,
+      uploadDeleteToken,
       bindingId,
       ciphertextHash,
       bytes: req.file.size,
       protocol: "mls-media-1"
     });
   } catch (err) {
+    if (uploadedObject?.key) {
+      try {
+        await deleteFromR2(uploadedObject.key, { storageClass: "private-media" });
+      } catch {
+        // The scheduled detached-object audit is the final recovery layer when
+        // both metadata creation and immediate compensation fail.
+      }
+    }
     if (err.status) return res.status(err.status).json({ error: err.message });
     return next(err);
   } finally {
@@ -79,10 +105,17 @@ async function uploadMedia(req, res, next) {
 async function downloadMedia(req, res, next) {
   try {
     const uploadId = String(req.params.uploadId || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
-    const upload = await AttachmentUpload.findOne({ uploadId, protocol: "mls-media-1", encrypted: true }).lean();
+    const upload = await AttachmentUpload.findOne({
+      uploadId,
+      protocol: "mls-media-1",
+      encrypted: true,
+      lifecycleState: "committed"
+    }).lean();
     if (!upload) return res.status(404).json({ error: "media not found" });
     const conversation = await assertConversationAccess(req, upload.cryptoConversationId);
-    if (!conversation.activeClientIds.includes(req.cryptoDevice.clientId)) {
+    const activeIds = normalizeClientIds(conversation.activeClientIds);
+    const policyIds = authorizedClientIds(conversation);
+    if (!activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(403).json({ error: "crypto device is not an active MLS member" });
     }
     const rangeHeader = String(req.headers.range || "").trim();

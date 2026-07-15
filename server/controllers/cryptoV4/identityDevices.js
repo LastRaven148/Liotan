@@ -3,7 +3,7 @@
 const CryptoIdentity = require("../../models/CryptoIdentity");
 const CryptoDevice = require("../../models/CryptoDevice");
 const CryptoKeyPackage = require("../../models/CryptoKeyPackage");
-const CryptoConversation = require("../../models/CryptoConversation");
+const { transitionUserConversations } = require("../../security/cryptoRosterState");
 const {
   decodeBase64Url, sha256Base64Url, verifyEd25519, parseClientId,
   isUuid, isDeviceId, cryptoDomain, isFreshIsoDate
@@ -139,11 +139,10 @@ async function registerDevice(req, res, next) {
 
     let rosterConversations = [];
     if (!existing || existing.status !== "active") {
-      rosterConversations = await CryptoConversation.find({ participantUserIds: req.user.userId });
-      await CryptoConversation.updateMany(
-        { participantUserIds: req.user.userId },
-        { $set: { blockedForEpochChange: true } }
-      );
+      rosterConversations = await transitionUserConversations(req.user.userId, {
+        addClientIds: [manifest.clientId],
+        reason: "cryptographic device registered"
+      });
     }
 
     const device = await CryptoDevice.findOneAndUpdate(
@@ -270,17 +269,22 @@ async function revokeDevice(req, res, next) {
       return res.status(400).json({ error: "invalid device revocation" });
     }
 
-    const conversations = await CryptoConversation.find({ participantUserIds: req.user.userId });
-    await CryptoConversation.updateMany(
-      { participantUserIds: req.user.userId },
-      { $set: { blockedForEpochChange: true } }
-    );
+    const targetDevice = await CryptoDevice.findOne({
+      userId: req.user.userId,
+      deviceId: targetDeviceId,
+      status: "active"
+    }, "clientId").lean();
+    if (!targetDevice) return res.status(404).json({ error: "active crypto device not found" });
+    const conversations = await transitionUserConversations(req.user.userId, {
+      removeClientIds: [targetDevice.clientId],
+      reason: "cryptographic device revoked"
+    });
     const device = await CryptoDevice.findOneAndUpdate(
       { userId: req.user.userId, deviceId: targetDeviceId, status: "active" },
       { $set: { status: "revoked", revokedAt: new Date(revocation.revokedAt) } },
       { returnDocument: "after" }
     );
-    if (!device) return res.status(404).json({ error: "active crypto device not found" });
+    if (!device) return res.status(409).json({ error: "crypto device changed during revocation" });
     await CryptoKeyPackage.deleteMany({ clientId: device.clientId, claimedAt: null });
     emitCryptoRosterChanged(req, conversations);
     return res.json({ ok: true, device: deviceView(device), conversationsBlocked: true });

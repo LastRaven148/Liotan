@@ -104,10 +104,8 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
     if (!socket) return;
     if (dialog?.type === "group") {
       socket.emit(SOCKET_EVENTS.JOIN_GROUP, { groupId: dialog.groupId });
-      socket.emit(SOCKET_EVENTS.GET_GROUP_CHAT, { groupId: dialog.groupId });
     } else {
       socket.emit(SOCKET_EVENTS.JOIN_CHAT, getChatId(username, chatKey));
-      socket.emit(SOCKET_EVENTS.GET_CHAT, { user2: chatKey });
     }
   }
 
@@ -392,7 +390,13 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
       dialog: getDialogForChat(activeChat),
       kind,
       targetMessageId: message._id,
-      text: textValue
+      text: textValue,
+      attachmentDelete: kind === "delete" && message.attachment?.mlsMedia?.deleteToken
+        ? {
+            uploadId: message.attachment.mlsMedia.uploadId,
+            token: message.attachment.mlsMedia.deleteToken
+          }
+        : null
     }).catch(err => alert(err?.message || "Защищённое действие не отправлено"));
   }
   function pinMessage(message) { sendControl("pin", message); }
@@ -408,12 +412,9 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
   }
 
   function deleteChat(chat = activeChat, options = {}) {
-    if (!socketRef.current || !chat) return;
-    const dialog = getDialogForChat(chat);
-    if (dialog?.type === "group") return;
+    if (!chat) return;
     stopTyping(chat);
-    // This deletes only legacy server history. MLS peers may retain authenticated copies.
-    socketRef.current.emit(SOCKET_EVENTS.DELETE_CHAT, { user2: chat, forEveryone: options.forEveryone !== false });
+    if (activeChatRef.current === chat) closeChat();
   }
 
   function handleKey(event) {

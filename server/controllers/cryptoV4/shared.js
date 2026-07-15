@@ -2,10 +2,15 @@
 
 const crypto = require("crypto");
 const Group = require("../../models/Group");
+const User = require("../../models/User");
 const CryptoIdentity = require("../../models/CryptoIdentity");
 const CryptoDevice = require("../../models/CryptoDevice");
 const CryptoConversation = require("../../models/CryptoConversation");
 const { decodeBase64Url } = require("../../security/cryptoV4");
+const {
+  authorizedClientIds,
+  transitionConversationRoster
+} = require("../../security/cryptoRosterState");
 const { userRoom } = require("../../sockets/sessionRegistry");
 
 function idString(value) {
@@ -73,15 +78,19 @@ async function expireConversationDevices(conversation) {
       { manifestExpiresAt: null }
     ]
   };
-  if (!await CryptoDevice.exists(query)) return false;
-  await Promise.all([
-    CryptoDevice.updateMany(query, { $set: { status: "expired" } }),
-    CryptoConversation.updateOne(
-      { _id: conversation._id },
-      { $set: { blockedForEpochChange: true } }
-    )
-  ]);
+  const expired = await CryptoDevice.find(query, "clientId").lean();
+  if (!expired.length) return false;
+  await CryptoDevice.updateMany(query, { $set: { status: "expired" } });
+  const transitioned = await transitionConversationRoster(
+    { _id: conversation._id },
+    {
+      removeClientIds: expired.map(device => device.clientId),
+      reason: "device manifest expired"
+    }
+  );
   conversation.blockedForEpochChange = true;
+  conversation.authorizedClientIds = transitioned?.authorizedClientIds || authorizedClientIds(conversation);
+  conversation.rosterVersion = transitioned?.rosterVersion ?? conversation.rosterVersion;
   return true;
 }
 
@@ -119,34 +128,58 @@ function conversationView(conversation, directory) {
     sequence: conversation.sequence,
     creatorClientId: conversation.createdByClientId,
     activeClientIds: conversation.activeClientIds,
+    authorizedClientIds: authorizedClientIds(conversation),
+    rosterVersion: Number(conversation.rosterVersion) || 0,
+    operationGeneration: Number(conversation.operationGeneration) || 0,
     lastCommitAt: conversation.lastCommitAt || null,
     directory
   };
 }
 
-async function assertConversationAccess(req, conversationId) {
-  const conversation = await CryptoConversation.findOne({ conversationId });
+async function assertConversationAccess(req, conversationId, { session = null } = {}) {
+  let findConversation = CryptoConversation.findOne({ conversationId });
+  if (session) findConversation = findConversation.session(session);
+  const conversation = await findConversation;
   if (!conversation || !conversation.participantUserIds.some(id => idString(id) === idString(req.user.userId))) {
     const err = new Error("conversation not found"); err.status = 404; throw err;
   }
   if (conversation.chatType === "group") {
-    const group = await Group.findOne({ _id: conversation.groupId, members: req.user.username }).lean();
+    let findGroup = Group.findOne({ _id: conversation.groupId, members: req.user.username });
+    if (session) findGroup = findGroup.session(session);
+    const group = await findGroup.lean();
     if (!group) { const err = new Error("conversation not found"); err.status = 404; throw err; }
   }
   await expireConversationDevices(conversation);
   return conversation;
 }
 
-async function desiredConversationClients(conversation) {
+async function desiredConversationClients(conversation, { session = null } = {}) {
   await expireConversationDevices(conversation);
-  const devices = await CryptoDevice.find({
-    userId: { $in: conversation.participantUserIds },
+  let participantUserIds = conversation.participantUserIds;
+  let participantUsernames = conversation.participantUsernames;
+  if (conversation.chatType === "group") {
+    let findGroup = Group.findById(conversation.groupId);
+    if (session) findGroup = findGroup.session(session);
+    const group = await findGroup.lean();
+    if (!group) return { devices: [], missingUsers: [] };
+    let findUsers = User.find({ username: { $in: group.members } }, "username");
+    if (session) findUsers = findUsers.session(session);
+    const users = await findUsers.lean();
+    const byUsername = new Map(users.map(user => [user.username, user]));
+    const ordered = group.members.map(username => byUsername.get(username)).filter(Boolean);
+    participantUserIds = ordered.map(user => user._id);
+    participantUsernames = ordered.map(user => user.username);
+  }
+  let findDevices = CryptoDevice.find({
+    userId: { $in: participantUserIds },
     status: "active",
     manifestExpiresAt: { $gt: new Date() }
-  }).lean();
+  });
+  if (session) findDevices = findDevices.session(session);
+  const devices = await findDevices.lean();
   const usersWithDevices = new Set(devices.map(device => idString(device.userId)));
-  const missingUsers = conversation.participantUserIds
-    .map((userId, index) => ({ userId: idString(userId), username: conversation.participantUsernames[index] }))
+  const missingUsers = participantUserIds
+    .map((userId, index) => ({ userId: idString(userId), username: participantUsernames[index] }))
     .filter(user => !usersWithDevices.has(user.userId));
   return { devices, missingUsers };
 }

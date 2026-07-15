@@ -9,12 +9,9 @@ import { getMlsEngine } from "../crypto/mlsEngine";
 
 function attachmentOfflineKeys(attachment) {
   if (!attachment) return [];
-
-  return [
-    attachment.mediaId,
-    attachment.uploadId,
-    attachment.url
-  ].filter(Boolean).map(String);
+  return [attachment.mediaId, attachment.uploadId, attachment.url]
+    .filter(Boolean)
+    .map(String);
 }
 
 function messageOfflineKeys(message) {
@@ -29,29 +26,23 @@ async function purgeOfflineMedia(keys = []) {
   }
 }
 
-function statusRank(status) {
-  if (status === "read") {
-    return 3;
-  }
-  if (status === "delivered") {
-    return 2;
-  }
-  return 1;
-}
 function getMessageChatKey(msg, username) {
   if (msg.chatType === "group") {
     return msg.chatId || `group:${msg.groupId}`;
   }
   return msg.from === username ? msg.to : msg.from;
 }
+function statusRank(status) {
+  if (status === "read") return 3;
+  if (status === "delivered") return 2;
+  return 1;
+}
 function mergeChatHistory(prevChats, chatId, msgs) {
   const current = prevChats[chatId] || [];
   const currentMap = new Map(current.map(msg => [String(msg._id), msg]));
   const merged = msgs.map(msg => {
     const existing = currentMap.get(String(msg._id));
-    if (!existing || statusRank(msg.status) >= statusRank(existing.status)) {
-      return msg;
-    }
+    if (!existing || statusRank(msg.status) >= statusRank(existing.status)) return msg;
     return {
       ...msg,
       status: existing.status,
@@ -59,9 +50,7 @@ function mergeChatHistory(prevChats, chatId, msgs) {
       readAt: existing.readAt || msg.readAt
     };
   });
-  if (!merged.length && !current.length) {
-    return replaceChatHistory(prevChats, chatId, []);
-  }
+  if (!merged.length && !current.length) return replaceChatHistory(prevChats, chatId, []);
   return mergeHistoryPageIntoChat(prevChats, merged, "initial");
 }
 export default function useSocket({
@@ -494,18 +483,10 @@ export default function useSocket({
         setActiveChat(null);
       }
     }
-    currentSocket.on(SOCKET_EVENTS.NEW_MESSAGE, handleNewMessage);
-    currentSocket.on(SOCKET_EVENTS.MESSAGE_EDITED, handleMessageEdited);
-    currentSocket.on(SOCKET_EVENTS.MESSAGE_DELETED, handleMessageDeleted);
-    currentSocket.on(SOCKET_EVENTS.CHAT_DELETED, handleChatDeleted);
-    currentSocket.on(SOCKET_EVENTS.MESSAGE_DELIVERED, handleMessageDelivered);
-    currentSocket.on(SOCKET_EVENTS.MESSAGE_READ, handleMessageRead);
     currentSocket.on(SOCKET_EVENTS.USER_TYPING, handleUserTyping);
     currentSocket.on(SOCKET_EVENTS.USER_STOPPED_TYPING, handleUserStoppedTyping);
-    currentSocket.on(SOCKET_EVENTS.CHAT_HISTORY, handleChatHistory);
     currentSocket.on(SOCKET_EVENTS.ONLINE_USERS, handleOnlineUsers);
     currentSocket.on(SOCKET_EVENTS.USER_LAST_SEEN, handleUserLastSeen);
-    currentSocket.on(SOCKET_EVENTS.MESSAGE_PINNED, handleMessagePinned);
     currentSocket.on(SOCKET_EVENTS.USER_PROFILE_UPDATED, handleUserProfileUpdated);
     currentSocket.on(SOCKET_EVENTS.USER_DELETED, handleUserDeleted);
     currentSocket.on(SOCKET_EVENTS.GROUP_UPDATED, handleGroupUpdated);
