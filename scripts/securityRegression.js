@@ -153,6 +153,14 @@ assert.match(recoveryStore, /wrappingKeyPromises/);
 assert.match(recoveryStore, /idbAdd\("keys"/);
 assert.doesNotMatch(recoveryStore, /localStorage/,
   "recovery material must never use localStorage");
+assert.match(recoveryStore, /RECOVERY_PBKDF2_ITERATIONS\s*=\s*600000/,
+  "local recovery passphrases must use the documented PBKDF2 compatibility floor");
+assert.match(recoveryStore, /recovery-user-presence-required/,
+  "passphrase-protected recovery records must fail closed without user presence");
+assert.match(recoveryStore, /recovery-migration:/,
+  "recovery protection changes must use a resumable staged record");
+assert.match(recoveryStore, /recoveryUnlockPromises/,
+  "concurrent recovery unlock must remain single-flight");
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /latestBootstrap\.device/);
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /reprovisionMlsDevice/);
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /isStorageStage/,
@@ -206,6 +214,40 @@ assert.match(read("server/controllers/cryptoV4/conversations.js"), /recipientHea
   "event reconciliation must expose the authoritative per-recipient head");
 assert.match(read("client/src/crypto/mlsEngine.jsx"), /state\?\.ready \|\| !state\.initialized/,
   "the E2EE notice must require a fully ready MLS conversation");
+assert.match(read("client/src/crypto/mlsEngine.jsx"), /BACKGROUND_MAINTENANCE_INTERVAL_MS/,
+  "inactive conversations must participate in bounded background MLS maintenance");
+assert.match(read("client/src/crypto/mls\/constants.jsx"), /VITE_MLS_SELF_UPDATE_HOURS \|\| 72/,
+  "the MLS self-update policy must be explicit and configurable within a safe bound");
+const directoryServer = read("server/security/cryptoDirectoryState.js");
+assert.match(directoryServer, /liotan-device-directory-v1/);
+assert.match(directoryServer, /previousHash/);
+assert.match(directoryServer, /verifyEd25519/,
+  "directory generation advances must be account-root signed");
+assert.match(read("server/models/CryptoDirectoryEntry.js"), /version: 1 \}, \{ unique: true \}/,
+  "signed directory versions must be append-only and unique per account");
+assert.match(read("server/models/CryptoDevice.js"), /\["pending", "active", "expired", "revoked"\]/,
+  "new cryptographic devices must have a server-enforced pending state");
+const cryptoIdentityController = read("server/controllers/cryptoV4/identityDevices.js");
+assert.match(cryptoIdentityController, /liotan-device-approval-v1/);
+assert.match(cryptoIdentityController, /a pending device cannot approve itself/);
+assert.match(cryptoIdentityController, /the only active crypto device requires an explicit recovery flow/);
+assert.match(read("client/src/crypto/mls/trust.jsx"), /Device directory rollback detected/,
+  "highest-seen device directory state must fail closed on rollback");
+assert.match(read("client/src/crypto/mls/directory.jsx"), /history does not continue the local pin/,
+  "a bounded signed-directory tail must continue the encrypted local pin exactly");
+assert.doesNotMatch(read("server/controllers/cryptoV4/shared.js"), /CryptoDirectoryEntry\.find[\s\S]{0,180}\.limit\(2000\)/,
+  "multi-user directory reads must not truncate an aggregate prefix across accounts");
+assert.match(read("server/controllers/cryptoV4/shared.js"), /DIRECTORY_LOG_WINDOW\s*=\s*1024[\s\S]*directoryWindows/,
+  "conversation directory responses must select a bounded latest window per account");
+assert.match(read("client/src/crypto/mls/media.jsx"), /navigator\.storage\?\.getDirectory/,
+  "large media encryption should use OPFS when available instead of retaining every chunk in memory");
+const cryptoMigration = read("server/scripts/migrateCryptoState.js");
+assert.match(cryptoMigration, /APPLY_50_1_0_CRYPTO_STATE_MIGRATION/);
+assert.match(cryptoMigration, /legacy-unverified/);
+assert.match(cryptoMigration, /dropIndex/,
+  "the historical attachment TTL index must be removed before the new lifecycle is active");
+assert.match(read("server/deploy/install-release.sh"), /migrateCryptoState\.js --apply[\s\S]*switch_current/,
+  "the idempotent crypto migration must finish before current is switched");
 const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })
   .filter(entry => entry.isFile() && /\.(?:js|jsx|html)$/.test(entry.name))
   .map(entry => read(path.relative(root, path.join(entry.parentPath, entry.name))))

@@ -692,6 +692,22 @@
     },
     {
       "project": "client",
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "ansi-styles",
+      "version": "4.3.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "baseline-browser-mapping",
       "version": "2.10.41",
       "license": "Apache-2.0",
@@ -708,10 +724,42 @@
     },
     {
       "project": "client",
+      "name": "camelcase",
+      "version": "5.3.1",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "caniuse-lite",
       "version": "1.0.30001800",
       "license": "CC-BY-4.0",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "cliui",
+      "version": "6.0.0",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "color-convert",
+      "version": "2.0.1",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "color-name",
+      "version": "1.1.4",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -732,10 +780,34 @@
     },
     {
       "project": "client",
+      "name": "decamelize",
+      "version": "1.2.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "dijkstrajs",
+      "version": "1.0.3",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "electron-to-chromium",
       "version": "1.5.384",
       "license": "ISC",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "emoji-regex",
+      "version": "8.0.0",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -780,6 +852,14 @@
     },
     {
       "project": "client",
+      "name": "find-up",
+      "version": "4.1.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "fsevents",
       "version": "2.3.3",
       "license": "MIT",
@@ -792,6 +872,22 @@
       "version": "1.0.0-beta.2",
       "license": "MIT",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "get-caller-file",
+      "version": "2.0.5",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "is-fullwidth-code-point",
+      "version": "3.0.0",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -816,6 +912,14 @@
       "version": "2.2.3",
       "license": "MIT",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "locate-path",
+      "version": "5.0.0",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -852,6 +956,38 @@
     },
     {
       "project": "client",
+      "name": "p-limit",
+      "version": "2.3.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "p-locate",
+      "version": "4.1.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "p-try",
+      "version": "2.2.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "path-exists",
+      "version": "4.0.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "picocolors",
       "version": "1.1.1",
       "license": "ISC",
@@ -868,10 +1004,26 @@
     },
     {
       "project": "client",
+      "name": "pngjs",
+      "version": "5.0.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "postcss",
       "version": "8.5.16",
       "license": "MIT",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "qrcode",
+      "version": "1.5.4",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -895,6 +1047,22 @@
       "name": "react",
       "version": "19.2.7",
       "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "require-directory",
+      "version": "2.1.1",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "require-main-filename",
+      "version": "2.0.0",
+      "license": "ISC",
       "development": false,
       "optional": false
     },
@@ -924,6 +1092,14 @@
     },
     {
       "project": "client",
+      "name": "set-blocking",
+      "version": "2.0.0",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "socket.io-client",
       "version": "4.8.3",
       "license": "MIT",
@@ -944,6 +1120,22 @@
       "version": "1.2.1",
       "license": "BSD-3-Clause",
       "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "string-width",
+      "version": "4.2.3",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "strip-ansi",
+      "version": "6.0.1",
+      "license": "MIT",
+      "development": false,
       "optional": false
     },
     {
@@ -972,6 +1164,22 @@
     },
     {
       "project": "client",
+      "name": "which-module",
+      "version": "2.0.1",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "wrap-ansi",
+      "version": "6.2.0",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "ws",
       "version": "8.21.0",
       "license": "MIT",
@@ -988,9 +1196,65 @@
     },
     {
       "project": "client",
+      "name": "y18n",
+      "version": "4.0.3",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
       "name": "yallist",
       "version": "3.1.1",
       "license": "ISC",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "yargs-parser",
+      "version": "18.1.3",
+      "license": "ISC",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "client",
+      "name": "yargs",
+      "version": "15.4.1",
+      "license": "MIT",
+      "development": false,
+      "optional": false
+    },
+    {
+      "project": "root",
+      "name": "@babel/helper-string-parser",
+      "version": "8.0.0",
+      "license": "MIT",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "root",
+      "name": "@babel/helper-validator-identifier",
+      "version": "8.0.4",
+      "license": "MIT",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "root",
+      "name": "@babel/parser",
+      "version": "8.0.4",
+      "license": "MIT",
+      "development": true,
+      "optional": false
+    },
+    {
+      "project": "root",
+      "name": "@babel/types",
+      "version": "8.0.4",
+      "license": "MIT",
       "development": true,
       "optional": false
     },
