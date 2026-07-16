@@ -45,33 +45,28 @@ function createApp() {
 function validRequest(app) {
   return request(app)
     .post("/upload")
-    .field("conversationId", "conversation")
-    .field("bindingId", "binding")
-    .field("ciphertextHash", "hash")
-    .field("bytes", String(validCiphertext.length))
-    .field("version", "mls-media-1")
     .attach("attachment", validCiphertext, {
       filename: "binding.liotanmedia",
       contentType: "application/octet-stream"
     });
 }
 
-test("accepts the exact five-field MLS multipart wire format", async () => {
+test("accepts the ciphertext-only MLS multipart wire format", async () => {
   const baseline = listTestUploads();
   try {
     const response = await validRequest(createApp());
     assert.equal(response.status, 200, response.text);
     assert.equal(response.body.ok, true);
-    assert.equal(Object.keys(response.body.fields).length, 5);
+    assert.equal(Object.keys(response.body.fields).length, 0);
   } finally {
     cleanupNewTestUploads(baseline);
   }
 });
 
-test("rejects an additional multipart field with a specific error", async () => {
+test("rejects every multipart metadata field with a specific error", async () => {
   const baseline = listTestUploads();
   try {
-    const response = await validRequest(createApp()).field("unexpected", "value");
+    const response = await validRequest(createApp()).field("conversationId", "attacker-controlled-copy");
     assert.equal(response.status, 400, response.text);
     assert.equal(response.body.error, "too many upload fields");
   } finally {

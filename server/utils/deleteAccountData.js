@@ -31,6 +31,7 @@ const CryptoConversation = require("../models/CryptoConversation");
 const CryptoOperation = require("../models/CryptoOperation");
 const CryptoEvent = require("../models/CryptoEvent");
 const CryptoRequestNonce = require("../models/CryptoRequestNonce");
+const CryptoDirectoryEntry = require("../models/CryptoDirectoryEntry");
 const AttachmentUpload = require("../models/AttachmentUpload");
 
 const deleteUploadedFile =
@@ -249,6 +250,7 @@ async function deleteAccountData(username) {
     ),
     CryptoKeyPackage.deleteMany({ userId: user._id }),
     CryptoRequestNonce.deleteMany({ clientId: { $in: cryptoClientIds } }),
+    CryptoDirectoryEntry.deleteMany({ userId: user._id }),
     CryptoDevice.deleteMany({ userId: user._id }),
     CryptoIdentity.deleteOne({ userId: user._id })
   ]);

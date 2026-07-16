@@ -79,11 +79,10 @@ const upload = multer({
   limits: {
     fileSize: MAX_ENCRYPTED_MEDIA_SIZE,
     files: 1,
-    // Busboy raises the limit event when the configured value is reached.
-    // A valid MLS upload has exactly five text fields and one file part, so
-    // the ceiling must be one greater than the accepted wire shape.
-    fields: 6,
-    parts: 7
+    // All binding metadata lives in the signed X-Liotan-Crypto-Body header.
+    // Multipart is a ciphertext-only transport and rejects duplicate fields.
+    fields: 0,
+    parts: 2
   },
   fileFilter: (_req, file, callback) => {
     const valid = file.mimetype === "application/octet-stream" &&

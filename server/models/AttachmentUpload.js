@@ -68,6 +68,41 @@ const attachmentUploadSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    boundClientMessageId: {
+      type: String,
+      default: "",
+      index: true
+    },
+    commitTokenHash: {
+      type: String,
+      default: ""
+    },
+    deleteTokenHash: {
+      type: String,
+      default: ""
+    },
+    lifecycleState: {
+      type: String,
+      enum: ["temporary", "committed", "deletion-pending", "legacy-unverified"],
+      default: "temporary",
+      index: true
+    },
+    committedEventSequence: {
+      type: Number,
+      default: 0
+    },
+    committedAt: {
+      type: Date,
+      default: null
+    },
+    cleanupAttempts: {
+      type: Number,
+      default: 0
+    },
+    cleanupLastErrorAt: {
+      type: Date,
+      default: null
+    },
     width: {
       type: Number,
       default: 0
@@ -95,8 +130,8 @@ const attachmentUploadSchema = new mongoose.Schema(
     },
     expiresAt: {
       type: Date,
-      required: true,
-      index: { expires: 0 }
+      default: null,
+      index: true
     }
   },
   {
@@ -108,5 +143,6 @@ attachmentUploadSchema.index(
   { cryptoConversationId: 1, bindingId: 1 },
   { unique: true, partialFilterExpression: { protocol: "mls-media-1" } }
 );
+attachmentUploadSchema.index({ lifecycleState: 1, expiresAt: 1 });
 
 module.exports = mongoose.model("AttachmentUpload", attachmentUploadSchema);

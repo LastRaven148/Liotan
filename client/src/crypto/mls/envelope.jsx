@@ -43,6 +43,7 @@ export function assertMediaDescriptor(envelope, descriptor) {
     descriptor.conversationId !== envelope.conversationId ||
     descriptor.messageId !== envelope.clientMessageId ||
     !/^[A-Za-z0-9_-]{16,80}$/.test(String(descriptor.uploadId || "")) ||
+    !/^[A-Za-z0-9_-]{43}$/.test(String(descriptor.deleteToken || "")) ||
     !/^[A-Za-z0-9_-]{22,96}$/.test(String(descriptor.bindingId || "")) ||
     !/^[A-Za-z0-9_-]{43}$/.test(String(descriptor.ciphertextHash || "")) ||
     !Number.isSafeInteger(originalSize) || originalSize < 0 || originalSize > 100 * 1024 * 1024 ||

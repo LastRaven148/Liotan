@@ -49,7 +49,11 @@ async function registerAttachmentUpload({
   cryptoConversationId = "",
   cryptoClientId = "",
   bindingId = "",
-  ciphertextHash = ""
+  ciphertextHash = "",
+  boundClientMessageId = "",
+  commitTokenHash = "",
+  deleteTokenHash = "",
+  lifecycleState = "temporary"
 }) {
   const upload = await AttachmentUpload.create({
     uploadId: createUploadId(),
@@ -66,6 +70,10 @@ async function registerAttachmentUpload({
     cryptoClientId,
     bindingId,
     ciphertextHash,
+    boundClientMessageId,
+    commitTokenHash,
+    deleteTokenHash,
+    lifecycleState,
     width: encrypted ? 0 : result.width || 0,
     height: encrypted ? 0 : result.height || 0,
     duration: encrypted ? 0 : result.duration || 0,

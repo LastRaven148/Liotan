@@ -4,6 +4,7 @@ import AttachmentDraftModal from "./AttachmentDraftModal";
 import MessageList from "./MessageList";
 import Composer from "./Composer";
 import ChatSecurityNotice from "./ChatSecurityNotice";
+import SafetyNumberModal from "./SafetyNumberModal";
 
 import {
   memo,
@@ -15,7 +16,10 @@ import {
 import {
   getEffectiveE2EEChatKey
 } from "../../utils/e2ee";
-import { getConversationSecurityInfo } from "../../crypto/mlsEngine";
+import {
+  getConversationSecurityInfo,
+  markConversationSafetyVerified
+} from "../../crypto/mlsEngine";
 
 import {
   useLanguage
@@ -135,6 +139,7 @@ const Chat = memo(function Chat({
 
   const [cachedChat, setCachedChat] =
     useState(null);
+  const [safetyOpen, setSafetyOpen] = useState(false);
 
   useEffect(() => {
     if (!activeChat) {
@@ -233,7 +238,13 @@ const Chat = memo(function Chat({
             onClick={handlePinnedBarClick}
           />
 
-          <ChatSecurityNotice ready={Boolean(mlsSecurityInfo)} />
+          <ChatSecurityNotice ready={Boolean(mlsSecurityInfo)} onInspect={() => setSafetyOpen(true)} />
+
+          {safetyOpen && mlsSecurityInfo && <SafetyNumberModal
+            info={mlsSecurityInfo}
+            onClose={() => setSafetyOpen(false)}
+            onVerify={() => markConversationSafetyVerified(renderedActiveChat)}
+          />}
 
           <MessageList
             messages={renderedMessages}

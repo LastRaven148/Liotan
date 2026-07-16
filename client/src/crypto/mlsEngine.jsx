@@ -17,7 +17,7 @@ import {
   textEncoder,
   wipe
 } from "./encoding";
-import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest } from "./cryptoApi";
+import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest, unsignedCryptoPost } from "./cryptoApi";
 import {
   getEncryptedRecord,
   getEncryptedHistoryRecord,
@@ -27,6 +27,7 @@ import {
   putEncryptedRecord
 } from "./recoveryStore";
 import {
+  BACKGROUND_MAINTENANCE_INTERVAL_MS,
   MLS_CIPHER_SUITE as SUITE,
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
@@ -46,14 +47,22 @@ import {
   shouldAutomaticallyRepairDatabase
 } from "./mls/databaseStorage";
 import { MlsStorageError, reportCryptoDiagnostic } from "./mls/storageError";
+import { buildDirectoryMutation } from "./mls/directory";
+import { reconcileSyncCursor, validateRecipientEventPage } from "./mls/syncCursor";
 import {
+  approveCryptoDevice,
   listCryptoDevices,
   publishKeyPackagesIfNeeded,
   registerCryptographicIdentity,
   revokeCryptoDevice
 } from "./mls/identity";
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
-import { validateLocalRoster, verifyDirectory } from "./mls/trust";
+import {
+  markDirectoryVerified,
+  validateLocalRoster,
+  verifyAndPinAccountDirectory,
+  verifyDirectory
+} from "./mls/trust";
 import { destroyUniffi, destroyUniffiAll } from "./mls/uniffiLifecycle";
 const conversationByChat = new Map();
 const conversationById = new Map();
@@ -107,6 +116,8 @@ class LiotanMlsEngine {
     this.historyMigrations = new Map();
     this.closing = false;
     this.pollTimer = null;
+    this.maintenanceTimer = null;
+    this.maintenanceQueue = new Map();
     this.initializationStage = "created";
     this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
   }
@@ -161,12 +172,20 @@ class LiotanMlsEngine {
     this.pollTimer = window.setInterval(() => this.syncAll().catch(error => {
       if (import.meta.env.DEV) console.warn("MLS periodic sync failed", error);
     }), 15000);
+    this.maintenanceTimer = window.setInterval(() => {
+      this.maintainNextDialog().catch(error => {
+        if (import.meta.env.DEV) console.warn("MLS background maintenance failed", error);
+      });
+    }, BACKGROUND_MAINTENANCE_INTERVAL_MS);
     this.initializationStage = "ready";
   }
 
   async closeDatabase() {
     if (this.pollTimer) window.clearInterval(this.pollTimer);
     this.pollTimer = null;
+    if (this.maintenanceTimer) window.clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = null;
+    this.maintenanceQueue.clear();
     const database = this.database;
     const core = this.core;
     const credentialRef = this.credentialRef;
@@ -197,8 +216,26 @@ class LiotanMlsEngine {
     return listCryptoDevices(this);
   }
 
+  async approveCryptoDevice(deviceId) {
+    return approveCryptoDevice(this, deviceId);
+  }
+
   async revokeCryptoDevice(deviceId) {
     return revokeCryptoDevice(this, deviceId);
+  }
+
+  async markConversationSafetyVerified(chatKey) {
+    const state = conversationByChat.get(String(chatKey || ""));
+    if (!state?.ready || !state.directory?.length) throw new Error("Protected conversation is not ready");
+    const trustStates = { ...(state.trustStates || {}) };
+    for (const user of state.directory) {
+      trustStates[user.username] = await markDirectoryVerified(this, user.username, user.identity);
+    }
+    state.trustStates = trustStates;
+    window.dispatchEvent(new CustomEvent("liotan:e2ee-updated", {
+      detail: { chatKey: state.chatKey, reason: "safety-verified" }
+    }));
+    return getConversationSecurityInfo(state.chatKey);
   }
 
   async sendCommitBundle(bundle) {
@@ -214,6 +251,16 @@ class LiotanMlsEngine {
           encryptionType: Number(groupInfo.encryptionType),
           ratchetTreeType: Number(groupInfo.ratchetTreeType),
           payload: bytesToBase64Url(groupInfo.payload)
+        },
+        result: {
+          v: 1,
+          operationId: operation.operationId,
+          baseRosterVersion: operation.baseRosterVersion,
+          baseEpoch: operation.baseEpoch,
+          operationGeneration: operation.operationGeneration,
+          intentHash: operation.intentHash,
+          activeClientIds: operation.expectedActiveClientIds,
+          activeClientIdsHash: operation.expectedActiveClientIdsHash
         }
       };
       await putEncryptedRecord(`pending-commit:${operation.conversationId}`, body, this.keys.cacheKey);
@@ -255,7 +302,7 @@ class LiotanMlsEngine {
         method: "POST",
         body: this.chatDescriptor(key, dialog)
       });
-      await this.verifyDirectory(response);
+      response.trustStates = await this.verifyDirectory(response);
       const state = {
         ...response,
         chatKey: key,
@@ -345,6 +392,11 @@ class LiotanMlsEngine {
           throw new Error("Unsupported MLS membership operation");
         }
       });
+    } catch (error) {
+      if (error?.status === 409 && /stale|no longer current|operation intent/i.test(error.message || "")) {
+        return this.resolveConversation(state.chatKey, state.dialog, { force: true });
+      }
+      throw error;
     } finally {
       this.pendingOperation = null;
       destroyUniffiAll(operationObjects);
@@ -418,7 +470,88 @@ class LiotanMlsEngine {
       sequence,
       clientMessageId: envelope.clientMessageId
     }, record, this.keys.cacheKey);
+  }
+
+  syncCheckpointKey(conversationId) {
+    return `sync-checkpoint:${conversationId}:${this.clientIdString}`;
+  }
+
+  async writeSyncCheckpoint(state, processedSequence, serverHead = processedSequence) {
+    const sequence = Math.max(0, Number(processedSequence) || 0);
+    const head = Math.max(sequence, Number(serverHead) || 0);
+    await putEncryptedRecord(this.syncCheckpointKey(state.conversationId), {
+      v: 1,
+      conversationId: state.conversationId,
+      clientId: this.clientIdString,
+      processedSequence: sequence,
+      serverHead: head,
+      rosterVersion: Number(state.rosterVersion || 0),
+      updatedAt: new Date().toISOString()
+    }, this.keys.cacheKey);
     localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(sequence));
+  }
+
+  async readSyncCheckpoint(state) {
+    const record = await getEncryptedRecord(
+      this.syncCheckpointKey(state.conversationId),
+      this.keys.cacheKey
+    );
+    const valid = record?.v === 1 &&
+      record.conversationId === state.conversationId &&
+      record.clientId === this.clientIdString &&
+      Number.isSafeInteger(Number(record.processedSequence)) &&
+      Number(record.processedSequence) >= 0;
+    if (valid) return record;
+
+    // One-time migration: derive the restart point only from authenticated,
+    // encrypted history. localStorage is deliberately treated as an
+    // untrusted display hint and can never advance the cryptographic cursor.
+    const migration = this.historyMigrations.get(state.conversationId);
+    if (migration) await migration;
+    const latest = await listEncryptedHistoryRecords(
+      state.conversationId,
+      this.keys.cacheKey,
+      { limit: 1 }
+    );
+    const processedSequence = Math.max(0, Number(latest[0]?.sequence) || 0);
+    const migrated = {
+      v: 1,
+      conversationId: state.conversationId,
+      clientId: this.clientIdString,
+      processedSequence,
+      serverHead: processedSequence,
+      rosterVersion: Number(state.rosterVersion || 0),
+      migratedFromLegacyHint: true
+    };
+    await putEncryptedRecord(
+      this.syncCheckpointKey(state.conversationId),
+      migrated,
+      this.keys.cacheKey
+    );
+    localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(processedSequence));
+    return migrated;
+  }
+
+  dispatchCachedEnvelope(state, event, envelope) {
+    if (envelope.kind === "message") {
+      dispatchCryptoMessage({
+        type: "message",
+        message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence)
+      });
+      return;
+    }
+    dispatchCryptoMessage({
+      type: envelope.kind,
+      chatId: this.envelopeToUiMessage(
+        state,
+        { ...envelope, attachment: null },
+        event.createdAt,
+        event.sequence
+      ).chatId,
+      messageId: envelope.targetMessageId,
+      text: envelope.text || "",
+      from: envelope.senderUsername
+    });
   }
 
   findCachedEnvelope(conversationId, clientMessageId) {
@@ -579,7 +712,10 @@ class LiotanMlsEngine {
   async syncConversation(state) {
     if (this.syncing.has(state.conversationId)) return this.syncing.get(state.conversationId);
     const promise = (async () => {
-      let after = Number(localStorage.getItem(`liotan:mls-sequence:${state.conversationId}`) || 0);
+      let checkpoint = await this.readSyncCheckpoint(state);
+      const localHint = Number(localStorage.getItem(`liotan:mls-sequence:${state.conversationId}`) || 0);
+      let after = reconcileSyncCursor({ checkpoint, localHint }).after;
+      localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
       while (true) {
         const path = `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/events?after=${after}&limit=100`;
         let response;
@@ -602,6 +738,15 @@ class LiotanMlsEngine {
           }
           throw err;
         }
+        const recipientHead = Math.max(0, Number(response.recipientHead) || 0);
+        try {
+          reconcileSyncCursor({ checkpoint, localHint: after, recipientHead });
+          validateRecipientEventPage({ after, recipientHead, events: response.events });
+        } catch (error) {
+          reportCryptoDiagnostic(error, { stage: "conversation-sync" });
+          state.ready = false;
+          throw error;
+        }
         for (const event of response.events) {
           const conversationId = conversationObject(state.conversationId);
           try {
@@ -621,31 +766,26 @@ class LiotanMlsEngine {
                 localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
               } else if (localEpoch < event.epoch) {
                 const result = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.commit)));
-                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
-                for (const buffered of result.bufferedMessages || []) {
-                  await this.handleApplicationMessage(state, event, buffered);
+                const bufferedMessages = result.bufferedMessages || [];
+                if (bufferedMessages.length) {
+                  for (const buffered of bufferedMessages) destroyUniffi(buffered.senderClientId);
+                  const error = new Error("MLS returned messages without authenticated server event metadata");
+                  error.code = "mls-buffered-metadata-unavailable";
+                  reportCryptoDiagnostic(error, { stage: "conversation-sync" });
+                  throw error;
                 }
               }
             } else if (event.kind === "message") {
-              if (event.senderClientId === this.clientIdString) {
-                const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
-                const cached = cachedRecord?.envelope;
-                if (cached) {
-                  if (cached.kind === "message") {
-                    dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, cached, event.createdAt, event.sequence) });
-                  } else {
-                    dispatchCryptoMessage({
-                      type: cached.kind,
-                      chatId: this.envelopeToUiMessage(state, { ...cached, attachment: null }, event.createdAt, event.sequence).chatId,
-                      messageId: cached.targetMessageId,
-                      text: cached.text || "",
-                      from: cached.senderUsername
-                    });
-                  }
-                }
+              const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
+              const cached = cachedRecord?.envelope;
+              if (cached) {
+                this.dispatchCachedEnvelope(state, event, cached);
+              } else if (event.senderClientId === this.clientIdString) {
+                const error = new Error("An acknowledged local MLS message is missing from encrypted history");
+                error.code = "mls-local-history-gap";
+                reportCryptoDiagnostic(error, { stage: "conversation-sync" });
               } else {
                 const decrypted = await this.core.transaction(ctx => ctx.decryptMessage(conversationId, base64UrlToBytes(event.ciphertext)));
-                localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(event.sequence));
                 await this.handleApplicationMessage(state, event, decrypted);
               }
             }
@@ -653,7 +793,16 @@ class LiotanMlsEngine {
             destroyUniffi(conversationId);
           }
           after = event.sequence;
-          localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
+          await this.writeSyncCheckpoint(state, after, recipientHead);
+          checkpoint = {
+            ...checkpoint,
+            processedSequence: after,
+            serverHead: recipientHead
+          };
+        }
+        if (!response.events.length) {
+          await this.writeSyncCheckpoint(state, after, recipientHead);
+          checkpoint = { ...checkpoint, serverHead: recipientHead };
         }
         if (!response.hasMore) break;
       }
@@ -684,6 +833,16 @@ class LiotanMlsEngine {
     // Resolve only a tiny preview window. Preparing every dialog used to run
     // full MLS reconciliation for up to 50 chats during startup and competed
     // with the conversation the user was actually opening.
+    for (const dialog of dialogs) {
+      const chatKey = dialog.chatKey || dialog.username || (dialog.groupId ? `group:${dialog.groupId}` : "");
+      if (!chatKey) continue;
+      this.maintenanceQueue.set(String(chatKey), {
+        chatKey: String(chatKey),
+        dialog,
+        failures: 0,
+        retryAfter: 0
+      });
+    }
     for (const dialog of dialogs.slice(0, 3)) {
       const chatKey = dialog.chatKey || dialog.username || (dialog.groupId ? `group:${dialog.groupId}` : "");
       if (!chatKey) continue;
@@ -693,16 +852,42 @@ class LiotanMlsEngine {
         if (import.meta.env.DEV) console.warn("MLS dialog sync failed", chatKey, err);
       }
     }
+    this.maintainNextDialog().catch(error => {
+      if (import.meta.env.DEV) console.warn("Initial MLS background maintenance failed", error);
+    });
+  }
+
+  async maintainNextDialog() {
+    if (this.closing || document.visibilityState === "hidden" || navigator.onLine === false) return;
+    const now = Date.now();
+    const candidate = [...this.maintenanceQueue.values()]
+      .find(item => Number(item.retryAfter || 0) <= now && !this.ensuring.has(item.chatKey));
+    if (!candidate) return;
+    this.maintenanceQueue.delete(candidate.chatKey);
+    try {
+      await this.ensureConversation(candidate.chatKey, candidate.dialog);
+      candidate.failures = 0;
+      candidate.retryAfter = now + SELF_UPDATE_INTERVAL_MS;
+    } catch (error) {
+      candidate.failures = Math.min(8, Number(candidate.failures || 0) + 1);
+      candidate.retryAfter = now + Math.min(
+        SELF_UPDATE_INTERVAL_MS,
+        BACKGROUND_MAINTENANCE_INTERVAL_MS * (2 ** candidate.failures)
+      );
+      throw error;
+    } finally {
+      this.maintenanceQueue.set(candidate.chatKey, candidate);
+    }
   }
 
   async encryptAndUploadMedia(state, file, clientMessageId, options = {}) {
     return encryptAndUploadMedia(state, file, clientMessageId, options);
   }
 
-  async enqueueEnvelope(state, envelope) {
+  async enqueueEnvelope(state, envelope, transport = {}) {
     const key = state.conversationId;
     const previous = this.sendQueues.get(key) || Promise.resolve();
-    const queued = previous.catch(() => {}).then(() => this.sendEnvelope(state, envelope));
+    const queued = previous.catch(() => {}).then(() => this.sendEnvelope(state, envelope, transport));
     this.sendQueues.set(key, queued);
     try {
       return await queued;
@@ -711,7 +896,7 @@ class LiotanMlsEngine {
     }
   }
 
-  async sendEnvelope(state, envelope) {
+  async sendEnvelope(state, envelope, transport = {}) {
     const conversationId = conversationObject(state.conversationId);
     let epoch;
     let ciphertext;
@@ -731,7 +916,9 @@ class LiotanMlsEngine {
         body: {
           clientMessageId: envelope.clientMessageId,
           epoch,
-          ciphertext: bytesToBase64Url(ciphertext)
+          ciphertext: bytesToBase64Url(ciphertext),
+          ...(transport.attachmentCommit ? { attachmentCommit: transport.attachmentCommit } : {}),
+          ...(transport.attachmentDelete ? { attachmentDelete: transport.attachmentDelete } : {})
         }
       }
     );
@@ -740,7 +927,6 @@ class LiotanMlsEngine {
     } catch (error) {
       // Delivery already committed. Never retry as a second message merely
       // because the encrypted local cache is full/unavailable.
-      localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(response.sequence));
       if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
     }
     return response;
@@ -749,9 +935,10 @@ class LiotanMlsEngine {
   async sendMessage({ chatKey, dialog, text = "", file = null, mediaOptions = {}, replyTo = null, clientMessageId = "" }) {
     const state = await this.ensureConversation(chatKey, dialog);
     const messageId = clientMessageId || crypto.randomUUID();
-    const attachment = file
+    const uploadedMedia = file
       ? await this.encryptAndUploadMedia(state, file, messageId, mediaOptions)
       : null;
+    const attachment = uploadedMedia?.descriptor || null;
     const envelope = {
       v: 1,
       kind: "message",
@@ -764,13 +951,15 @@ class LiotanMlsEngine {
       attachment,
       replyTo: replyTo ? { messageId: String(replyTo._id || replyTo.messageId || "") } : null
     };
-    const response = await this.enqueueEnvelope(state, envelope);
+    const response = await this.enqueueEnvelope(state, envelope, {
+      attachmentCommit: uploadedMedia?.commit || null
+    });
     const message = this.envelopeToUiMessage(state, envelope, new Date().toISOString(), response.sequence);
     dispatchCryptoMessage({ type: "message", message });
     return { ok: true, response, message };
   }
 
-  async sendControl({ chatKey, dialog, kind, targetMessageId, text = "" }) {
+  async sendControl({ chatKey, dialog, kind, targetMessageId, text = "", attachmentDelete = null }) {
     if (!["edit", "delete", "pin"].includes(kind)) throw new Error("Invalid MLS control event");
     const state = await this.ensureConversation(chatKey, dialog);
     const envelope = {
@@ -784,7 +973,9 @@ class LiotanMlsEngine {
       targetMessageId: String(targetMessageId || ""),
       text: kind === "edit" ? String(text || "").slice(0, 20000) : ""
     };
-    await this.enqueueEnvelope(state, envelope);
+    await this.enqueueEnvelope(state, envelope, {
+      attachmentDelete: kind === "delete" ? attachmentDelete : null
+    });
     dispatchCryptoMessage({
       type: kind,
       chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,
@@ -816,6 +1007,10 @@ async function createInitializedEngine({ username, recoveryKey, generation }) {
     } catch (firstError) {
       const failedStage = next.initializationStage;
       await next.closeDatabase();
+      if (["mls-device-approval-required", "mls-recovery-bootstrap-required", "mls-device-inactive"]
+        .includes(firstError?.code)) {
+        throw firstError;
+      }
       const latestBootstrap = await cryptoBootstrap(deviceId).catch(() => bootstrap);
       const isStorageStage = shouldAutomaticallyRepairDatabase(failedStage, null);
       if (!isStorageStage) {
@@ -907,6 +1102,77 @@ export function initializeMlsEngine({ username, recoveryKey }) {
   return engineInitialization;
 }
 
+export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
+  const cleanUsername = String(username || "").trim();
+  if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required");
+  if (engine || engineInitialization) throw new Error("Close the active MLS session before recovery bootstrap");
+  const deviceId = getOrCreateDeviceId(cleanUsername);
+  const bootstrap = await cryptoBootstrap(deviceId);
+  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  try {
+    const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
+    if (!bootstrap.identity.rootPublicKey ||
+      !constantTimeTextEqual(bootstrap.identity.rootPublicKey, derivedRoot)) {
+      throw new Error("Recovery key does not match the account identity");
+    }
+    const target = bootstrap.device;
+    if (!target || target.status !== "pending" || target.activationMode !== "recovery-bootstrap") {
+      throw new Error("No pending recovery-bootstrap device is available");
+    }
+    const temporaryEngine = {
+      username: cleanUsername,
+      bootstrap,
+      keys
+    };
+    await verifyAndPinAccountDirectory(temporaryEngine, {
+      username: cleanUsername,
+      identity: bootstrap.identity,
+      deviceCommitments: bootstrap.deviceCommitments || [],
+      allDevices: bootstrap.accountDevices || []
+    });
+    const confirmation = {
+      v: 1,
+      cryptoUserId: bootstrap.identity.cryptoUserId,
+      deviceId: target.deviceId,
+      clientId: target.clientId,
+      challenge: target.approvalChallenge,
+      warningAcknowledged: true,
+      timestamp: new Date().toISOString(),
+      nonce: randomId(24)
+    };
+    const confirmationSignature = await signCanonical(
+      keys.rootSecretKey,
+      "liotan-recovery-bootstrap-v1",
+      confirmation
+    );
+    const nextDevice = {
+      ...target,
+      status: "active",
+      approval: confirmation,
+      approvalSignature: confirmationSignature,
+      approvedByClientId: "recovery-bootstrap",
+      approvalChallenge: ""
+    };
+    const directory = await buildDirectoryMutation(temporaryEngine, {
+      devices: bootstrap.accountDevices || [],
+      nextDevice,
+      action: "recovery-bootstrap",
+      targetDeviceId: target.deviceId
+    });
+    return await unsignedCryptoPost(
+      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/recovery-bootstrap`,
+      {
+        confirmation,
+        confirmationSignature,
+        directoryUpdate: directory.statement,
+        directorySignature: directory.signature
+      }
+    );
+  } finally {
+    wipeEngineKeys(keys);
+  }
+}
+
 export async function reprovisionMlsDevice({ username, recoveryKey }) {
   const cleanUsername = String(username || "").trim();
   if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required for device recovery");
@@ -922,16 +1188,43 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     }
     if (bootstrap.device?.status === "active") {
       configureCryptoSigner({ deviceId: oldDeviceId, requestSecretKey: keys.requestSecretKey });
+      const temporaryEngine = { username: cleanUsername, bootstrap, keys };
+      await verifyAndPinAccountDirectory(temporaryEngine, {
+        username: cleanUsername,
+        identity: bootstrap.identity,
+        deviceCommitments: bootstrap.deviceCommitments || [],
+        allDevices: bootstrap.accountDevices || []
+      });
       const revocation = {
         cryptoUserId: bootstrap.identity.cryptoUserId,
         deviceId: oldDeviceId,
         revokedAt: new Date().toISOString(),
-        nonce: randomId(24)
+        nonce: randomId(24),
+        recoveryAcknowledged: true,
+        reprovisionSession: true
       };
       const signature = await signCanonical(keys.rootSecretKey, "liotan-device-revocation-v1", revocation);
+      const nextDevice = {
+        ...bootstrap.device,
+        status: "revoked",
+        revokedAt: revocation.revokedAt,
+        revocation,
+        revocationSignature: signature
+      };
+      const directory = await buildDirectoryMutation(temporaryEngine, {
+        devices: bootstrap.accountDevices || [],
+        nextDevice,
+        action: "revoke-device",
+        targetDeviceId: oldDeviceId
+      });
       await signedCryptoRequest(`/crypto/v4/devices/${encodeURIComponent(oldDeviceId)}/revoke`, {
         method: "POST",
-        body: { revocation, signature }
+        body: {
+          revocation,
+          signature,
+          directoryUpdate: directory.statement,
+          directorySignature: directory.signature
+        }
       });
     }
     configureCryptoSigner(null);
@@ -941,7 +1234,13 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     configureCryptoSigner(null);
     wipeEngineKeys(keys);
   }
-  return initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  try {
+    return await initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  } catch (error) {
+    if (error?.code !== "mls-recovery-bootstrap-required") throw error;
+    await confirmPendingRecoveryDevice({ username: cleanUsername, recoveryKey });
+    return initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  }
 }
 
 export function getMlsEngine() {
@@ -953,17 +1252,56 @@ export function getConversationSecurityInfo(chatKey) {
   const state = conversationByChat.get(String(chatKey || ""));
   if (!state?.ready || !state.initialized || state.blockedForEpochChange || !state.directory?.length) return null;
   const roots = state.directory
-    .map(user => ({ username: user.username, rootFingerprint: user.identity?.rootFingerprint || "" }))
+    .map(user => ({
+      username: user.username,
+      rootFingerprint: user.identity?.rootFingerprint || "",
+      directoryHash: user.identity?.directory?.hash || "",
+      directoryVersion: Number(user.identity?.directory?.version || 0),
+      trustStatus: state.trustStates?.[user.username]?.status || "first-seen",
+      verifiedAt: state.trustStates?.[user.username]?.verifiedAt || null
+    }))
     .sort((left, right) => left.username.localeCompare(right.username));
-  if (roots.some(item => !item.rootFingerprint)) return null;
-  const fingerprint = sha256Base64Url(canonicalJson(["liotan-safety-number-v1", roots]));
+  if (roots.some(item => !item.rootFingerprint || !item.directoryHash)) return null;
+  const computed = computeSafetyNumber(roots);
+  if (!computed) return null;
+  const statuses = roots.map(item => item.trustStatus);
+  const verificationStatus = statuses.includes("changed")
+    ? "changed"
+    : statuses.every(status => status === "verified")
+      ? "verified"
+      : statuses.every(status => status === "first-seen") ? "first-seen" : "unverified";
   return {
     protocol: "MLS 1.0 (RFC 9420)",
     conversationId: state.conversationId,
-    fingerprint,
-    formatted: fingerprint.match(/.{1,5}/g)?.join(" ") || fingerprint,
-    participants: roots.map(item => item.username)
+    fingerprint: computed.fingerprint,
+    formatted: computed.formatted,
+    participants: roots,
+    verificationStatus,
+    qrPayload: computed.qrPayload
   };
+}
+
+export function computeSafetyNumber(participants) {
+  const binding = (participants || []).map(item => ({
+    username: String(item.username || ""),
+    rootFingerprint: String(item.rootFingerprint || ""),
+    directoryHash: String(item.directoryHash || ""),
+    directoryVersion: Number(item.directoryVersion || 0)
+  })).sort((left, right) => left.username.localeCompare(right.username));
+  if (!binding.length || binding.some(item => !item.username || !item.rootFingerprint || !item.directoryHash)) {
+    return null;
+  }
+  const fingerprint = sha256Base64Url(canonicalJson(["liotan-safety-number-v2", binding]));
+  const decimal = BigInt(`0x${bytesToHex(base64UrlToBytes(fingerprint, 32))}`).toString(10).padStart(78, "0");
+  return {
+    fingerprint,
+    formatted: decimal.match(/.{1,6}/g)?.join(" ") || decimal,
+    qrPayload: `liotan-safety:v2:${fingerprint}`
+  };
+}
+
+export async function markConversationSafetyVerified(chatKey) {
+  return getMlsEngine().markConversationSafetyVerified(chatKey);
 }
 
 export async function resetMlsEngine() {

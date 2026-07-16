@@ -3,6 +3,8 @@ import { base64UrlToBytes, bytesToBase64Url, randomBytes, textDecoder, textEncod
 const DB_NAME = "liotan-local-crypto-v4";
 const DB_VERSION = 2;
 const wrappingKeyPromises = new Map();
+const recoveryUnlockPromises = new Map();
+const RECOVERY_PBKDF2_ITERATIONS = 600000;
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -56,6 +58,21 @@ async function idbPut(storeName, key, value) {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error || new Error("IndexedDB write failed"));
       transaction.onabort = () => reject(transaction.error || new Error("IndexedDB write aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function idbDelete(storeName, key) {
+  const db = await openDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeName, "readwrite");
+      transaction.objectStore(storeName).delete(key);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("IndexedDB delete failed"));
+      transaction.onabort = () => reject(transaction.error || new Error("IndexedDB delete aborted"));
     });
   } finally {
     db.close();
@@ -185,27 +202,168 @@ export function createRecoveryKey() {
   return bytesToBase64Url(randomBytes(32));
 }
 
-export async function saveRecoveryKey(username, encodedRecoveryKey) {
-  const { encoded, bytes } = normalizeRecoveryKey(encodedRecoveryKey);
+function recoveryPresenceError(message = "Local recovery passphrase is required") {
+  const error = new Error(message);
+  error.code = "recovery-user-presence-required";
+  return error;
+}
+
+async function deriveRecoveryPassphraseKey(passphrase, salt, iterations = RECOVERY_PBKDF2_ITERATIONS) {
+  const passphraseBytes = textEncoder.encode(String(passphrase || ""));
+  if (passphraseBytes.length < 10) {
+    passphraseBytes.fill(0);
+    throw new TypeError("Local recovery passphrase must contain at least 10 characters");
+  }
   try {
-    const key = await wrappingKey(username);
-    const iv = randomBytes(12);
-    const aad = textEncoder.encode(`liotan-recovery-wrap-v1:${username}`);
-    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, key, bytes));
-    await idbPut("records", `recovery:${username}`, {
+    const material = await crypto.subtle.importKey("raw", passphraseBytes, "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey({
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt,
+      iterations
+    }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  } finally {
+    passphraseBytes.fill(0);
+  }
+}
+
+async function createPassphraseRecoveryRecord(username, recoveryBytes, passphrase) {
+  const salt = randomBytes(16);
+  const innerIv = randomBytes(12);
+  const outerIv = randomBytes(12);
+  const passphraseKey = await deriveRecoveryPassphraseKey(passphrase, salt);
+  const innerCiphertext = new Uint8Array(await crypto.subtle.encrypt({
+    name: "AES-GCM",
+    iv: innerIv,
+    additionalData: textEncoder.encode(`liotan-recovery-passphrase-v2:${username}`)
+  }, passphraseKey, recoveryBytes));
+  const innerPlaintext = textEncoder.encode(JSON.stringify({
+    v: 1,
+    iv: bytesToBase64Url(innerIv),
+    ciphertext: bytesToBase64Url(innerCiphertext)
+  }));
+  let outerCiphertext;
+  try {
+    const outerKey = await wrappingKey(username);
+    outerCiphertext = new Uint8Array(await crypto.subtle.encrypt({
+      name: "AES-GCM",
+      iv: outerIv,
+      additionalData: textEncoder.encode(`liotan-recovery-wrap-v2:${username}`)
+    }, outerKey, innerPlaintext));
+    return {
+      v: 2,
+      requiresUserPresence: true,
+      kdf: {
+        name: "PBKDF2",
+        hash: "SHA-256",
+        iterations: RECOVERY_PBKDF2_ITERATIONS,
+        salt: bytesToBase64Url(salt)
+      },
+      outerIv: bytesToBase64Url(outerIv),
+      outerCiphertext: bytesToBase64Url(outerCiphertext)
+    };
+  } finally {
+    salt.fill(0);
+    innerIv.fill(0);
+    outerIv.fill(0);
+    innerCiphertext.fill(0);
+    innerPlaintext.fill(0);
+    outerCiphertext?.fill(0);
+  }
+}
+
+async function createWrappingRecoveryRecord(username, recoveryBytes) {
+  const key = await wrappingKey(username);
+  const iv = randomBytes(12);
+  let ciphertext;
+  try {
+    ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+      name: "AES-GCM",
+      iv,
+      additionalData: textEncoder.encode(`liotan-recovery-wrap-v1:${username}`)
+    }, key, recoveryBytes));
+    return {
       v: 1,
       iv: bytesToBase64Url(iv),
       ciphertext: bytesToBase64Url(ciphertext)
-    });
+    };
+  } finally {
+    iv.fill(0);
+    ciphertext?.fill(0);
+  }
+}
+
+async function decryptPassphraseRecoveryRecord(username, record, passphrase) {
+  if (!passphrase) throw recoveryPresenceError();
+  const iterations = Number(record?.kdf?.iterations);
+  if (record?.kdf?.name !== "PBKDF2" || record?.kdf?.hash !== "SHA-256" ||
+    !Number.isSafeInteger(iterations) || iterations < RECOVERY_PBKDF2_ITERATIONS) {
+    throw new Error("Unsupported local recovery protection parameters");
+  }
+  let outerPlaintext;
+  let innerPlaintext;
+  try {
+    const outerKey = await wrappingKey(username);
+    outerPlaintext = new Uint8Array(await crypto.subtle.decrypt({
+      name: "AES-GCM",
+      iv: base64UrlToBytes(record.outerIv, 12),
+      additionalData: textEncoder.encode(`liotan-recovery-wrap-v2:${username}`)
+    }, outerKey, base64UrlToBytes(record.outerCiphertext)));
+    const inner = JSON.parse(textDecoder.decode(outerPlaintext));
+    const passphraseKey = await deriveRecoveryPassphraseKey(
+      passphrase,
+      base64UrlToBytes(record.kdf.salt, 16),
+      iterations
+    );
+    innerPlaintext = new Uint8Array(await crypto.subtle.decrypt({
+      name: "AES-GCM",
+      iv: base64UrlToBytes(inner.iv, 12),
+      additionalData: textEncoder.encode(`liotan-recovery-passphrase-v2:${username}`)
+    }, passphraseKey, base64UrlToBytes(inner.ciphertext)));
+    return bytesToBase64Url(innerPlaintext);
+  } catch (cause) {
+    if (cause?.code === "recovery-user-presence-required" || cause instanceof TypeError) throw cause;
+    const error = new Error("Local recovery passphrase is incorrect or the store is damaged");
+    error.code = "recovery-unlock-failed";
+    throw error;
+  } finally {
+    outerPlaintext?.fill(0);
+    innerPlaintext?.fill(0);
+  }
+}
+
+export async function saveRecoveryKey(username, encodedRecoveryKey, options = {}) {
+  const { encoded, bytes } = normalizeRecoveryKey(encodedRecoveryKey);
+  try {
+    if (options.passphrase) {
+      const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, options.passphrase);
+      await idbPut("records", `recovery:${username}`, protectedRecord);
+      return encoded;
+    }
+    const current = await idbGet("records", `recovery:${username}`);
+    if (current?.v === 2) throw recoveryPresenceError("Passphrase-protected recovery storage cannot be overwritten silently");
+    await idbPut("records", `recovery:${username}`, await createWrappingRecoveryRecord(username, bytes));
     return encoded;
   } finally {
     bytes.fill(0);
   }
 }
 
-export async function loadRecoveryKey(username) {
-  const record = await idbGet("records", `recovery:${username}`);
-  if (!record || record.v !== 1) return "";
+async function loadRecoveryKeyInternal(username, options = {}) {
+  const migrationKey = `recovery-migration:${username}`;
+  const pendingMigration = await idbGet("records", migrationKey);
+  const storedRecord = await idbGet("records", `recovery:${username}`);
+  const record = pendingMigration?.v === 2 ? pendingMigration : storedRecord;
+  if (!record) return "";
+  if (record.v === 2) {
+    const value = await decryptPassphraseRecoveryRecord(username, record, options.passphrase);
+    if (pendingMigration?.v === 2) {
+      await idbPut("records", `recovery:${username}`, pendingMigration);
+      await idbDelete("records", migrationKey);
+    }
+    return value;
+  }
+  if (record.v !== 1) throw new Error("Unsupported local recovery record");
   const key = await wrappingKey(username);
   const plaintext = new Uint8Array(await crypto.subtle.decrypt({
     name: "AES-GCM",
@@ -213,10 +371,68 @@ export async function loadRecoveryKey(username) {
     additionalData: textEncoder.encode(`liotan-recovery-wrap-v1:${username}`)
   }, key, base64UrlToBytes(record.ciphertext)));
   try {
-    return bytesToBase64Url(plaintext);
+    const value = bytesToBase64Url(plaintext);
+    if (pendingMigration?.v === 1) {
+      await idbPut("records", `recovery:${username}`, pendingMigration);
+      await idbDelete("records", migrationKey);
+    }
+    return value;
   } finally {
     plaintext.fill(0);
   }
+}
+
+export function loadRecoveryKey(username, options = {}) {
+  const key = String(username || "");
+  if (!recoveryUnlockPromises.has(key)) {
+    recoveryUnlockPromises.set(
+      key,
+      loadRecoveryKeyInternal(key, options).finally(() => recoveryUnlockPromises.delete(key))
+    );
+  }
+  return recoveryUnlockPromises.get(key);
+}
+
+export async function getRecoveryProtectionStatus(username) {
+  const pending = await idbGet("records", `recovery-migration:${username}`);
+  const record = pending || await idbGet("records", `recovery:${username}`);
+  return {
+    configured: Boolean(record),
+    requiresUserPresence: record?.v === 2,
+    migrationPending: Boolean(pending)
+  };
+}
+
+export async function enableRecoveryProtection(username, passphrase) {
+  const current = await loadRecoveryKey(username);
+  if (!current) throw new Error("Recovery key is not stored on this device");
+  const { bytes } = normalizeRecoveryKey(current);
+  try {
+    const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, passphrase);
+    const migrationKey = `recovery-migration:${username}`;
+    await idbPut("records", migrationKey, protectedRecord);
+    await idbPut("records", `recovery:${username}`, protectedRecord);
+    await idbDelete("records", migrationKey);
+    return { requiresUserPresence: true };
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+export async function disableRecoveryProtection(username, passphrase) {
+  const current = await loadRecoveryKey(username, { passphrase });
+  if (!current) throw new Error("Recovery key is not stored on this device");
+  const { bytes } = normalizeRecoveryKey(current);
+  try {
+    const unprotectedRecord = await createWrappingRecoveryRecord(username, bytes);
+    const migrationKey = `recovery-migration:${username}`;
+    await idbPut("records", migrationKey, unprotectedRecord);
+    await idbPut("records", `recovery:${username}`, unprotectedRecord);
+    await idbDelete("records", migrationKey);
+  } finally {
+    bytes.fill(0);
+  }
+  return { requiresUserPresence: false };
 }
 
 async function encryptStoredRecord(recordKey, value, cryptoKey) {

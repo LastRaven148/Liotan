@@ -5,11 +5,13 @@ const E2EEKey = require("../models/E2EEKey");
 const CryptoConversation = require("../models/CryptoConversation");
 const CryptoEvent = require("../models/CryptoEvent");
 const CryptoOperation = require("../models/CryptoOperation");
+const CryptoDevice = require("../models/CryptoDevice");
 const AttachmentUpload = require("../models/AttachmentUpload");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const { messagesMediaKeys } = require("../sockets/services/mediaKeys");
+const { transitionConversationRoster } = require("../security/cryptoRosterState");
 const {
   normalizeMime,
   assertAllowedAvatar,
@@ -107,11 +109,23 @@ function emitGroupDeleted(req, group, deletedMediaKeys = []) {
 function canManageGroup(group, username) {
   return group.owner === username || group.admins.includes(username);
 }
-async function blockMlsGroup(groupId) {
-  await CryptoConversation.updateOne(
+async function blockMlsGroup(groupId, {
+  addClientIds = [],
+  removeClientIds = [],
+  reason = "group membership changed"
+} = {}) {
+  await transitionConversationRoster(
     { lookupKey: `group:${groupId}` },
-    { $set: { blockedForEpochChange: true } }
+    { addClientIds, removeClientIds, reason }
   );
+}
+async function activeCryptoClientIds(username) {
+  const devices = await CryptoDevice.find({
+    username,
+    status: "active",
+    manifestExpiresAt: { $gt: new Date() }
+  }, "clientId").lean();
+  return devices.map(device => device.clientId);
 }
 async function deleteGroupMessageFiles(messages) {
   for (const message of messages) {
@@ -331,7 +345,10 @@ async function addGroupMember(req, res, next) {
       if (group.members.length >= MAX_GROUP_MEMBERS) {
         return res.status(409).json({ error: "group member limit reached" });
       }
-      await blockMlsGroup(group._id);
+      await blockMlsGroup(group._id, {
+        addClientIds: await activeCryptoClientIds(member),
+        reason: "group member added"
+      });
       group.members.push(member);
       group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
       await group.save();
@@ -366,7 +383,10 @@ async function removeGroupMember(req, res, next) {
     if (!group.members.includes(member)) {
       return res.status(404).json({ error: "group member not found" });
     }
-    await blockMlsGroup(group._id);
+    await blockMlsGroup(group._id, {
+      removeClientIds: await activeCryptoClientIds(member),
+      reason: "group member removed"
+    });
     group.members = group.members.filter(item => item !== member);
     group.admins = group.admins.filter(item => item !== member);
     group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
@@ -408,7 +428,10 @@ async function leaveGroup(req, res, next) {
         error: "owner must delete group"
       });
     }
-    await blockMlsGroup(group._id);
+    await blockMlsGroup(group._id, {
+      removeClientIds: await activeCryptoClientIds(username),
+      reason: "group member left"
+    });
     group.members = group.members.filter(item => item !== username);
     group.admins = group.admins.filter(item => item !== username);
     group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;

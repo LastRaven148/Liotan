@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { cryptoBootstrap } from "./cryptoApi";
-import { initializeMlsEngine, reprovisionMlsDevice } from "./mlsEngine";
+import {
+  confirmPendingRecoveryDevice,
+  initializeMlsEngine,
+  reprovisionMlsDevice
+} from "./mlsEngine";
 import { createRecoveryKey, loadRecoveryKey, normalizeRecoveryKey, saveRecoveryKey } from "./recoveryStore";
 
 const DEFAULT_SERVICES = Object.freeze({
   cryptoBootstrap,
+  confirmPendingRecoveryDevice,
   initializeMlsEngine,
   reprovisionMlsDevice,
   createRecoveryKey,
@@ -41,9 +46,13 @@ export default function CryptoGate({
   const [status, setStatus] = useState("loading");
   const [attempt, setAttempt] = useState(0);
   const [recoveryInput, setRecoveryInput] = useState("");
+  const [localPassphrase, setLocalPassphrase] = useState("");
+  const [localProtectionRequired, setLocalProtectionRequired] = useState(false);
   const [newRecovery, setNewRecovery] = useState("");
+  const [clipboardNotice, setClipboardNotice] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [reprovisionConfirmed, setReprovisionConfirmed] = useState(false);
+  const [recoveryBootstrapConfirmed, setRecoveryBootstrapConfirmed] = useState(false);
   const [failure, setFailure] = useState(null);
   const [error, setError] = useState("");
   const cardRef = useRef(null);
@@ -97,8 +106,20 @@ export default function CryptoGate({
       } catch (caught) {
         if (!cancelled) {
           setFailure(caught);
-          setError(friendlyError(caught));
-          await reveal("error");
+          if (caught?.code === "recovery-user-presence-required") {
+            setLocalProtectionRequired(true);
+            setError("");
+            await reveal("local-passphrase");
+          } else if (caught?.code === "mls-device-approval-required") {
+            setError("");
+            await reveal("approval-pending");
+          } else if (caught?.code === "mls-recovery-bootstrap-required") {
+            setError("");
+            await reveal("recovery-bootstrap");
+          } else {
+            setError(friendlyError(caught));
+            await reveal("error");
+          }
         }
       }
     }
@@ -121,10 +142,74 @@ export default function CryptoGate({
       onStageChange?.("preparing-messages");
       await onReady?.();
     } catch (caught) {
+      if (caught?.code === "mls-device-approval-required" ||
+        caught?.code === "mls-recovery-bootstrap-required") {
+        setFailure(caught);
+        setStatus(caught.code === "mls-device-approval-required"
+          ? "approval-pending"
+          : "recovery-bootstrap");
+        await onBlocked?.();
+        return;
+      }
       setError(caught?.message === "Recovery key does not match the pinned Liotan account root"
         ? "Recovery key не соответствует криптографической идентичности аккаунта."
         : friendlyError(caught));
       setStatus("recovery-required");
+      await onBlocked?.();
+    }
+  }
+
+  async function unlockLocalRecovery() {
+    setError("");
+    setStatus("loading");
+    onStageChange?.("opening-storage");
+    try {
+      const stored = await cryptoServices.loadRecoveryKey(username, { passphrase: localPassphrase });
+      setLocalPassphrase("");
+      await cryptoServices.initializeMlsEngine({ username, recoveryKey: stored });
+      setStatus("ready");
+      onStageChange?.("preparing-messages");
+      await onReady?.();
+    } catch (caught) {
+      setLocalPassphrase("");
+      if (caught?.code === "mls-device-approval-required" ||
+        caught?.code === "mls-recovery-bootstrap-required") {
+        setFailure(caught);
+        setStatus(caught.code === "mls-device-approval-required"
+          ? "approval-pending"
+          : "recovery-bootstrap");
+      } else {
+        setError(caught?.message || "Не удалось открыть локальное recovery-хранилище");
+        setStatus("local-passphrase");
+      }
+      await onBlocked?.();
+    }
+  }
+
+  async function confirmRecoveryBootstrap() {
+    if (!recoveryBootstrapConfirmed) return;
+    setError("");
+    setStatus("loading");
+    onStageChange?.("opening-storage");
+    try {
+      const candidate = recoveryInput.trim() || await cryptoServices.loadRecoveryKey(
+        username,
+        localPassphrase ? { passphrase: localPassphrase } : {}
+      );
+      setLocalPassphrase("");
+      const { encoded, bytes } = cryptoServices.normalizeRecoveryKey(candidate);
+      bytes.fill(0);
+      await cryptoServices.confirmPendingRecoveryDevice({ username, recoveryKey: encoded });
+      await cryptoServices.initializeMlsEngine({ username, recoveryKey: encoded });
+      await cryptoServices.saveRecoveryKey(username, encoded);
+      setRecoveryInput("");
+      setRecoveryBootstrapConfirmed(false);
+      setStatus("ready");
+      onStageChange?.("preparing-messages");
+      await onReady?.();
+    } catch (caught) {
+      setError(caught?.message || "Не удалось подтвердить восстановление криптографического устройства.");
+      setStatus("recovery-bootstrap");
       await onBlocked?.();
     }
   }
@@ -149,6 +234,21 @@ export default function CryptoGate({
     }
   }
 
+  async function copyRecoveryKey() {
+    if (!newRecovery || !navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(newRecovery);
+    setClipboardNotice("Ключ скопирован. Буфер будет очищен примерно через минуту, если значение не изменится.");
+    window.setTimeout(async () => {
+      try {
+        if (await navigator.clipboard.readText() === newRecovery) {
+          await navigator.clipboard.writeText("");
+        }
+      } catch {
+        // Clipboard read/clear is best effort and may require user presence.
+      }
+    }, 60_000);
+  }
+
   if (status === "ready") return children;
 
   return (
@@ -158,12 +258,51 @@ export default function CryptoGate({
         <h1 id="crypto-gate-title">
           {status === "backup-required" && "Сохраните recovery key"}
           {status === "recovery-required" && "Восстановление защищённого устройства"}
+          {status === "local-passphrase" && "Подтвердите открытие recovery-хранилища"}
           {status === "reprovision" && "Безопасно пересоздать устройство"}
+          {status === "approval-pending" && "Подтвердите новое устройство"}
+          {status === "recovery-bootstrap" && "Подтвердите восстановление устройства"}
           {status === "error" && "Защищённое хранилище недоступно"}
           {status === "loading" && "Открываем защищённое хранилище"}
         </h1>
 
         {status === "loading" && <p role="status" aria-live="polite">Проверяем локальное MLS-состояние. Сообщения пока недоступны.</p>}
+
+        {status === "local-passphrase" && <>
+          <p>На этом устройстве включено дополнительное локальное подтверждение. Эта фраза не отправляется на сервер.</p>
+          <input className="crypto-gate-input" type="password" autoComplete="current-password"
+            value={localPassphrase} onChange={event => setLocalPassphrase(event.target.value)}
+            placeholder="Локальная фраза восстановления" aria-label="Локальная фраза восстановления" />
+          <button type="button" className="crypto-gate-primary" onClick={unlockLocalRecovery}
+            disabled={localPassphrase.length < 10}>Открыть локальное хранилище</button>
+        </>}
+
+        {status === "approval-pending" && <>
+          <p>Это устройство пока не добавлено в защищённые чаты. Откройте Liotan на уже доверенном устройстве и подтвердите запрос в разделе «Устройства».</p>
+          <button type="button" className="crypto-gate-primary" onClick={() => setAttempt(value => value + 1)}>
+            Проверить подтверждение
+          </button>
+        </>}
+
+        {status === "recovery-bootstrap" && <>
+          <p>Активных доверенных устройств не осталось. Продолжение создаст новый криптографический bootstrap и явно отметит изменение устройств для ваших контактов.</p>
+          {!recoveryInput.trim() && <p>Будет использован recovery key из локального защищённого хранилища.</p>}
+          {localProtectionRequired && !recoveryInput.trim() && <input className="crypto-gate-input"
+            type="password" autoComplete="current-password" value={localPassphrase}
+            onChange={event => setLocalPassphrase(event.target.value)}
+            placeholder="Локальная фраза восстановления" aria-label="Локальная фраза восстановления" />}
+          <label className="crypto-gate-confirm">
+            <input type="checkbox" checked={recoveryBootstrapConfirmed}
+              onChange={event => setRecoveryBootstrapConfirmed(event.target.checked)} />
+            <span>Я понимаю, что контакты увидят изменение защищённых устройств</span>
+          </label>
+          <button type="button" className="crypto-gate-primary"
+            disabled={!recoveryBootstrapConfirmed ||
+              (localProtectionRequired && !recoveryInput.trim() && localPassphrase.length < 10)}
+            onClick={confirmRecoveryBootstrap}>
+            Подтвердить восстановление
+          </button>
+        </>}
 
         {status === "recovery-required" && <>
           <p>Это действительно новое устройство. Введите recovery key. Пароль входа и email-код не заменяют криптографический ключ.</p>
@@ -178,7 +317,8 @@ export default function CryptoGate({
         {status === "backup-required" && <>
           <p>Скопируйте ключ в менеджер паролей или офлайн-хранилище. Liotan, сервер и Cloudflare его не получают и восстановить не смогут.</p>
           <code className="crypto-gate-recovery">{newRecovery}</code>
-          <button type="button" className="crypto-gate-secondary" onClick={() => navigator.clipboard?.writeText(newRecovery)}>Копировать</button>
+          <button type="button" className="crypto-gate-secondary" onClick={copyRecoveryKey}>Копировать</button>
+          {clipboardNotice && <small className="crypto-gate-diagnostic">{clipboardNotice}</small>}
           <label className="crypto-gate-confirm">
             <input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
             <span>Я сохранил recovery key отдельно</span>

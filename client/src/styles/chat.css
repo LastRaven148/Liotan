@@ -203,3 +203,59 @@
   color:#a9c9c2;
   background:rgba(25,55,53,.84);
 }
+
+.chat-security-inspect{
+  margin-left:8px;
+  border:0;
+  padding:2px 5px;
+  background:transparent;
+  color:#79d8c4;
+  font:inherit;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.safety-modal-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:1800;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(1,7,12,.76);
+}
+
+.safety-modal{
+  position:relative;
+  box-sizing:border-box;
+  width:min(480px, 100%);
+  max-height:min(760px, calc(100svh - 32px));
+  overflow:auto;
+  padding:24px;
+  border:1px solid rgba(121,216,196,.2);
+  border-radius:18px;
+  background:#111f2b;
+  color:#dce7ee;
+  box-shadow:0 22px 70px rgba(0,0,0,.52);
+}
+
+.safety-modal h2{margin:0 34px 10px 0;color:#fff;font-size:22px}
+.safety-modal p{margin:8px 0;color:#aebdca;font-size:14px;line-height:1.45}
+.safety-modal small{display:block;margin-top:14px;color:#8195a6;line-height:1.4}
+.safety-modal-close{position:absolute;top:13px;right:14px;border:0;background:transparent;color:#aab8c3;font-size:26px;cursor:pointer}
+.safety-status{padding:9px 11px;border-radius:9px;background:rgba(255,190,75,.1)}
+.safety-status.is-verified{color:#85e4b4;background:rgba(53,217,132,.12)}
+.safety-status.is-changed{color:#ffb0a9;background:rgba(239,68,68,.13)}
+.safety-qr{display:block;width:220px;height:220px;margin:18px auto;border-radius:12px;background:#fff}
+.safety-number{display:block;padding:13px;border-radius:10px;background:#09141e;color:#dff8f2;font-size:14px;line-height:1.6;text-align:center;overflow-wrap:anywhere}
+.safety-participants{display:grid;gap:8px;margin:14px 0}
+.safety-participants>div{display:grid;gap:3px;padding:10px 12px;border-radius:10px;background:#192936}
+.safety-participants span{color:#8fa4b5;font-size:12px;overflow-wrap:anywhere}
+.safety-scan-field{display:grid;gap:6px;color:#9fb2c0;font-size:13px}
+.safety-scan-field input{box-sizing:border-box;width:100%;border:1px solid #34495a;border-radius:9px;padding:10px 11px;background:#0b1822;color:#fff}
+.safety-error{margin-top:10px;padding:9px 11px;border-radius:9px;background:rgba(127,29,29,.28);color:#ffb4b4;font-size:13px}
+.safety-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.safety-actions button{border:0;border-radius:10px;padding:9px 12px;background:#263947;color:#d7e1e8;font-weight:700;cursor:pointer}
+.safety-actions button.is-primary{background:#287765;color:#effffb}
+.safety-actions button:disabled{opacity:.45;cursor:not-allowed}

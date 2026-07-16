@@ -29,6 +29,7 @@ const CryptoConversation = require("../models/CryptoConversation");
 const CryptoOperation = require("../models/CryptoOperation");
 const CryptoEvent = require("../models/CryptoEvent");
 const CryptoRequestNonce = require("../models/CryptoRequestNonce");
+const CryptoDirectoryEntry = require("../models/CryptoDirectoryEntry");
 
 const CONFIRMATION = "DELETE_ALL_ACCOUNTS_AND_DATA";
 const DELETE_CONCURRENCY = 8;
@@ -52,7 +53,8 @@ const DATA_MODELS = [
   CryptoConversation,
   CryptoOperation,
   CryptoEvent,
-  CryptoRequestNonce
+  CryptoRequestNonce,
+  CryptoDirectoryEntry
 ];
 
 const STORAGE_SCOPES = [

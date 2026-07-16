@@ -119,15 +119,14 @@ async function walk(dir) {
 
 }
 
-async function cleanupR2OrphanUploads() {
-  const cutoff = new Date(
-    Date.now() - (Number(process.env.ATTACHMENT_ORPHAN_GRACE_MS) || 1000 * 60 * 60 * 24)
-  );
+async function cleanupR2OrphanUploads({ deleteObject = deleteFromR2, now = new Date() } = {}) {
 
   const orphanUploads = await AttachmentUpload.find({
-    usedAt: null,
-    createdAt: { $lt: cutoff },
-    storageType: "r2",
+    $or: [
+      { lifecycleState: "temporary", expiresAt: { $lte: now } },
+      { lifecycleState: "deletion-pending" }
+    ],
+    storageType: /^r2(?::|$)/,
     storageKey: { $type: "string", $ne: "" }
   }).limit(200);
 
@@ -135,11 +134,19 @@ async function cleanupR2OrphanUploads() {
 
   for (const upload of orphanUploads) {
     try {
-      await deleteFromR2(upload.storageKey);
-      await AttachmentUpload.deleteOne({ _id: upload._id });
+      await deleteObject(upload.storageKey, { storageClass: "private-media" });
+      await AttachmentUpload.deleteOne({ _id: upload._id, lifecycleState: upload.lifecycleState });
       deleted += 1;
     } catch (err) {
-      console.warn("R2 orphan cleanup failed:", upload.storageKey, err.message);
+      await AttachmentUpload.updateOne(
+        { _id: upload._id },
+        { $inc: { cleanupAttempts: 1 }, $set: { cleanupLastErrorAt: new Date() } }
+      );
+      console.warn("R2 attachment cleanup failed", {
+        uploadId: upload.uploadId,
+        attempt: Number(upload.cleanupAttempts || 0) + 1,
+        error: err.message
+      });
     }
   }
 
@@ -236,3 +243,5 @@ async function cleanupUploads() {
 
 module.exports =
   cleanupUploads;
+
+module.exports.cleanupR2OrphanUploads = cleanupR2OrphanUploads;

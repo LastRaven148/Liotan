@@ -6,6 +6,7 @@ const { after, before, test } = require("node:test");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const supertest = require("supertest");
 const { io: createSocketClient } = require("socket.io-client");
+const { directoryDevicesHash } = require("../../security/cryptoDirectoryState");
 
 const TEST_SECRET = "liotan-integration-secret-0123456789abcdef0123456789abcdef";
 const CRYPTO_DOMAIN = "integration.crypto.liotan.invalid";
@@ -74,6 +75,12 @@ async function signedJson(account, method, path, body = {}, overrides = {}) {
   return request;
 }
 
+async function sessionJson(account, method, path, body = {}) {
+  let request = requestFor(account, method, path).set("X-Liotan-CSRF", CSRF_HEADER);
+  if (!["GET", "HEAD"].includes(method.toUpperCase())) request = request.send(body);
+  return request;
+}
+
 async function createAuthenticatedUser(username) {
   const user = await User.create({
     username,
@@ -93,9 +100,200 @@ async function createAuthenticatedUser(username) {
   return { user, username, sessionId, cookie: `liotan_auth=${encodeURIComponent(token)}` };
 }
 
-async function registerDevice(account, { rootKey = null, deviceId = null } = {}) {
-  const next = {
+async function createAdditionalSession(account) {
+  const sessionId = crypto.randomBytes(32).toString("base64url");
+  await Session.create({
+    userId: account.user._id,
+    username: account.username,
+    sessionIdHash: hashSessionId(sessionId),
+    deviceName: "Additional integration device",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+  return {
     ...account,
+    sessionId,
+    cookie: `liotan_auth=${encodeURIComponent(signAuthToken(account.user, sessionId))}`
+  };
+}
+
+function buildDirectoryUpdate(identity, devices, nextDevice, action, targetDeviceId, rootPrivateKey) {
+  const prospective = devices
+    .filter(device => device.deviceId !== targetDeviceId)
+    .concat(nextDevice);
+  const statement = {
+    v: 1,
+    cryptoUserId: identity.cryptoUserId,
+    version: Number(identity.directory.version) + 1,
+    previousHash: identity.directory.hash,
+    devicesHash: directoryDevicesHash(prospective),
+    action,
+    targetDeviceId,
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  return {
+    prospective,
+    statement,
+    signature: signCanonical(rootPrivateKey, "liotan-device-directory-v1", statement)
+  };
+}
+
+async function prepareDeviceApproval(approver, pending, { signingKey = null, cryptoUserId = "" } = {}) {
+  const listed = await signedJson(approver, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === pending.deviceId);
+  assert.equal(target?.status, "pending");
+  const approval = {
+    v: 1,
+    cryptoUserId: cryptoUserId || approver.cryptoUserId,
+    newDeviceId: target.deviceId,
+    newClientId: target.clientId,
+    requestPublicKey: target.requestPublicKey,
+    credentialThumbprint: target.credentialThumbprint,
+    challenge: target.approvalChallenge,
+    approverClientId: approver.clientId,
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const approvalSignature = signCanonical(
+    signingKey || approver.requestKey.privateKey,
+    "liotan-device-approval-v1",
+    approval
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    approval,
+    approvalSignature,
+    approvedByClientId: approver.clientId,
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: approver.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "approve-device",
+    target.deviceId,
+    approver.rootKey.privateKey
+  );
+  return {
+    path: `/crypto/v4/devices/${target.deviceId}/approve`,
+    body: {
+      approval,
+      approvalSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
+    }
+  };
+}
+
+async function approvePendingDevice(approver, pending) {
+  const prepared = await prepareDeviceApproval(approver, pending);
+  const response = await signedJson(approver, "POST", prepared.path, prepared.body);
+  assert.equal(response.status, 200, response.text);
+  pending.status = "active";
+  return response.body;
+}
+
+async function revokeRegisteredDevice(account, targetDeviceId, { recoveryAcknowledged = false } = {}) {
+  const listed = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === targetDeviceId);
+  assert.equal(target?.status, "active");
+  const revocation = {
+    cryptoUserId: account.cryptoUserId,
+    deviceId: targetDeviceId,
+    revokedAt: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url"),
+    ...(recoveryAcknowledged ? { recoveryAcknowledged: true } : {})
+  };
+  const revocationSignature = signCanonical(
+    account.rootKey.privateKey,
+    "liotan-device-revocation-v1",
+    revocation
+  );
+  const nextDevice = {
+    ...target,
+    status: "revoked",
+    revokedAt: revocation.revokedAt,
+    revocation,
+    revocationSignature
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: account.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "revoke-device",
+    targetDeviceId,
+    account.rootKey.privateKey
+  );
+  return signedJson(account, "POST", `/crypto/v4/devices/${targetDeviceId}/revoke`, {
+    revocation,
+    signature: revocationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+}
+
+async function confirmPendingRecoveryTest(pending) {
+  const bootstrap = await requestFor(
+    pending,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${pending.deviceId}`
+  ).expect(200);
+  const target = bootstrap.body.device;
+  assert.equal(target?.status, "pending");
+  assert.equal(target?.activationMode, "recovery-bootstrap");
+  const confirmation = {
+    v: 1,
+    cryptoUserId: pending.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    challenge: target.approvalChallenge,
+    warningAcknowledged: true,
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const confirmationSignature = signCanonical(
+    pending.rootKey.privateKey,
+    "liotan-recovery-bootstrap-v1",
+    confirmation
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    approval: confirmation,
+    approvalSignature: confirmationSignature,
+    approvedByClientId: "recovery-bootstrap",
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "recovery-bootstrap",
+    target.deviceId,
+    pending.rootKey.privateKey
+  );
+  const response = await requestFor(
+    pending,
+    "POST",
+    `/crypto/v4/devices/${target.deviceId}/recovery-bootstrap`
+  ).set("X-Liotan-CSRF", CSRF_HEADER).send({
+    confirmation,
+    confirmationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+  assert.equal(response.status, 200, response.text);
+  pending.status = "active";
+  return response.body;
+}
+
+async function registerDevice(account, { rootKey = null, deviceId = null, autoApprove = true } = {}) {
+  const sessionAccount = account.deviceId ? await createAdditionalSession(account) : account;
+  const next = {
+    ...sessionAccount,
     rootKey: rootKey || crypto.generateKeyPairSync("ed25519"),
     requestKey: crypto.generateKeyPairSync("ed25519"),
     deviceId: deviceId || crypto.randomBytes(8).toString("hex")
@@ -104,7 +302,8 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
   next.cryptoUserId = bootstrap.body.identity.cryptoUserId;
   next.rootPublicKey = rawPublicKey(next.rootKey.publicKey);
 
-  if (!bootstrap.body.identity.rootPublicKey) {
+  let identity = bootstrap.body.identity;
+  if (!identity.rootPublicKey) {
     const proofValue = {
       cryptoUserId: next.cryptoUserId,
       username: next.username,
@@ -112,16 +311,17 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
       createdAt: new Date().toISOString(),
       nonce: crypto.randomBytes(24).toString("base64url")
     };
-    await requestFor(next, "POST", "/crypto/v4/identity")
+    const pinned = await requestFor(next, "POST", "/crypto/v4/identity")
       .set("X-Liotan-CSRF", CSRF_HEADER)
       .send({
         cryptoUserId: next.cryptoUserId,
         rootPublicKey: next.rootPublicKey,
         proof: { ...proofValue, signature: signCanonical(next.rootKey.privateKey, "liotan-account-root-v1", proofValue) }
-      })
-      .expect(201);
+      });
+    assert.equal(pinned.status, 201, pinned.text);
+    identity = pinned.body.identity;
   } else {
-    assert.equal(bootstrap.body.identity.rootPublicKey, next.rootPublicKey);
+    assert.equal(identity.rootPublicKey, next.rootPublicKey);
   }
 
   const now = new Date();
@@ -138,13 +338,47 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
   };
   next.clientId = manifest.clientId;
   next.manifest = manifest;
-  await requestFor(next, "POST", "/crypto/v4/devices")
+  const manifestSignature = signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest);
+  const devices = bootstrap.body.accountDevices || [];
+  const activeCount = devices.filter(device => device.status === "active").length;
+  const status = devices.length === 0 ? "active" : "pending";
+  const activationMode = devices.length === 0
+    ? "initial"
+    : activeCount > 0 ? "device-approval" : "recovery-bootstrap";
+  const nextDevice = {
+    deviceId: next.deviceId,
+    clientId: next.clientId,
+    requestPublicKey: manifest.requestPublicKey,
+    credentialThumbprint: manifest.credentialThumbprint,
+    manifest,
+    manifestSignature,
+    status,
+    activationMode
+  };
+  const directory = buildDirectoryUpdate(
+    identity,
+    devices,
+    nextDevice,
+    "register-device",
+    next.deviceId,
+    next.rootKey.privateKey
+  );
+  const registered = await requestFor(next, "POST", "/crypto/v4/devices")
     .set("X-Liotan-CSRF", CSRF_HEADER)
     .send({
       manifest,
-      signature: signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest)
-    })
-    .expect(201);
+      signature: manifestSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
+    });
+  assert.equal(registered.status, 201, registered.text);
+  next.status = registered.body.device.status;
+  next.activationMode = registered.body.device.activationMode;
+  if (next.status === "pending" && autoApprove) {
+    if (next.activationMode === "device-approval") await approvePendingDevice(account, next);
+    else await confirmPendingRecoveryTest(next);
+  }
+  if (next.status !== "active") return next;
 
   const packages = Array.from({ length: 3 }, () => {
     const payload = crypto.randomBytes(128).toString("base64url");
@@ -173,8 +407,18 @@ async function createAccount(username) {
   return registerDevice(await createAuthenticatedUser(username));
 }
 
-async function commitOperation(account, conversationId, operation, { welcome = "" } = {}) {
-  const body = {
+function operationCommitBody(operation, { welcome = "", result = null } = {}) {
+  const commitResult = result || {
+    v: 1,
+    operationId: operation.operationId,
+    baseRosterVersion: operation.baseRosterVersion,
+    baseEpoch: operation.baseEpoch,
+    operationGeneration: operation.operationGeneration,
+    intentHash: operation.intentHash,
+    activeClientIds: operation.expectedActiveClientIds,
+    activeClientIdsHash: operation.expectedActiveClientIdsHash
+  };
+  return {
     epoch: operation.expectedEpoch,
     commit: crypto.randomBytes(96).toString("base64url"),
     welcome,
@@ -182,12 +426,32 @@ async function commitOperation(account, conversationId, operation, { welcome = "
       encryptionType: 0,
       ratchetTreeType: 0,
       payload: crypto.randomBytes(64).toString("base64url")
-    }
+    },
+    result: commitResult
   };
+}
+
+async function commitOperation(account, conversationId, operation, { welcome = "", result = null } = {}) {
+  const body = operationCommitBody(operation, { welcome, result });
   const path = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations/${encodeURIComponent(operation.operationId)}/commit`;
   const response = await signedJson(account, "POST", path, body);
   assert.equal(response.status, 201, response.text);
   return response.body;
+}
+
+async function initializePrivateConversation(alice, bob) {
+  const resolveBody = { chatType: "private", targetUsername: bob.username };
+  const resolved = await signedJson(alice, "POST", "/crypto/v4/conversations/resolve", resolveBody);
+  assert.equal(resolved.status, 200, resolved.text);
+  const conversationId = resolved.body.conversationId;
+  const operationPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations`;
+  const begin = await signedJson(alice, "POST", operationPath, {});
+  assert.equal(begin.status, 201, begin.text);
+  assert.equal(begin.body.operation.type, "init");
+  await commitOperation(alice, conversationId, begin.body.operation, {
+    welcome: crypto.randomBytes(128).toString("base64url")
+  });
+  return { conversationId, operationPath, resolveBody };
 }
 
 before(async () => {
@@ -270,23 +534,34 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
   const duplicate = await signedJson(bob, "POST", messagePath, messageBody);
   assert.equal(duplicate.status, 200, duplicate.text);
   assert.equal(duplicate.body.duplicate, true);
+  const changedCiphertext = await signedJson(bob, "POST", messagePath, {
+    ...messageBody,
+    ciphertext: crypto.randomBytes(160).toString("base64url")
+  });
+  assert.equal(changedCiphertext.status, 409, changedCiphertext.text);
+  const changedEpoch = await signedJson(bob, "POST", messagePath, {
+    ...messageBody,
+    epoch: 0
+  });
+  assert.equal(changedEpoch.status, 409, changedEpoch.text);
+  const changedSender = await signedJson(alice, "POST", messagePath, messageBody);
+  assert.equal(changedSender.status, 409, changedSender.text);
 
   const eventsPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/events?after=0&limit=100`;
   const events = await signedJson(alice, "GET", eventsPath);
   assert.equal(events.status, 200, events.text);
   assert.deepEqual(events.body.events.map(event => event.kind), ["commit", "message"]);
+  assert.equal(events.body.recipientHead, events.body.events.at(-1).sequence);
+  const atHead = await signedJson(
+    alice,
+    "GET",
+    `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/events?after=${events.body.recipientHead}&limit=100`
+  );
+  assert.equal(atHead.status, 200, atHead.text);
+  assert.deepEqual(atHead.body.events, []);
+  assert.equal(atHead.body.recipientHead, events.body.recipientHead);
 
-  const revocation = {
-    cryptoUserId: bob.cryptoUserId,
-    deviceId: bob.deviceId,
-    revokedAt: new Date().toISOString(),
-    nonce: crypto.randomBytes(24).toString("base64url")
-  };
-  const revokePath = `/crypto/v4/devices/${bob.deviceId}/revoke`;
-  const revoke = await signedJson(bob, "POST", revokePath, {
-    revocation,
-    signature: signCanonical(bob.rootKey.privateKey, "liotan-device-revocation-v1", revocation)
-  });
+  const revoke = await revokeRegisteredDevice(bob, bob.deviceId, { recoveryAcknowledged: true });
   assert.equal(revoke.status, 200, revoke.text);
 
   const removeBegin = await signedJson(alice, "POST", operationPath, {});
@@ -317,6 +592,413 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
 
   const conversation = await CryptoConversation.findOne({ conversationId }).lean();
   assert.equal(conversation.blockedForEpochChange, false);
+});
+
+test("new cryptographic devices remain pending until an existing device signs a bound approval", async () => {
+  const alice = await createAccount("appr_alice_t");
+  const pending = await registerDevice(alice, {
+    rootKey: alice.rootKey,
+    autoApprove: false
+  });
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.activationMode, "device-approval");
+
+  const pendingAccess = await signedJson(pending, "GET", "/crypto/v4/devices");
+  assert.equal(pendingAccess.status, 401, pendingAccess.text);
+
+  const forged = await prepareDeviceApproval(alice, pending, {
+    signingKey: crypto.generateKeyPairSync("ed25519").privateKey
+  });
+  const forgedResult = await signedJson(alice, "POST", forged.path, forged.body);
+  assert.equal(forgedResult.status, 400, forgedResult.text);
+
+  const otherAccount = await createAccount("appr_other_t");
+  const transferred = await prepareDeviceApproval(alice, pending, {
+    signingKey: otherAccount.requestKey.privateKey,
+    cryptoUserId: otherAccount.cryptoUserId
+  });
+  const transferredResult = await signedJson(alice, "POST", transferred.path, transferred.body);
+  assert.equal(transferredResult.status, 400, transferredResult.text);
+
+  const valid = await prepareDeviceApproval(alice, pending);
+  const approved = await signedJson(alice, "POST", valid.path, valid.body);
+  assert.equal(approved.status, 200, approved.text);
+  const replay = await signedJson(alice, "POST", valid.path, valid.body);
+  assert.notEqual(replay.status, 200, replay.text);
+
+  const activeAccess = await signedJson(pending, "GET", "/crypto/v4/devices");
+  assert.equal(activeAccess.status, 200, activeAccess.text);
+});
+
+test("stale self-update cannot clear the epoch block after device revocation", async () => {
+  const alice = await createAccount("s_alice_test");
+  const bob = await createAccount("s_bob_test");
+  const { conversationId, operationPath } = await initializePrivateConversation(alice, bob);
+
+  await CryptoConversation.updateOne(
+    { conversationId },
+    { $set: { lastCommitAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) } }
+  );
+  const staleBegin = await signedJson(alice, "POST", operationPath, { forceUpdate: true });
+  assert.equal(staleBegin.status, 201, staleBegin.text);
+  assert.equal(staleBegin.body.operation.type, "update");
+
+  const revoke = await revokeRegisteredDevice(bob, bob.deviceId, { recoveryAcknowledged: true });
+  assert.equal(revoke.status, 200, revoke.text);
+
+  const staleCommitPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations/${encodeURIComponent(staleBegin.body.operation.operationId)}/commit`;
+  const staleCommit = await signedJson(
+    alice,
+    "POST",
+    staleCommitPath,
+    operationCommitBody(staleBegin.body.operation)
+  );
+  assert.equal(staleCommit.status, 409, staleCommit.text);
+
+  const blockedMessage = await signedJson(
+    alice,
+    "POST",
+    `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      clientMessageId: crypto.randomUUID(),
+      epoch: 1,
+      ciphertext: crypto.randomBytes(80).toString("base64url")
+    }
+  );
+  assert.equal(blockedMessage.status, 409, blockedMessage.text);
+
+  const conversation = await CryptoConversation.findOne({ conversationId }).lean();
+  assert.equal(conversation.blockedForEpochChange, true);
+  assert.equal(conversation.epoch, 1);
+  assert.equal(conversation.authorizedClientIds.includes(bob.clientId), false);
+  assert.equal(conversation.activeClientIds.includes(bob.clientId), true);
+
+  const removeBegin = await signedJson(alice, "POST", operationPath, {});
+  assert.equal(removeBegin.status, 201, removeBegin.text);
+  assert.equal(removeBegin.body.operation.type, "remove");
+  const removed = await commitOperation(alice, conversationId, removeBegin.body.operation);
+  assert.equal(removed.activeClientIds.includes(bob.clientId), false);
+  assert.equal(removed.authorizedClientIds.includes(bob.clientId), false);
+});
+
+test("group membership change invalidates an older operation generation", async () => {
+  const alice = await createAccount("g_alice_test");
+  const bob = await createAccount("g_bob_test");
+  const group = await sessionJson(alice, "POST", "/groups", {
+    name: "MLS integration group",
+    members: [bob.username]
+  });
+  assert.equal(group.status, 201, group.text);
+  const resolveBody = { chatType: "group", groupId: group.body._id };
+  const resolved = await signedJson(alice, "POST", "/crypto/v4/conversations/resolve", resolveBody);
+  assert.equal(resolved.status, 200, resolved.text);
+  const conversationId = resolved.body.conversationId;
+  const operationPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations`;
+  const init = await signedJson(alice, "POST", operationPath, {});
+  assert.equal(init.status, 201, init.text);
+  await commitOperation(alice, conversationId, init.body.operation, {
+    welcome: crypto.randomBytes(128).toString("base64url")
+  });
+  await CryptoConversation.updateOne(
+    { conversationId },
+    { $set: { lastCommitAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) } }
+  );
+  const stale = await signedJson(alice, "POST", operationPath, { forceUpdate: true });
+  assert.equal(stale.status, 201, stale.text);
+
+  const removedMember = await sessionJson(
+    alice,
+    "DELETE",
+    `/groups/${encodeURIComponent(group.body._id)}/members/${encodeURIComponent(bob.username)}`
+  );
+  assert.equal(removedMember.status, 200, removedMember.text);
+
+  const stalePath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations/${encodeURIComponent(stale.body.operation.operationId)}/commit`;
+  const staleCommit = await signedJson(alice, "POST", stalePath, operationCommitBody(stale.body.operation));
+  assert.equal(staleCommit.status, 409, staleCommit.text);
+  const afterConflict = await CryptoConversation.findOne({ conversationId }).lean();
+  assert.equal(afterConflict.blockedForEpochChange, true);
+  assert.equal(afterConflict.authorizedClientIds.includes(bob.clientId), false);
+  assert.equal(afterConflict.activeClientIds.includes(bob.clientId), true);
+
+  const remove = await signedJson(alice, "POST", operationPath, {});
+  assert.equal(remove.status, 201, remove.text);
+  assert.deepEqual(remove.body.operation.removeClientIds, [bob.clientId]);
+  const committed = await commitOperation(alice, conversationId, remove.body.operation);
+  assert.equal(committed.activeClientIds.includes(bob.clientId), false);
+});
+
+test("parallel operation creation has one generation winner", async () => {
+  const alice = await createAccount("p_alice_test");
+  const { conversationId, operationPath } = await initializePrivateConversation(alice, alice);
+  await CryptoConversation.updateOne(
+    { conversationId },
+    { $set: { lastCommitAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) } }
+  );
+  const results = await Promise.all([
+    signedJson(alice, "POST", operationPath, { forceUpdate: true }),
+    signedJson(alice, "POST", operationPath, { forceUpdate: true })
+  ]);
+  assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
+  const pending = await mongoose.model("CryptoOperation").find({ conversationId, status: "pending" }).lean();
+  assert.equal(pending.length, 1);
+});
+
+test("commit result must match operation intent and cannot be replayed", async () => {
+  const alice = await createAccount("i_alice_test");
+  const { conversationId, operationPath } = await initializePrivateConversation(alice, alice);
+  await CryptoConversation.updateOne(
+    { conversationId },
+    { $set: { lastCommitAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) } }
+  );
+  const begin = await signedJson(alice, "POST", operationPath, { forceUpdate: true });
+  assert.equal(begin.status, 201, begin.text);
+  const operation = begin.body.operation;
+  const path = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations/${encodeURIComponent(operation.operationId)}/commit`;
+  const invalidBody = operationCommitBody(operation, {
+    result: {
+      v: 1,
+      operationId: operation.operationId,
+      baseRosterVersion: operation.baseRosterVersion,
+      baseEpoch: operation.baseEpoch,
+      operationGeneration: operation.operationGeneration,
+      intentHash: operation.intentHash,
+      activeClientIds: [],
+      activeClientIdsHash: operation.expectedActiveClientIdsHash
+    }
+  });
+  const invalid = await signedJson(alice, "POST", path, invalidBody);
+  assert.equal(invalid.status, 409, invalid.text);
+
+  const validBody = operationCommitBody(operation);
+  const committed = await signedJson(alice, "POST", path, validBody);
+  assert.equal(committed.status, 201, committed.text);
+  const replay = await signedJson(alice, "POST", path, validBody);
+  assert.equal(replay.status, 409, replay.text);
+});
+
+test("parallel message retries have one ciphertext-bound winner", async () => {
+  const alice = await createAccount("m_alice_test");
+  const { conversationId } = await initializePrivateConversation(alice, alice);
+  const path = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const identicalBody = {
+    clientMessageId: crypto.randomUUID(),
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url")
+  };
+  const identical = await Promise.all([
+    signedJson(alice, "POST", path, identicalBody),
+    signedJson(alice, "POST", path, identicalBody)
+  ]);
+  assert.deepEqual(identical.map(result => result.status).sort(), [200, 201]);
+  assert.equal(await mongoose.model("CryptoEvent").countDocuments({
+    conversationId,
+    clientMessageId: identicalBody.clientMessageId
+  }), 1);
+
+  const conflictingId = crypto.randomUUID();
+  const conflicting = await Promise.all([
+    signedJson(alice, "POST", path, {
+      clientMessageId: conflictingId,
+      epoch: 1,
+      ciphertext: crypto.randomBytes(160).toString("base64url")
+    }),
+    signedJson(alice, "POST", path, {
+      clientMessageId: conflictingId,
+      epoch: 1,
+      ciphertext: crypto.randomBytes(160).toString("base64url")
+    })
+  ]);
+  assert.deepEqual(conflicting.map(result => result.status).sort(), [201, 409]);
+  assert.equal(await mongoose.model("CryptoEvent").countDocuments({
+    conversationId,
+    clientMessageId: conflictingId
+  }), 1);
+});
+
+test("MLS media capability commits atomically with its message and leaves failures temporary", async () => {
+  const alice = await createAccount("media_cap_test");
+  const { conversationId } = await initializePrivateConversation(alice, alice);
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const messagePath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const commitToken = crypto.randomBytes(32).toString("base64url");
+  const deleteToken = crypto.randomBytes(32).toString("base64url");
+  const messageId = crypto.randomUUID();
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: alice.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: conversationId,
+    cryptoClientId: alice.clientId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    boundClientMessageId: messageId,
+    commitTokenHash: crypto.createHash("sha256").update(commitToken).digest("base64url"),
+    deleteTokenHash: crypto.createHash("sha256").update(deleteToken).digest("base64url"),
+    lifecycleState: "temporary",
+    storageKey: "integration/fake-ciphertext-object",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000)
+  });
+  const body = {
+    clientMessageId: messageId,
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url"),
+    attachmentCommit: { uploadId: upload.uploadId, token: commitToken }
+  };
+  const sent = await signedJson(alice, "POST", messagePath, body);
+  assert.equal(sent.status, 201, sent.text);
+  const committed = await AttachmentUpload.findOne({ uploadId: upload.uploadId }).lean();
+  assert.equal(committed.lifecycleState, "committed");
+  assert.equal(committed.committedEventSequence, sent.body.sequence);
+  assert.equal(committed.expiresAt, null);
+  assert.equal(committed.commitTokenHash, "");
+
+  const duplicate = await signedJson(alice, "POST", messagePath, body);
+  assert.equal(duplicate.status, 200, duplicate.text);
+  assert.equal(duplicate.body.sequence, sent.body.sequence);
+
+  const deleteBody = {
+    clientMessageId: crypto.randomUUID(),
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url"),
+    attachmentDelete: { uploadId: upload.uploadId, token: deleteToken }
+  };
+  const scheduledDelete = await signedJson(alice, "POST", messagePath, deleteBody);
+  assert.equal(scheduledDelete.status, 201, scheduledDelete.text);
+  const deletionPending = await AttachmentUpload.findOne({ uploadId: upload.uploadId }).lean();
+  assert.equal(deletionPending.lifecycleState, "deletion-pending");
+  const repeatedDeleteEvent = await signedJson(alice, "POST", messagePath, deleteBody);
+  assert.equal(repeatedDeleteEvent.status, 200, repeatedDeleteEvent.text);
+  await AttachmentUpload.deleteOne({ uploadId: upload.uploadId });
+
+  const failedMessageId = crypto.randomUUID();
+  const failedToken = crypto.randomBytes(32).toString("base64url");
+  const failedUpload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: alice.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: conversationId,
+    cryptoClientId: alice.clientId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    boundClientMessageId: failedMessageId,
+    commitTokenHash: crypto.createHash("sha256").update(failedToken).digest("base64url"),
+    deleteTokenHash: crypto.randomBytes(32).toString("base64url"),
+    lifecycleState: "temporary",
+    storageKey: "integration/temporary-ciphertext-object",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000)
+  });
+  const rejected = await signedJson(alice, "POST", messagePath, {
+    clientMessageId: failedMessageId,
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url"),
+    attachmentCommit: {
+      uploadId: failedUpload.uploadId,
+      token: crypto.randomBytes(32).toString("base64url")
+    }
+  });
+  assert.equal(rejected.status, 409, rejected.text);
+  const stillTemporary = await AttachmentUpload.findOne({ uploadId: failedUpload.uploadId }).lean();
+  assert.equal(stillTemporary.lifecycleState, "temporary");
+  assert.notEqual(stillTemporary.expiresAt, null);
+  assert.equal(await mongoose.model("CryptoEvent").exists({
+    conversationId,
+    clientMessageId: failedMessageId
+  }), null);
+});
+
+test("expired temporary and deletion-pending media cleanup is idempotent", async () => {
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const cleanupUploads = require("../../scripts/cleanupUploadsTask");
+  const base = {
+    owner: "cleanup_test",
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    storageType: "r2:private-media"
+  };
+  const expired = await AttachmentUpload.create({
+    ...base,
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    storageKey: "integration/expired-temporary",
+    lifecycleState: "temporary",
+    expiresAt: new Date(Date.now() - 1000)
+  });
+  const pending = await AttachmentUpload.create({
+    ...base,
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    storageKey: "integration/deletion-pending",
+    lifecycleState: "deletion-pending",
+    expiresAt: new Date()
+  });
+  const committed = await AttachmentUpload.create({
+    ...base,
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    storageKey: "integration/committed",
+    lifecycleState: "committed",
+    expiresAt: null,
+    committedAt: new Date()
+  });
+  const deletedKeys = [];
+  const first = await cleanupUploads.cleanupR2OrphanUploads({
+    deleteObject: async key => deletedKeys.push(key),
+    now: new Date()
+  });
+  assert.equal(first, 2);
+  assert.deepEqual(deletedKeys.sort(), [expired.storageKey, pending.storageKey].sort());
+  assert.equal(await AttachmentUpload.exists({ _id: committed._id }) !== null, true);
+  const second = await cleanupUploads.cleanupR2OrphanUploads({
+    deleteObject: async key => deletedKeys.push(key),
+    now: new Date()
+  });
+  assert.equal(second, 0);
+});
+
+test("crypto state migration removes the unsafe TTL index and quarantines ambiguous media idempotently", async () => {
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const migration = require("../../scripts/migrateCryptoState");
+  const indexes = await AttachmentUpload.collection.indexes();
+  const expiresIndex = indexes.find(index => index.key?.expiresAt === 1);
+  if (expiresIndex) await AttachmentUpload.collection.dropIndex(expiresIndex.name);
+  await AttachmentUpload.collection.createIndex(
+    { expiresAt: 1 },
+    { name: "expiresAt_1", expireAfterSeconds: 0 }
+  );
+  const inserted = await AttachmentUpload.collection.insertOne({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: "migration_test",
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    storageKey: "integration/legacy-unverified",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  const first = await migration.applyMigration();
+  assert.equal(first.mediaQuarantined >= 1, true);
+  const migrated = await AttachmentUpload.collection.findOne({ _id: inserted.insertedId });
+  assert.equal(migrated.lifecycleState, "legacy-unverified");
+  assert.equal(migrated.expiresAt, null);
+  const migratedIndexes = await AttachmentUpload.collection.indexes();
+  assert.equal(migratedIndexes.some(index =>
+    index.key?.expiresAt === 1 && index.expireAfterSeconds !== undefined), false);
+  const repeated = await migration.applyMigration();
+  assert.equal(repeated.alreadyApplied, true);
+  await AttachmentUpload.collection.deleteOne({ _id: inserted.insertedId });
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {

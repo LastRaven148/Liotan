@@ -8,12 +8,6 @@ const {
   e2eeLimiter
 } = require("../middleware/rateLimiters");
 
-const {
-  getIdentity,
-  getIdentities,
-  getDeviceIdentities
-} = require("../controllers/e2eeController");
-
 const router =
   express.Router();
 
@@ -49,21 +43,21 @@ router.get(
   "/e2ee/identity/:username",
   authMiddleware,
   e2eeLimiter,
-  getIdentity
+  legacyWriteGone
 );
 
 router.post(
   "/e2ee/identities",
   authMiddleware,
   e2eeLimiter,
-  getIdentities
+  legacyWriteGone
 );
 
 router.get(
   "/e2ee/devices/:username",
   authMiddleware,
   e2eeLimiter,
-  getDeviceIdentities
+  legacyWriteGone
 );
 
 router.get(
