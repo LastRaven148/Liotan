@@ -18,9 +18,6 @@ async function removeTempFile(file) {
 async function uploadMedia(req, res, next) {
   let uploadedObject = null;
   try {
-    if (!req.file || req.file.mimetype !== "application/octet-stream" || !String(req.file.originalname || "").endsWith(".liotanmedia")) {
-      return res.status(415).json({ error: "MLS ciphertext media required" });
-    }
     const signedBody = req.cryptoSignedBody;
     const conversationId = String(signedBody.conversationId || "");
     const bindingId = String(signedBody.bindingId || "");
@@ -28,7 +25,7 @@ async function uploadMedia(req, res, next) {
     const clientMessageId = String(signedBody.clientMessageId || "").toLowerCase();
     const declaredBytes = Number(signedBody.bytes);
     if (!BINDING_ID_RE.test(bindingId) || !isUuid(clientMessageId) || !/^[A-Za-z0-9_-]{43}$/.test(ciphertextHash) ||
-      !Number.isSafeInteger(declaredBytes) || declaredBytes !== req.file.size) {
+      !Number.isSafeInteger(declaredBytes) || declaredBytes <= 0) {
       return res.status(400).json({ error: "invalid encrypted media binding" });
     }
     const conversation = await assertConversationAccess(req, conversationId);
@@ -38,6 +35,12 @@ async function uploadMedia(req, res, next) {
       clientIdsHash(activeIds) !== clientIdsHash(policyIds) ||
       !activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(409).json({ error: "MLS conversation is not ready for media" });
+    }
+    if (!req.file || req.file.mimetype !== "application/octet-stream" || !String(req.file.originalname || "").endsWith(".liotanmedia")) {
+      return res.status(415).json({ error: "MLS ciphertext media required" });
+    }
+    if (declaredBytes !== req.file.size) {
+      return res.status(400).json({ error: "invalid encrypted media binding" });
     }
     const actualHash = String(req.file.ciphertextHash || "");
     if (!/^[A-Za-z0-9_-]{43}$/.test(actualHash)) {
