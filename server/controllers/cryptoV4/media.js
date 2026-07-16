@@ -7,7 +7,6 @@ const { registerAttachmentUpload } = require("../../services/attachmentOwnership
 const { sha256Base64Url, isUuid } = require("../../security/cryptoV4");
 const { randomId } = require("./shared");
 const { authorizedClientIds, clientIdsHash, normalizeClientIds } = require("../../security/cryptoRosterState");
-const { canonicalJson } = require("../../utils/canonicalJson");
 const { assertConversationAccess } = require("./shared");
 
 const BINDING_ID_RE = /^[A-Za-z0-9_-]{22,96}$/;
@@ -19,17 +18,15 @@ async function removeTempFile(file) {
 async function uploadMedia(req, res, next) {
   let uploadedObject = null;
   try {
-    if (!req.cryptoSignedBody || canonicalJson(req.body || {}) !== canonicalJson(req.cryptoSignedBody)) {
-      return res.status(400).json({ error: "multipart fields do not match the signed crypto body" });
-    }
     if (!req.file || req.file.mimetype !== "application/octet-stream" || !String(req.file.originalname || "").endsWith(".liotanmedia")) {
       return res.status(415).json({ error: "MLS ciphertext media required" });
     }
-    const conversationId = String(req.body.conversationId || "");
-    const bindingId = String(req.body.bindingId || "");
-    const ciphertextHash = String(req.body.ciphertextHash || "");
-    const clientMessageId = String(req.body.clientMessageId || "").toLowerCase();
-    const declaredBytes = Number(req.body.bytes);
+    const signedBody = req.cryptoSignedBody;
+    const conversationId = String(signedBody.conversationId || "");
+    const bindingId = String(signedBody.bindingId || "");
+    const ciphertextHash = String(signedBody.ciphertextHash || "");
+    const clientMessageId = String(signedBody.clientMessageId || "").toLowerCase();
+    const declaredBytes = Number(signedBody.bytes);
     if (!BINDING_ID_RE.test(bindingId) || !isUuid(clientMessageId) || !/^[A-Za-z0-9_-]{43}$/.test(ciphertextHash) ||
       !Number.isSafeInteger(declaredBytes) || declaredBytes !== req.file.size) {
       return res.status(400).json({ error: "invalid encrypted media binding" });

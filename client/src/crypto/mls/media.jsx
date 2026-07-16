@@ -141,7 +141,6 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
       version: "mls-media-1"
     };
     const formData = new FormData();
-    Object.entries(signingBody).forEach(([name, value]) => formData.set(name, value));
     formData.set("attachment", new File([blob], `${bindingId}.liotanmedia`, { type: "application/octet-stream" }));
     reportProgress(options.onProgress, { stage: "uploading", completed: 0, total: blob.size });
     const uploadRequest = options.uploadRequest || signedCryptoRequest;

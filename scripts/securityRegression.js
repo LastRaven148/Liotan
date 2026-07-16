@@ -120,8 +120,14 @@ const mediaRoute = cryptoRoutes.slice(cryptoRoutes.indexOf('"\/crypto\/v4\/media
 assert(mediaRoute.indexOf("cryptoDeviceAuth") < mediaRoute.indexOf("attachmentUpload.single"),
   "device authentication must happen before multipart data reaches temporary storage");
 assert.match(read("server/middleware/cryptoDeviceAuth.js"), /x-liotan-crypto-body/);
+assert.match(read("server/middleware/cryptoDeviceAuth.js"), /signed crypto body required for multipart request/,
+  "multipart MLS uploads must require canonical metadata authenticated before Multer");
 assert.match(read("server/config/attachmentUpload.js"), /ciphertextFramingValidator/);
 assert.match(read("server/config/attachmentUpload.js"), /LIOTANMLS1/);
+assert.match(read("server/config/attachmentUpload.js"), /fields:\s*0/,
+  "multipart MLS uploads must reject duplicate attacker-controlled metadata fields");
+assert.doesNotMatch(read("client/src/crypto/mls/media.jsx"), /Object\.entries\(signingBody\).*formData/s,
+  "private media metadata must have only one signed wire representation");
 const cryptoControllers = ["shared.js", "identityDevices.js", "conversations.js", "media.js"]
   .map(name => read(`server/controllers/cryptoV4/${name}`)).join("\n");
 assert.match(cryptoControllers, /MLS ciphertext media required/);

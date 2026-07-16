@@ -6,7 +6,8 @@
 2. Файл делится на адаптивные chunks.
 3. Каждый chunk шифруется AES-256-GCM со случайным 12-byte IV и AAD, связывающим conversation, binding, chunk index/count, plaintext size и тип.
 4. Media key и authenticated manifest включаются в MLS-encrypted message envelope; отдельно на сервер они не отправляются.
-5. Сервер принимает только формат `LIOTANMLS1`, проверяет framing, размеры, ciphertext hash, signed device request и conversation membership.
+5. Сервер принимает multipart только с ciphertext-файлом. Binding metadata существует в единственном canonical `X-Liotan-Crypto-Body`, входит в device signature и проверяется до Multer; любые дублирующие multipart-поля отклоняются.
+6. Сервер проверяет формат `LIOTANMLS1`, framing, размеры, ciphertext hash и conversation membership.
 
 При наличии OPFS клиент пишет временный ciphertext в локальный файл, не удерживая все encrypted chunks в памяти. В fallback используется Blob. Параллелизм ограничен двумя chunks.
 

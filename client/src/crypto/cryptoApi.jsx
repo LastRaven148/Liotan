@@ -66,9 +66,9 @@ export async function signedCryptoRequest(path, {
   headers.set("X-Liotan-Crypto-Signature", signature);
   let requestBody;
   if (formData) {
-    // Multipart fields are authenticated before Multer is allowed to create a
-    // temporary file. The server then requires the parsed fields to match this
-    // exact canonical body.
+    // Security metadata exists only in this signed canonical header. Multipart
+    // carries ciphertext bytes, never a second attacker-controlled copy of the
+    // authorization fields.
     headers.set("X-Liotan-Crypto-Body", bytesToBase64Url(textEncoder.encode(canonicalJson(body))));
     requestBody = formData;
   } else if (normalizedMethod !== "GET" && normalizedMethod !== "HEAD") {

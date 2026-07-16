@@ -11,7 +11,13 @@ const NONCE_RE = /^[A-Za-z0-9_-]{22,96}$/;
 
 function authenticatedBody(req) {
   const encoded = String(req.get("x-liotan-crypto-body") || "");
-  if (!encoded) return req.body || {};
+  if (!encoded) {
+    if (/^multipart\/form-data(?:;|$)/i.test(String(req.get("content-type") || ""))) {
+      throw new TypeError("signed crypto body required for multipart request");
+    }
+    req.cryptoSignedBody = req.body || {};
+    return req.cryptoSignedBody;
+  }
   if (encoded.length > 4096) throw new TypeError("invalid signed crypto body");
   const canonical = decodeBase64Url(encoded, 0, "signed crypto body").toString("utf8");
   const value = JSON.parse(canonical);
