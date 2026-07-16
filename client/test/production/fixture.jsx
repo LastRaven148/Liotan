@@ -8,12 +8,35 @@ import {
   Welcome
 } from "@wireapp/core-crypto/browser";
 import { initializeCoreCryptoRuntime } from "../../src/crypto/coreCryptoRuntime";
+import { deriveAccountKeys, signCanonical } from "../../src/crypto/accountKeys";
+import {
+  buildDirectoryMutation,
+  directoryDeviceCommitment
+} from "../../src/crypto/mls/directory";
+import { verifyAndPinAccountDirectory } from "../../src/crypto/mls/trust";
+import {
+  reconcileSyncCursor,
+  validateRecipientEventPage
+} from "../../src/crypto/mls/syncCursor";
+import {
+  bytesToBase64Url,
+  canonicalJson,
+  sha256Base64Url
+} from "../../src/crypto/encoding";
 import { createInitializedClientIdentity } from "../../src/crypto/mls/identifiers";
 import { assertEnvelopeSchema } from "../../src/crypto/mls/envelope";
-import { MEDIA_MAGIC } from "../../src/crypto/mls/constants";
+import { encryptAndUploadMedia } from "../../src/crypto/mls/media";
+import {
+  BACKGROUND_MAINTENANCE_INTERVAL_MS,
+  MEDIA_MAGIC,
+  SELF_UPDATE_INTERVAL_MS
+} from "../../src/crypto/mls/constants";
 import { destroyUniffi } from "../../src/crypto/mls/uniffiLifecycle";
 import {
   createRecoveryKey,
+  disableRecoveryProtection,
+  enableRecoveryProtection,
+  getRecoveryProtectionStatus,
   getEncryptedHistoryRecord,
   listEncryptedRecords,
   listEncryptedHistoryRecords,
@@ -30,9 +53,12 @@ import SecureTransitionGate from "../../src/crypto/SecureTransitionGate";
 import AttachmentDraftModal from "../../src/components/chat/AttachmentDraftModal";
 import UserProfileModal from "../../src/components/modals/UserProfileModal";
 import ChatSecurityNotice from "../../src/components/chat/ChatSecurityNotice";
+import SafetyNumberModal from "../../src/components/chat/SafetyNumberModal";
+import DevicesPage from "../../src/components/settings/pages/DevicesPage";
 import LiotanIcon from "../../src/components/common/LiotanIcon";
 import useSecureTransition from "../../src/hooks/useSecureTransition";
 import { shouldAutomaticallyRepairDatabase } from "../../src/crypto/mls/databaseStorage";
+import { computeSafetyNumber } from "../../src/crypto/mlsEngine";
 import "../../src/App.css";
 
 const SUITE = CipherSuite.Mls128Dhkemx25519Aes128gcmSha256Ed25519;
@@ -116,6 +142,62 @@ window.runColdStartClientIdentityProbe = async function runColdStartClientIdenti
 window.createProductionRecoveryKey = () => createRecoveryKey();
 window.saveProductionRecoveryKey = (username, key) => saveRecoveryKey(username, key);
 window.loadProductionRecoveryKey = username => loadRecoveryKey(username);
+window.runRecoveryProtectionProbe = async function runRecoveryProtectionProbe() {
+  const username = `protected-${crypto.randomUUID()}`;
+  const recoveryKey = createRecoveryKey();
+  const passphrase = `local-${crypto.randomUUID()}`;
+  await saveRecoveryKey(username, recoveryKey);
+  await enableRecoveryProtection(username, passphrase);
+  const protectedStatus = await getRecoveryProtectionStatus(username);
+  let presenceRequired = false;
+  try { await loadRecoveryKey(username); } catch (error) {
+    presenceRequired = error?.code === "recovery-user-presence-required";
+  }
+  let wrongRejected = false;
+  try { await loadRecoveryKey(username, { passphrase: "definitely-wrong-passphrase" }); } catch (error) {
+    wrongRejected = error?.code === "recovery-unlock-failed";
+  }
+  const unlocked = await Promise.all([
+    loadRecoveryKey(username, { passphrase }),
+    loadRecoveryKey(username, { passphrase })
+  ]);
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open("liotan-local-crypto-v4", 2);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  let serializedRecord = "";
+  try {
+    const record = await new Promise((resolve, reject) => {
+      const transaction = db.transaction("records", "readwrite");
+      const store = transaction.objectStore("records");
+      const request = store.get(`recovery:${username}`);
+      request.onsuccess = () => {
+        serializedRecord = JSON.stringify(request.result);
+        store.put(request.result, `recovery-migration:${username}`);
+        store.delete(`recovery:${username}`);
+      };
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onerror = () => reject(transaction.error);
+    });
+    if (!record) throw new Error("protected record missing");
+  } finally {
+    db.close();
+  }
+  const resumed = await loadRecoveryKey(username, { passphrase });
+  const resumedStatus = await getRecoveryProtectionStatus(username);
+  await disableRecoveryProtection(username, passphrase);
+  const unprotected = await loadRecoveryKey(username);
+  return {
+    protected: protectedStatus.requiresUserPresence,
+    presenceRequired,
+    wrongRejected,
+    concurrentUnlock: unlocked.every(value => value === recoveryKey),
+    dumpContainsRecoveryKey: serializedRecord.includes(recoveryKey),
+    resumed: resumed === recoveryKey && !resumedStatus.migrationPending,
+    disabled: unprotected === recoveryKey
+  };
+};
 window.runEncryptedHistoryPagingProbe = async function runEncryptedHistoryPagingProbe() {
   const conversationId = `history-${crypto.randomUUID()}`;
   const cacheKey = randomBytes(32);
@@ -165,6 +247,7 @@ window.runAdaptiveMediaDescriptorProbe = function runAdaptiveMediaDescriptorProb
         bindingId: "B".repeat(24),
         ciphertextHash: "C".repeat(43),
         key: "D".repeat(43),
+        deleteToken: "F".repeat(43),
         noncePrefix: "E".repeat(11),
         chunkSize,
         chunks,
@@ -187,6 +270,258 @@ window.runAdaptiveMediaDescriptorProbe = function runAdaptiveMediaDescriptorProb
     accepted.push(chunkSize);
   }
   return accepted;
+};
+window.runLargeMediaEncryptionProbe = async function runLargeMediaEncryptionProbe() {
+  const size = 100 * 1024 * 1024;
+  const file = new File([new Uint8Array(size)], "fixture-large.bin", { type: "application/octet-stream" });
+  const progressStages = new Set();
+  let uploadedBytes = 0;
+  const result = await encryptAndUploadMedia(
+    { conversationId: crypto.randomUUID() },
+    file,
+    crypto.randomUUID(),
+    {
+      onProgress: event => progressStages.add(event.stage),
+      uploadRequest: async (_path, request) => {
+        const attachment = request.formData.get("attachment");
+        uploadedBytes = attachment.size;
+        return {
+          uploadId: "A".repeat(24),
+          uploadCommitToken: "B".repeat(43),
+          uploadDeleteToken: "C".repeat(43)
+        };
+      }
+    }
+  );
+  let opfsTemporaryFiles = 0;
+  if (navigator.storage?.getDirectory) {
+    const root = await navigator.storage.getDirectory();
+    for await (const name of root.keys()) {
+      if (name.startsWith("liotan-media-") && name.endsWith(".ciphertext")) opfsTemporaryFiles += 1;
+    }
+  }
+  return {
+    originalBytes: result.descriptor.original.size,
+    ciphertextBytes: result.descriptor.ciphertextBytes,
+    uploadedBytes,
+    chunks: result.descriptor.chunks,
+    progress: [...progressStages].sort(),
+    opfsTemporaryFiles
+  };
+};
+
+window.runAbortedMediaCleanupProbe = async function runAbortedMediaCleanupProbe() {
+  let rejected = false;
+  try {
+    await encryptAndUploadMedia(
+      { conversationId: crypto.randomUUID() },
+      new File([new Uint8Array(2 * 1024 * 1024)], "fixture-abort.bin"),
+      crypto.randomUUID(),
+      { uploadRequest: async () => { throw new DOMException("aborted", "AbortError"); } }
+    );
+  } catch (error) {
+    rejected = error?.name === "AbortError";
+  }
+  let opfsTemporaryFiles = 0;
+  if (navigator.storage?.getDirectory) {
+    const root = await navigator.storage.getDirectory();
+    for await (const name of root.keys()) {
+      if (name.startsWith("liotan-media-") && name.endsWith(".ciphertext")) opfsTemporaryFiles += 1;
+    }
+  }
+  return { rejected, opfsTemporaryFiles };
+};
+window.runDirectoryRollbackProbe = async function runDirectoryRollbackProbe() {
+  const cryptoUserId = crypto.randomUUID();
+  const username = `directory-${crypto.randomUUID()}`;
+  const deviceId = "0000000000000011";
+  const recoveryKey = bytesToBase64Url(randomBytes(32));
+  const keys = await deriveAccountKeys(recoveryKey, cryptoUserId, deviceId);
+  try {
+    const rootPublicKey = bytesToBase64Url(keys.rootPublicKey);
+    const genesis = sha256Base64Url(canonicalJson([
+      "liotan-device-directory-genesis-v1",
+      cryptoUserId,
+      rootPublicKey
+    ]));
+    const baseIdentity = {
+      cryptoUserId,
+      rootPublicKey,
+      rootFingerprint: sha256Base64Url(keys.rootPublicKey),
+      directory: { version: 0, hash: genesis, statement: null, signature: "", firstContact: true },
+      directoryLog: []
+    };
+    const manifest = {
+      v: 1,
+      cryptoUserId,
+      username,
+      deviceId,
+      clientId: `${cryptoUserId}:${deviceId}@browser.test.invalid`,
+      requestPublicKey: bytesToBase64Url(keys.requestPublicKey),
+      credentialThumbprint: bytesToBase64Url(randomBytes(32)),
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString()
+    };
+    const manifestSignature = await signCanonical(
+      keys.rootSecretKey,
+      "liotan-device-manifest-v1",
+      manifest
+    );
+    const device = {
+      deviceId,
+      clientId: manifest.clientId,
+      requestPublicKey: manifest.requestPublicKey,
+      credentialThumbprint: manifest.credentialThumbprint,
+      manifest,
+      manifestSignature,
+      status: "active",
+      activationMode: "initial"
+    };
+    const engine = { username, keys, bootstrap: { identity: baseIdentity } };
+    const first = await buildDirectoryMutation(engine, {
+      devices: [],
+      nextDevice: device,
+      action: "register-device",
+      targetDeviceId: deviceId
+    });
+    const firstHash = sha256Base64Url(canonicalJson([
+      "liotan-device-directory-v1",
+      first.statement,
+      first.signature
+    ]));
+    const firstEntry = {
+      version: 1,
+      previousHash: genesis,
+      hash: firstHash,
+      statement: first.statement,
+      signature: first.signature
+    };
+    const identityV1 = {
+      ...baseIdentity,
+      directory: {
+        version: 1,
+        hash: firstHash,
+        statement: first.statement,
+        signature: first.signature,
+        firstContact: false
+      },
+      directoryLog: [firstEntry]
+    };
+    await verifyAndPinAccountDirectory(engine, {
+      username,
+      identity: identityV1,
+      deviceCommitments: [directoryDeviceCommitment(device)],
+      allDevices: [device]
+    });
+    engine.bootstrap.identity = identityV1;
+    const second = await buildDirectoryMutation(engine, {
+      devices: [device],
+      nextDevice: device,
+      action: "renew-device",
+      targetDeviceId: deviceId
+    });
+    const secondHash = sha256Base64Url(canonicalJson([
+      "liotan-device-directory-v1",
+      second.statement,
+      second.signature
+    ]));
+    const identityV2 = {
+      ...identityV1,
+      directory: {
+        version: 2,
+        hash: secondHash,
+        statement: second.statement,
+        signature: second.signature,
+        firstContact: false
+      },
+      directoryLog: [{
+        version: 2,
+        previousHash: firstHash,
+        hash: secondHash,
+        statement: second.statement,
+        signature: second.signature
+      }]
+    };
+    await verifyAndPinAccountDirectory(engine, {
+      username,
+      identity: identityV2,
+      deviceCommitments: [directoryDeviceCommitment(device)],
+      allDevices: [device]
+    });
+    let rollbackRejected = false;
+    let chainTamperRejected = false;
+    try {
+      await verifyAndPinAccountDirectory(engine, {
+        username,
+        identity: identityV1,
+        deviceCommitments: [directoryDeviceCommitment(device)],
+        allDevices: [device]
+      });
+    } catch { rollbackRejected = true; }
+    try {
+      await verifyAndPinAccountDirectory(engine, {
+        username: `${username}-tampered`,
+        identity: {
+          ...identityV2,
+          directoryLog: [{
+            ...identityV2.directoryLog[0],
+            previousHash: genesis
+          }]
+        },
+        deviceCommitments: [directoryDeviceCommitment(device)],
+        allDevices: [device]
+      });
+    } catch { chainTamperRejected = true; }
+    const cleanUsername = `${username}-clean`;
+    const clean = await verifyAndPinAccountDirectory(engine, {
+      username: cleanUsername,
+      identity: identityV2,
+      deviceCommitments: [directoryDeviceCommitment(device)],
+      allDevices: [device]
+    });
+    return {
+      rollbackRejected,
+      chainTamperRejected,
+      cleanStatus: clean.status,
+      cleanFirstContact: clean.firstContact,
+      boundedTailAccepted: clean.directoryVersion === 2,
+      latestVersion: identityV2.directory.version
+    };
+  } finally {
+    Object.values(keys).forEach(value => value?.fill?.(0));
+  }
+};
+window.runSyncCursorRepairProbe = function runSyncCursorRepairProbe() {
+  const checkpoint = { processedSequence: 5, serverHead: 5 };
+  const deleted = reconcileSyncCursor({ checkpoint, localHint: 0 });
+  const ahead = reconcileSyncCursor({ checkpoint, localHint: 500 });
+  const behind = reconcileSyncCursor({ checkpoint, localHint: 2 });
+  const validPageHead = validateRecipientEventPage({
+    after: 5,
+    recipientHead: 9,
+    events: [{ sequence: 7 }, { sequence: 9 }]
+  });
+  let reorderRejected = false;
+  let rollbackRejected = false;
+  try {
+    validateRecipientEventPage({
+      after: 5,
+      recipientHead: 9,
+      events: [{ sequence: 8 }, { sequence: 8 }]
+    });
+  } catch { reorderRejected = true; }
+  try {
+    reconcileSyncCursor({ checkpoint, localHint: 5, recipientHead: 4 });
+  } catch { rollbackRejected = true; }
+  return {
+    deletedAfter: deleted.after,
+    aheadAfter: ahead.after,
+    behindAfter: behind.after,
+    repairedAhead: ahead.repairedLocalHint,
+    validPageHead,
+    reorderRejected,
+    rollbackRejected
+  };
 };
 window.runLargeHistoryMigrationProbe = async function runLargeHistoryMigrationProbe() {
   const conversationId = `large-history-${crypto.randomUUID()}`;
@@ -228,6 +563,28 @@ window.getDatabaseRepairPolicy = () => ({
   registeredEarlyFailure: shouldAutomaticallyRepairDatabase("database-open", { status: "active" }),
   unregisteredLateFailure: shouldAutomaticallyRepairDatabase("device-register", null)
 });
+window.getMlsMaintenancePolicy = () => ({
+  selfUpdateHours: SELF_UPDATE_INTERVAL_MS / (60 * 60 * 1000),
+  maintenanceSeconds: BACKGROUND_MAINTENANCE_INTERVAL_MS / 1000
+});
+window.runSafetyNumberProbe = () => {
+  const participants = [
+    { username: "alice", rootFingerprint: "root-a", directoryHash: "dir-a", directoryVersion: 4 },
+    { username: "bob", rootFingerprint: "root-b", directoryHash: "dir-b", directoryVersion: 7 }
+  ];
+  const aliceView = computeSafetyNumber(participants);
+  const bobView = computeSafetyNumber([...participants].reverse());
+  const changed = computeSafetyNumber([
+    participants[0],
+    { ...participants[1], directoryHash: "dir-b-changed", directoryVersion: 8 }
+  ]);
+  return {
+    sameAcrossSides: aliceView.fingerprint === bobView.fingerprint,
+    deviceChangeDetected: aliceView.fingerprint !== changed.fingerprint,
+    decimalGroups: aliceView.formatted.split(" ").length,
+    qrBound: aliceView.qrPayload.endsWith(aliceView.fingerprint)
+  };
+};
 
 window.runPersistentDatabaseProbe = async function runPersistentDatabaseProbe({ concurrentInit = false } = {}) {
   const name = `liotan-production-probe-${crypto.randomUUID()}`;
@@ -311,10 +668,33 @@ window.runMlsInterop = async function runMlsInterop() {
     if (await decryptText(bob, conversationId, ciphertext) !== "production-mls") throw new Error("MLS mismatch");
     const reply = await bob.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("production-reply")));
     if (await decryptText(alice, conversationId, reply) !== "production-reply") throw new Error("MLS reply mismatch");
+    const outOfOrderFirst = await alice.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("out-of-order-first")));
+    const outOfOrderSecond = await alice.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("out-of-order-second")));
+    const outOfOrderAccepted = await decryptText(bob, conversationId, outOfOrderSecond) === "out-of-order-second" &&
+      await decryptText(bob, conversationId, outOfOrderFirst) === "out-of-order-first";
+    const undeliveredPastEpoch = await alice.core.transaction(ctx =>
+      ctx.encryptMessage(conversationId, encoder.encode("past-epoch-undelivered"))
+    );
+    const secondUndeliveredPastEpoch = await alice.core.transaction(ctx =>
+      ctx.encryptMessage(conversationId, encoder.encode("past-epoch-second-probe"))
+    );
     await alice.core.transaction(ctx => ctx.updateKeyingMaterial(conversationId));
     const updateBundle = alice.commits.shift();
     await bob.core.transaction(ctx => ctx.decryptMessage(conversationId, updateBundle.commit));
+    let pastEpochOneBackAccepted = false;
+    try {
+      pastEpochOneBackAccepted = await decryptText(bob, conversationId, undeliveredPastEpoch) ===
+        "past-epoch-undelivered";
+    } catch {}
+    await alice.core.transaction(ctx => ctx.updateKeyingMaterial(conversationId));
+    const secondUpdateBundle = alice.commits.shift();
+    await bob.core.transaction(ctx => ctx.decryptMessage(conversationId, secondUpdateBundle.commit));
     const epoch = Number(await alice.core.transaction(ctx => ctx.conversationEpoch(conversationId)));
+    let pastEpochTwoBackAccepted = false;
+    try {
+      pastEpochTwoBackAccepted = await decryptText(bob, conversationId, secondUndeliveredPastEpoch) ===
+        "past-epoch-second-probe";
+    } catch {}
     const tamperTarget = await alice.core.transaction(ctx => ctx.encryptMessage(conversationId, encoder.encode("authenticated")));
     const tampered = new Uint8Array(tamperTarget);
     tampered[tampered.length - 1] ^= 1;
@@ -325,8 +705,40 @@ window.runMlsInterop = async function runMlsInterop() {
     }
     let replayRejected = false;
     try { await bob.core.transaction(ctx => ctx.decryptMessage(conversationId, tamperTarget)); } catch { replayRejected = true; }
+    const rollbackEpoch = Number(await alice.core.transaction(ctx => ctx.conversationEpoch(conversationId)));
+    const commitCountBeforeRollback = alice.commits.length;
+    let transactionRejected = false;
+    try {
+      await alice.core.transaction(async ctx => {
+        await ctx.updateKeyingMaterial(conversationId);
+        throw new Error("intentional transaction rollback");
+      });
+    } catch { transactionRejected = true; }
+    const transactionRollbackPreservedEpoch = transactionRejected &&
+      Number(await alice.core.transaction(ctx => ctx.conversationEpoch(conversationId))) === rollbackEpoch;
+    alice.commits.splice(commitCountBeforeRollback);
+    await alice.core.transaction(ctx => ctx.removeClientsFromConversation(conversationId, [bob.clientId]));
+    const removeBundle = alice.commits.shift();
+    await bob.core.transaction(ctx => ctx.decryptMessage(conversationId, removeBundle.commit));
+    const postRemoval = await alice.core.transaction(ctx =>
+      ctx.encryptMessage(conversationId, encoder.encode("post-removal"))
+    );
+    let removedClientRejected = false;
+    try { await bob.core.transaction(ctx => ctx.decryptMessage(conversationId, postRemoval)); }
+    catch { removedClientRejected = true; }
     const roster = await alice.core.transaction(ctx => ctx.getClientIds(conversationId));
-    return { ok: true, epoch, rosterSize: roster.length, tamperRejected, replayRejected };
+    return {
+      ok: true,
+      epoch,
+      rosterSize: roster.length,
+      tamperRejected,
+      replayRejected,
+      outOfOrderAccepted,
+      pastEpochOneBackAccepted,
+      pastEpochTwoBackAccepted,
+      transactionRollbackPreservedEpoch,
+      removedClientRejected
+    };
   } finally {
     destroyUniffi(conversationId);
     await closeMlsClient(alice);
@@ -439,6 +851,96 @@ window.mountUserProfile = function mountUserProfile(user) {
 
 window.mountChatSecurityNotice = function mountChatSecurityNotice(ready) {
   createRoot(document.querySelector("#root")).render(<ChatSecurityNotice ready={Boolean(ready)} />);
+};
+
+function SafetyNumberHarness() {
+  const [open, setOpen] = React.useState(true);
+  const [verified, setVerified] = React.useState(false);
+  if (!open) return <div id="safety-result">{verified ? "verified" : "closed"}</div>;
+  return <SafetyNumberModal
+    info={{
+      qrPayload: "liotan-safety:v2:fixture-bound-payload",
+      formatted: "12345 67890 12345 67890",
+      verificationStatus: "first-seen",
+      participants: [
+        { username: "alice", rootFingerprint: "A".repeat(43), directoryVersion: 2 },
+        { username: "bob", rootFingerprint: "B".repeat(43), directoryVersion: 4 }
+      ]
+    }}
+    onClose={() => setOpen(false)}
+    onVerify={async () => setVerified(true)}
+  />;
+}
+
+window.mountSafetyNumber = function mountSafetyNumber() {
+  createRoot(document.querySelector("#root")).render(<SafetyNumberHarness />);
+};
+
+window.mountCryptoDevices = function mountCryptoDevices() {
+  const devices = [
+    {
+      deviceId: "0000000000000001",
+      status: "active",
+      activationMode: "initial",
+      credentialThumbprint: "A".repeat(43),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-02T00:00:00.000Z"
+    },
+    {
+      deviceId: "0000000000000002",
+      status: "pending",
+      activationMode: "device-approval",
+      credentialThumbprint: "B".repeat(43),
+      createdAt: "2026-01-03T00:00:00.000Z",
+      lastSeenAt: "2026-01-03T00:00:00.000Z"
+    },
+    {
+      deviceId: "0000000000000003",
+      status: "active",
+      activationMode: "device-approval",
+      credentialThumbprint: "C".repeat(43),
+      createdAt: "2026-01-04T00:00:00.000Z",
+      lastSeenAt: "2026-01-04T00:00:00.000Z"
+    }
+  ];
+  let protectedRecovery = false;
+  const cryptoServices = {
+    currentDeviceId: () => devices[0].deviceId,
+    listDevices: async () => ({ devices: [...devices] }),
+    approveDevice: async deviceId => {
+      const target = devices.find(device => device.deviceId === deviceId);
+      target.status = "active";
+      return { conversationsBlocked: 1 };
+    },
+    revokeDevice: async deviceId => {
+      const target = devices.find(device => device.deviceId === deviceId);
+      target.status = "revoked";
+      return { conversationsBlocked: 2 };
+    },
+    getRecoveryProtectionStatus: async () => ({ configured: true, requiresUserPresence: protectedRecovery }),
+    enableRecoveryProtection: async () => { protectedRecovery = true; },
+    disableRecoveryProtection: async () => { protectedRecovery = false; }
+  };
+  const labels = {
+    devices: "Устройства",
+    thisDevice: "Это устройство",
+    activeSessions: "Активные сессии",
+    noDevices: "Нет устройств",
+    noOtherDevices: "Нет других устройств",
+    terminateOthers: "Завершить другие",
+    restrictedSessionMessage: "Недоступно",
+    current: "текущее",
+    lastActive: "Последняя активность",
+    disconnect: "Отключить",
+    unknownDevice: "Неизвестное устройство"
+  };
+  createRoot(document.querySelector("#root")).render(<DevicesPage
+    back={() => {}}
+    state={{ username: "fixture-user", sessions: [] }}
+    actions={{ revoke: async () => {}, logoutOthers: async () => {} }}
+    labels={labels}
+    cryptoServices={cryptoServices}
+  />);
 };
 
 window.mountSettingsIcon = function mountSettingsIcon() {

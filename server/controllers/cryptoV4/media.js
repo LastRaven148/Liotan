@@ -109,7 +109,7 @@ async function downloadMedia(req, res, next) {
       uploadId,
       protocol: "mls-media-1",
       encrypted: true,
-      lifecycleState: "committed"
+      lifecycleState: { $in: ["committed", "legacy-unverified"] }
     }).lean();
     if (!upload) return res.status(404).json({ error: "media not found" });
     const conversation = await assertConversationAccess(req, upload.cryptoConversationId);

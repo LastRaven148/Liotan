@@ -32,6 +32,19 @@ test("recovery key survives concurrent save and full reload in browser IndexedDB
   expect(await page.evaluate(username => window.loadProductionRecoveryKey(username), probe.username)).toBe(probe.key);
 });
 
+test("passphrase recovery wrapping rejects raw dumps, wrong secrets and resumes interrupted migration", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runRecoveryProtectionProbe())).toEqual({
+    protected: true,
+    presenceRequired: true,
+    wrongRejected: true,
+    concurrentUnlock: true,
+    dumpContainsRecoveryKey: false,
+    resumed: true,
+    disabled: true
+  });
+});
+
 test("encrypted local history supports bounded cursor paging in production IndexedDB", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   const result = await page.evaluate(() => window.runEncryptedHistoryPagingProbe());
@@ -52,6 +65,60 @@ test("production MLS envelope accepts every authenticated adaptive media chunk s
   ]);
 });
 
+test("100 MB media encryption stays chunked and removes its OPFS temporary file", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const result = await page.evaluate(() => window.runLargeMediaEncryptionProbe());
+  expect(result.originalBytes).toBe(100 * 1024 * 1024);
+  expect(result.ciphertextBytes).toBe(result.uploadedBytes);
+  expect(result.ciphertextBytes).toBeLessThanOrEqual(102 * 1024 * 1024);
+  expect(result.chunks).toBe(100);
+  expect(result.progress).toEqual(["encrypting", "uploading"]);
+  expect(result.opfsTemporaryFiles).toBe(0);
+});
+
+test("aborted encrypted media upload fails closed and cleans temporary OPFS state", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runAbortedMediaCleanupProbe())).toEqual({
+    rejected: true,
+    opfsTemporaryFiles: 0
+  });
+});
+
+test("encrypted trust state rejects a signed device-directory rollback while clean clients remain first-seen", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runDirectoryRollbackProbe())).toEqual({
+    rollbackRejected: true,
+    chainTamperRejected: true,
+    cleanStatus: "first-seen",
+    cleanFirstContact: true,
+    boundedTailAccepted: true,
+    latestVersion: 2
+  });
+});
+
+test("production cursor repair ignores localStorage drift and rejects reordered or rolled-back pages", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runSyncCursorRepairProbe())).toEqual({
+    deletedAfter: 5,
+    aheadAfter: 5,
+    behindAfter: 5,
+    repairedAhead: true,
+    validPageHead: 9,
+    reorderRejected: true,
+    rollbackRejected: true
+  });
+});
+
+test("safety number is symmetric and changes with the signed device directory", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runSafetyNumberProbe())).toEqual({
+    sameAcrossSides: true,
+    deviceChangeDetected: true,
+    decimalGroups: 13,
+    qrBound: true
+  });
+});
+
 test("production IndexedDB migrates a thousand encrypted history records in bounded batches", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   const result = await page.evaluate(() => window.runLargeHistoryMigrationProbe());
@@ -69,10 +136,15 @@ test("CoreCrypto performs two-device MLS add, messaging, update, tamper and repl
   const result = await page.evaluate(() => window.runMlsInterop());
   expect(result).toEqual({
     ok: true,
-    epoch: 2,
-    rosterSize: 2,
+    epoch: 3,
+    rosterSize: 1,
     tamperRejected: true,
-    replayRejected: true
+    replayRejected: true,
+    outOfOrderAccepted: true,
+    pastEpochOneBackAccepted: true,
+    pastEpochTwoBackAccepted: true,
+    transactionRollbackPreservedEpoch: true,
+    removedClientRejected: true
   });
 });
 
@@ -96,6 +168,10 @@ test("production bundle opens and reopens persistent CoreCrypto IndexedDB after 
     unregisteredEarlyFailure: true,
     registeredEarlyFailure: false,
     unregisteredLateFailure: false
+  });
+  expect(await page.evaluate(() => window.getMlsMaintenancePolicy())).toEqual({
+    selfUpdateHours: 72,
+    maintenanceSeconds: 45
   });
 });
 

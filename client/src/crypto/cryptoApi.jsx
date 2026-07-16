@@ -48,6 +48,7 @@ export async function signedCryptoRequest(path, {
   body = {},
   formData = null,
   raw = false,
+  signal,
   headers: extraHeaders = {}
 } = {}) {
   if (!signer?.deviceId || !signer?.requestSecretKey) throw new Error("Crypto device is locked");
@@ -74,5 +75,5 @@ export async function signedCryptoRequest(path, {
     headers.set("Content-Type", "application/json");
     requestBody = JSON.stringify(body);
   }
-  return checkedFetch(path, { method: normalizedMethod, headers, body: requestBody, raw });
+  return checkedFetch(path, { method: normalizedMethod, headers, body: requestBody, raw, signal });
 }

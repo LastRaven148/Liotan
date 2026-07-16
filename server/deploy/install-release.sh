@@ -26,7 +26,7 @@ esac
 [[ "$frontend_host" =~ ^[A-Za-z0-9.-]{1,253}$ ]] || { echo "invalid frontend Host header" >&2; exit 2; }
 [[ "$public_link" == /* && "$public_link" != "/" ]] || { echo "PUBLIC_FRONTEND_LINK must be absolute" >&2; exit 2; }
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid revision" >&2; exit 2; }
-for required_command in curl flock npm pm2 python3; do
+for required_command in curl flock node npm pm2 python3; do
   command -v "$required_command" >/dev/null 2>&1 || { echo "$required_command is required" >&2; exit 2; }
 done
 
@@ -357,6 +357,7 @@ tar -xzf "$archive" -C "$release" --no-same-owner --no-same-permissions
 build="$release/client/build"
 [[ -f "$build/index.html" ]] || { echo "client/build/index.html is missing" >&2; exit 2; }
 [[ -f "$release/server/server.js" && -f "$release/server/package.json" ]] || { echo "server release payload is incomplete" >&2; exit 2; }
+[[ -f "$release/server/scripts/migrateCryptoState.js" ]] || { echo "crypto state migration is missing from the candidate release" >&2; exit 2; }
 [[ ! -e "$release/server/.env" && ! -L "$release/server/.env" ]] || { echo "deployment archive must not contain server/.env" >&2; exit 2; }
 
 (cd "$release/server" && npm ci --omit=dev --no-audit --fund=false)
@@ -374,6 +375,19 @@ chmod 0600 "$shared_env"
 
 validate_release_layout "candidate release" "$release" || exit 2
 validate_frontend_assets "candidate frontend" "$release" || exit 2
+
+# This forward-compatible, idempotent migration runs while `current` still
+# points at the verified previous release. It removes the unsafe media TTL
+# index, quarantines ambiguous pre-capability media metadata, and backfills
+# policy fields. A failure leaves current and PM2 untouched.
+mkdir -p "$shared/migration-backups"
+chmod 0700 "$shared/migration-backups"
+(
+  cd "$release/server"
+  LIOTAN_CRYPTO_MIGRATION_CONFIRM=APPLY_50_1_0_CRYPTO_STATE_MIGRATION \
+  LIOTAN_MIGRATION_BACKUP_DIR="$shared/migration-backups" \
+    node scripts/migrateCryptoState.js --apply
+)
 
 switch_current "$release" "$deploy_root/current.next"
 if ! resolve_current "post-switch current" "$revision" \

@@ -16,7 +16,8 @@
     "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js",
     "audit:data-inventory": "node scripts/auditDataInventory.js",
     "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js",
-    "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js"
+    "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js",
+    "migrate:crypto": "node scripts/migrateCryptoState.js"
   },
   "keywords": [],
   "author": "",

@@ -187,6 +187,38 @@ test("chat security notice never claims E2EE readiness before MLS is ready", asy
   await expect(page.locator(".chat-e2ee-button")).toHaveCount(0);
 });
 
+test("safety number UI renders a bound QR and requires an explicit comparison", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountSafetyNumber());
+  await expect(page.getByRole("dialog", { name: "Проверка защищённости" })).toBeVisible();
+  await expect(page.locator(".safety-status")).toContainText("получены впервые");
+  await expect(page.locator(".safety-qr")).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await page.locator(".safety-scan-field input").fill("liotan-safety:v2:wrong");
+  await page.getByRole("button", { name: "Сравнить код" }).click();
+  await expect(page.getByRole("alert")).toContainText("не совпадает");
+  await expect(page.locator("#safety-result")).toHaveCount(0);
+  await page.getByRole("button", { name: "Я сравнил цифры" }).click();
+  await expect(page.locator("#safety-result")).toHaveText("verified");
+});
+
+test("device security UI approves pending devices, confirms revoke and protects local recovery", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountCryptoDevices());
+  await expect(page.getByText("Устройства и ключи")).toBeVisible();
+  await page.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(page.getByRole("status")).toContainText("Устройство подтверждено");
+  const thirdDevice = page.locator(".settings-crypto-device-row").filter({ hasText: "00000…0003" });
+  await thirdDevice.getByRole("button", { name: "Отозвать" }).click();
+  await expect(thirdDevice.getByRole("button", { name: "Точно отозвать" })).toBeVisible();
+  await thirdDevice.getByRole("button", { name: "Точно отозвать" }).click();
+  await expect(page.getByRole("status")).toContainText("Сессия отозвана");
+  await page.getByRole("button", { name: "Включить" }).click();
+  await page.locator('.settings-recovery-form input[type="password"]').nth(0).fill("fixture-passphrase-strong");
+  await page.locator('.settings-recovery-form input[type="password"]').nth(1).fill("fixture-passphrase-strong");
+  await page.getByRole("button", { name: "Сохранить" }).click();
+  await expect(page.getByText("Включено")).toBeVisible();
+});
+
 test("settings uses the unified gear icon instead of the old sunburst", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   await page.evaluate(() => window.mountSettingsIcon());

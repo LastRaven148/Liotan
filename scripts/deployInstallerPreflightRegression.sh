@@ -16,9 +16,10 @@ process_name=liotan-api
 create_release_payload() {
   local target=$1
   local marker=$2
-  mkdir -p "$target/server" "$target/client/build/assets"
+  mkdir -p "$target/server/scripts" "$target/client/build/assets"
   printf '{"name":"server","version":"50.1.0"}\n' >"$target/server/package.json"
   printf 'require("http");\n' >"$target/server/server.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateCryptoState.js"
   printf '<!doctype html><script type="module" src="/assets/index-%s.js"></script>\n' "$marker" >"$target/client/build/index.html"
   printf 'console.log("%s");\n' "$marker" >"$target/client/build/assets/index-$marker.js"
   printf '\0asm' >"$target/client/build/assets/core-$marker.wasm"
@@ -149,7 +150,16 @@ set -Eeuo pipefail
 [[ "${1:-}" == "ci" ]] || { echo "unexpected mock npm command" >&2; exit 2; }
 MOCK_NPM
 
-  chmod +x "$bin/pm2" "$bin/curl" "$bin/npm"
+  cat >"$bin/node" <<'MOCK_NODE'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "${1:-}" == "scripts/migrateCryptoState.js" && "${2:-}" == "--apply" ]] || {
+  echo "unexpected mock node command" >&2
+  exit 2
+}
+MOCK_NODE
+
+  chmod +x "$bin/pm2" "$bin/curl" "$bin/node" "$bin/npm"
   printf '%s|%s|50.1.0|online\n' \
     "$deploy_root/current/server/server.js" \
     "$deploy_root/current/server" >"$state"

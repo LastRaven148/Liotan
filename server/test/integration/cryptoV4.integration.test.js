@@ -6,6 +6,7 @@ const { after, before, test } = require("node:test");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const supertest = require("supertest");
 const { io: createSocketClient } = require("socket.io-client");
+const { directoryDevicesHash } = require("../../security/cryptoDirectoryState");
 
 const TEST_SECRET = "liotan-integration-secret-0123456789abcdef0123456789abcdef";
 const CRYPTO_DOMAIN = "integration.crypto.liotan.invalid";
@@ -99,9 +100,200 @@ async function createAuthenticatedUser(username) {
   return { user, username, sessionId, cookie: `liotan_auth=${encodeURIComponent(token)}` };
 }
 
-async function registerDevice(account, { rootKey = null, deviceId = null } = {}) {
-  const next = {
+async function createAdditionalSession(account) {
+  const sessionId = crypto.randomBytes(32).toString("base64url");
+  await Session.create({
+    userId: account.user._id,
+    username: account.username,
+    sessionIdHash: hashSessionId(sessionId),
+    deviceName: "Additional integration device",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000)
+  });
+  return {
     ...account,
+    sessionId,
+    cookie: `liotan_auth=${encodeURIComponent(signAuthToken(account.user, sessionId))}`
+  };
+}
+
+function buildDirectoryUpdate(identity, devices, nextDevice, action, targetDeviceId, rootPrivateKey) {
+  const prospective = devices
+    .filter(device => device.deviceId !== targetDeviceId)
+    .concat(nextDevice);
+  const statement = {
+    v: 1,
+    cryptoUserId: identity.cryptoUserId,
+    version: Number(identity.directory.version) + 1,
+    previousHash: identity.directory.hash,
+    devicesHash: directoryDevicesHash(prospective),
+    action,
+    targetDeviceId,
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  return {
+    prospective,
+    statement,
+    signature: signCanonical(rootPrivateKey, "liotan-device-directory-v1", statement)
+  };
+}
+
+async function prepareDeviceApproval(approver, pending, { signingKey = null, cryptoUserId = "" } = {}) {
+  const listed = await signedJson(approver, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === pending.deviceId);
+  assert.equal(target?.status, "pending");
+  const approval = {
+    v: 1,
+    cryptoUserId: cryptoUserId || approver.cryptoUserId,
+    newDeviceId: target.deviceId,
+    newClientId: target.clientId,
+    requestPublicKey: target.requestPublicKey,
+    credentialThumbprint: target.credentialThumbprint,
+    challenge: target.approvalChallenge,
+    approverClientId: approver.clientId,
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const approvalSignature = signCanonical(
+    signingKey || approver.requestKey.privateKey,
+    "liotan-device-approval-v1",
+    approval
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    approval,
+    approvalSignature,
+    approvedByClientId: approver.clientId,
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: approver.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "approve-device",
+    target.deviceId,
+    approver.rootKey.privateKey
+  );
+  return {
+    path: `/crypto/v4/devices/${target.deviceId}/approve`,
+    body: {
+      approval,
+      approvalSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
+    }
+  };
+}
+
+async function approvePendingDevice(approver, pending) {
+  const prepared = await prepareDeviceApproval(approver, pending);
+  const response = await signedJson(approver, "POST", prepared.path, prepared.body);
+  assert.equal(response.status, 200, response.text);
+  pending.status = "active";
+  return response.body;
+}
+
+async function revokeRegisteredDevice(account, targetDeviceId, { recoveryAcknowledged = false } = {}) {
+  const listed = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === targetDeviceId);
+  assert.equal(target?.status, "active");
+  const revocation = {
+    cryptoUserId: account.cryptoUserId,
+    deviceId: targetDeviceId,
+    revokedAt: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url"),
+    ...(recoveryAcknowledged ? { recoveryAcknowledged: true } : {})
+  };
+  const revocationSignature = signCanonical(
+    account.rootKey.privateKey,
+    "liotan-device-revocation-v1",
+    revocation
+  );
+  const nextDevice = {
+    ...target,
+    status: "revoked",
+    revokedAt: revocation.revokedAt,
+    revocation,
+    revocationSignature
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: account.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "revoke-device",
+    targetDeviceId,
+    account.rootKey.privateKey
+  );
+  return signedJson(account, "POST", `/crypto/v4/devices/${targetDeviceId}/revoke`, {
+    revocation,
+    signature: revocationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+}
+
+async function confirmPendingRecoveryTest(pending) {
+  const bootstrap = await requestFor(
+    pending,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${pending.deviceId}`
+  ).expect(200);
+  const target = bootstrap.body.device;
+  assert.equal(target?.status, "pending");
+  assert.equal(target?.activationMode, "recovery-bootstrap");
+  const confirmation = {
+    v: 1,
+    cryptoUserId: pending.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    challenge: target.approvalChallenge,
+    warningAcknowledged: true,
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const confirmationSignature = signCanonical(
+    pending.rootKey.privateKey,
+    "liotan-recovery-bootstrap-v1",
+    confirmation
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    approval: confirmation,
+    approvalSignature: confirmationSignature,
+    approvedByClientId: "recovery-bootstrap",
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "recovery-bootstrap",
+    target.deviceId,
+    pending.rootKey.privateKey
+  );
+  const response = await requestFor(
+    pending,
+    "POST",
+    `/crypto/v4/devices/${target.deviceId}/recovery-bootstrap`
+  ).set("X-Liotan-CSRF", CSRF_HEADER).send({
+    confirmation,
+    confirmationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+  assert.equal(response.status, 200, response.text);
+  pending.status = "active";
+  return response.body;
+}
+
+async function registerDevice(account, { rootKey = null, deviceId = null, autoApprove = true } = {}) {
+  const sessionAccount = account.deviceId ? await createAdditionalSession(account) : account;
+  const next = {
+    ...sessionAccount,
     rootKey: rootKey || crypto.generateKeyPairSync("ed25519"),
     requestKey: crypto.generateKeyPairSync("ed25519"),
     deviceId: deviceId || crypto.randomBytes(8).toString("hex")
@@ -110,7 +302,8 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
   next.cryptoUserId = bootstrap.body.identity.cryptoUserId;
   next.rootPublicKey = rawPublicKey(next.rootKey.publicKey);
 
-  if (!bootstrap.body.identity.rootPublicKey) {
+  let identity = bootstrap.body.identity;
+  if (!identity.rootPublicKey) {
     const proofValue = {
       cryptoUserId: next.cryptoUserId,
       username: next.username,
@@ -118,16 +311,17 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
       createdAt: new Date().toISOString(),
       nonce: crypto.randomBytes(24).toString("base64url")
     };
-    await requestFor(next, "POST", "/crypto/v4/identity")
+    const pinned = await requestFor(next, "POST", "/crypto/v4/identity")
       .set("X-Liotan-CSRF", CSRF_HEADER)
       .send({
         cryptoUserId: next.cryptoUserId,
         rootPublicKey: next.rootPublicKey,
         proof: { ...proofValue, signature: signCanonical(next.rootKey.privateKey, "liotan-account-root-v1", proofValue) }
-      })
-      .expect(201);
+      });
+    assert.equal(pinned.status, 201, pinned.text);
+    identity = pinned.body.identity;
   } else {
-    assert.equal(bootstrap.body.identity.rootPublicKey, next.rootPublicKey);
+    assert.equal(identity.rootPublicKey, next.rootPublicKey);
   }
 
   const now = new Date();
@@ -144,13 +338,47 @@ async function registerDevice(account, { rootKey = null, deviceId = null } = {})
   };
   next.clientId = manifest.clientId;
   next.manifest = manifest;
-  await requestFor(next, "POST", "/crypto/v4/devices")
+  const manifestSignature = signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest);
+  const devices = bootstrap.body.accountDevices || [];
+  const activeCount = devices.filter(device => device.status === "active").length;
+  const status = devices.length === 0 ? "active" : "pending";
+  const activationMode = devices.length === 0
+    ? "initial"
+    : activeCount > 0 ? "device-approval" : "recovery-bootstrap";
+  const nextDevice = {
+    deviceId: next.deviceId,
+    clientId: next.clientId,
+    requestPublicKey: manifest.requestPublicKey,
+    credentialThumbprint: manifest.credentialThumbprint,
+    manifest,
+    manifestSignature,
+    status,
+    activationMode
+  };
+  const directory = buildDirectoryUpdate(
+    identity,
+    devices,
+    nextDevice,
+    "register-device",
+    next.deviceId,
+    next.rootKey.privateKey
+  );
+  const registered = await requestFor(next, "POST", "/crypto/v4/devices")
     .set("X-Liotan-CSRF", CSRF_HEADER)
     .send({
       manifest,
-      signature: signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest)
-    })
-    .expect(201);
+      signature: manifestSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
+    });
+  assert.equal(registered.status, 201, registered.text);
+  next.status = registered.body.device.status;
+  next.activationMode = registered.body.device.activationMode;
+  if (next.status === "pending" && autoApprove) {
+    if (next.activationMode === "device-approval") await approvePendingDevice(account, next);
+    else await confirmPendingRecoveryTest(next);
+  }
+  if (next.status !== "active") return next;
 
   const packages = Array.from({ length: 3 }, () => {
     const payload = crypto.randomBytes(128).toString("base64url");
@@ -333,17 +561,7 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
   assert.deepEqual(atHead.body.events, []);
   assert.equal(atHead.body.recipientHead, events.body.recipientHead);
 
-  const revocation = {
-    cryptoUserId: bob.cryptoUserId,
-    deviceId: bob.deviceId,
-    revokedAt: new Date().toISOString(),
-    nonce: crypto.randomBytes(24).toString("base64url")
-  };
-  const revokePath = `/crypto/v4/devices/${bob.deviceId}/revoke`;
-  const revoke = await signedJson(bob, "POST", revokePath, {
-    revocation,
-    signature: signCanonical(bob.rootKey.privateKey, "liotan-device-revocation-v1", revocation)
-  });
+  const revoke = await revokeRegisteredDevice(bob, bob.deviceId, { recoveryAcknowledged: true });
   assert.equal(revoke.status, 200, revoke.text);
 
   const removeBegin = await signedJson(alice, "POST", operationPath, {});
@@ -376,6 +594,42 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
   assert.equal(conversation.blockedForEpochChange, false);
 });
 
+test("new cryptographic devices remain pending until an existing device signs a bound approval", async () => {
+  const alice = await createAccount("appr_alice_t");
+  const pending = await registerDevice(alice, {
+    rootKey: alice.rootKey,
+    autoApprove: false
+  });
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.activationMode, "device-approval");
+
+  const pendingAccess = await signedJson(pending, "GET", "/crypto/v4/devices");
+  assert.equal(pendingAccess.status, 401, pendingAccess.text);
+
+  const forged = await prepareDeviceApproval(alice, pending, {
+    signingKey: crypto.generateKeyPairSync("ed25519").privateKey
+  });
+  const forgedResult = await signedJson(alice, "POST", forged.path, forged.body);
+  assert.equal(forgedResult.status, 400, forgedResult.text);
+
+  const otherAccount = await createAccount("appr_other_t");
+  const transferred = await prepareDeviceApproval(alice, pending, {
+    signingKey: otherAccount.requestKey.privateKey,
+    cryptoUserId: otherAccount.cryptoUserId
+  });
+  const transferredResult = await signedJson(alice, "POST", transferred.path, transferred.body);
+  assert.equal(transferredResult.status, 400, transferredResult.text);
+
+  const valid = await prepareDeviceApproval(alice, pending);
+  const approved = await signedJson(alice, "POST", valid.path, valid.body);
+  assert.equal(approved.status, 200, approved.text);
+  const replay = await signedJson(alice, "POST", valid.path, valid.body);
+  assert.notEqual(replay.status, 200, replay.text);
+
+  const activeAccess = await signedJson(pending, "GET", "/crypto/v4/devices");
+  assert.equal(activeAccess.status, 200, activeAccess.text);
+});
+
 test("stale self-update cannot clear the epoch block after device revocation", async () => {
   const alice = await createAccount("s_alice_test");
   const bob = await createAccount("s_bob_test");
@@ -389,16 +643,7 @@ test("stale self-update cannot clear the epoch block after device revocation", a
   assert.equal(staleBegin.status, 201, staleBegin.text);
   assert.equal(staleBegin.body.operation.type, "update");
 
-  const revocation = {
-    cryptoUserId: bob.cryptoUserId,
-    deviceId: bob.deviceId,
-    revokedAt: new Date().toISOString(),
-    nonce: crypto.randomBytes(24).toString("base64url")
-  };
-  const revoke = await signedJson(bob, "POST", `/crypto/v4/devices/${bob.deviceId}/revoke`, {
-    revocation,
-    signature: signCanonical(bob.rootKey.privateKey, "liotan-device-revocation-v1", revocation)
-  });
+  const revoke = await revokeRegisteredDevice(bob, bob.deviceId, { recoveryAcknowledged: true });
   assert.equal(revoke.status, 200, revoke.text);
 
   const staleCommitPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/operations/${encodeURIComponent(staleBegin.body.operation.operationId)}/commit`;
@@ -716,6 +961,44 @@ test("expired temporary and deletion-pending media cleanup is idempotent", async
     now: new Date()
   });
   assert.equal(second, 0);
+});
+
+test("crypto state migration removes the unsafe TTL index and quarantines ambiguous media idempotently", async () => {
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const migration = require("../../scripts/migrateCryptoState");
+  const indexes = await AttachmentUpload.collection.indexes();
+  const expiresIndex = indexes.find(index => index.key?.expiresAt === 1);
+  if (expiresIndex) await AttachmentUpload.collection.dropIndex(expiresIndex.name);
+  await AttachmentUpload.collection.createIndex(
+    { expiresAt: 1 },
+    { name: "expiresAt_1", expireAfterSeconds: 0 }
+  );
+  const inserted = await AttachmentUpload.collection.insertOne({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: "migration_test",
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    storageKey: "integration/legacy-unverified",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  const first = await migration.applyMigration();
+  assert.equal(first.mediaQuarantined >= 1, true);
+  const migrated = await AttachmentUpload.collection.findOne({ _id: inserted.insertedId });
+  assert.equal(migrated.lifecycleState, "legacy-unverified");
+  assert.equal(migrated.expiresAt, null);
+  const migratedIndexes = await AttachmentUpload.collection.indexes();
+  assert.equal(migratedIndexes.some(index =>
+    index.key?.expiresAt === 1 && index.expireAfterSeconds !== undefined), false);
+  const repeated = await migration.applyMigration();
+  assert.equal(repeated.alreadyApplied, true);
+  await AttachmentUpload.collection.deleteOne({ _id: inserted.insertedId });
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {

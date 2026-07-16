@@ -83,7 +83,7 @@ const attachmentUploadSchema = new mongoose.Schema(
     },
     lifecycleState: {
       type: String,
-      enum: ["temporary", "committed", "deletion-pending"],
+      enum: ["temporary", "committed", "deletion-pending", "legacy-unverified"],
       default: "temporary",
       index: true
     },

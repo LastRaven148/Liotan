@@ -296,7 +296,7 @@ export default function SettingsModal({
         ) : page === "sound" ? (
           <SoundPage back={() => setPage("main")} labels={labels} />
         ) : page === "devices" ? (
-          <DevicesPage back={() => setPage("main")} labels={labels} state={{ sessions }} actions={{ revoke, logoutOthers }} />
+          <DevicesPage back={() => setPage("main")} labels={labels} state={{ sessions, username }} actions={{ revoke, logoutOthers }} />
         ) : page === "language" ? (
           <LanguagePage back={() => setPage("main")} labels={labels} language={language} setLanguage={setLanguage} />
         ) : (

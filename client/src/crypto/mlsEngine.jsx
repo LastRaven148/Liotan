@@ -17,7 +17,7 @@ import {
   textEncoder,
   wipe
 } from "./encoding";
-import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest } from "./cryptoApi";
+import { configureCryptoSigner, cryptoBootstrap, signedCryptoRequest, unsignedCryptoPost } from "./cryptoApi";
 import {
   getEncryptedRecord,
   getEncryptedHistoryRecord,
@@ -27,6 +27,7 @@ import {
   putEncryptedRecord
 } from "./recoveryStore";
 import {
+  BACKGROUND_MAINTENANCE_INTERVAL_MS,
   MLS_CIPHER_SUITE as SUITE,
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
@@ -46,14 +47,22 @@ import {
   shouldAutomaticallyRepairDatabase
 } from "./mls/databaseStorage";
 import { MlsStorageError, reportCryptoDiagnostic } from "./mls/storageError";
+import { buildDirectoryMutation } from "./mls/directory";
+import { reconcileSyncCursor, validateRecipientEventPage } from "./mls/syncCursor";
 import {
+  approveCryptoDevice,
   listCryptoDevices,
   publishKeyPackagesIfNeeded,
   registerCryptographicIdentity,
   revokeCryptoDevice
 } from "./mls/identity";
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
-import { validateLocalRoster, verifyDirectory } from "./mls/trust";
+import {
+  markDirectoryVerified,
+  validateLocalRoster,
+  verifyAndPinAccountDirectory,
+  verifyDirectory
+} from "./mls/trust";
 import { destroyUniffi, destroyUniffiAll } from "./mls/uniffiLifecycle";
 const conversationByChat = new Map();
 const conversationById = new Map();
@@ -107,6 +116,8 @@ class LiotanMlsEngine {
     this.historyMigrations = new Map();
     this.closing = false;
     this.pollTimer = null;
+    this.maintenanceTimer = null;
+    this.maintenanceQueue = new Map();
     this.initializationStage = "created";
     this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
   }
@@ -161,12 +172,20 @@ class LiotanMlsEngine {
     this.pollTimer = window.setInterval(() => this.syncAll().catch(error => {
       if (import.meta.env.DEV) console.warn("MLS periodic sync failed", error);
     }), 15000);
+    this.maintenanceTimer = window.setInterval(() => {
+      this.maintainNextDialog().catch(error => {
+        if (import.meta.env.DEV) console.warn("MLS background maintenance failed", error);
+      });
+    }, BACKGROUND_MAINTENANCE_INTERVAL_MS);
     this.initializationStage = "ready";
   }
 
   async closeDatabase() {
     if (this.pollTimer) window.clearInterval(this.pollTimer);
     this.pollTimer = null;
+    if (this.maintenanceTimer) window.clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = null;
+    this.maintenanceQueue.clear();
     const database = this.database;
     const core = this.core;
     const credentialRef = this.credentialRef;
@@ -197,8 +216,26 @@ class LiotanMlsEngine {
     return listCryptoDevices(this);
   }
 
+  async approveCryptoDevice(deviceId) {
+    return approveCryptoDevice(this, deviceId);
+  }
+
   async revokeCryptoDevice(deviceId) {
     return revokeCryptoDevice(this, deviceId);
+  }
+
+  async markConversationSafetyVerified(chatKey) {
+    const state = conversationByChat.get(String(chatKey || ""));
+    if (!state?.ready || !state.directory?.length) throw new Error("Protected conversation is not ready");
+    const trustStates = { ...(state.trustStates || {}) };
+    for (const user of state.directory) {
+      trustStates[user.username] = await markDirectoryVerified(this, user.username, user.identity);
+    }
+    state.trustStates = trustStates;
+    window.dispatchEvent(new CustomEvent("liotan:e2ee-updated", {
+      detail: { chatKey: state.chatKey, reason: "safety-verified" }
+    }));
+    return getConversationSecurityInfo(state.chatKey);
   }
 
   async sendCommitBundle(bundle) {
@@ -265,7 +302,7 @@ class LiotanMlsEngine {
         method: "POST",
         body: this.chatDescriptor(key, dialog)
       });
-      await this.verifyDirectory(response);
+      response.trustStates = await this.verifyDirectory(response);
       const state = {
         ...response,
         chatKey: key,
@@ -676,7 +713,8 @@ class LiotanMlsEngine {
     if (this.syncing.has(state.conversationId)) return this.syncing.get(state.conversationId);
     const promise = (async () => {
       let checkpoint = await this.readSyncCheckpoint(state);
-      let after = Number(checkpoint.processedSequence || 0);
+      const localHint = Number(localStorage.getItem(`liotan:mls-sequence:${state.conversationId}`) || 0);
+      let after = reconcileSyncCursor({ checkpoint, localHint }).after;
       localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
       while (true) {
         const path = `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/events?after=${after}&limit=100`;
@@ -701,16 +739,10 @@ class LiotanMlsEngine {
           throw err;
         }
         const recipientHead = Math.max(0, Number(response.recipientHead) || 0);
-        if (Number(checkpoint.serverHead || 0) > recipientHead || after > recipientHead) {
-          const error = new Error("MLS recipient event log moved backwards; synchronization stopped");
-          error.code = "mls-recipient-log-rollback";
-          reportCryptoDiagnostic(error, { stage: "conversation-sync" });
-          state.ready = false;
-          throw error;
-        }
-        if (!response.events.length && after < recipientHead) {
-          const error = new Error("MLS recipient event log has an unexpected gap");
-          error.code = "mls-recipient-log-gap";
+        try {
+          reconcileSyncCursor({ checkpoint, localHint: after, recipientHead });
+          validateRecipientEventPage({ after, recipientHead, events: response.events });
+        } catch (error) {
           reportCryptoDiagnostic(error, { stage: "conversation-sync" });
           state.ready = false;
           throw error;
@@ -801,6 +833,16 @@ class LiotanMlsEngine {
     // Resolve only a tiny preview window. Preparing every dialog used to run
     // full MLS reconciliation for up to 50 chats during startup and competed
     // with the conversation the user was actually opening.
+    for (const dialog of dialogs) {
+      const chatKey = dialog.chatKey || dialog.username || (dialog.groupId ? `group:${dialog.groupId}` : "");
+      if (!chatKey) continue;
+      this.maintenanceQueue.set(String(chatKey), {
+        chatKey: String(chatKey),
+        dialog,
+        failures: 0,
+        retryAfter: 0
+      });
+    }
     for (const dialog of dialogs.slice(0, 3)) {
       const chatKey = dialog.chatKey || dialog.username || (dialog.groupId ? `group:${dialog.groupId}` : "");
       if (!chatKey) continue;
@@ -809,6 +851,32 @@ class LiotanMlsEngine {
       } catch (err) {
         if (import.meta.env.DEV) console.warn("MLS dialog sync failed", chatKey, err);
       }
+    }
+    this.maintainNextDialog().catch(error => {
+      if (import.meta.env.DEV) console.warn("Initial MLS background maintenance failed", error);
+    });
+  }
+
+  async maintainNextDialog() {
+    if (this.closing || document.visibilityState === "hidden" || navigator.onLine === false) return;
+    const now = Date.now();
+    const candidate = [...this.maintenanceQueue.values()]
+      .find(item => Number(item.retryAfter || 0) <= now && !this.ensuring.has(item.chatKey));
+    if (!candidate) return;
+    this.maintenanceQueue.delete(candidate.chatKey);
+    try {
+      await this.ensureConversation(candidate.chatKey, candidate.dialog);
+      candidate.failures = 0;
+      candidate.retryAfter = now + SELF_UPDATE_INTERVAL_MS;
+    } catch (error) {
+      candidate.failures = Math.min(8, Number(candidate.failures || 0) + 1);
+      candidate.retryAfter = now + Math.min(
+        SELF_UPDATE_INTERVAL_MS,
+        BACKGROUND_MAINTENANCE_INTERVAL_MS * (2 ** candidate.failures)
+      );
+      throw error;
+    } finally {
+      this.maintenanceQueue.set(candidate.chatKey, candidate);
     }
   }
 
@@ -939,6 +1007,10 @@ async function createInitializedEngine({ username, recoveryKey, generation }) {
     } catch (firstError) {
       const failedStage = next.initializationStage;
       await next.closeDatabase();
+      if (["mls-device-approval-required", "mls-recovery-bootstrap-required", "mls-device-inactive"]
+        .includes(firstError?.code)) {
+        throw firstError;
+      }
       const latestBootstrap = await cryptoBootstrap(deviceId).catch(() => bootstrap);
       const isStorageStage = shouldAutomaticallyRepairDatabase(failedStage, null);
       if (!isStorageStage) {
@@ -1030,6 +1102,77 @@ export function initializeMlsEngine({ username, recoveryKey }) {
   return engineInitialization;
 }
 
+export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
+  const cleanUsername = String(username || "").trim();
+  if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required");
+  if (engine || engineInitialization) throw new Error("Close the active MLS session before recovery bootstrap");
+  const deviceId = getOrCreateDeviceId(cleanUsername);
+  const bootstrap = await cryptoBootstrap(deviceId);
+  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  try {
+    const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
+    if (!bootstrap.identity.rootPublicKey ||
+      !constantTimeTextEqual(bootstrap.identity.rootPublicKey, derivedRoot)) {
+      throw new Error("Recovery key does not match the account identity");
+    }
+    const target = bootstrap.device;
+    if (!target || target.status !== "pending" || target.activationMode !== "recovery-bootstrap") {
+      throw new Error("No pending recovery-bootstrap device is available");
+    }
+    const temporaryEngine = {
+      username: cleanUsername,
+      bootstrap,
+      keys
+    };
+    await verifyAndPinAccountDirectory(temporaryEngine, {
+      username: cleanUsername,
+      identity: bootstrap.identity,
+      deviceCommitments: bootstrap.deviceCommitments || [],
+      allDevices: bootstrap.accountDevices || []
+    });
+    const confirmation = {
+      v: 1,
+      cryptoUserId: bootstrap.identity.cryptoUserId,
+      deviceId: target.deviceId,
+      clientId: target.clientId,
+      challenge: target.approvalChallenge,
+      warningAcknowledged: true,
+      timestamp: new Date().toISOString(),
+      nonce: randomId(24)
+    };
+    const confirmationSignature = await signCanonical(
+      keys.rootSecretKey,
+      "liotan-recovery-bootstrap-v1",
+      confirmation
+    );
+    const nextDevice = {
+      ...target,
+      status: "active",
+      approval: confirmation,
+      approvalSignature: confirmationSignature,
+      approvedByClientId: "recovery-bootstrap",
+      approvalChallenge: ""
+    };
+    const directory = await buildDirectoryMutation(temporaryEngine, {
+      devices: bootstrap.accountDevices || [],
+      nextDevice,
+      action: "recovery-bootstrap",
+      targetDeviceId: target.deviceId
+    });
+    return await unsignedCryptoPost(
+      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/recovery-bootstrap`,
+      {
+        confirmation,
+        confirmationSignature,
+        directoryUpdate: directory.statement,
+        directorySignature: directory.signature
+      }
+    );
+  } finally {
+    wipeEngineKeys(keys);
+  }
+}
+
 export async function reprovisionMlsDevice({ username, recoveryKey }) {
   const cleanUsername = String(username || "").trim();
   if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required for device recovery");
@@ -1045,16 +1188,43 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     }
     if (bootstrap.device?.status === "active") {
       configureCryptoSigner({ deviceId: oldDeviceId, requestSecretKey: keys.requestSecretKey });
+      const temporaryEngine = { username: cleanUsername, bootstrap, keys };
+      await verifyAndPinAccountDirectory(temporaryEngine, {
+        username: cleanUsername,
+        identity: bootstrap.identity,
+        deviceCommitments: bootstrap.deviceCommitments || [],
+        allDevices: bootstrap.accountDevices || []
+      });
       const revocation = {
         cryptoUserId: bootstrap.identity.cryptoUserId,
         deviceId: oldDeviceId,
         revokedAt: new Date().toISOString(),
-        nonce: randomId(24)
+        nonce: randomId(24),
+        recoveryAcknowledged: true,
+        reprovisionSession: true
       };
       const signature = await signCanonical(keys.rootSecretKey, "liotan-device-revocation-v1", revocation);
+      const nextDevice = {
+        ...bootstrap.device,
+        status: "revoked",
+        revokedAt: revocation.revokedAt,
+        revocation,
+        revocationSignature: signature
+      };
+      const directory = await buildDirectoryMutation(temporaryEngine, {
+        devices: bootstrap.accountDevices || [],
+        nextDevice,
+        action: "revoke-device",
+        targetDeviceId: oldDeviceId
+      });
       await signedCryptoRequest(`/crypto/v4/devices/${encodeURIComponent(oldDeviceId)}/revoke`, {
         method: "POST",
-        body: { revocation, signature }
+        body: {
+          revocation,
+          signature,
+          directoryUpdate: directory.statement,
+          directorySignature: directory.signature
+        }
       });
     }
     configureCryptoSigner(null);
@@ -1064,7 +1234,13 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     configureCryptoSigner(null);
     wipeEngineKeys(keys);
   }
-  return initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  try {
+    return await initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  } catch (error) {
+    if (error?.code !== "mls-recovery-bootstrap-required") throw error;
+    await confirmPendingRecoveryDevice({ username: cleanUsername, recoveryKey });
+    return initializeMlsEngine({ username: cleanUsername, recoveryKey });
+  }
 }
 
 export function getMlsEngine() {
@@ -1076,17 +1252,56 @@ export function getConversationSecurityInfo(chatKey) {
   const state = conversationByChat.get(String(chatKey || ""));
   if (!state?.ready || !state.initialized || state.blockedForEpochChange || !state.directory?.length) return null;
   const roots = state.directory
-    .map(user => ({ username: user.username, rootFingerprint: user.identity?.rootFingerprint || "" }))
+    .map(user => ({
+      username: user.username,
+      rootFingerprint: user.identity?.rootFingerprint || "",
+      directoryHash: user.identity?.directory?.hash || "",
+      directoryVersion: Number(user.identity?.directory?.version || 0),
+      trustStatus: state.trustStates?.[user.username]?.status || "first-seen",
+      verifiedAt: state.trustStates?.[user.username]?.verifiedAt || null
+    }))
     .sort((left, right) => left.username.localeCompare(right.username));
-  if (roots.some(item => !item.rootFingerprint)) return null;
-  const fingerprint = sha256Base64Url(canonicalJson(["liotan-safety-number-v1", roots]));
+  if (roots.some(item => !item.rootFingerprint || !item.directoryHash)) return null;
+  const computed = computeSafetyNumber(roots);
+  if (!computed) return null;
+  const statuses = roots.map(item => item.trustStatus);
+  const verificationStatus = statuses.includes("changed")
+    ? "changed"
+    : statuses.every(status => status === "verified")
+      ? "verified"
+      : statuses.every(status => status === "first-seen") ? "first-seen" : "unverified";
   return {
     protocol: "MLS 1.0 (RFC 9420)",
     conversationId: state.conversationId,
-    fingerprint,
-    formatted: fingerprint.match(/.{1,5}/g)?.join(" ") || fingerprint,
-    participants: roots.map(item => item.username)
+    fingerprint: computed.fingerprint,
+    formatted: computed.formatted,
+    participants: roots,
+    verificationStatus,
+    qrPayload: computed.qrPayload
   };
+}
+
+export function computeSafetyNumber(participants) {
+  const binding = (participants || []).map(item => ({
+    username: String(item.username || ""),
+    rootFingerprint: String(item.rootFingerprint || ""),
+    directoryHash: String(item.directoryHash || ""),
+    directoryVersion: Number(item.directoryVersion || 0)
+  })).sort((left, right) => left.username.localeCompare(right.username));
+  if (!binding.length || binding.some(item => !item.username || !item.rootFingerprint || !item.directoryHash)) {
+    return null;
+  }
+  const fingerprint = sha256Base64Url(canonicalJson(["liotan-safety-number-v2", binding]));
+  const decimal = BigInt(`0x${bytesToHex(base64UrlToBytes(fingerprint, 32))}`).toString(10).padStart(78, "0");
+  return {
+    fingerprint,
+    formatted: decimal.match(/.{1,6}/g)?.join(" ") || decimal,
+    qrPayload: `liotan-safety:v2:${fingerprint}`
+  };
+}
+
+export async function markConversationSafetyVerified(chatKey) {
+  return getMlsEngine().markConversationSafetyVerified(chatKey);
 }
 
 export async function resetMlsEngine() {

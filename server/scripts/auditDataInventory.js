@@ -22,6 +22,7 @@ async function run() {
   const CryptoDevice = model("CryptoDevice");
   const CryptoConversation = model("CryptoConversation");
   const CryptoEvent = model("CryptoEvent");
+  const CryptoDirectoryEntry = model("CryptoDirectoryEntry");
   const users = await User.find({}, "username displayName emailVerified e2eePublicKey avatarStorageKey").lean();
   const now = new Date();
   const inventory = [];
@@ -62,7 +63,8 @@ async function run() {
       identities: await CryptoIdentity.countDocuments({}),
       devices: await CryptoDevice.countDocuments({}),
       conversations: await CryptoConversation.countDocuments({}),
-      events: await CryptoEvent.countDocuments({})
+      events: await CryptoEvent.countDocuments({}),
+      directoryEntries: await CryptoDirectoryEntry.countDocuments({})
     },
     messages: await Messages.countDocuments({}),
     uploads

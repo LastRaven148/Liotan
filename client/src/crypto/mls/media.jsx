@@ -33,6 +33,46 @@ function yieldToBrowser() {
   });
 }
 
+async function createCiphertextSink(bindingId) {
+  if (navigator.storage?.getDirectory) {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const name = `liotan-media-${bindingId}.ciphertext`;
+      const handle = await root.getFileHandle(name, { create: true });
+      const writable = await handle.createWritable({ keepExistingData: false });
+      return {
+        async write(bytes) { await writable.write(bytes); },
+        async finish() {
+          await writable.close();
+          return handle.getFile();
+        },
+        async cleanup() {
+          try { await writable.abort(); } catch {}
+          try { await root.removeEntry(name); } catch {}
+        }
+      };
+    } catch {
+      // OPFS is an optimization, not a security dependency. Safari private
+      // mode and constrained browsers may deny it, so retain a bounded Blob
+      // fallback without weakening encryption.
+    }
+  }
+  const parts = [];
+  return {
+    async write(bytes) { parts.push(new Uint8Array(bytes)); },
+    async finish() {
+      const blob = new Blob(parts, { type: "application/octet-stream" });
+      parts.forEach(wipe);
+      parts.length = 0;
+      return blob;
+    },
+    async cleanup() {
+      parts.forEach(wipe);
+      parts.length = 0;
+    }
+  };
+}
+
 export async function encryptAndUploadMedia(state, file, clientMessageId, options = {}) {
   const keyBytes = randomBytes(32);
   const noncePrefix = randomBytes(8);
@@ -40,7 +80,8 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
   const chunkSize = selectChunkSize(file.size);
   const chunks = Math.max(1, Math.ceil(file.size / chunkSize));
   const aesKey = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt"]);
-  const encryptedParts = [MEDIA_MAGIC];
+  const sink = await createCiphertextSink(bindingId);
+  await sink.write(MEDIA_MAGIC);
   const hasher = sha256.create().update(MEDIA_MAGIC);
   try {
     async function encryptChunk(index) {
@@ -71,14 +112,16 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     }
 
     for (let index = 0; index < chunks; index += 2) {
-      const batch = [];
-      for (let offset = 0; offset < 2 && index + offset < chunks; offset += 1) {
-        batch.push(encryptChunk(index + offset));
-      }
-      const encryptedBatch = await Promise.all(batch);
+      const encryptedBatch = await Promise.all(
+        [index, index + 1].filter(value => value < chunks).map(encryptChunk)
+      );
       for (const encrypted of encryptedBatch) {
-        encryptedParts.push(encrypted);
-        hasher.update(encrypted);
+        try {
+          hasher.update(encrypted);
+          await sink.write(encrypted);
+        } finally {
+          wipe(encrypted);
+        }
       }
       reportProgress(options.onProgress, {
         stage: "encrypting",
@@ -88,7 +131,7 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
       if (index + encryptedBatch.length < chunks) await yieldToBrowser();
     }
     const ciphertextHash = bytesToBase64Url(hasher.digest());
-    const blob = new Blob(encryptedParts, { type: "application/octet-stream" });
+    const blob = await sink.finish();
     const signingBody = {
       conversationId: state.conversationId,
       clientMessageId,
@@ -101,10 +144,12 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
     Object.entries(signingBody).forEach(([name, value]) => formData.set(name, value));
     formData.set("attachment", new File([blob], `${bindingId}.liotanmedia`, { type: "application/octet-stream" }));
     reportProgress(options.onProgress, { stage: "uploading", completed: 0, total: blob.size });
-    const upload = await signedCryptoRequest("/crypto/v4/media/upload", {
+    const uploadRequest = options.uploadRequest || signedCryptoRequest;
+    const upload = await uploadRequest("/crypto/v4/media/upload", {
       method: "POST",
       body: signingBody,
-      formData
+      formData,
+      signal: options.signal
     });
     reportProgress(options.onProgress, { stage: "uploading", completed: blob.size, total: blob.size });
     return {
@@ -138,6 +183,7 @@ export async function encryptAndUploadMedia(state, file, clientMessageId, option
       }
     };
   } finally {
+    await sink.cleanup();
     wipe(keyBytes);
     wipe(noncePrefix);
   }
