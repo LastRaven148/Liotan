@@ -993,8 +993,13 @@ window.mountNotifications = function mountNotifications() {
   );
 };
 
-window.mountDialogDeletion = function mountDialogDeletion({ group = false, language = "en" } = {}) {
+window.mountDialogDeletion = function mountDialogDeletion({ group = false, language = "en", pending = false } = {}) {
   localStorage.setItem("language", language);
+  let finishDeletion = () => {};
+  const deleteConversation = pending
+    ? () => new Promise(resolve => { finishDeletion = resolve; })
+    : () => Promise.resolve();
+  window.__finishFixtureDeletion = () => finishDeletion();
   const dialog = group
     ? { type: "group", groupId: "507f1f77bcf86cd799439011", chatKey: "group:507f1f77bcf86cd799439011", owner: "fixture-user", title: "A very long encrypted research group name that must wrap safely" }
     : { type: "private", username: "peer-user", chatKey: "peer-user", displayName: "A very long peer display name that must wrap safely", lastMessage: "Encrypted message" };
@@ -1005,7 +1010,7 @@ window.mountDialogDeletion = function mountDialogDeletion({ group = false, langu
           dialog={dialog}
           activeChat=""
           openChat={() => {}}
-          deleteChat={() => {}}
+          deleteChat={deleteConversation}
           unread={{}}
           username="fixture-user"
           isPinned={false}
@@ -1013,7 +1018,7 @@ window.mountDialogDeletion = function mountDialogDeletion({ group = false, langu
           togglePin={() => {}}
           toggleArchive={() => {}}
           showArchive={false}
-          deleteGroupDialog={() => {}}
+          deleteGroupDialog={deleteConversation}
         />
       </div>
     </LanguageProvider>

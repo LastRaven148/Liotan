@@ -417,7 +417,10 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
       .then(() => {
         if (activeChatRef.current === chat) closeChat();
       })
-      .catch(err => alert(err?.message || "Не удалось удалить чат для всех участников"));
+      .catch(err => {
+        alert(err?.message || "Не удалось удалить чат для всех участников");
+        throw err;
+      });
   }
 
   function handleKey(event) {

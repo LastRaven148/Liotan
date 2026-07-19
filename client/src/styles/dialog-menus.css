@@ -85,6 +85,13 @@
   font-weight:500;
 }
 
+.dialog-delete-modal-error{
+  margin:-6px 0 14px;
+  color:var(--color-danger);
+  font-size:13px;
+  line-height:1.4;
+}
+
 .dialog-delete-checkbox-row{
   display:flex;
   align-items:center;
@@ -167,6 +174,11 @@
 
 .dialog-delete-modal-actions button:hover{
   background:rgba(255,255,255,.06);
+}
+
+.dialog-delete-modal-actions button:disabled{
+  opacity:.58;
+  cursor:wait;
 }
 
 .telegram-menu.compact-menu{

@@ -120,6 +120,7 @@ class LiotanMlsEngine {
     this.ensuring = new Map();
     this.sendQueues = new Map();
     this.historyMigrations = new Map();
+    this.deletionRequests = new Map();
     this.purgingConversations = new Set();
     this.invalidationSync = null;
     this.closing = false;
@@ -315,17 +316,40 @@ class LiotanMlsEngine {
 
   async deleteConversation(chatKey, dialog = null) {
     const state = conversationByChat.get(String(chatKey)) || await this.resolveConversation(chatKey, dialog);
-    const idempotencyKey = randomId(24);
-    const result = await signedCryptoRequest(
-      `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/deletion`,
-      {
-        method: "POST",
-        body: { confirm: true },
-        headers: { "Idempotency-Key": idempotencyKey }
+    const existing = this.deletionRequests.get(state.conversationId);
+    if (existing) return existing;
+    const request = (async () => {
+      let result = await signedCryptoRequest(
+        `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/deletion`,
+        {
+          method: "POST",
+          body: { confirm: true },
+          headers: { "Idempotency-Key": randomId(24) }
+        }
+      );
+      for (let attempt = 0; result?.state !== "completed" && !result?.terminal && attempt < 30; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, Math.min(5000, 750 * (attempt + 1))));
+        result = await signedCryptoRequest(
+          `/crypto/v4/deletions/${encodeURIComponent(result.workflowId)}`
+        );
       }
-    );
-    await this.purgeConversation(state.conversationId, state.chatKey);
-    return result;
+      if (result?.state !== "completed") {
+        const error = new Error(result?.terminal
+          ? "Conversation deletion requires operator reconciliation."
+          : "Conversation deletion is still removing encrypted media. Retry status shortly.");
+        error.code = result?.terminal ? "conversation-deletion-blocked" : "conversation-deletion-pending";
+        error.workflowId = result?.workflowId || "";
+        throw error;
+      }
+      await this.purgeConversation(state.conversationId, state.chatKey);
+      return result;
+    })();
+    this.deletionRequests.set(state.conversationId, request);
+    try {
+      return await request;
+    } finally {
+      this.deletionRequests.delete(state.conversationId);
+    }
   }
 
   async hideMessageForAccount(chatKey, dialog, clientMessageId) {
@@ -345,6 +369,7 @@ class LiotanMlsEngine {
     if (this.manifestRenewalTimer) window.clearTimeout(this.manifestRenewalTimer);
     this.manifestRenewalTimer = null;
     this.maintenanceQueue.clear();
+    this.deletionRequests.clear();
     const database = this.database;
     const core = this.core;
     const credentialRef = this.credentialRef;

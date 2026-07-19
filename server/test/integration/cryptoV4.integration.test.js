@@ -1790,3 +1790,182 @@ test("account deletion remains frozen and resumable while an R2 object retry is 
   assert.equal(completed.accountUsername, undefined);
   assert.equal(completed.requestedByUserId, undefined);
 });
+
+test("message hide is account-scoped, durable across devices and preserves peer ciphertext", async () => {
+  const alice = await createAccount("hide_alice");
+  const bob = await createAccount("hide_bob");
+  const aliceSecond = await registerDevice(alice, { rootKey: alice.rootKey });
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const clientMessageId = crypto.randomUUID();
+  const messagePath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const sent = await signedJson(alice, "POST", messagePath, {
+    clientMessageId,
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url")
+  });
+  assert.equal(sent.status, 201, sent.text);
+
+  const hidePath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages/${clientMessageId}/hide`;
+  const hidden = await signedJson(alice, "POST", hidePath, {});
+  assert.equal(hidden.status, 201, hidden.text);
+  const duplicate = await signedJson(alice, "POST", hidePath, {});
+  assert.equal(duplicate.status, 201, duplicate.text);
+
+  const MessageVisibility = require("../../models/MessageVisibility");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  const CryptoEvent = require("../../models/CryptoEvent");
+  assert.equal(await MessageVisibility.countDocuments({
+    userId: alice.user._id,
+    conversationId,
+    clientMessageId
+  }), 1);
+  assert.equal(await CryptoEvent.countDocuments({ conversationId, clientMessageId }), 1,
+    "hiding for one account must not delete ciphertext required by the peer");
+  const durable = await ClientInvalidation.findOne({
+    recipientUserId: alice.user._id,
+    kind: "message-hidden",
+    conversationId,
+    clientMessageId
+  }).lean();
+  assert(durable);
+  assert.deepEqual(new Set(durable.pendingClientIds), new Set([alice.clientId, aliceSecond.clientId]));
+
+  const listed = await signedJson(aliceSecond, "GET", "/crypto/v4/invalidations?limit=100");
+  assert.equal(listed.status, 200, listed.text);
+  assert(listed.body.invalidations.some(item => item.eventId === durable.eventId));
+  const acked = await signedJson(aliceSecond, "POST", `/crypto/v4/invalidations/${durable.eventId}/ack`, {});
+  assert.equal(acked.status, 200, acked.text);
+  const afterAck = await signedJson(aliceSecond, "GET", "/crypto/v4/invalidations?limit=100");
+  assert(!afterAck.body.invalidations.some(item => item.eventId === durable.eventId));
+});
+
+test("deletion removes avatar objects but retains media with an external reference", async () => {
+  const owner = await createAuthenticatedUser("media_owner");
+  const peer = await createAuthenticatedUser("media_peer");
+  const outsider = await createAuthenticatedUser("media_other");
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const DeletionWorkflow = require("../../models/DeletionWorkflow");
+  const { requestAccountDeletion, requestConversationDeletion, runDeletionWorkflow } = require("../../services/deletionWorkflow");
+  const sharedKey = `liotan/mls/${crypto.randomBytes(12).toString("hex")}`;
+  const targetConversationId = crypto.randomUUID();
+  const externalConversationId = crypto.randomUUID();
+  const commonConversation = {
+    chatType: "private",
+    adminUserIds: [owner.user._id, peer.user._id],
+    createdByUserId: owner.user._id,
+    createdByClientId: `${crypto.randomUUID()}:0000000000000001@${CRYPTO_DOMAIN}`
+  };
+  await CryptoConversation.insertMany([
+    {
+      ...commonConversation,
+      conversationId: targetConversationId,
+      lookupKey: `private:${[owner.user._id, peer.user._id].map(String).sort().join(":")}`,
+      participantUserIds: [owner.user._id, peer.user._id],
+      participantUsernames: [owner.username, peer.username]
+    },
+    {
+      ...commonConversation,
+      conversationId: externalConversationId,
+      lookupKey: `private:${[owner.user._id, outsider.user._id].map(String).sort().join(":")}`,
+      participantUserIds: [owner.user._id, outsider.user._id],
+      participantUsernames: [owner.username, outsider.username]
+    }
+  ]);
+  const upload = conversationId => ({
+    uploadId: crypto.randomBytes(18).toString("base64url"),
+    owner: owner.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: conversationId,
+    cryptoClientId: commonConversation.createdByClientId,
+    bindingId: crypto.randomBytes(18).toString("base64url"),
+    boundClientMessageId: crypto.randomUUID(),
+    lifecycleState: "committed",
+    storageKey: sharedKey,
+    storageType: "r2:private-media"
+  });
+  await AttachmentUpload.insertMany([upload(targetConversationId), upload(externalConversationId)]);
+  const conversationWorkflow = await requestConversationDeletion({
+    userId: owner.user._id,
+    username: owner.username,
+    conversationId: targetConversationId,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  const objectDeletes = [];
+  const conversationResult = await runDeletionWorkflow({
+    workflowId: conversationWorkflow.workflowId,
+    adapters: { deleteR2: async key => objectDeletes.push(key) }
+  });
+  assert.equal(conversationResult.state, "completed");
+  assert.deepEqual(objectDeletes, [], "an externally referenced object must not be physically deleted");
+  assert.equal(await AttachmentUpload.countDocuments({ cryptoConversationId: targetConversationId }), 0);
+  assert.equal(await AttachmentUpload.countDocuments({ cryptoConversationId: externalConversationId }), 1);
+  const sharedWorkflow = await DeletionWorkflow.findOne({ workflowId: conversationWorkflow.workflowId }).lean();
+  assert.equal(sharedWorkflow.counters.sharedMediaRetained, 1);
+
+  const avatarAccount = await createAuthenticatedUser("avatar_owner");
+  const avatarKey = `liotan/avatars/${crypto.randomBytes(12).toString("hex")}`;
+  await User.updateOne({ _id: avatarAccount.user._id }, {
+    $set: { avatar: `https://avatar.invalid/${avatarKey}`, avatarStorageKey: avatarKey, avatarStorageType: "r2:public-avatar" }
+  });
+  const accountWorkflow = await requestAccountDeletion({
+    userId: avatarAccount.user._id,
+    username: avatarAccount.username,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  const avatarDeletes = [];
+  const accountResult = await runDeletionWorkflow({
+    workflowId: accountWorkflow.workflowId,
+    adapters: { deleteR2: async key => avatarDeletes.push(key) }
+  });
+  assert.equal(accountResult.state, "completed");
+  assert.deepEqual(avatarDeletes, [avatarKey]);
+});
+
+test("conversation deletion wins against concurrent sends and parallel deletion requests", async () => {
+  const alice = await createAccount("race_alice");
+  const bob = await createAccount("race_bob");
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const deletionPath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/deletion`;
+  const deletionBody = { confirm: true };
+  const deletionRequest = key => requestFor(alice, "POST", deletionPath)
+    .set(signedHeaders(alice, "POST", deletionPath, deletionBody))
+    .set("Idempotency-Key", key)
+    .send(deletionBody);
+  const messagePath = `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/messages`;
+  const sends = Array.from({ length: 6 }, () => signedJson(alice, "POST", messagePath, {
+    clientMessageId: crypto.randomUUID(),
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url")
+  }));
+  const [left, right, ...sendResults] = await Promise.all([
+    deletionRequest(crypto.randomBytes(24).toString("base64url")),
+    deletionRequest(crypto.randomBytes(24).toString("base64url")),
+    ...sends
+  ]);
+  assert([200, 202].includes(left.status), left.text);
+  assert([200, 202].includes(right.status), right.text);
+  assert.equal(left.body.workflowId, right.body.workflowId);
+  assert(sendResults.every(result => [201, 404, 409].includes(result.status)));
+  assert.equal(await CryptoConversation.countDocuments({ conversationId }), 0);
+  assert.equal(await mongoose.model("CryptoEvent").countDocuments({ conversationId }), 0);
+  const stale = await signedJson(bob, "GET", `/crypto/v4/conversations/${encodeURIComponent(conversationId)}/events?after=0`);
+  assert.equal(stale.status, 404, stale.text);
+});
+
+test("account deletion without conversations has a single multi-instance worker winner", async () => {
+  const account = await createAuthenticatedUser("delacct_empty");
+  const { requestAccountDeletion, runDeletionWorkflow } = require("../../services/deletionWorkflow");
+  const workflow = await requestAccountDeletion({
+    userId: account.user._id,
+    username: account.username,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  const results = await Promise.all([
+    runDeletionWorkflow({ workflowId: workflow.workflowId }),
+    runDeletionWorkflow({ workflowId: workflow.workflowId })
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(results.find(Boolean).state, "completed");
+  assert.equal(await User.countDocuments({ _id: account.user._id }), 0);
+});

@@ -51,6 +51,8 @@ export default function DialogItem({
   const timeFormat = useTimeFormat();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const menuRef = useRef(null);
   const itemRef = useRef(null);
   const longPressRef = useRef(null);
@@ -262,6 +264,7 @@ export default function DialogItem({
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
+        if (deletePending) return;
         window.__liotanModalEscHandledAt = Date.now();
         rememberChatScroll();
         closeDeleteConfirm();
@@ -295,7 +298,7 @@ export default function DialogItem({
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("touchstart", handleOutsideClick);
     };
-  }, [menuOpen, confirmDelete, closeDeleteConfirm, rememberChatScroll]);
+  }, [menuOpen, confirmDelete, deletePending, closeDeleteConfirm, rememberChatScroll]);
   function openMenu(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -326,30 +329,40 @@ export default function DialogItem({
     e.stopPropagation();
     rememberDialogsScroll();
     rememberChatScroll();
+    setDeleteError("");
     setConfirmDelete(true);
     setMenuOpen(false);
   }
   function cancelDelete(e) {
     e?.preventDefault?.();
     e?.stopPropagation?.();
+    if (deletePending) return;
     closeDeleteConfirm();
   }
-  function confirmDeleteChat(e) {
+  async function confirmDeleteChat(e) {
     e.stopPropagation();
+    if (deletePending) return;
     rememberChatScroll();
-    if (isGroup) {
-      if (typeof deleteGroupDialog !== "function") {
-        if (import.meta.env.DEV) console.warn("deleteGroupDialog is not passed");
-        return;
+    setDeletePending(true);
+    setDeleteError("");
+    try {
+      if (isGroup) {
+        if (typeof deleteGroupDialog !== "function") {
+          throw new Error("Conversation deletion is unavailable");
+        }
+        await deleteGroupDialog(dialog);
+      } else {
+        await deleteChat(dialog.username);
       }
-      deleteGroupDialog(dialog);
-    } else {
-      deleteChat(dialog.username);
+      setConfirmDelete(false);
+      setMenuOpen(false);
+      restoreDialogsScroll();
+      restoreChatScroll();
+    } catch (error) {
+      setDeleteError(error?.message || t.deletionRetry || "Deletion has not completed yet. Retry shortly.");
+    } finally {
+      setDeletePending(false);
     }
-    setConfirmDelete(false);
-    setMenuOpen(false);
-    restoreDialogsScroll();
-    restoreChatScroll();
   }
   function handlePin(e) {
     e.stopPropagation();
@@ -469,7 +482,7 @@ export default function DialogItem({
           }}>
                     <DialogIconSlot name="delete" />
 
-                    {dialog.owner === username ? t.deleteGroup || "Удалить группу" : t.leaveGroup || "Выйти из группы"}
+                    {t.deleteGroup || "Удалить группу"}
                   </button>
                 </>}
 </>
@@ -479,20 +492,25 @@ export default function DialogItem({
       {confirmDelete && createPortal(<div className="dialog-delete-modal-overlay" onClick={cancelDelete}>
           <div ref={deleteModalRef} className="dialog-delete-modal" role="dialog" aria-modal="true" aria-labelledby={deleteTitleId} onClick={e => e.stopPropagation()}>
             <div className="dialog-delete-modal-title" id={deleteTitleId}>
-              {isGroup ? dialog.owner === username ? t.deleteGroup || "Удалить группу" : t.leaveGroup || "Выйти из группы" : t.deleteChat || "Удалить чат"}
+              {isGroup ? t.deleteGroup || "Удалить группу" : t.deleteChat || "Удалить чат"}
             </div>
 
             <div className="dialog-delete-modal-text">
-              {isGroup ? dialog.owner === username ? `${t.confirmDeleteGroup || "Вы точно хотите удалить группу"} ${displayName}?` : `${t.confirmLeaveGroup || "Вы точно хотите выйти из группы"} ${displayName}?` : `Чат с ${displayName} будет безвозвратно удалён у всех участников и на всех их устройствах.`}
+              {(isGroup
+                ? t.deleteGroupGlobalWarning || "The group {name}, its entire history, and all attachments will be permanently deleted for everyone."
+                : t.deleteChatGlobalWarning || "The chat with {name}, its entire history, and all attachments will be permanently deleted for everyone.")
+                .replace("{name}", displayName)}
             </div>
 
+            {deleteError && <div className="dialog-delete-modal-error" role="alert">{deleteError}</div>}
+
             <div className="dialog-delete-modal-actions">
-              <button type="button" className="dialog-delete-modal-cancel" onClick={cancelDelete}>
+              <button type="button" className="dialog-delete-modal-cancel" onClick={cancelDelete} disabled={deletePending}>
                 {t.cancel || "Отмена"}
               </button>
 
-              <button type="button" className="dialog-delete-modal-danger" onClick={confirmDeleteChat}>
-                {isGroup ? dialog.owner === username ? t.delete || "Удалить" : t.logout || "Выйти" : t.deleteChat || "Удалить чат"}
+              <button type="button" className="dialog-delete-modal-danger" onClick={confirmDeleteChat} disabled={deletePending} aria-busy={deletePending}>
+                {deletePending ? t.deletionPending || "Deletion in progress…" : isGroup ? t.delete || "Удалить" : t.deleteChat || "Удалить чат"}
               </button>
             </div>
           </div>

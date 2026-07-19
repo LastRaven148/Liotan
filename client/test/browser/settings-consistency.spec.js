@@ -164,8 +164,15 @@ test("visual and accessibility contracts cover responsive panels and irreversibl
   await page.keyboard.press("Escape");
   await expect(modal).toBeHidden();
 
-  await page.evaluate(() => window.mountDialogDeletion({ group: true, language: "en" }));
+  await page.evaluate(() => window.mountDialogDeletion({ group: true, language: "en", pending: true }));
   await page.locator(".user").click({ button: "right" });
   await page.locator(".dialog-context-menu .danger").click();
   await expect(page.locator(".dialog-delete-modal")).toContainText(/long encrypted research group/i);
+  await page.locator(".dialog-delete-modal-danger").click();
+  await expect(page.locator(".dialog-delete-modal-danger")).toBeDisabled();
+  await expect(page.locator(".dialog-delete-modal")).toContainText("Deletion in progress");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".dialog-delete-modal")).toBeVisible();
+  await page.evaluate(() => window.__finishFixtureDeletion());
+  await expect(page.locator(".dialog-delete-modal")).toBeHidden();
 });

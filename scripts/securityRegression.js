@@ -290,8 +290,41 @@ assert.doesNotMatch(accountCleanup, /Message\.deleteMany|E2EEKey\.deleteMany|ali
   "administrative cleanup must not maintain a second incomplete or broad deletion implementation");
 
 const accountDeletion = read("server/utils/deleteAccountData.js");
-assert.match(accountDeletion, /PendingEmailChange\.deleteMany/,
-  "account deletion must remove pending email-change hashes and envelopes");
+assert.match(accountDeletion, /requestAccountDeletion/,
+  "administrative account deletion must delegate to the durable workflow");
+assert.doesNotMatch(accountDeletion, /\.deleteMany\(|\.deleteOne\(/,
+  "the compatibility adapter must not become a second deletion implementation");
+const deletionWorkflow = read("server/services/deletionWorkflow.js");
+for (const requiredErasure of [
+  "PendingEmailChange.deleteMany",
+  "UserNotificationSettings.deleteMany",
+  "UserBlock.deleteMany",
+  "CryptoDevice.deleteMany",
+  "CryptoIdentity.deleteMany",
+  "CryptoKeyPackage.deleteMany",
+  "CryptoEvent.deleteMany",
+  "MessageVisibility.deleteMany"
+]) {
+  assert.match(deletionWorkflow, new RegExp(requiredErasure.replace(".", "\\.")),
+    `durable account deletion must include ${requiredErasure}`);
+}
+assert.match(deletionWorkflow, /lifecycleState:\s*"deleting"/,
+  "deletion must freeze accounts and conversations before erasure");
+assert.match(deletionWorkflow, /DeletionObjectTask/,
+  "external object deletion must use durable object tasks");
+assert.match(deletionWorkflow, /runMongoTransaction/,
+  "Mongo deletion and durable invalidation creation must share a transaction");
+const dialogDeletionClient = read("client/src/crypto/mlsEngine.jsx");
+const deletionClientBlock = dialogDeletionClient.slice(
+  dialogDeletionClient.indexOf("async deleteConversation("),
+  dialogDeletionClient.indexOf("async hideMessageForAccount(")
+);
+assert(deletionClientBlock.indexOf('/crypto/v4/deletions/') < deletionClientBlock.indexOf("await this.purgeConversation"),
+  "the client must confirm durable completion before purging a whole chat");
+assert.match(read("client/src/hooks/useDialogs.jsx"), /deleteConversation\(dialog\.chatKey/,
+  "group chat deletion must use the same global conversation workflow");
+assert.doesNotMatch(read("client/src/hooks/useDialogs.jsx"), /leaveGroupApi/,
+  "whole-chat deletion UI must not preserve group history through a leave path");
 const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
 assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");

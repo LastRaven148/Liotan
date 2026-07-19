@@ -184,26 +184,76 @@ function messageQuery(workflow) {
 
 function objectCandidates(file, source) {
   if (!file) return [];
-  const directKey = deleteUploadedFile.normalizeR2Key(file.storageKey);
-  const urlKey = deleteUploadedFile.extractR2KeyFromUrl(file.url || file.mediaUrl);
-  const storageClass = file.storageType === "r2:public-avatar" || source.endsWith("avatar")
+  const directKey = deleteUploadedFile.normalizeR2Key(file.storageKey || file.avatarStorageKey);
+  const sourceUrl = file.url || file.mediaUrl || file.avatar || "";
+  const urlKey = deleteUploadedFile.extractR2KeyFromUrl(sourceUrl);
+  const storageType = file.storageType || file.avatarStorageType || "";
+  const storageClass = storageType === "r2:public-avatar" || source.endsWith("avatar")
     ? "public-avatar"
     : "private-media";
   const result = [];
   if (directKey || urlKey) {
     result.push({
       locator: directKey || urlKey,
-      storageType: String(file.storageType || `r2:${storageClass}`),
+      storageType: String(storageType || `r2:${storageClass}`),
       storageClass,
-      source
+      source,
+      sourceId: idString(file),
+      referenceValues: [...new Set([directKey, urlKey, sourceUrl].filter(Boolean))]
     });
   }
-  for (const value of [file.url, file.mediaUrl]) {
+  for (const value of [file.url, file.mediaUrl, file.avatar]) {
     if (String(value || "").startsWith("/uploads/")) {
-      result.push({ locator: String(value), storageType: "local", storageClass, source });
+      result.push({
+        locator: String(value),
+        storageType: "local",
+        storageClass,
+        source,
+        sourceId: idString(file),
+        referenceValues: [String(value)]
+      });
     }
   }
   return result;
+}
+
+async function excludeExternallyReferencedCandidates(candidates, { messages, uploads, account, groups }) {
+  if (!candidates.length) return { exclusive: [], retainedShared: 0 };
+  const values = [...new Set(candidates.flatMap(item => item.referenceValues || [item.locator]).filter(Boolean))];
+  const messageIds = messages.map(idString);
+  const uploadIds = uploads.map(idString);
+  const groupIds = groups.map(idString);
+  const accountIds = account ? [idString(account)] : [];
+  const [externalUploads, externalMessages, externalUsers, externalGroups] = await Promise.all([
+    AttachmentUpload.find({
+      _id: { $nin: uploadIds },
+      $or: [{ storageKey: { $in: values } }, { url: { $in: values } }, { mediaUrl: { $in: values } }]
+    }, "storageKey url mediaUrl").lean(),
+    Message.find({
+      _id: { $nin: messageIds },
+      $or: [
+        { "attachment.storageKey": { $in: values } },
+        { "attachment.url": { $in: values } },
+        { "attachment.mediaUrl": { $in: values } }
+      ]
+    }, "attachment.storageKey attachment.url attachment.mediaUrl").lean(),
+    User.find({
+      _id: { $nin: accountIds },
+      $or: [{ avatarStorageKey: { $in: values } }, { avatar: { $in: values } }]
+    }, "avatarStorageKey avatar").lean(),
+    Group.find({
+      _id: { $nin: groupIds },
+      $or: [{ avatarStorageKey: { $in: values } }, { avatar: { $in: values } }]
+    }, "avatarStorageKey avatar").lean()
+  ]);
+  const externalValues = new Set([
+    ...externalUploads.flatMap(item => [item.storageKey, item.url, item.mediaUrl]),
+    ...externalMessages.flatMap(item => [item.attachment?.storageKey, item.attachment?.url, item.attachment?.mediaUrl]),
+    ...externalUsers.flatMap(item => [item.avatarStorageKey, item.avatar]),
+    ...externalGroups.flatMap(item => [item.avatarStorageKey, item.avatar])
+  ].filter(Boolean));
+  const exclusive = candidates.filter(item => !(item.referenceValues || [item.locator]).some(value => externalValues.has(value)));
+  return { exclusive, retainedShared: candidates.length - exclusive.length };
 }
 
 async function planWorkflow(workflow, owner) {
@@ -302,12 +352,31 @@ async function planWorkflow(workflow, owner) {
     ...messages.flatMap(message => objectCandidates(message.attachment, "message")),
     ...uploads.flatMap(upload => objectCandidates(upload, "attachment-upload"))
   ];
-  const unique = new Map(candidates.map(item => [`${item.storageType}:${item.locator}`, item]));
-  if (unique.size) {
-    await DeletionObjectTask.insertMany([...unique.values()].map(item => ({
+  const unique = new Map();
+  for (const candidate of candidates) {
+    const key = `${candidate.storageType}:${candidate.locator}`;
+    const existing = unique.get(key);
+    if (existing) {
+      existing.referenceValues = [...new Set([...existing.referenceValues, ...candidate.referenceValues])];
+    } else {
+      unique.set(key, candidate);
+    }
+  }
+  const ownership = await excludeExternallyReferencedCandidates([...unique.values()], {
+    messages,
+    uploads,
+    account,
+    groups
+  });
+  const exclusive = new Map(ownership.exclusive.map(item => [`${item.storageType}:${item.locator}`, item]));
+  if (exclusive.size) {
+    await DeletionObjectTask.insertMany([...exclusive.values()].map(item => ({
       workflowId: planned.workflowId,
       locatorHash: digest(`${item.storageType}:${item.locator}`),
-      ...item
+      locator: item.locator,
+      storageType: item.storageType,
+      storageClass: item.storageClass,
+      source: item.source
     })), { ordered: false }).catch(error => {
       if (error?.code !== 11000 && !error?.writeErrors?.every(item => item.code === 11000)) throw error;
     });
@@ -318,7 +387,8 @@ async function planWorkflow(workflow, owner) {
       $set: {
         state: "planned",
         "counters.messages": messages.length,
-        "counters.mediaObjects": unique.size
+        "counters.mediaObjects": exclusive.size,
+        "counters.sharedMediaRetained": ownership.retainedShared
       }
     }
   );

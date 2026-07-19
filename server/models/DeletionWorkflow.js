@@ -57,6 +57,7 @@ const deletionWorkflowSchema = new mongoose.Schema({
     groups: { type: Number, default: 0, min: 0 },
     messages: { type: Number, default: 0, min: 0 },
     mediaObjects: { type: Number, default: 0, min: 0 },
+    sharedMediaRetained: { type: Number, default: 0, min: 0 },
     invalidations: { type: Number, default: 0, min: 0 }
   },
   completedAt: { type: Date, default: null },
