@@ -18,6 +18,17 @@ const deletionWorkflowSchema = new mongoose.Schema({
   groupIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   participantUserIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   participantUsernames: { type: [String], default: [] },
+  invalidationTargets: {
+    type: [{
+      _id: false,
+      conversationId: { type: String, required: true },
+      chatType: { type: String, enum: ["private", "group"], required: true },
+      groupId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      participantUserIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+      participantUsernames: { type: [String], default: [] }
+    }],
+    default: []
+  },
   state: {
     type: String,
     enum: [

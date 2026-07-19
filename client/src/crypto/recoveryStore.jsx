@@ -145,6 +145,33 @@ async function idbDeletePrefix(storeName, prefix) {
   }
 }
 
+async function idbDeleteHistoryConversation(conversationId, clientMessageId = "") {
+  const db = await openDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction("history", "readwrite");
+      const store = transaction.objectStore("history");
+      const indexName = clientMessageId ? "byConversationMessage" : "byConversationSequence";
+      const index = store.index(indexName);
+      const range = clientMessageId
+        ? IDBKeyRange.only([conversationId, clientMessageId])
+        : IDBKeyRange.bound([conversationId, 0], [conversationId, Number.MAX_SAFE_INTEGER]);
+      const request = index.openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || request.error || new Error("IndexedDB history delete failed"));
+      transaction.onabort = () => reject(transaction.error || new Error("IndexedDB history delete aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
 async function idbAdd(storeName, key, value) {
   const db = await openDb();
   try {
@@ -742,6 +769,38 @@ export async function getEncryptedHistoryRecord(conversationId, clientMessageId,
   } catch {
     return null;
   }
+}
+
+export async function deleteEncryptedMessageRecord(conversationId, clientMessageId) {
+  const safeConversationId = String(conversationId || "");
+  const safeMessageId = String(clientMessageId || "");
+  if (!safeConversationId || !safeMessageId) return;
+  await idbDeleteHistoryConversation(safeConversationId, safeMessageId);
+  await idbDelete("records", `secure:message:${safeConversationId}:${safeMessageId}`);
+}
+
+export async function deleteEncryptedConversationData(conversationId) {
+  const safeConversationId = String(conversationId || "");
+  if (!safeConversationId) return;
+  await idbDeleteHistoryConversation(safeConversationId);
+  await Promise.all([
+    idbDeletePrefix("records", `secure:message:${safeConversationId}:`),
+    idbDeletePrefix("records", `secure:sync-checkpoint:${safeConversationId}:`),
+    idbDelete("records", `secure:pending-commit:${safeConversationId}`),
+    idbDelete("records", `secure:hidden-messages:${safeConversationId}`)
+  ]);
+}
+
+export async function deleteLocalCryptoStore() {
+  wrappingKeyPromises.clear();
+  recoveryUnlockPromises.clear();
+  if (!globalThis.indexedDB) return;
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error("Unable to delete local crypto store"));
+    request.onblocked = () => reject(new Error("Local crypto store is blocked by another tab"));
+  });
 }
 
 export async function listEncryptedRecords(prefix, cacheKey, limit = 100000) {

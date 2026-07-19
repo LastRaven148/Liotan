@@ -45,6 +45,7 @@ function invalidationView(item) {
     eventId: item.eventId,
     kind: item.kind,
     conversationId: item.conversationId || "",
+    chatKey: item.chatKey || "",
     groupId: item.groupId ? String(item.groupId) : "",
     clientMessageId: item.clientMessageId || "",
     payloadVersion: Number(item.payloadVersion) || 1,

@@ -51,7 +51,6 @@ export default function DialogItem({
   const timeFormat = useTimeFormat();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleteForEveryone, setDeleteForEveryone] = useState(false);
   const menuRef = useRef(null);
   const itemRef = useRef(null);
   const longPressRef = useRef(null);
@@ -215,7 +214,6 @@ export default function DialogItem({
   const closeDeleteConfirm = useCallback(() => {
     window.__liotanModalEscHandledAt = Date.now();
     setConfirmDelete(false);
-    setDeleteForEveryone(false);
     restoreDialogsScroll();
     restoreChatScroll();
   }, [restoreDialogsScroll, restoreChatScroll]);
@@ -302,7 +300,6 @@ export default function DialogItem({
     e.stopPropagation();
     rememberDialogsScroll();
     rememberChatScroll();
-    setDeleteForEveryone(false);
     setConfirmDelete(true);
     setMenuOpen(false);
   }
@@ -321,12 +318,9 @@ export default function DialogItem({
       }
       deleteGroupDialog(dialog);
     } else {
-      deleteChat(dialog.username, {
-        forEveryone: deleteForEveryone
-      });
+      deleteChat(dialog.username);
     }
     setConfirmDelete(false);
-    setDeleteForEveryone(false);
     setMenuOpen(false);
     restoreDialogsScroll();
     restoreChatScroll();
@@ -444,7 +438,6 @@ export default function DialogItem({
             e.stopPropagation();
             rememberDialogsScroll();
             rememberChatScroll();
-            setDeleteForEveryone(false);
             setConfirmDelete(true);
             setMenuOpen(false);
           }}>
@@ -464,20 +457,8 @@ export default function DialogItem({
             </div>
 
             <div className="dialog-delete-modal-text">
-              {isGroup ? dialog.owner === username ? `${t.confirmDeleteGroup || "Вы точно хотите удалить группу"} ${displayName}?` : `${t.confirmLeaveGroup || "Вы точно хотите выйти из группы"} ${displayName}?` : `${t.deleteChatConfirm || "Удалить чат с"} ${displayName}?`}
+              {isGroup ? dialog.owner === username ? `${t.confirmDeleteGroup || "Вы точно хотите удалить группу"} ${displayName}?` : `${t.confirmLeaveGroup || "Вы точно хотите выйти из группы"} ${displayName}?` : `Чат с ${displayName} будет безвозвратно удалён у всех участников и на всех их устройствах.`}
             </div>
-
-            {!isGroup && !isSavedMessages && <label className="dialog-delete-checkbox-row">
-                <span className="dialog-delete-checkbox">
-                  <input type="checkbox" checked={deleteForEveryone} onChange={e => setDeleteForEveryone(e.target.checked)} />
-
-                  <span className="dialog-delete-checkbox-box" />
-                </span>
-
-                <span>
-                  {t.alsoDeleteFor || "Также удалить для"} {displayName}
-                </span>
-              </label>}
 
             <div className="dialog-delete-modal-actions">
               <button type="button" className="dialog-delete-modal-cancel" onClick={cancelDelete}>

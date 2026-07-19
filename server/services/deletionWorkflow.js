@@ -264,6 +264,13 @@ async function planWorkflow(workflow, owner) {
       ...conversations.flatMap(item => item.chatType === "private" ? privateLegacyIds(item.participantUsernames) : [`group:${item.groupId}`])
     ].filter(Boolean))];
     const targetConversation = conversations.find(item => item.conversationId === current.targetConversationId);
+    current.invalidationTargets = conversations.map(item => ({
+      conversationId: item.conversationId,
+      chatType: item.chatType,
+      groupId: item.groupId || null,
+      participantUserIds: item.participantUserIds || [],
+      participantUsernames: item.participantUsernames || []
+    }));
     current.conversationIds = conversationIds;
     current.groupIds = groupIds;
     current.participantUserIds = participantUserIds;
@@ -453,22 +460,49 @@ async function deleteWorkflowObjects(workflow, owner, adapters) {
 }
 
 async function createInvalidations(current, session) {
-  const recipientIds = current.participantUserIds
-    .filter(id => current.type !== "account" || idString(id) !== idString(current.accountUserId));
+  const targets = current.invalidationTargets?.length
+    ? current.invalidationTargets
+    : [{
+        conversationId: current.targetConversationId || current.conversationIds[0] || "",
+        chatType: current.groupIds?.length ? "group" : "private",
+        groupId: current.groupIds?.[0] || null,
+        participantUserIds: current.participantUserIds,
+        participantUsernames: current.participantUsernames
+      }];
+  const recipientIds = [...new Map(targets
+    .flatMap(target => target.participantUserIds || [])
+    .filter(id => current.type !== "account" || idString(id) !== idString(current.accountUserId))
+    .map(id => [idString(id), id])).values()];
   if (!recipientIds.length) return [];
-  const devices = await CryptoDevice.find({
-    userId: { $in: recipientIds },
-    status: "active",
-    manifestExpiresAt: { $gt: new Date() }
-  }, "userId clientId").session(session).lean();
-  const documents = recipientIds.map(userId => ({
-    eventId: randomId(),
-    recipientUserId: userId,
-    kind: current.type === "account" ? "account-deleted" : "conversation-deleted",
-    conversationId: current.targetConversationId || current.conversationIds[0] || "",
-    groupId: current.groupIds[0] || null,
-    pendingClientIds: devices.filter(device => idString(device.userId) === idString(userId)).map(device => device.clientId)
-  }));
+  const [devices, users] = await Promise.all([
+    CryptoDevice.find({
+      userId: { $in: recipientIds },
+      status: "active",
+      manifestExpiresAt: { $gt: new Date() }
+    }, "userId clientId").session(session).lean(),
+    User.find({ _id: { $in: recipientIds } }, "username").session(session).lean()
+  ]);
+  const usernameById = new Map(users.map(user => [idString(user._id), user.username]));
+  const documents = [];
+  for (const target of targets) {
+    for (const userId of target.participantUserIds || []) {
+      if (current.type === "account" && idString(userId) === idString(current.accountUserId)) continue;
+      const recipientUsername = usernameById.get(idString(userId));
+      if (!recipientUsername) continue;
+      const chatKey = target.chatType === "group"
+        ? `group:${idString(target.groupId)}`
+        : String((target.participantUsernames || []).find(name => name !== recipientUsername) || "");
+      documents.push({
+        eventId: randomId(),
+        recipientUserId: userId,
+        kind: current.type === "account" ? "account-deleted" : "conversation-deleted",
+        conversationId: target.conversationId,
+        chatKey,
+        groupId: target.groupId || null,
+        pendingClientIds: devices.filter(device => idString(device.userId) === idString(userId)).map(device => device.clientId)
+      });
+    }
+  }
   return ClientInvalidation.insertMany(documents, { session });
 }
 
@@ -614,6 +648,7 @@ async function reconcileWorkflow(workflow, owner) {
       accountUsername: 1,
       participantUserIds: 1,
       participantUsernames: 1,
+      invalidationTargets: 1,
       legacyConversationIds: 1,
       groupIds: 1
     };

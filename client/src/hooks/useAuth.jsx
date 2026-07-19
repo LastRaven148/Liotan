@@ -24,7 +24,7 @@ import {
 import {
   resetAppBootstrapGuard
 } from "./app/useAppInitialization";
-import { resetMlsEngine } from "../crypto/mlsEngine";
+import { purgeDeletedAccountLocalState, resetMlsEngine } from "../crypto/mlsEngine";
 import useSecureTransition from "./useSecureTransition";
 
 export default function useAuth({
@@ -395,6 +395,7 @@ export default function useAuth({
         } catch (error) {
           if (error?.status === 401) {
             showToast("Account deletion was accepted and continues safely in the background.");
+            await purgeDeletedAccountLocalState(username);
             await clearSession(socketRef, { showTransition: true });
             return true;
           }
@@ -407,6 +408,7 @@ export default function useAuth({
         throw pending;
       }
       showToast("Account deleted");
+      await purgeDeletedAccountLocalState(username);
       await clearSession(socketRef, { showTransition: true });
       return true;
     } catch (err) {

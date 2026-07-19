@@ -19,6 +19,7 @@ const clientInvalidationSchema = new mongoose.Schema({
     index: true
   },
   conversationId: { type: String, default: "", index: true },
+  chatKey: { type: String, default: "" },
   clientMessageId: { type: String, default: "" },
   groupId: { type: mongoose.Schema.Types.ObjectId, default: null },
   pendingClientIds: { type: [String], default: [] },
