@@ -7,6 +7,7 @@ const CryptoDevice = require("../models/CryptoDevice");
 const User = require("../models/User");
 const UserBlock = require("../models/UserBlock");
 const { isValidUsername } = require("../utils/validators");
+const { runMongoTransaction } = require("../utils/mongoTransaction");
 const { userRoom } = require("../sockets/sessionRegistry");
 
 function encodeCursor(item) {
@@ -25,18 +26,22 @@ function decodeCursor(value) {
   }
 }
 
-async function publishUpdate(req) {
+async function createUpdateInvalidation(req, session) {
   const devices = await CryptoDevice.find({
     userId: req.user.userId,
     status: "active",
     manifestExpiresAt: { $gt: new Date() }
-  }, "clientId").lean();
-  const invalidation = await ClientInvalidation.create({
+  }, "clientId").session(session).lean();
+  const [invalidation] = await ClientInvalidation.create([{
     eventId: crypto.randomBytes(24).toString("base64url"),
     recipientUserId: req.user.userId,
     kind: "blocklist-updated",
     pendingClientIds: devices.map(device => device.clientId)
-  });
+  }], { session });
+  return invalidation;
+}
+
+function emitUpdate(req, invalidation) {
   req.app.get("io")?.to(userRoom(String(req.user.userId))).emit("clientInvalidationAvailable", {
     eventId: invalidation.eventId,
     kind: invalidation.kind
@@ -80,17 +85,26 @@ async function blockUser(req, res, next) {
   try {
     const username = String(req.params.username || "").trim();
     if (!isValidUsername(username) || username === req.user.username) return res.status(400).json({ error: "invalid username" });
-    const target = await User.findOne({ username, emailVerified: true, lifecycleState: { $ne: "deleting" } }, "_id").lean();
-    if (!target) return res.status(404).json({ error: "user not found" });
-    const result = await UserBlock.updateOne(
-      { blockerUserId: req.user.userId, blockedUserId: target._id },
-      { $setOnInsert: { blockerUserId: req.user.userId, blockedUserId: target._id } },
-      { upsert: true }
-    );
-    if (result.upsertedCount) await publishUpdate(req);
+    let result;
+    let invalidation;
+    await runMongoTransaction(async session => {
+      const target = await User.findOne(
+        { username, emailVerified: true, lifecycleState: { $ne: "deleting" } },
+        "_id"
+      ).session(session).lean();
+      if (!target) { const error = new Error("user not found"); error.status = 404; throw error; }
+      result = await UserBlock.updateOne(
+        { blockerUserId: req.user.userId, blockedUserId: target._id },
+        { $setOnInsert: { blockerUserId: req.user.userId, blockedUserId: target._id } },
+        { upsert: true, session }
+      );
+      if (result.upsertedCount) invalidation = await createUpdateInvalidation(req, session);
+    });
+    if (invalidation) emitUpdate(req, invalidation);
     return res.status(result.upsertedCount ? 201 : 200).json({ ok: true, username, duplicate: !result.upsertedCount });
   } catch (error) {
     if (error?.code === 11000) return res.status(200).json({ ok: true, duplicate: true });
+    if (error?.status) return res.status(error.status).json({ error: error.message });
     return next(error);
   }
 }
@@ -101,8 +115,16 @@ async function unblockUser(req, res, next) {
     if (!isValidUsername(username) || username === req.user.username) return res.status(400).json({ error: "invalid username" });
     const target = await User.findOne({ username }, "_id").lean();
     if (!target) return res.json({ ok: true, username, duplicate: true });
-    const result = await UserBlock.deleteOne({ blockerUserId: req.user.userId, blockedUserId: target._id });
-    if (result.deletedCount) await publishUpdate(req);
+    let result;
+    let invalidation;
+    await runMongoTransaction(async session => {
+      result = await UserBlock.deleteOne(
+        { blockerUserId: req.user.userId, blockedUserId: target._id },
+        { session }
+      );
+      if (result.deletedCount) invalidation = await createUpdateInvalidation(req, session);
+    });
+    if (invalidation) emitUpdate(req, invalidation);
     return res.json({ ok: true, username, duplicate: !result.deletedCount });
   } catch (error) {
     return next(error);

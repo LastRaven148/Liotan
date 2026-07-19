@@ -105,6 +105,7 @@ export default function useSocket({
         const chatKey = String(detail.chatKey || "");
         setChats(previous => {
           const next = { ...previous };
+          if (chatKey) delete next[chatKey];
           Object.entries(next).forEach(([key, messages]) => {
             if ((messages || []).some(message => message?.mls?.conversationId === detail.conversationId)) delete next[key];
           });

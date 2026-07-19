@@ -5,6 +5,7 @@ const ClientInvalidation = require("../models/ClientInvalidation");
 const CryptoDevice = require("../models/CryptoDevice");
 const UserNotificationSettings = require("../models/UserNotificationSettings");
 const { userRoom } = require("../sockets/sessionRegistry");
+const { runMongoTransaction } = require("../utils/mongoTransaction");
 
 const FIELDS = Object.freeze([
   "desktopEnabled",
@@ -30,11 +31,11 @@ function view(settings) {
   };
 }
 
-async function readOrCreate(userId) {
+async function readOrCreate(userId, session = null) {
   return UserNotificationSettings.findOneAndUpdate(
     { userId },
     { $setOnInsert: { userId } },
-    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true, session }
   );
 }
 
@@ -57,19 +58,23 @@ function validatePatch(body) {
   return { expectedVersion, update };
 }
 
-async function publishUpdate(req, settings) {
+async function createUpdateInvalidation(req, settings, session) {
   const devices = await CryptoDevice.find({
     userId: req.user.userId,
     status: "active",
     manifestExpiresAt: { $gt: new Date() }
-  }, "clientId").lean();
-  const invalidation = await ClientInvalidation.create({
+  }, "clientId").session(session).lean();
+  const [invalidation] = await ClientInvalidation.create([{
     eventId: crypto.randomBytes(24).toString("base64url"),
     recipientUserId: req.user.userId,
     kind: "notification-settings-updated",
     payloadVersion: settings.version,
     pendingClientIds: devices.map(device => device.clientId)
-  });
+  }], { session });
+  return invalidation;
+}
+
+function emitUpdate(req, invalidation, settings) {
   req.app.get("io")?.to(userRoom(String(req.user.userId))).emit("clientInvalidationAvailable", {
     eventId: invalidation.eventId,
     kind: invalidation.kind,
@@ -88,19 +93,29 @@ async function getNotificationSettings(req, res, next) {
 async function updateNotificationSettings(req, res, next) {
   try {
     const { expectedVersion, update } = validatePatch(req.body);
-    await readOrCreate(req.user.userId);
-    const settings = await UserNotificationSettings.findOneAndUpdate(
-      { userId: req.user.userId, version: expectedVersion },
-      { $set: update, $inc: { version: 1 } },
-      { returnDocument: "after", runValidators: true }
-    );
+    let settings;
+    let current;
+    let invalidation;
+    await runMongoTransaction(async session => {
+      await readOrCreate(req.user.userId, session);
+      settings = await UserNotificationSettings.findOneAndUpdate(
+        { userId: req.user.userId, version: expectedVersion },
+        { $set: update, $inc: { version: 1 } },
+        { returnDocument: "after", runValidators: true, session }
+      );
+      if (!settings) {
+        current = await UserNotificationSettings.findOne({ userId: req.user.userId }).session(session);
+        return;
+      }
+      invalidation = await createUpdateInvalidation(req, settings, session);
+    });
     if (!settings) {
       return res.status(409).json({
         error: "notification settings changed on another device",
-        current: view(await readOrCreate(req.user.userId))
+        current: view(current)
       });
     }
-    await publishUpdate(req, settings);
+    emitUpdate(req, invalidation, settings);
     return res.json(view(settings));
   } catch (error) {
     if (error instanceof TypeError || error?.name === "ValidationError") return res.status(400).json({ error: "invalid notification settings" });

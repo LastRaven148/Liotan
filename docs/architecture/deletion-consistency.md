@@ -6,9 +6,11 @@ Account and conversation deletion share one durable engine:
 
 `requested -> planning -> planned -> frozen -> media-deleting -> invalidating -> completed`
 
+The authoritative media ownership inventory is collected only after `frozen`. `objectPlanCompleted` is a durable barrier: a restarted worker cannot enter `media-deleting` until every post-freeze Mongo reference has been classified as exclusively owned or shared.
+
 `dead-letter` is terminal and requires operator reconciliation. `DeletionWorkflow` holds opaque workflow/idempotency hashes, state, bounded counters, retry time, and a renewable lease. `DeletionObjectTask` holds the exact local/R2 locator until physical deletion succeeds. Direct identifiers are unset after account completion.
 
-The external-store boundary is deliberately ordered: plan exact owned objects, freeze all affected writes, delete physical objects idempotently, remove Mongo records and create invalidations in one transaction, then reconcile. A retry after process death resumes from persisted state. It never recreates a completed old conversation because the old random conversation ID and lookup record are gone.
+The external-store boundary is deliberately ordered: inventory affected conversations, freeze all affected writes, classify exact owned objects, delete physical objects idempotently, remove Mongo records and create invalidations in one transaction, then reconcile. A retry after process death resumes from persisted state. It never recreates a completed old conversation because the old random conversation ID and lookup record are gone.
 
 ## Freeze and race behavior
 

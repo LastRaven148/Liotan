@@ -45,18 +45,22 @@ function decodeDeviceCursor(value) {
   }
 }
 
-async function publishDeviceListUpdate(req) {
+async function createDeviceListInvalidation(req, session) {
   const devices = await CryptoDevice.find({
     userId: req.user.userId,
     status: "active",
     manifestExpiresAt: { $gt: new Date() }
-  }, "clientId").lean();
-  const invalidation = await ClientInvalidation.create({
+  }, "clientId").session(session).lean();
+  const [invalidation] = await ClientInvalidation.create([{
     eventId: crypto.randomBytes(24).toString("base64url"),
     recipientUserId: req.user.userId,
     kind: "device-list-updated",
     pendingClientIds: devices.map(device => device.clientId)
-  });
+  }], { session });
+  return invalidation;
+}
+
+function emitDeviceListUpdate(req, invalidation) {
   req.app.get("io")?.to(userRoom(String(req.user.userId))).emit("clientInvalidationAvailable", {
     eventId: invalidation.eventId,
     kind: invalidation.kind
@@ -210,6 +214,7 @@ async function registerDevice(req, res, next) {
     let device;
     let rosterConversations = [];
     let created = false;
+    let deviceListInvalidation;
     await session.withTransaction(async () => {
       const currentIdentity = await CryptoIdentity.findById(identity._id).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
@@ -303,9 +308,10 @@ async function registerDevice(req, res, next) {
           session
         });
       }
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
     });
     if (rosterConversations.length) emitCryptoRosterChanged(req, rosterConversations);
-    await publishDeviceListUpdate(req);
+    emitDeviceListUpdate(req, deviceListInvalidation);
     const updatedIdentity = await CryptoIdentity.findById(identity._id).lean();
     return res.status(created ? 201 : 200).json({
       ok: true,
@@ -332,6 +338,7 @@ async function approveDevice(req, res, next) {
     const approvalSignature = String(req.body.approvalSignature || "");
     let approvedDevice;
     let conversations = [];
+    let deviceListInvalidation;
     await session.withTransaction(async () => {
       const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
@@ -404,9 +411,10 @@ async function approveDevice(req, res, next) {
         reason: "cryptographic device approved",
         session
       });
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
     });
     emitCryptoRosterChanged(req, conversations);
-    await publishDeviceListUpdate(req);
+    emitDeviceListUpdate(req, deviceListInvalidation);
     return res.json({
       ok: true,
       device: deviceView(approvedDevice),
@@ -430,6 +438,7 @@ async function confirmRecoveryBootstrap(req, res, next) {
     const confirmationSignature = String(req.body.confirmationSignature || "");
     let activatedDevice;
     let conversations = [];
+    let deviceListInvalidation;
     await session.withTransaction(async () => {
       const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
@@ -496,9 +505,10 @@ async function confirmRecoveryBootstrap(req, res, next) {
         reason: "explicit recovery bootstrap activated a device",
         session
       });
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
     });
     emitCryptoRosterChanged(req, conversations);
-    await publishDeviceListUpdate(req);
+    emitDeviceListUpdate(req, deviceListInvalidation);
     return res.json({
       ok: true,
       securityIdentityChanged: true,
@@ -600,6 +610,7 @@ async function revokeDevice(req, res, next) {
     let device;
     let conversations = [];
     let revokedSessionHash = "";
+    let deviceListInvalidation;
     await session.withTransaction(async () => {
       const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
@@ -669,10 +680,11 @@ async function revokeDevice(req, res, next) {
           { session }
         );
       }
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
     });
     if (revokedSessionHash) disconnectSessionHash(revokedSessionHash);
     emitCryptoRosterChanged(req, conversations);
-    await publishDeviceListUpdate(req);
+    emitDeviceListUpdate(req, deviceListInvalidation);
     return res.json({
       ok: true,
       device: deviceView(device),
@@ -733,6 +745,7 @@ async function renewDevice(req, res, next) {
     const manifestSignature = String(req.body.manifestSignature || "");
     let renewed;
     let duplicate = false;
+    let deviceListInvalidation;
     await session.withTransaction(async () => {
       const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
@@ -794,9 +807,10 @@ async function renewDevice(req, res, next) {
       );
       if (!renewed) { const error = new Error("device changed during renewal"); error.status = 409; throw error; }
       await persistDirectoryHead(identity, verifiedDirectory, session);
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
     });
     const updatedIdentity = await CryptoIdentity.findOne({ userId: req.user.userId }).lean();
-    if (!duplicate) await publishDeviceListUpdate(req);
+    if (!duplicate) emitDeviceListUpdate(req, deviceListInvalidation);
     return res.json({
       ok: true,
       duplicate,

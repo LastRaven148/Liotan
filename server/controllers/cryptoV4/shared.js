@@ -62,6 +62,9 @@ function identityView(identity) {
 }
 
 function deviceView(device) {
+  const manifestExpired = ["active", "pending"].includes(device.status) &&
+    (!device.manifestExpiresAt || Date.parse(device.manifestExpiresAt) <= Date.now());
+  const status = manifestExpired ? "expired" : device.status;
   return {
     cryptoUserId: device.cryptoUserId,
     deviceId: device.deviceId,
@@ -71,9 +74,9 @@ function deviceView(device) {
     manifest: device.manifest,
     manifestSignature: device.manifestSignature,
     manifestExpiresAt: device.manifestExpiresAt || null,
-    status: device.status,
+    status,
     activationMode: device.activationMode || "device-approval",
-    approvalChallenge: device.status === "pending" ? device.approvalChallenge || "" : "",
+    approvalChallenge: status === "pending" ? device.approvalChallenge || "" : "",
     approval: device.approval || null,
     approvalSignature: device.approvalSignature || "",
     approvedByClientId: device.approvedByClientId || "",

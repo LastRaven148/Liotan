@@ -252,8 +252,26 @@ assert.match(cryptoMigration, /APPLY_50_1_0_CRYPTO_STATE_MIGRATION/);
 assert.match(cryptoMigration, /legacy-unverified/);
 assert.match(cryptoMigration, /dropIndex/,
   "the historical attachment TTL index must be removed before the new lifecycle is active");
+for (const durableModel of [
+  "ClientInvalidation",
+  "DeletionObjectTask",
+  "DeletionWorkflow",
+  "MessageVisibility",
+  "UserBlock",
+  "UserNotificationSettings"
+]) {
+  assert.match(cryptoMigration, new RegExp(`${durableModel}\\.createIndexes\\(\\)`),
+    `migration reconciliation must explicitly create ${durableModel} indexes`);
+}
 assert.match(read("server/deploy/install-release.sh"), /migrateCryptoState\.js --apply[\s\S]*switch_current/,
   "the idempotent crypto migration must finish before current is switched");
+const productionDeployWorkflow = read(".github/workflows/deploy-vps.yml");
+assert.match(productionDeployWorkflow, /workflow_dispatch:/,
+  "production deployment must require an explicit manual dispatch");
+assert.doesNotMatch(productionDeployWorkflow, /workflow_run:/,
+  "merging a green main build must not automatically deploy production");
+assert.match(productionDeployWorkflow, /branch=main&status=success[\s\S]*release-evidence-/,
+  "manual production deployment must remain bound to successful main CI evidence");
 const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })
   .filter(entry => entry.isFile() && /\.(?:js|jsx|html)$/.test(entry.name))
   .map(entry => read(path.relative(root, path.join(entry.parentPath, entry.name))))
@@ -320,6 +338,16 @@ assert.match(deletionWorkflow, /DeletionObjectTask/,
   "external object deletion must use durable object tasks");
 assert.match(deletionWorkflow, /runMongoTransaction/,
   "Mongo deletion and durable invalidation creation must share a transaction");
+assert.match(deletionWorkflow, /objectPlanCompleted:\s*true/,
+  "post-freeze media inventory must expose a durable completion barrier");
+assert.match(deletionWorkflow, /\$inc:\s*\{\s*claimCount:\s*1\s*\}/,
+  "successful worker claims must not consume the failure retry budget");
+assert.match(deletionWorkflow, /async function failWorkflow[\s\S]*?\$inc:\s*\{\s*attempts:\s*1\s*\}/,
+  "only actual workflow failures may consume the failure retry budget");
+const deletionRunner = deletionWorkflow.slice(deletionWorkflow.indexOf("async function runDeletionWorkflow"));
+assert(deletionRunner.indexOf("freezeWorkflow") < deletionRunner.indexOf("planWorkflowObjects") &&
+  deletionRunner.indexOf("planWorkflowObjects") < deletionRunner.indexOf("deleteWorkflowObjects"),
+  "deletion must freeze writes before media ownership planning and physical deletion");
 const dialogDeletionClient = read("client/src/crypto/mlsEngine.jsx");
 const deletionClientBlock = dialogDeletionClient.slice(
   dialogDeletionClient.indexOf("async deleteConversation("),
@@ -340,6 +368,21 @@ assert.match(legacyLeaveBlock, /status\(410\)/,
   "legacy group leave must remain a tombstone instead of preserving whole-chat history");
 assert.doesNotMatch(legacyLeaveBlock, /\.save\(|\.updateOne\(/,
   "legacy group leave tombstone must not mutate membership");
+for (const consistencyController of [
+  "server/controllers/blockController.js",
+  "server/controllers/notificationSettingsController.js"
+]) {
+  const source = read(consistencyController);
+  assert.match(source, /runMongoTransaction/,
+    `${consistencyController} must commit the account mutation and durable invalidation atomically`);
+  assert.match(source, /ClientInvalidation\.create\(\[[\s\S]*?\{\s*session\s*\}\)/,
+    `${consistencyController} must create its durable invalidation in the active transaction`);
+}
+const deviceControllerSource = read("server/controllers/cryptoV4/identityDevices.js");
+assert.match(deviceControllerSource, /createDeviceListInvalidation\(req, session\)/,
+  "device directory changes must create their durable invalidation inside the directory transaction");
+assert.doesNotMatch(deviceControllerSource, /publishDeviceListUpdate/,
+  "device mutations must not publish a post-commit-only invalidation");
 const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
 assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");

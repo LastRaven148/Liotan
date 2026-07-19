@@ -703,8 +703,8 @@ test("device API paginates complete history and renews the current manifest with
       credentialThumbprint: crypto.randomBytes(32).toString("base64url"),
       manifest: historicalManifest,
       manifestSignature: crypto.randomBytes(64).toString("base64url"),
-      manifestExpiresAt: new Date(manifest.expiresAt),
-      status: "revoked",
+      manifestExpiresAt: index === 0 ? new Date(Date.now() - 1000) : new Date(manifest.expiresAt),
+      status: index === 0 ? "active" : "revoked",
       activationMode: "legacy-migrated",
       revokedAt: createdAt,
       createdAt,
@@ -721,7 +721,9 @@ test("device API paginates complete history and renews the current manifest with
   assert.equal(secondPage.status, 200, secondPage.text);
   assert.equal(secondPage.body.devices.length, 6);
   assert.equal(secondPage.body.hasMore, false);
-  assert.equal(new Set([...firstPage.body.devices, ...secondPage.body.devices].map(device => device.deviceId)).size, 106);
+  const completeDeviceHistory = [...firstPage.body.devices, ...secondPage.body.devices];
+  assert.equal(new Set(completeDeviceHistory.map(device => device.deviceId)).size, 106);
+  assert.equal(completeDeviceHistory.find(device => device.deviceId === extraDevices[0].deviceId)?.status, "expired");
 });
 
 test("stale self-update cannot clear the epoch block after device revocation", async () => {
@@ -1600,6 +1602,33 @@ test("conversation deletion is global, idempotent, invalidates peers and permits
   assert.equal(recreated.body.sequence, 0);
 });
 
+test("one idempotency key cannot bind to two conversations during a create race", async () => {
+  const alice = await createAccount("idem_alice");
+  const bob = await createAccount("idem_bob");
+  const carol = await createAccount("idem_carol");
+  const left = await initializePrivateConversation(alice, bob);
+  const right = await initializePrivateConversation(alice, carol);
+  const { requestConversationDeletion } = require("../../services/deletionWorkflow");
+  const idempotencyKey = crypto.randomBytes(24).toString("base64url");
+  const results = await Promise.allSettled([
+    requestConversationDeletion({
+      userId: alice.user._id,
+      username: alice.username,
+      conversationId: left.conversationId,
+      idempotencyKey
+    }),
+    requestConversationDeletion({
+      userId: alice.user._id,
+      username: alice.username,
+      conversationId: right.conversationId,
+      idempotencyKey
+    })
+  ]);
+  assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+  const rejected = results.find(result => result.status === "rejected");
+  assert.equal(rejected.reason?.status, 409);
+});
+
 test("group deletion uses the global workflow and the legacy partial-delete endpoint is a tombstone", async () => {
   const owner = await createAccount("delgroup_owner");
   const peer = await createAccount("delgroup_peer");
@@ -1735,6 +1764,62 @@ test("account deletion destroys multiple private and group conversations with on
   assert.equal(persisted.counters.invalidations, 4);
 });
 
+test("account deletion durably invalidates legacy-only private and group dialogs", async () => {
+  const owner = await createAuthenticatedUser("delacct_legacy_owner");
+  const peer = await createAuthenticatedUser("delacct_legacy_peer");
+  const messageOnlyPeer = await createAuthenticatedUser("delacct_legacy_message_peer");
+  const Group = require("../../models/Group");
+  const Message = require("../../models/Messages");
+  const E2EEConversation = require("../../models/E2EEConversation");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  const { requestAccountDeletion, runDeletionWorkflow } = require("../../services/deletionWorkflow");
+  const legacyConversationId = `legacy:${crypto.randomUUID()}`;
+  const group = await Group.create({
+    name: "Legacy deletion group",
+    owner: peer.username,
+    admins: [peer.username],
+    members: [owner.username, peer.username]
+  });
+  await E2EEConversation.create({
+    conversationId: legacyConversationId,
+    commitId: crypto.randomUUID(),
+    participants: [owner.username, peer.username],
+    createdBy: owner.username
+  });
+  await Message.insertMany([
+    { chatType: "private", chatId: legacyConversationId, from: owner.username, to: peer.username, text: "legacy private" },
+    { chatType: "private", chatId: `message-only:${crypto.randomUUID()}`, from: messageOnlyPeer.username, to: owner.username, text: "legacy message-only private" },
+    { chatType: "group", groupId: group._id, from: peer.username, text: "legacy group" }
+  ]);
+
+  const workflow = await requestAccountDeletion({
+    userId: owner.user._id,
+    username: owner.username,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  const completed = await runDeletionWorkflow({ workflowId: workflow.workflowId });
+  assert.equal(completed.state, "completed");
+  assert.equal(await E2EEConversation.countDocuments({ conversationId: legacyConversationId }), 0);
+  assert.equal(await Group.countDocuments({ _id: group._id }), 0);
+  assert.equal(await Message.countDocuments({ $or: [{ chatId: legacyConversationId }, { groupId: group._id }] }), 0);
+  const invalidations = await ClientInvalidation.find({
+    recipientUserId: peer.user._id,
+    kind: "account-deleted",
+    conversationId: ""
+  }).lean();
+  assert.equal(invalidations.length, 2);
+  assert.deepEqual(new Set(invalidations.map(item => item.chatKey)), new Set([
+    owner.username,
+    `group:${group._id}`
+  ]));
+  assert(await ClientInvalidation.exists({
+    recipientUserId: messageOnlyPeer.user._id,
+    kind: "account-deleted",
+    conversationId: "",
+    chatKey: owner.username
+  }));
+});
+
 test("account deletion remains frozen and resumable while an R2 object retry is pending", async () => {
   const owner = await createAuthenticatedUser("delacct_owner");
   const peer = await createAuthenticatedUser("delacct_peer");
@@ -1815,6 +1900,7 @@ test("account deletion remains frozen and resumable while an R2 object retry is 
   assert.equal(await User.countDocuments({ _id: owner.user._id }), 0);
   assert.equal(await CryptoConversationModel.countDocuments({ conversationId }), 0);
   assert.equal(await AttachmentUpload.countDocuments({ cryptoConversationId: conversationId }), 0);
+  assert.equal(await DeletionObjectTask.countDocuments({ workflowId: workflow.workflowId }), 0);
   assert(await ClientInvalidation.exists({
     recipientUserId: peer.user._id,
     kind: "account-deleted",
@@ -1823,6 +1909,8 @@ test("account deletion remains frozen and resumable while an R2 object retry is 
   const completed = await DeletionWorkflow.findOne({ workflowId: workflow.workflowId }).lean();
   assert.equal(completed.terminal, true);
   assert.equal(completed.accountUsername, undefined);
+  assert.equal(completed.accountEmailHash, undefined);
+  assert.equal(completed.accountClientIds, undefined);
   assert.equal(completed.requestedByUserId, undefined);
 });
 
@@ -1955,6 +2043,46 @@ test("deletion removes avatar objects but retains media with an external referen
   });
   assert.equal(accountResult.state, "completed");
   assert.deepEqual(avatarDeletes, [avatarKey]);
+});
+
+test("post-freeze media inventory captures an upload that raced with conversation deletion", async () => {
+  const alice = await createAccount("rm_alice");
+  const bob = await createAccount("rm_bob");
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const { requestConversationDeletion, runDeletionWorkflow } = require("../../services/deletionWorkflow");
+  const storageKey = `liotan/media/${crypto.randomBytes(12).toString("hex")}`;
+  const workflow = await requestConversationDeletion({
+    userId: alice.user._id,
+    username: alice.username,
+    conversationId,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  const deletedObjects = [];
+  const completed = await runDeletionWorkflow({
+    workflowId: workflow.workflowId,
+    hooks: {
+      afterFreeze: async () => {
+        await AttachmentUpload.create({
+          uploadId: crypto.randomBytes(18).toString("base64url"),
+          owner: alice.username,
+          encrypted: true,
+          protocol: "mls-media-1",
+          cryptoConversationId: conversationId,
+          cryptoClientId: alice.clientId,
+          bindingId: crypto.randomBytes(18).toString("base64url"),
+          boundClientMessageId: crypto.randomUUID(),
+          lifecycleState: "committed",
+          storageKey,
+          storageType: "r2:private-media"
+        });
+      }
+    },
+    adapters: { deleteR2: async key => deletedObjects.push(key) }
+  });
+  assert.equal(completed.state, "completed");
+  assert.deepEqual(deletedObjects, [storageKey]);
+  assert.equal(await AttachmentUpload.countDocuments({ storageKey }), 0);
 });
 
 test("conversation deletion wins against concurrent sends and parallel deletion requests", async () => {

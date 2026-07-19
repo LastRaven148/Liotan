@@ -10,6 +10,12 @@ const CryptoConversation = require("../models/CryptoConversation");
 const CryptoDevice = require("../models/CryptoDevice");
 const CryptoIdentity = require("../models/CryptoIdentity");
 const CryptoDirectoryEntry = require("../models/CryptoDirectoryEntry");
+const ClientInvalidation = require("../models/ClientInvalidation");
+const DeletionObjectTask = require("../models/DeletionObjectTask");
+const DeletionWorkflow = require("../models/DeletionWorkflow");
+const MessageVisibility = require("../models/MessageVisibility");
+const UserBlock = require("../models/UserBlock");
+const UserNotificationSettings = require("../models/UserNotificationSettings");
 const {
   acquireLease,
   advancePhase,
@@ -171,7 +177,13 @@ async function applyMigration({ batchSize = 100, owner = migrationOwner(), hooks
         CryptoConversation.createIndexes(),
         CryptoDevice.createIndexes(),
         CryptoIdentity.createIndexes(),
-        CryptoDirectoryEntry.createIndexes()
+        CryptoDirectoryEntry.createIndexes(),
+        ClientInvalidation.createIndexes(),
+        DeletionObjectTask.createIndexes(),
+        DeletionWorkflow.createIndexes(),
+        MessageVisibility.createIndexes(),
+        UserBlock.createIndexes(),
+        UserNotificationSettings.createIndexes()
       ]);
       const indexes = await AttachmentUpload.collection.indexes();
       if (indexes.some(isTtlExpiresIndex)) {

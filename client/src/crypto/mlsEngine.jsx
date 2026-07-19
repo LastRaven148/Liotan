@@ -224,9 +224,16 @@ class LiotanMlsEngine {
 
   async purgeConversation(conversationId, chatKey = "") {
     const id = String(conversationId || "");
-    if (!id) return;
     const state = conversationById.get(id);
     const resolvedChatKey = String(chatKey || state?.chatKey || "");
+    if (!id) {
+      if (resolvedChatKey) {
+        window.dispatchEvent(new CustomEvent("liotan:mls-event", {
+          detail: { type: "conversation-delete", conversationId: "", chatKey: resolvedChatKey }
+        }));
+      }
+      return;
+    }
     this.purgingConversations.add(id);
     await Promise.allSettled([
       this.historyMigrations.get(id),

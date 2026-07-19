@@ -50,13 +50,14 @@ R2 ownership is proved against remaining Mongo references before a task is creat
 
 Deletion is a state machine, not a controller helper:
 
-`requested -> planned -> frozen -> media-deleting -> server-data-deleting -> invalidating -> reconciling -> completed`
+`requested -> planning -> planned -> frozen -> media-deleting -> invalidating -> completed`
 
 - A Mongo CAS lease permits only one worker to advance a workflow across backend instances.
 - Planning snapshots every affected conversation and participant before any destructive write.
 - Freezing and every subsequent MLS mutation share a transaction-visible lifecycle predicate.
 - R2 deletion is external to Mongo. Object tasks remain durable and the workflow cannot report `completed` until each mandatory object is confirmed absent.
 - Durable per-recipient invalidations are written before conversation metadata is removed. Socket.IO is only a low-latency hint.
+- The `media-deleting -> invalidating` transition deletes Mongo records and creates durable invalidations in one transaction. The final `invalidating -> completed` transition runs reconciliation first.
 - Completion removes direct account identifiers from retained workflow metadata and keeps only an opaque idempotency digest and sanitised counters.
 - A new contact after completion resolves to a new random conversation identifier and fresh MLS state; active workflows prevent lookup-key recreation races.
 

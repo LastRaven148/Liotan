@@ -56,7 +56,7 @@ function workflowView(workflow) {
     state: workflow.state,
     terminal: Boolean(workflow.terminal),
     counters: workflow.counters || {},
-    retrying: !workflow.terminal && workflow.attempts > 0,
+    retrying: !workflow.terminal && (workflow.attempts > 0 || Boolean(workflow.lastErrorCode)),
     completedAt: workflow.completedAt || null,
     updatedAt: workflow.updatedAt || null
   };
@@ -107,7 +107,14 @@ async function createWorkflow({ type, userId, username, conversationId = "", ide
     existing = await DeletionWorkflow.findOne({
       $or: [{ idempotencyKeyHash }, { subjectKeyHash, terminal: false }]
     });
-    if (existing) return existing;
+    if (existing) {
+      if (existing.type !== type || existing.subjectKeyHash !== subjectKeyHash) {
+        const conflict = new Error("idempotency key is already bound to another deletion");
+        conflict.status = 409;
+        throw conflict;
+      }
+      return existing;
+    }
     throw error;
   }
 }
@@ -146,7 +153,7 @@ async function claimWorkflow(workflowId = "", owner = randomId()) {
     query,
     {
       $set: { leaseOwner: owner, leaseExpiresAt: new Date(now.getTime() + LEASE_MS) },
-      $inc: { attempts: 1 }
+      $inc: { claimCount: 1 }
     },
     { returnDocument: "after", sort: { nextAttemptAt: 1, createdAt: 1 } }
   );
@@ -264,17 +271,22 @@ async function planWorkflow(workflow, owner) {
     let groups;
     let legacyConversations;
     let legacyMessages = [];
+    let accountClientIds = [];
+    let accountEmailHash = "";
     if (current.type === "account") {
       const user = await User.findOne({ _id: current.accountUserId, username: current.accountUsername }).session(session);
       if (!user) {
         const error = new Error("account not found"); error.status = 404; throw error;
       }
+      accountEmailHash = String(user.emailHash || "");
       conversations = await CryptoConversation.find({ participantUserIds: user._id }).session(session).lean();
+      accountClientIds = (await CryptoDevice.find({ userId: user._id }, "clientId").session(session).lean())
+        .map(device => device.clientId);
       groups = await Group.find({ members: user.username }).session(session).lean();
       legacyConversations = await E2EEConversation.find({ participants: user.username }).session(session).lean();
       legacyMessages = await Message.find({
         $or: [{ from: user.username }, { to: user.username }, { deletedFor: user.username }]
-      }, "chatId from to").session(session).lean();
+      }, "chatType groupId chatId from to").session(session).lean();
     } else {
       const conversation = await CryptoConversation.findOne({
         conversationId: current.targetConversationId,
@@ -300,10 +312,11 @@ async function planWorkflow(workflow, owner) {
       ...groups.flatMap(group => group.members || []),
       ...legacyConversations.flatMap(item => item.participants || []),
       ...legacyMessages.flatMap(item => [item.from, item.to])
-    ])];
+    ].filter(Boolean))];
     const participantUsers = participantUsernames.length
       ? await User.find({ username: { $in: participantUsernames } }, "username").session(session).lean()
       : [];
+    const userIdByUsername = new Map(participantUsers.map(user => [user.username, user._id]));
     const participantUserIds = [...new Map([
       ...conversations.flatMap(item => item.participantUserIds || []),
       ...participantUsers.map(item => item._id)
@@ -314,37 +327,96 @@ async function planWorkflow(workflow, owner) {
       ...conversations.flatMap(item => item.chatType === "private" ? privateLegacyIds(item.participantUsernames) : [`group:${item.groupId}`])
     ].filter(Boolean))];
     const targetConversation = conversations.find(item => item.conversationId === current.targetConversationId);
-    current.invalidationTargets = conversations.map(item => ({
+    const invalidationTargets = conversations.map(item => ({
       conversationId: item.conversationId,
       chatType: item.chatType,
       groupId: item.groupId || null,
       participantUserIds: item.participantUserIds || [],
       participantUsernames: item.participantUsernames || []
     }));
+    if (current.type === "account") {
+      const representedGroups = new Set(conversations.filter(item => item.groupId).map(item => idString(item.groupId)));
+      for (const group of groups) {
+        if (representedGroups.has(idString(group._id))) continue;
+        invalidationTargets.push({
+          conversationId: "",
+          chatType: "group",
+          groupId: group._id,
+          participantUserIds: (group.members || []).map(name => userIdByUsername.get(name)).filter(Boolean),
+          participantUsernames: group.members || []
+        });
+      }
+      const representedPrivateRosters = new Set(conversations
+        .filter(item => item.chatType === "private")
+        .map(item => [...(item.participantUsernames || [])].sort().join("\u0000")));
+      for (const legacy of legacyConversations) {
+        if (String(legacy.conversationId || "").startsWith("group:")) continue;
+        const names = [...new Set(legacy.participants || [])];
+        const rosterKey = [...names].sort().join("\u0000");
+        if (names.length < 2 || representedPrivateRosters.has(rosterKey)) continue;
+        representedPrivateRosters.add(rosterKey);
+        invalidationTargets.push({
+          conversationId: "",
+          chatType: "private",
+          groupId: null,
+          participantUserIds: names.map(name => userIdByUsername.get(name)).filter(Boolean),
+          participantUsernames: names
+        });
+      }
+      for (const message of legacyMessages) {
+        if (message.chatType === "group" || message.groupId) continue;
+        const names = [...new Set([message.from, message.to].filter(Boolean))];
+        const rosterKey = [...names].sort().join("\u0000");
+        if (names.length < 2 || representedPrivateRosters.has(rosterKey)) continue;
+        representedPrivateRosters.add(rosterKey);
+        invalidationTargets.push({
+          conversationId: "",
+          chatType: "private",
+          groupId: null,
+          participantUserIds: names.map(name => userIdByUsername.get(name)).filter(Boolean),
+          participantUsernames: names
+        });
+      }
+    }
+    current.invalidationTargets = invalidationTargets;
+    current.accountEmailHash = accountEmailHash;
+    current.accountClientIds = accountClientIds;
     current.conversationIds = conversationIds;
     current.groupIds = groupIds;
     current.participantUserIds = participantUserIds;
     current.participantUsernames = participantUsernames;
     current.legacyConversationIds = legacyConversationIds;
     current.targetLookupKeyHash = targetConversation ? digest(targetConversation.lookupKey) : "";
-    current.counters.conversations = conversationIds.length;
+    current.counters.conversations = invalidationTargets.length;
     current.counters.groups = groupIds.length;
     current.state = "planning";
     await current.save({ session });
   });
 
-  const planned = await DeletionWorkflow.findOne({ _id: workflow._id, state: "planning", leaseOwner: owner });
-  if (!planned) return;
+  await DeletionWorkflow.updateOne(
+    { _id: workflow._id, state: "planning", leaseOwner: owner },
+    { $set: { state: "planned" } }
+  );
+}
+
+async function planWorkflowObjects(workflow, owner) {
+  const frozen = await DeletionWorkflow.findOne({
+    _id: workflow._id,
+    state: "frozen",
+    objectPlanCompleted: false,
+    leaseOwner: owner
+  });
+  if (!frozen) return;
   const [messages, uploads, account, groups] = await Promise.all([
-    Message.find(messageQuery(planned)).lean(),
+    Message.find(messageQuery(frozen)).lean(),
     AttachmentUpload.find({
       $or: [
-        ...(planned.conversationIds.length ? [{ cryptoConversationId: { $in: planned.conversationIds } }] : []),
-        ...(planned.type === "account" ? [{ owner: planned.accountUsername }] : [])
+        ...(frozen.conversationIds.length ? [{ cryptoConversationId: { $in: frozen.conversationIds } }] : []),
+        ...(frozen.type === "account" ? [{ owner: frozen.accountUsername }] : [])
       ]
     }).lean(),
-    planned.type === "account" ? User.findById(planned.accountUserId).lean() : null,
-    planned.groupIds.length ? Group.find({ _id: { $in: planned.groupIds } }).lean() : []
+    frozen.type === "account" ? User.findById(frozen.accountUserId).lean() : null,
+    frozen.groupIds.length ? Group.find({ _id: { $in: frozen.groupIds } }).lean() : []
   ]);
   const candidates = [
     ...objectCandidates(account, "account-avatar"),
@@ -371,7 +443,7 @@ async function planWorkflow(workflow, owner) {
   const exclusive = new Map(ownership.exclusive.map(item => [`${item.storageType}:${item.locator}`, item]));
   if (exclusive.size) {
     await DeletionObjectTask.insertMany([...exclusive.values()].map(item => ({
-      workflowId: planned.workflowId,
+      workflowId: frozen.workflowId,
       locatorHash: digest(`${item.storageType}:${item.locator}`),
       locator: item.locator,
       storageType: item.storageType,
@@ -382,10 +454,10 @@ async function planWorkflow(workflow, owner) {
     });
   }
   await DeletionWorkflow.updateOne(
-    { _id: planned._id, leaseOwner: owner, state: "planning" },
+    { _id: frozen._id, leaseOwner: owner, state: "frozen", objectPlanCompleted: false },
     {
       $set: {
-        state: "planned",
+        objectPlanCompleted: true,
         "counters.messages": messages.length,
         "counters.mediaObjects": exclusive.size,
         "counters.sharedMediaRetained": ownership.retainedShared
@@ -478,10 +550,20 @@ async function deleteObjectTask(task, adapters) {
 }
 
 async function deleteWorkflowObjects(workflow, owner, adapters) {
-  await DeletionWorkflow.updateOne(
-    { _id: workflow._id, leaseOwner: owner, state: { $in: ["frozen", "media-deleting"] } },
+  const transition = await DeletionWorkflow.updateOne(
+    {
+      _id: workflow._id,
+      leaseOwner: owner,
+      objectPlanCompleted: true,
+      state: { $in: ["frozen", "media-deleting"] }
+    },
     { $set: { state: "media-deleting" } }
   );
+  if (transition.matchedCount !== 1) {
+    const error = new Error("deletion object inventory is incomplete");
+    error.code = "DELETION_OBJECT_PLAN_INCOMPLETE";
+    throw error;
+  }
   const tasks = await DeletionObjectTask.find({
     workflowId: workflow.workflowId,
     state: "pending",
@@ -517,6 +599,22 @@ async function deleteWorkflowObjects(workflow, owner, adapters) {
       );
       return false;
     }
+  }
+  const blocked = await DeletionObjectTask.findOne({ workflowId: workflow.workflowId, state: "dead-letter" });
+  if (blocked) {
+    await DeletionWorkflow.updateOne(
+      { _id: workflow._id, leaseOwner: owner },
+      {
+        $set: {
+          state: "dead-letter",
+          terminal: true,
+          lastErrorCode: blocked.lastErrorCode || "OBJECT_DELETE_DEAD_LETTER",
+          leaseOwner: "",
+          leaseExpiresAt: null
+        }
+      }
+    );
+    return false;
   }
   const remaining = await DeletionObjectTask.findOne({ workflowId: workflow.workflowId, state: "pending" });
   if (remaining) {
@@ -610,7 +708,12 @@ async function deleteMongoData(workflow, owner) {
           ...(current.type === "account" ? [{ requestedByUserId: current.accountUserId }] : [])
         ]
       }, { session }),
-      MessageVisibility.deleteMany({ conversationId: { $in: current.conversationIds } }, { session }),
+      MessageVisibility.deleteMany({
+        $or: [
+          { conversationId: { $in: current.conversationIds } },
+          ...(current.type === "account" ? [{ userId: current.accountUserId }] : [])
+        ]
+      }, { session }),
       CryptoConversation.deleteMany({
         conversationId: { $in: current.conversationIds },
         deletionWorkflowId: current.workflowId
@@ -679,16 +782,68 @@ function emitInvalidations(io, invalidations) {
 async function reconcileWorkflow(workflow, owner) {
   const current = await DeletionWorkflow.findOne({ _id: workflow._id, leaseOwner: owner });
   if (!current || current.state !== "invalidating") return;
-  const checks = await Promise.all([
+  const attachmentQuery = {
+    $or: [
+      ...(current.conversationIds.length ? [{ cryptoConversationId: { $in: current.conversationIds } }] : []),
+      ...(current.type === "account" ? [{ owner: current.accountUsername }] : [])
+    ]
+  };
+  const checks = [
     CryptoConversation.countDocuments({ conversationId: { $in: current.conversationIds } }),
     CryptoEvent.countDocuments({ conversationId: { $in: current.conversationIds } }),
-    CryptoOperation.countDocuments({ conversationId: { $in: current.conversationIds } }),
-    AttachmentUpload.countDocuments({ cryptoConversationId: { $in: current.conversationIds } }),
+    CryptoOperation.countDocuments({
+      $or: [
+        { conversationId: { $in: current.conversationIds } },
+        ...(current.type === "account" ? [{ requestedByUserId: current.accountUserId }] : [])
+      ]
+    }),
+    AttachmentUpload.countDocuments(attachmentQuery),
     Group.countDocuments({ _id: { $in: current.groupIds } }),
     Message.countDocuments(messageQuery(current)),
+    MessageVisibility.countDocuments({
+      $or: [
+        { conversationId: { $in: current.conversationIds } },
+        ...(current.type === "account" ? [{ userId: current.accountUserId }] : [])
+      ]
+    }),
+    E2EEConversation.countDocuments({ conversationId: { $in: current.legacyConversationIds } }),
+    E2EEKey.countDocuments({
+      $or: [
+        { conversationId: { $in: current.legacyConversationIds } },
+        ...(current.type === "account" ? [{ user: current.accountUsername }] : [])
+      ]
+    }),
     DeletionObjectTask.countDocuments({ workflowId: current.workflowId, state: { $ne: "deleted" } })
-  ]);
-  if (checks.some(Boolean)) {
+  ];
+  if (current.type === "account") {
+    const accountSelector = { $or: [{ userId: current.accountUserId }, { username: current.accountUsername }] };
+    checks.push(
+      CryptoKeyPackage.countDocuments({ userId: current.accountUserId }),
+      CryptoRequestNonce.countDocuments({ clientId: { $in: current.accountClientIds } }),
+      CryptoDirectoryEntry.countDocuments({ userId: current.accountUserId }),
+      CryptoDevice.countDocuments({ userId: current.accountUserId }),
+      CryptoIdentity.countDocuments({ userId: current.accountUserId }),
+      Session.countDocuments(accountSelector),
+      UserSecurity.countDocuments(accountSelector),
+      RegistrationCancel.countDocuments(accountSelector),
+      PendingEmailChange.countDocuments({
+        $or: [
+          ...accountSelector.$or,
+          ...(current.accountEmailHash
+            ? [{ oldEmailHash: current.accountEmailHash }, { newEmailHash: current.accountEmailHash }]
+            : [])
+        ]
+      }),
+      UserNotificationSettings.countDocuments({ userId: current.accountUserId }),
+      UserBlock.countDocuments({
+        $or: [{ blockerUserId: current.accountUserId }, { blockedUserId: current.accountUserId }]
+      }),
+      ClientInvalidation.countDocuments({ recipientUserId: current.accountUserId }),
+      ...(current.accountEmailHash ? [EmailCode.countDocuments({ emailHash: current.accountEmailHash })] : [])
+    );
+  }
+  const remaining = await Promise.all(checks);
+  if (remaining.some(Boolean)) {
     const error = new Error("deletion reconciliation found remaining records");
     error.code = "DELETION_RECONCILIATION_FAILED";
     throw error;
@@ -716,6 +871,8 @@ async function reconcileWorkflow(workflow, owner) {
       requestedByUsername: 1,
       accountUserId: 1,
       accountUsername: 1,
+      accountEmailHash: 1,
+      accountClientIds: 1,
       participantUserIds: 1,
       participantUsernames: 1,
       invalidationTargets: 1,
@@ -723,14 +880,26 @@ async function reconcileWorkflow(workflow, owner) {
       groupIds: 1
     };
   }
-  await DeletionWorkflow.updateOne({ _id: current._id, leaseOwner: owner, state: "invalidating" }, update);
-  await DeletionObjectTask.deleteMany({ workflowId: current.workflowId, state: "deleted" });
+  await runMongoTransaction(async session => {
+    const finalized = await DeletionWorkflow.updateOne(
+      { _id: current._id, leaseOwner: owner, state: "invalidating" },
+      update,
+      { session }
+    );
+    if (finalized.matchedCount !== 1) {
+      const error = new Error("deletion workflow lease lost during finalization");
+      error.code = "DELETION_LEASE_LOST";
+      throw error;
+    }
+    await DeletionObjectTask.deleteMany(
+      { workflowId: current.workflowId, state: "deleted" },
+      { session }
+    );
+  });
 }
 
 async function failWorkflow(workflow, owner, error) {
-  // claimWorkflow already increments attempts atomically. Counting again here
-  // would dead-letter a workflow one full retry too early.
-  const attempts = Number(workflow.attempts || 0);
+  const attempts = Number(workflow.attempts || 0) + 1;
   const terminal = attempts >= MAX_ATTEMPTS && !error?.status;
   await DeletionWorkflow.updateOne(
     { _id: workflow._id, leaseOwner: owner, terminal: false },
@@ -742,12 +911,13 @@ async function failWorkflow(workflow, owner, error) {
         leaseExpiresAt: null,
         nextAttemptAt: new Date(Date.now() + retryDelay(attempts)),
         lastErrorCode: String(error?.code || error?.name || "DELETION_WORKFLOW_FAILED").slice(0, 80)
-      }
+      },
+      $inc: { attempts: 1 }
     }
   );
 }
 
-async function runDeletionWorkflow({ workflowId = "", io = null, adapters = {} } = {}) {
+async function runDeletionWorkflow({ workflowId = "", io = null, adapters = {}, hooks = {} } = {}) {
   const claimed = await claimWorkflow(workflowId);
   if (!claimed.workflow) return null;
   const workflow = claimed.workflow;
@@ -761,6 +931,16 @@ async function runDeletionWorkflow({ workflowId = "", io = null, adapters = {} }
     await renewLease(workflow, owner);
     let current = await DeletionWorkflow.findById(workflow._id);
     if (current.state === "planned") await freezeWorkflow(current, owner);
+    await renewLease(workflow, owner);
+    current = await DeletionWorkflow.findById(workflow._id);
+    if (current.state === "frozen" && !current.objectPlanCompleted) {
+      await hooks.afterFreeze?.({
+        workflowId: current.workflowId,
+        type: current.type,
+        conversationIds: [...current.conversationIds]
+      });
+      await planWorkflowObjects(current, owner);
+    }
     await renewLease(workflow, owner);
     current = await DeletionWorkflow.findById(workflow._id);
     if (["frozen", "media-deleting"].includes(current.state)) {

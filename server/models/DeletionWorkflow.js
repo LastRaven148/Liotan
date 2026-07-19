@@ -11,6 +11,8 @@ const deletionWorkflowSchema = new mongoose.Schema({
   requestedByUsername: { type: String, default: "" },
   accountUserId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
   accountUsername: { type: String, default: "" },
+  accountEmailHash: { type: String, default: "" },
+  accountClientIds: { type: [String], default: [] },
   targetConversationId: { type: String, default: "", index: true },
   targetLookupKeyHash: { type: String, default: "", index: true },
   conversationIds: { type: [String], default: [] },
@@ -21,7 +23,7 @@ const deletionWorkflowSchema = new mongoose.Schema({
   invalidationTargets: {
     type: [{
       _id: false,
-      conversationId: { type: String, required: true },
+      conversationId: { type: String, default: "" },
       chatType: { type: String, enum: ["private", "group"], required: true },
       groupId: { type: mongoose.Schema.Types.ObjectId, default: null },
       participantUserIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
@@ -37,9 +39,7 @@ const deletionWorkflowSchema = new mongoose.Schema({
       "planned",
       "frozen",
       "media-deleting",
-      "server-data-deleting",
       "invalidating",
-      "reconciling",
       "completed",
       "dead-letter"
     ],
@@ -50,8 +50,10 @@ const deletionWorkflowSchema = new mongoose.Schema({
   leaseOwner: { type: String, default: "", index: true },
   leaseExpiresAt: { type: Date, default: null, index: true },
   nextAttemptAt: { type: Date, default: Date.now, index: true },
+  claimCount: { type: Number, default: 0, min: 0 },
   attempts: { type: Number, default: 0, min: 0 },
   lastErrorCode: { type: String, default: "" },
+  objectPlanCompleted: { type: Boolean, default: false },
   counters: {
     conversations: { type: Number, default: 0, min: 0 },
     groups: { type: Number, default: 0, min: 0 },
