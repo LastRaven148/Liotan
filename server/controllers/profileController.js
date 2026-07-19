@@ -29,6 +29,7 @@ const {
 } = require("../utils/validators");
 
 const { getRelatedUsernames, usersAreRelated } = require("../utils/userRelations");
+const { hasBlockBetweenIds } = require("../services/blockPolicy");
 
 function withAvatarCacheBust(url) {
   if (!url) return "";
@@ -80,6 +81,10 @@ async function getProfile(req, res, next) {
     }
 
     const requester = req.user.username;
+    if (requester !== username && await hasBlockBetweenIds(req.user.userId, user._id)) {
+      return res.status(404).json({ error: "not found" });
+    }
+
     const related = requester === username || await usersAreRelated(requester, username);
 
     if (!related) {

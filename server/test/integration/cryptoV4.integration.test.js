@@ -1191,6 +1191,77 @@ test("profile endpoint does not expose private fields to unrelated users", async
   assert.equal(response.body.limited, true);
 });
 
+test("server blocklist is idempotent, paginated and closes HTTP, MLS, media and disclosure bypasses", async () => {
+  const alice = await createAccount("block_alice");
+  const bob = await createAccount("block_bob");
+  const initialized = await initializePrivateConversation(alice, bob);
+  const block = await sessionJson(alice, "PUT", "/me/blocks/block_bob");
+  assert.equal(block.status, 201, block.text);
+  const duplicate = await sessionJson(alice, "PUT", "/me/blocks/block_bob");
+  assert.equal(duplicate.status, 200, duplicate.text);
+  assert.equal(duplicate.body.duplicate, true);
+
+  const blockedResolve = await signedJson(bob, "POST", "/crypto/v4/conversations/resolve", {
+    chatType: "private",
+    targetUsername: alice.username
+  });
+  assert.equal(blockedResolve.status, 403, blockedResolve.text);
+  assert.equal(blockedResolve.body.error, "private interaction unavailable");
+
+  const blockedOperation = await signedJson(bob, "POST", initialized.operationPath, {});
+  assert.equal(blockedOperation.status, 403, blockedOperation.text);
+  const blockedMessage = await signedJson(bob, "POST", `/crypto/v4/conversations/${initialized.conversationId}/messages`, {
+    clientMessageId: crypto.randomUUID(),
+    epoch: 1,
+    ciphertext: crypto.randomBytes(160).toString("base64url")
+  });
+  assert.equal(blockedMessage.status, 403, blockedMessage.text);
+  const blockedMedia = await signedJson(bob, "POST", "/crypto/v4/media/upload", {
+    conversationId: initialized.conversationId,
+    bindingId: crypto.randomBytes(18).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    clientMessageId: crypto.randomUUID(),
+    bytes: 128
+  });
+  assert.equal(blockedMedia.status, 403, blockedMedia.text);
+
+  const search = await requestFor(bob, "GET", "/users/search?q=block_alice");
+  assert.equal(search.status, 200, search.text);
+  assert.deepEqual(search.body, []);
+  const profile = await requestFor(bob, "GET", "/profile/block_alice");
+  assert.equal(profile.status, 404, profile.text);
+
+  const UserBlock = require("../../models/UserBlock");
+  const bulkUsers = await User.insertMany(Array.from({ length: 105 }, (_, index) => ({
+    username: `blocked_page_${String(index).padStart(3, "0")}`,
+    password: "not-used",
+    emailHash: crypto.createHash("sha256").update(`blocked-page-${index}@example.invalid`).digest("hex"),
+    emailVerified: true
+  })));
+  await UserBlock.insertMany(bulkUsers.map(user => ({ blockerUserId: alice.user._id, blockedUserId: user._id })));
+  const firstPage = await sessionJson(alice, "GET", "/me/blocks?limit=100");
+  assert.equal(firstPage.status, 200, firstPage.text);
+  assert.equal(firstPage.body.blocks.length, 100);
+  assert.equal(firstPage.body.hasMore, true);
+  const secondPage = await sessionJson(alice, "GET", `/me/blocks?limit=100&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`);
+  assert.equal(secondPage.status, 200, secondPage.text);
+  assert.equal(secondPage.body.blocks.length, 6);
+  assert.equal(secondPage.body.hasMore, false);
+  assert.equal(new Set([...firstPage.body.blocks, ...secondPage.body.blocks].map(item => item.username)).size, 106);
+
+  const unblock = await sessionJson(alice, "DELETE", "/me/blocks/block_bob");
+  assert.equal(unblock.status, 200, unblock.text);
+  const duplicateUnblock = await sessionJson(alice, "DELETE", "/me/blocks/block_bob");
+  assert.equal(duplicateUnblock.status, 200, duplicateUnblock.text);
+  assert.equal(duplicateUnblock.body.duplicate, true);
+  const resumed = await signedJson(bob, "POST", "/crypto/v4/conversations/resolve", {
+    chatType: "private",
+    targetUsername: alice.username
+  });
+  assert.equal(resumed.status, 200, resumed.text);
+  assert.equal(resumed.body.conversationId, initialized.conversationId);
+});
+
 test("security email pages expose styled, confirmed actions without inline CSP exceptions", async () => {
   const account = await createAuthenticatedUser("security_page_user");
   const RegistrationCancel = require("../../models/RegistrationCancel");

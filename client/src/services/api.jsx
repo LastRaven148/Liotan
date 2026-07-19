@@ -389,6 +389,20 @@ export async function getArchivedChatsApi() {
   return apiRequest(`${API}/me/archived-chats`);
 }
 
+export async function getBlocklistApi({ cursor = "", limit = 50 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return apiRequest(`${API}/me/blocks?${query}`);
+}
+
+export async function blockUserApi(username) {
+  return apiRequest(`${API}/me/blocks/${encodeURIComponent(username)}`, { method: "PUT" });
+}
+
+export async function unblockUserApi(username) {
+  return apiRequest(`${API}/me/blocks/${encodeURIComponent(username)}`, { method: "DELETE" });
+}
+
 export async function toggleArchivedChatApi(username) {
   return apiRequest(`${API}/me/archived-chats/toggle`, {
     method: "POST",

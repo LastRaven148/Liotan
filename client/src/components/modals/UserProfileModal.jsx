@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { avatarUrl } from "../../utils/avatarUrl";
-import { getProfile, getGroupApi, searchUsers, updateGroupApi, uploadGroupAvatarApi, addGroupMemberApi, removeGroupMemberApi } from "../../services/api";
+import { blockUserApi, getProfile, getGroupApi, searchUsers, updateGroupApi, uploadGroupAvatarApi, addGroupMemberApi, removeGroupMemberApi } from "../../services/api";
 import LiotanIcon from "../common/LiotanIcon";
 export default function UserProfileModal({
   user,
@@ -18,6 +18,10 @@ export default function UserProfileModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const blockDialogRef = useRef(null);
+  const blockTriggerRef = useRef(null);
   const fileInputRef = useRef(null);
   const isGroup = user?.type === "group";
   useEffect(() => {
@@ -95,12 +99,34 @@ export default function UserProfileModal({
   useEffect(() => {
     function handleEsc(e) {
       if (e.key === "Escape") {
-        onClose();
+        if (confirmBlock) {
+          setConfirmBlock(false);
+          blockTriggerRef.current?.focus();
+        } else onClose();
       }
     }
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [onClose]);
+  }, [onClose, confirmBlock]);
+  useEffect(() => {
+    if (!confirmBlock) return undefined;
+    const dialog = blockDialogRef.current;
+    dialog?.querySelector("button")?.focus();
+    function trap(event) {
+      if (event.key !== "Tab" || !dialog) return;
+      const buttons = [...dialog.querySelectorAll("button:not([disabled])")];
+      if (!buttons.length) return;
+      const first = buttons[0];
+      const last = buttons.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    }
+    dialog?.addEventListener("keydown", trap);
+    return () => dialog?.removeEventListener("keydown", trap);
+  }, [confirmBlock]);
   if (!profile) {
     return null;
   }
@@ -193,6 +219,20 @@ export default function UserProfileModal({
       ...member,
       type: "private"
     });
+  }
+  async function blockProfileUser() {
+    if (blocking || isGroup || !profile.username || profile.username === username) return;
+    setBlocking(true);
+    setLoadError("");
+    try {
+      await blockUserApi(profile.username);
+      setConfirmBlock(false);
+      onClose();
+    } catch (error) {
+      setLoadError(error?.message || "Не удалось заблокировать пользователя");
+    } finally {
+      setBlocking(false);
+    }
   }
   return <aside className="profile-drawer">
       <div className="drawer-topbar">
@@ -374,5 +414,21 @@ export default function UserProfileModal({
               </div>
             </div>}
         </div>}
+      {!isGroup && profile.username !== username && <div className="profile-info-card">
+        <button ref={blockTriggerRef} type="button" className="settings-row button-row danger-row" onClick={() => setConfirmBlock(true)}>
+          <span><LiotanIcon name="lock" size={20} /></span>
+          <div className="settings-row-main">Заблокировать пользователя</div>
+        </button>
+      </div>}
+      {confirmBlock && <div className="dialog-delete-modal-overlay" onClick={() => !blocking && setConfirmBlock(false)}>
+        <div ref={blockDialogRef} className="dialog-delete-modal" role="dialog" aria-modal="true" aria-labelledby="block-user-title" onClick={event => event.stopPropagation()}>
+          <div id="block-user-title" className="dialog-delete-modal-title">Заблокировать @{profile.username}?</div>
+          <div className="dialog-delete-modal-text">Новые личные сообщения и вложения между вами будут запрещены сервером. История чата не удалится.</div>
+          <div className="dialog-delete-modal-actions">
+            <button type="button" className="dialog-delete-modal-cancel" onClick={() => { setConfirmBlock(false); blockTriggerRef.current?.focus(); }} disabled={blocking}>Отмена</button>
+            <button type="button" className="dialog-delete-modal-danger" onClick={blockProfileUser} disabled={blocking}>{blocking ? "…" : "Заблокировать"}</button>
+          </div>
+        </div>
+      </div>}
     </aside>;
 }

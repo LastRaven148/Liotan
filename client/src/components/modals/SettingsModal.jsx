@@ -19,6 +19,7 @@ import DevicesPage from "../settings/pages/DevicesPage";
 import LanguagePage from "../settings/pages/LanguagePage";
 import TwoFactorPage from "../settings/pages/TwoFactorPage";
 import SupportPage from "../settings/pages/SupportPage";
+import BlocklistPage from "../settings/pages/BlocklistPage";
 import {
   getSecurityStatus,
   startTotpSetup,
@@ -325,10 +326,13 @@ export default function SettingsModal({
             labels={labels}
             actions={{
               openEmailChange: () => setEmailChangeOpen(true),
+              openBlocklist: () => setPage("blocklist"),
               openTotp: () => setTotpOpen(true),
               totpEnabled: Boolean(securityStatus?.totp?.enabled)
             }}
           />
+        ) : page === "blocklist" ? (
+          <BlocklistPage back={() => setPage("privacy")} labels={labels} />
         ) : page === "twofactor" ? (
           <TwoFactorPage
             back={() => setPage("main")}

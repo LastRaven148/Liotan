@@ -9,6 +9,7 @@ const CryptoOperation = require("../../models/CryptoOperation");
 const CryptoEvent = require("../../models/CryptoEvent");
 const AttachmentUpload = require("../../models/AttachmentUpload");
 const { decodeBase64Url, sha256Base64Url, isUuid } = require("../../security/cryptoV4");
+const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 const {
   normalizeClientIds,
   clientIdsHash,
@@ -61,6 +62,10 @@ async function resolveParticipants(req) {
       throw err;
     }
     users.sort((a, b) => idString(a).localeCompare(idString(b)));
+    if (targetUsername !== req.user.username) {
+      const target = users.find(user => user.username === targetUsername);
+      await assertPrivateInteractionAllowed(req.user.userId, target._id);
+    }
     return {
       chatType,
       lookupKey: `private:${idString(users[0])}:${idString(users[1])}`,

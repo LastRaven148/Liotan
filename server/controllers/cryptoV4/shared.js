@@ -17,6 +17,7 @@ const {
   transitionConversationRoster
 } = require("../../security/cryptoRosterState");
 const { userRoom } = require("../../sockets/sessionRegistry");
+const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 
 const DIRECTORY_LOG_WINDOW = 1024;
 
@@ -196,6 +197,10 @@ async function assertConversationAccess(req, conversationId, { session = null } 
     if (session) findGroup = findGroup.session(session);
     const group = await findGroup.lean();
     if (!group) { const err = new Error("conversation not found"); err.status = 404; throw err; }
+  }
+  if (conversation.chatType === "private") {
+    const otherUserId = conversation.participantUserIds.find(id => idString(id) !== idString(req.user.userId));
+    if (otherUserId) await assertPrivateInteractionAllowed(req.user.userId, otherUserId, { session });
   }
   await expireConversationDevices(conversation);
   return conversation;

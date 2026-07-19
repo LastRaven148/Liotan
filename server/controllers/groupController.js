@@ -20,6 +20,7 @@ const {
 const {
   isValidUsername
 } = require("../utils/validators");
+const { hasBlockBetweenUsernames } = require("../services/blockPolicy");
 
 const emitToGroupMembers =
   require("../sockets/services/emitToGroupMembers");
@@ -156,6 +157,11 @@ async function createGroup(req, res, next) {
     const members = normalizeMembers(req.body.members, owner);
     if (members.length > MAX_GROUP_MEMBERS) {
       return res.status(400).json({ error: "group member limit exceeded" });
+    }
+    for (const member of members) {
+      if (member !== owner && await hasBlockBetweenUsernames(owner, member)) {
+        return res.status(403).json({ error: "group membership target unavailable" });
+      }
     }
     const existingUsers = await User.find({
       username: {
@@ -333,6 +339,9 @@ async function addGroupMember(req, res, next) {
       return res.status(403).json({
         error: "access denied"
       });
+    }
+    if (await hasBlockBetweenUsernames(username, member)) {
+      return res.status(403).json({ error: "group membership target unavailable" });
     }
     const userExists = await User.exists({
       username: member,

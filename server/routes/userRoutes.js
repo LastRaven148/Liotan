@@ -11,9 +11,14 @@ const {
   getArchivedChats,
   toggleArchivedChat
 } = require("../controllers/userController");
+const { blockUser, listBlocks, unblockUser } = require("../controllers/blockController");
 
 const router =
   express.Router();
+
+router.get("/me/blocks", authMiddleware, listBlocks);
+router.put("/me/blocks/:username", authMiddleware, blockUser);
+router.delete("/me/blocks/:username", authMiddleware, unblockUser);
 
 router.get(
   "/users/search",

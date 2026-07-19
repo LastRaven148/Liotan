@@ -502,6 +502,62 @@
   background:#2f4052;
 }
 
+.settings-blocklist{
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  overflow: auto;
+}
+
+.settings-blocklist-row{
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-soft);
+}
+
+.settings-blocklist-identity{
+  display: grid;
+  min-width: 0;
+}
+
+.settings-blocklist-identity strong,
+.settings-blocklist-identity span{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-blocklist-identity span{
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.settings-blocklist-row > button{
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: var(--color-danger);
+  background: transparent;
+}
+
+@media (max-width: 420px){
+  .settings-blocklist-row{
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .settings-blocklist-row > button{
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 .settings-item,
 .settings-row{
   min-height:54px;
