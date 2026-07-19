@@ -77,7 +77,7 @@ async function main() {
   runNpm("privacy audit", ["run", "audit:privacy"]);
   runNpm("encrypted reply privacy audit", ["run", "audit:e2ee-replies"]);
   runNpm("VPS hardening configuration audit", ["run", "audit:vps"]);
-  runNpm("make clean release", ["run", "make-release"]);
+  runNpm("reproducible clean release", ["run", "test:release-reproducible"]);
   await testZip();
   console.log("\nRelease check passed.");
 }

@@ -22,6 +22,7 @@
     "audit:architecture": "node scripts/architectureMap.js",
     "audit:css": "node scripts/cssArchitectureGate.js",
     "test:css-reproducible": "node scripts/cssBuildReproducibility.js",
+    "test:release-reproducible": "node scripts/releaseReproducibility.js",
     "test:crypto-static": "node scripts/cryptoStaticAnalysis.js",
     "test:unit": "npm run test:unit --prefix server && npm run test:coverage",
     "test:integration": "npm run test:integration --prefix server",

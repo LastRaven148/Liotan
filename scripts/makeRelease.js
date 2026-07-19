@@ -15,6 +15,7 @@ const checksumFile = `${outFile}.sha256`;
 const tmpDir = path.join(os.tmpdir(), `liotan-release-${process.pid}-${Date.now()}`);
 const stagedRoot = path.join(tmpDir, "Liotan");
 const rootReal = fs.realpathSync.native(root);
+const ARCHIVE_DATE = new Date("2000-01-01T00:00:00.000Z");
 
 const EXCLUDED_NAMES = new Set([
   ".git",
@@ -81,7 +82,8 @@ function shouldExclude(fullPath) {
 
 function copyDirectory(source, destination) {
   fs.mkdirSync(destination, { recursive: true });
-  const entries = fs.readdirSync(source, { withFileTypes: true });
+  const entries = fs.readdirSync(source, { withFileTypes: true })
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
 
   for (const entry of entries) {
     const sourcePath = sourceChildPath(source, entry.name);
@@ -97,6 +99,19 @@ function copyDirectory(source, destination) {
   }
 }
 
+function releaseFiles(directory, prefix = "Liotan") {
+  const files = [];
+  const entries = fs.readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  for (const entry of entries) {
+    const fullPath = childPath(directory, entry.name);
+    const archivePath = `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) files.push(...releaseFiles(fullPath, archivePath));
+    else if (entry.isFile()) files.push({ fullPath, archivePath });
+  }
+  return files;
+}
+
 async function zipWithArchiver() {
   let archiverModule;
   try {
@@ -108,12 +123,21 @@ async function zipWithArchiver() {
 
   await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outFile);
-    const archive = createArchive(archiverModule, "zip", { zlib: { level: 9 } });
+    const archive = createArchive(archiverModule, "zip", {
+      zlib: { level: 9 },
+      forceLocalTime: false
+    });
 
     output.on("close", resolve);
     archive.on("error", reject);
     archive.pipe(output);
-    archive.directory(stagedRoot, "Liotan");
+    for (const file of releaseFiles(stagedRoot)) {
+      archive.append(fs.readFileSync(file.fullPath), {
+        name: file.archivePath,
+        date: ARCHIVE_DATE,
+        mode: 0o644
+      });
+    }
     archive.finalize();
   });
   return true;
