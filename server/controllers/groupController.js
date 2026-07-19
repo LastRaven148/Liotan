@@ -160,7 +160,8 @@ async function createGroup(req, res, next) {
     const existingUsers = await User.find({
       username: {
         $in: members
-      }
+      },
+      lifecycleState: { $ne: "deleting" }
     }, "username");
     const validMembers = existingUsers.map(user => user.username);
     if (!validMembers.includes(owner)) {
@@ -183,7 +184,8 @@ async function createGroup(req, res, next) {
 async function getMyGroups(req, res, next) {
   try {
     const groups = await Group.find({
-      members: req.user.username
+      members: req.user.username,
+      lifecycleState: { $ne: "deleting" }
     }).sort({
       updatedAt: -1
     });
@@ -207,7 +209,7 @@ async function getMyGroups(req, res, next) {
 async function getGroupById(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -226,7 +228,7 @@ async function getGroupById(req, res, next) {
 async function updateGroup(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -262,7 +264,7 @@ async function updateGroup(req, res, next) {
 async function uploadGroupAvatar(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -321,7 +323,7 @@ async function addGroupMember(req, res, next) {
         error: "invalid username"
       });
     }
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -334,7 +336,8 @@ async function addGroupMember(req, res, next) {
     }
     const userExists = await User.exists({
       username: member,
-      emailVerified: true
+      emailVerified: true,
+      lifecycleState: { $ne: "deleting" }
     });
     if (!userExists) {
       return res.status(404).json({
@@ -364,7 +367,7 @@ async function removeGroupMember(req, res, next) {
   try {
     const username = req.user.username;
     const member = String(req.params.username || "").trim();
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -412,7 +415,7 @@ async function removeGroupMember(req, res, next) {
 async function leaveGroup(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -459,7 +462,7 @@ async function leaveGroup(req, res, next) {
 async function deleteGroup(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"

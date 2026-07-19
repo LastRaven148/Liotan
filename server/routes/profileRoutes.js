@@ -15,7 +15,8 @@ const {
   getProfile,
   updateProfile,
   uploadAvatar,
-  deleteAccount
+  deleteAccount,
+  getAccountDeletionStatus
 } = require("../controllers/profileController");
 
 const router =
@@ -46,6 +47,12 @@ router.delete(
   restrictedSessionGuard,
   requireReauthentication,
   deleteAccount
+);
+
+router.get(
+  "/me/account/deletion/:workflowId",
+  authMiddleware,
+  getAccountDeletionStatus
 );
 
 module.exports = router;

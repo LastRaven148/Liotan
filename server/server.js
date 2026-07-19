@@ -1,10 +1,11 @@
 const env = require("./config/env");
 const connectDb = require("./config/db");
 const { allowedOrigins } = require("./config/corsOptions");
-const { server } = require("./app");
+const { server, io } = require("./app");
 const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts");
 const removePasswordIdentityBackups = require("./startup/removePasswordIdentityBackups");
 const scheduleAttachmentCleanup = require("./startup/scheduleAttachmentCleanup");
+const scheduleDeletionWorkflows = require("./startup/scheduleDeletionWorkflows");
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
 const { version } = require("./config/version");
@@ -29,6 +30,7 @@ async function start() {
     await cleanupLegacyAccountsOnStartup();
     await removePasswordIdentityBackups();
     scheduleAttachmentCleanup(logger);
+    scheduleDeletionWorkflows(logger, io);
 
     server.listen(env.PORT, env.HOST, () => {
       logger.info("SERVER READY", {

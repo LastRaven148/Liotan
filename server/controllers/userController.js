@@ -55,6 +55,9 @@ async function searchUsers(req, res, next) {
               username: {
                 $ne: currentUsername
               }
+            },
+            {
+              lifecycleState: { $ne: "deleting" }
             }
           ]
         },
@@ -79,6 +82,9 @@ async function searchUsers(req, res, next) {
               username: {
                 $ne: currentUsername
               }
+            },
+            {
+              lifecycleState: { $ne: "deleting" }
             }
           ]
         },

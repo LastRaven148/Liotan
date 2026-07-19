@@ -53,6 +53,19 @@ const groupSchema =
         type: Number,
         default: 1,
         min: 1
+      },
+
+      lifecycleState: {
+        type: String,
+        enum: ["active", "deleting"],
+        default: "active",
+        index: true
+      },
+
+      deletionWorkflowId: {
+        type: String,
+        default: "",
+        index: true
       }
     },
     {

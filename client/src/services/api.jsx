@@ -219,11 +219,19 @@ export async function uploadAvatarApi(
 }
 
 export async function deleteAccountApi(reauth = {}) {
+  const { idempotencyKey = crypto.randomUUID(), ...credentials } = reauth;
   return apiRequest(`${API}/me/account`, {
     method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reauth)
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey
+    },
+    body: JSON.stringify({ ...credentials, confirm: true })
   });
+}
+
+export async function getAccountDeletionStatusApi(workflowId) {
+  return apiRequest(`${API}/me/account/deletion/${encodeURIComponent(workflowId)}`);
 }
 
 

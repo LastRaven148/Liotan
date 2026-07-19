@@ -181,14 +181,18 @@ function conversationView(conversation, directory) {
 }
 
 async function assertConversationAccess(req, conversationId, { session = null } = {}) {
-  let findConversation = CryptoConversation.findOne({ conversationId });
+  let findConversation = CryptoConversation.findOne({ conversationId, lifecycleState: { $ne: "deleting" } });
   if (session) findConversation = findConversation.session(session);
   const conversation = await findConversation;
   if (!conversation || !conversation.participantUserIds.some(id => idString(id) === idString(req.user.userId))) {
     const err = new Error("conversation not found"); err.status = 404; throw err;
   }
   if (conversation.chatType === "group") {
-    let findGroup = Group.findOne({ _id: conversation.groupId, members: req.user.username });
+    let findGroup = Group.findOne({
+      _id: conversation.groupId,
+      members: req.user.username,
+      lifecycleState: { $ne: "deleting" }
+    });
     if (session) findGroup = findGroup.session(session);
     const group = await findGroup.lean();
     if (!group) { const err = new Error("conversation not found"); err.status = 404; throw err; }

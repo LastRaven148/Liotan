@@ -63,6 +63,7 @@ export default function SettingsModal({
   const [sessions, setSessions] = useState([]);
   const drawerRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const deleteIdempotencyRef = useRef(crypto.randomUUID());
 
   useEffect(() => setNameValue(displayName || ""), [displayName]);
   useEffect(() => setBioValue(bio || ""), [bio]);
@@ -222,6 +223,7 @@ export default function SettingsModal({
   }
 
   function askDelete() {
+    deleteIdempotencyRef.current = crypto.randomUUID();
     setMenuOpen(false);
     setDeleteStep(1);
     setDeleteError("");
@@ -246,8 +248,8 @@ export default function SettingsModal({
     setDeleting(true);
     try {
       const ok = await deleteAccount?.(securityStatus?.totp?.enabled
-        ? { totpCode: deleteCredential.trim() }
-        : { currentPassword: deleteCredential });
+        ? { totpCode: deleteCredential.trim(), idempotencyKey: deleteIdempotencyRef.current }
+        : { currentPassword: deleteCredential, idempotencyKey: deleteIdempotencyRef.current });
       if (ok !== false) {
         onClose?.();
         return;

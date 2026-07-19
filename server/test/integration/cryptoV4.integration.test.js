@@ -1154,7 +1154,8 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
     .delete("/me/account")
     .set("Cookie", cookie)
     .set("X-Liotan-CSRF", CSRF_HEADER)
-    .send({ currentPassword: password })
+    .set("Idempotency-Key", crypto.randomBytes(24).toString("base64url"))
+    .send({ currentPassword: password, confirm: true })
     .expect(200);
   assert.equal(await User.exists({ username }), null);
   assert.equal(await E2EEConversation.exists({ participants: username }), null);
@@ -1252,4 +1253,136 @@ test("security email pages expose styled, confirmed actions without inline CSP e
     .expect(200)
     .expect(response => assert.match(response.text, /Сессия завершена/));
   assert(await Session.exists({ username: account.username, revokedAt: { $ne: null } }));
+});
+
+test("conversation deletion is global, idempotent, invalidates peers and permits only a fresh conversation", async () => {
+  const alice = await createAccount("delchat_alice");
+  const bob = await createAccount("delchat_bob");
+  const initialized = await initializePrivateConversation(alice, bob);
+  const oldConversationId = initialized.conversationId;
+  const path = `/crypto/v4/conversations/${encodeURIComponent(oldConversationId)}/deletion`;
+  const body = { confirm: true };
+  const idempotencyKey = crypto.randomBytes(24).toString("base64url");
+  const deletion = await requestFor(alice, "POST", path)
+    .set(signedHeaders(alice, "POST", path, body))
+    .set("Idempotency-Key", idempotencyKey)
+    .send(body);
+  assert.equal(deletion.status, 200, deletion.text);
+  assert.equal(deletion.body.state, "completed");
+  assert.equal(await CryptoConversation.countDocuments({ conversationId: oldConversationId }), 0);
+  const CryptoEvent = require("../../models/CryptoEvent");
+  const CryptoOperation = require("../../models/CryptoOperation");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  assert.equal(await CryptoEvent.countDocuments({ conversationId: oldConversationId }), 0);
+  assert.equal(await CryptoOperation.countDocuments({ conversationId: oldConversationId }), 0);
+  assert(await ClientInvalidation.exists({
+    recipientUserId: bob.user._id,
+    kind: "conversation-deleted",
+    conversationId: oldConversationId
+  }));
+
+  const duplicate = await requestFor(alice, "POST", path)
+    .set(signedHeaders(alice, "POST", path, body))
+    .set("Idempotency-Key", idempotencyKey)
+    .send(body);
+  assert.equal(duplicate.status, 200, duplicate.text);
+  assert.equal(duplicate.body.workflowId, deletion.body.workflowId);
+
+  const recreated = await signedJson(alice, "POST", "/crypto/v4/conversations/resolve", initialized.resolveBody);
+  assert.equal(recreated.status, 200, recreated.text);
+  assert.notEqual(recreated.body.conversationId, oldConversationId);
+  assert.equal(recreated.body.initialized, false);
+  assert.equal(recreated.body.epoch, 0);
+  assert.equal(recreated.body.sequence, 0);
+});
+
+test("account deletion remains frozen and resumable while an R2 object retry is pending", async () => {
+  const owner = await createAuthenticatedUser("delacct_owner");
+  const peer = await createAuthenticatedUser("delacct_peer");
+  const CryptoConversationModel = require("../../models/CryptoConversation");
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  const DeletionObjectTask = require("../../models/DeletionObjectTask");
+  const DeletionWorkflow = require("../../models/DeletionWorkflow");
+  const {
+    requestAccountDeletion,
+    runDeletionWorkflow
+  } = require("../../services/deletionWorkflow");
+
+  const conversationId = crypto.randomBytes(32).toString("base64url");
+  await CryptoConversationModel.create({
+    conversationId,
+    lookupKey: `private:${[String(owner.user._id), String(peer.user._id)].sort().join(":")}`,
+    chatType: "private",
+    participantUserIds: [owner.user._id, peer.user._id],
+    participantUsernames: [owner.username, peer.username],
+    adminUserIds: [owner.user._id, peer.user._id],
+    createdByUserId: owner.user._id,
+    createdByClientId: `${crypto.randomUUID()}:0000000000000001@integration.crypto.liotan.invalid`
+  });
+  await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(18).toString("base64url"),
+    owner: owner.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: conversationId,
+    cryptoClientId: `${crypto.randomUUID()}:0000000000000001@integration.crypto.liotan.invalid`,
+    bindingId: crypto.randomBytes(18).toString("base64url"),
+    boundClientMessageId: crypto.randomUUID(),
+    lifecycleState: "committed",
+    storageKey: `liotan/media/${crypto.randomBytes(12).toString("hex")}`,
+    storageType: "r2:private-media"
+  });
+  const workflow = await requestAccountDeletion({
+    userId: owner.user._id,
+    username: owner.username,
+    idempotencyKey: crypto.randomBytes(24).toString("base64url")
+  });
+  let deleteAttempts = 0;
+  const first = await runDeletionWorkflow({
+    workflowId: workflow.workflowId,
+    adapters: {
+      deleteR2: async () => {
+        deleteAttempts += 1;
+        const error = new Error("temporary R2 failure");
+        error.code = "R2_TEMPORARY";
+        throw error;
+      }
+    }
+  });
+  assert.equal(first.state, "media-deleting");
+  assert.equal((await User.findById(owner.user._id)).lifecycleState, "deleting");
+  assert(await CryptoConversationModel.exists({ conversationId, lifecycleState: "deleting" }));
+  assert.equal(await DeletionObjectTask.countDocuments({ workflowId: workflow.workflowId, state: "pending" }), 1);
+
+  await Promise.all([
+    DeletionObjectTask.updateMany(
+      { workflowId: workflow.workflowId },
+      { $set: { nextAttemptAt: new Date(0) } }
+    ),
+    DeletionWorkflow.updateOne(
+      { workflowId: workflow.workflowId },
+      { $set: { nextAttemptAt: new Date(0), leaseExpiresAt: new Date(0), leaseOwner: "" } }
+    )
+  ]);
+  const second = await runDeletionWorkflow({
+    workflowId: workflow.workflowId,
+    adapters: {
+      deleteR2: async () => { deleteAttempts += 1; }
+    }
+  });
+  assert.equal(second.state, "completed");
+  assert.equal(deleteAttempts, 2);
+  assert.equal(await User.countDocuments({ _id: owner.user._id }), 0);
+  assert.equal(await CryptoConversationModel.countDocuments({ conversationId }), 0);
+  assert.equal(await AttachmentUpload.countDocuments({ cryptoConversationId: conversationId }), 0);
+  assert(await ClientInvalidation.exists({
+    recipientUserId: peer.user._id,
+    kind: "account-deleted",
+    conversationId
+  }));
+  const completed = await DeletionWorkflow.findOne({ workflowId: workflow.workflowId }).lean();
+  assert.equal(completed.terminal, true);
+  assert.equal(completed.accountUsername, undefined);
+  assert.equal(completed.requestedByUserId, undefined);
 });

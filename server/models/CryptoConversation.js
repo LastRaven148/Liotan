@@ -23,7 +23,10 @@ const cryptoConversationSchema = new mongoose.Schema({
   sequence: { type: Number, default: 0 },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, required: true },
   createdByClientId: { type: String, required: true },
-  lastCommitAt: { type: Date, default: null }
+  lastCommitAt: { type: Date, default: null },
+  lifecycleState: { type: String, enum: ["active", "deleting"], default: "active", index: true },
+  deletionWorkflowId: { type: String, default: "", index: true },
+  deletionGeneration: { type: Number, default: 0, min: 0 }
 }, { timestamps: true });
 
 cryptoConversationSchema.index({ participantUserIds: 1, updatedAt: -1 });

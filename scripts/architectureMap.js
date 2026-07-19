@@ -9,8 +9,16 @@ const flows = Object.freeze({
   accountDeletion: [
     "server/routes/profileRoutes.js#/me/account",
     "server/controllers/profileController.js#deleteAccount",
-    "server/utils/deleteAccountData.js#deleteAccountData",
-    "server/utils/deleteUploadedFile.js#deleteUploadedFile"
+    "server/services/deletionWorkflow.js#requestAccountDeletion",
+    "server/models/DeletionWorkflow.js#deletionWorkflowSchema",
+    "server/models/DeletionObjectTask.js#deletionObjectTaskSchema",
+    "server/startup/scheduleDeletionWorkflows.js#scheduleDeletionWorkflows"
+  ],
+  conversationDeletion: [
+    "server/routes/cryptoV4Routes.js#/deletion",
+    "server/controllers/cryptoV4/deletion.js#deleteConversation",
+    "server/services/deletionWorkflow.js#requestConversationDeletion",
+    "server/models/ClientInvalidation.js#conversation-deleted"
   ],
   mlsConversation: [
     "server/routes/cryptoV4Routes.js#/crypto/v4/conversations",
@@ -34,6 +42,7 @@ const flows = Object.freeze({
   clientInvalidation: [
     "client/src/hooks/useSocket.jsx#handleChatDeleted",
     "client/src/hooks/useSocket.jsx#handleUserDeleted",
+    "server/controllers/cryptoV4/deletion.js#listInvalidations",
     "client/src/crypto/recoveryStore.jsx#history",
     "client/src/crypto/mls/databaseStorage.jsx#deleteCoreCryptoDatabase",
     "client/src/components/chat/message/messageStorage.jsx#deleteOfflineBlobs"
