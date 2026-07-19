@@ -658,7 +658,9 @@ async function reconcileWorkflow(workflow, owner) {
 }
 
 async function failWorkflow(workflow, owner, error) {
-  const attempts = Number(workflow.attempts || 0) + 1;
+  // claimWorkflow already increments attempts atomically. Counting again here
+  // would dead-letter a workflow one full retry too early.
+  const attempts = Number(workflow.attempts || 0);
   const terminal = attempts >= MAX_ATTEMPTS && !error?.status;
   await DeletionWorkflow.updateOne(
     { _id: workflow._id, leaseOwner: owner, terminal: false },

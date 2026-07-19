@@ -2,7 +2,6 @@ const env = require("./config/env");
 const connectDb = require("./config/db");
 const { allowedOrigins } = require("./config/corsOptions");
 const { server, io } = require("./app");
-const cleanupLegacyAccountsOnStartup = require("./startup/cleanupLegacyAccounts");
 const removePasswordIdentityBackups = require("./startup/removePasswordIdentityBackups");
 const scheduleAttachmentCleanup = require("./startup/scheduleAttachmentCleanup");
 const scheduleDeletionWorkflows = require("./startup/scheduleDeletionWorkflows");
@@ -27,7 +26,6 @@ const httpHardening = applyHttpServerHardening(server, process.env);
 async function start() {
   try {
     await connectDb();
-    await cleanupLegacyAccountsOnStartup();
     await removePasswordIdentityBackups();
     scheduleAttachmentCleanup(logger);
     scheduleDeletionWorkflows(logger, io);

@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { getDialogs, searchUsers, getPinnedChatsApi, togglePinnedChatApi, getArchivedChatsApi, toggleArchivedChatApi, getGroupsApi, leaveGroupApi, deleteGroupApi } from "../services/api";
+import { getDialogs, searchUsers, getPinnedChatsApi, togglePinnedChatApi, getArchivedChatsApi, toggleArchivedChatApi, getGroupsApi, leaveGroupApi } from "../services/api";
+import { getMlsEngine } from "../crypto/mlsEngine";
 function normalizeAttachment(attachment) {
   if (!attachment?.url) {
     return null;
@@ -280,7 +281,7 @@ export default function useDialogs({
     }
     try {
       if (dialog.owner === username) {
-        await deleteGroupApi(dialog.groupId);
+        await getMlsEngine().deleteConversation(dialog.chatKey || `group:${dialog.groupId}`, dialog);
       } else {
         await leaveGroupApi(dialog.groupId);
       }

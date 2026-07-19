@@ -508,9 +508,3 @@ export async function leaveGroupApi(groupId) {
     method: "POST"
   });
 }
-
-export async function deleteGroupApi(groupId) {
-  return apiRequest(`${API}/groups/${groupId}`, {
-    method: "DELETE"
-  });
-}

@@ -1,16 +1,9 @@
 const Group = require("../models/Group");
 const User = require("../models/User");
-const Message = require("../models/Messages");
-const E2EEKey = require("../models/E2EEKey");
-const CryptoConversation = require("../models/CryptoConversation");
-const CryptoEvent = require("../models/CryptoEvent");
-const CryptoOperation = require("../models/CryptoOperation");
 const CryptoDevice = require("../models/CryptoDevice");
-const AttachmentUpload = require("../models/AttachmentUpload");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
-const { messagesMediaKeys } = require("../sockets/services/mediaKeys");
 const { transitionConversationRoster } = require("../security/cryptoRosterState");
 const {
   normalizeMime,
@@ -91,22 +84,6 @@ function emitGroupUpdated(req, group) {
   });
 }
 
-function emitGroupDeleted(req, group, deletedMediaKeys = []) {
-  const io = req.app.get("io");
-  if (!io) {
-    return;
-  }
-
-  emitToGroupMembers({
-    io,
-    members: group.members || [],
-    event: "groupDeleted",
-    payload: {
-      groupId: String(group._id),
-      deletedMediaKeys
-    }
-  });
-}
 function canManageGroup(group, username) {
   return group.owner === username || group.admins.includes(username);
 }
@@ -127,17 +104,6 @@ async function activeCryptoClientIds(username) {
     manifestExpiresAt: { $gt: new Date() }
   }, "clientId").lean();
   return devices.map(device => device.clientId);
-}
-async function deleteGroupMessageFiles(messages) {
-  for (const message of messages) {
-    await deleteUploadedFile({
-      url: message.attachment?.url,
-      storageKey: message.attachment?.storageKey,
-      storageType: message.attachment?.storageType,
-      uploadId: message.attachment?.uploadId,
-      mediaId: message.attachment?.mediaId
-    });
-  }
 }
 async function createGroup(req, res, next) {
   try {
@@ -468,71 +434,11 @@ async function leaveGroup(req, res, next) {
     next(err);
   }
 }
-async function deleteGroup(req, res, next) {
-  try {
-    const username = req.user.username;
-    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
-    if (!group) {
-      return res.status(404).json({
-        error: "group not found"
-      });
-    }
-    if (group.owner !== username) {
-      return res.status(403).json({
-        error: "only owner can delete group"
-      });
-    }
-    const messages = await Message.find({
-      chatType: "group",
-      groupId: group._id
-    });
-    const deletedMediaKeys = messagesMediaKeys(messages);
-
-    await deleteGroupMessageFiles(messages);
-    await Message.deleteMany({
-      chatType: "group",
-      groupId: group._id
-    });
-    await deleteUploadedFile({
-      url: group.avatar,
-      storageKey: group.avatarStorageKey,
-      storageType: group.avatarStorageType
-    });
-    const chatKey = `group:${group._id}`;
-    await User.updateMany({}, {
-      $pull: {
-        pinnedChats: chatKey,
-        archivedChats: chatKey
-      }
-    });
-    await Group.deleteOne({
-      _id: group._id
-    });
-    await E2EEKey.deleteMany({
-      conversationId: {
-        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
-      }
-    });
-    const cryptoConversation = await CryptoConversation.findOne({ lookupKey: `group:${group._id}` }).lean();
-    if (cryptoConversation) {
-      const uploads = await AttachmentUpload.find({ cryptoConversationId: cryptoConversation.conversationId }).lean();
-      for (const upload of uploads) {
-        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
-      }
-      await Promise.all([
-        AttachmentUpload.deleteMany({ cryptoConversationId: cryptoConversation.conversationId }),
-        CryptoEvent.deleteMany({ conversationId: cryptoConversation.conversationId }),
-        CryptoOperation.deleteMany({ conversationId: cryptoConversation.conversationId }),
-        CryptoConversation.deleteOne({ _id: cryptoConversation._id })
-      ]);
-    }
-    emitGroupDeleted(req, group, deletedMediaKeys);
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
+async function deleteGroup(_req, res) {
+  // Compatibility tombstone: whole-chat deletion is exclusively handled by
+  // the signed MLS v4 deletion workflow. Keeping this endpoint prevents old
+  // clients from silently falling back to the former partial delete path.
+  return res.status(410).json({ error: "mls-v4-required" });
 }
 module.exports = {
   createGroup,
