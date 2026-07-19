@@ -80,15 +80,23 @@ jobs:
         run: npm run release:check
 
       - name: Build immutable deployment bundle
-        if: github.event_name != 'pull_request'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           npm run test:deployment-bundle
           test -f client/build/index.html
           find client/build/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
           find client/build/assets -maxdepth 1 -type f -name '*.wasm' -print -quit | grep -q .
-          tar --exclude='server/node_modules' --exclude='server/test' --exclude='server/.env*' \
-            -czf "release/Liotan-${VERSION}-deploy.tar.gz" server client/build LICENSE THIRD-PARTY-NOTICES.md
+          BUNDLE="release/Liotan-${VERSION}-deploy.tar.gz"
+          FIRST_BUNDLE=$(mktemp)
+          build_bundle() {
+            tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
+              --exclude='server/node_modules' --exclude='server/test' --exclude='server/.env*' \
+              -czf "$1" server client/build LICENSE THIRD-PARTY-NOTICES.md
+          }
+          build_bundle "$FIRST_BUNDLE"
+          build_bundle "$BUNDLE"
+          cmp --silent "$FIRST_BUNDLE" "$BUNDLE"
+          rm -f "$FIRST_BUNDLE"
 
       - name: Upload release evidence
         if: always()
