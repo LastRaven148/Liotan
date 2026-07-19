@@ -5,8 +5,8 @@
 
   width:220px;
 
-  background:#17212b;
-  border:1px solid #243342;
+  background:var(--color-surface);
+  border:1px solid var(--color-surface-hover);
   border-radius:12px;
 
   overflow:hidden;
@@ -27,7 +27,7 @@
 
   border:none;
   background:transparent;
-  color:#d7dde5;
+  color:var(--color-text-secondary);
 
   cursor:pointer;
 
@@ -47,7 +47,7 @@
 }
 
 .telegram-menu-item:hover{
-  background:#243342;
+  background:var(--color-surface-hover);
 }
 
 .telegram-menu-item > span{
@@ -58,7 +58,7 @@
   align-items:center;
   justify-content:center;
 
-  color:#9fb0c1;
+  color:var(--color-text-muted);
 
   font-size:16px;
   line-height:1;
@@ -67,11 +67,11 @@
 }
 
 .telegram-menu-item.danger{
-  color:#ff6b6b;
+  color:var(--color-danger);
 }
 
 .telegram-menu-item.danger span{
-  color:#ff6b6b;
+  color:var(--color-danger);
 }
 
 .dialog-context-menu{
@@ -81,8 +81,8 @@
 
   width:170px;
 
-  background:#17212b;
-  border:1px solid #243342;
+  background:var(--color-surface);
+  border:1px solid var(--color-surface-hover);
   border-radius:12px;
 
   overflow:hidden;
@@ -97,7 +97,7 @@
 
   border:none;
   background:transparent;
-  color:#d7dde5;
+  color:var(--color-text-secondary);
 
   display:flex;
   align-items:center;
@@ -113,11 +113,11 @@
 }
 
 .dialog-context-menu button:hover{
-  background:#243342;
+  background:var(--color-surface-hover);
 }
 
 .dialog-context-menu button.danger{
-  color:#ff6b6b;
+  color:var(--color-danger);
 }
 
 @keyframes menuFade{
@@ -131,74 +131,33 @@
     transform:translateY(0) scale(1);
   }
 }
-
-.dialog-delete-confirm{
-  padding:8px;
-}
-
-.dialog-delete-title{
-  color:white;
-  font-size:14px;
-  font-weight:700;
-  margin-bottom:4px;
-}
-
-.dialog-delete-text{
-  color:#9fb0c1;
-  font-size:12px;
-  line-height:1.35;
-  margin-bottom:10px;
-}
-
-.dialog-delete-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:8px;
-}
-
-.dialog-delete-actions button{
-  width:auto;
-  height:32px;
-  padding:0 12px;
-  border-radius:8px;
-  font-size:12px;
-}
-
-.dialog-delete-actions button.danger{
-  background:#ef4444;
-  color:white;
-}
-
-.dialog-delete-actions button.danger:hover{
-  background:#dc2626;
-}
 /* 49.2.8 unified action icon sizing */
 .telegram-action-menu .menu-icon,
 .message-menu .menu-icon,
 .dialog-context-menu .menu-icon,
 .telegram-menu-item > span{
-  width:24px !important;
-  min-width:24px !important;
-  height:24px !important;
-  display:flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-  color:#d7dde5 !important;
-  opacity:1 !important;
+  width:24px;
+  min-width:24px;
+  height:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--color-text-secondary);
+  opacity:1;
 }
 
 .telegram-action-menu .menu-icon svg,
 .message-menu .menu-icon svg,
 .dialog-context-menu .menu-icon svg,
 .telegram-menu-item > span svg{
-  width:22px !important;
-  height:22px !important;
-  display:block !important;
-  overflow:visible !important;
+  width:22px;
+  height:22px;
+  display:block;
+  overflow:visible;
 }
 
 .telegram-action-menu button.danger .menu-icon,
 .message-menu button.danger .menu-icon,
 .dialog-context-menu button.danger .menu-icon{
-  color:#ff6b6b !important;
+  color:var(--color-danger);
 }

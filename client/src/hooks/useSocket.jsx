@@ -4,7 +4,7 @@ import { getApiCandidates } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, mergeHistoryPageIntoChat, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
-import { unlockNotificationSound, playNotificationSound, notificationsEnabled, receivedSoundEnabled } from "../utils/notificationSound";
+import { unlockNotificationSound, playNotificationSound, notificationsEnabledForChat, receivedSoundEnabled } from "../utils/notificationSound";
 import { getMlsEngine } from "../crypto/mlsEngine";
 
 function attachmentOfflineKeys(attachment) {
@@ -240,7 +240,7 @@ export default function useSocket({
       setTimeout(() => {
         document.title = oldTitle;
       }, 2500);
-      if (notificationsEnabled() && "Notification" in window && Notification.permission === "granted") {
+      if (notificationsEnabledForChat(chatKey) && "Notification" in window && Notification.permission === "granted") {
         new Notification(msg.from || "Liotan", {
           body: msg.text || msg.attachment?.name || "Новое сообщение",
           icon: "/android-chrome-192x192.png?v=5"

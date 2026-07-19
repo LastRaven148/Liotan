@@ -1,93 +1,93 @@
 .app{
-  width:100vw !important;
-  height:100vh !important;
-  display:grid !important;
-  grid-template-columns:360px minmax(0, 1fr) 0 !important;
-  background:#0e1621;
+  width:100vw;
+  height:100vh;
+  display:grid;
+  grid-template-columns:360px minmax(0, 1fr) 0;
+  background:var(--color-bg-canvas);
   overflow:hidden;
 }
 
 .app.has-profile-drawer{
-  grid-template-columns:360px minmax(0, 1fr) 380px !important;
+  grid-template-columns:360px minmax(0, 1fr) 380px;
 }
 
 .app > .sidebar{
-  grid-column:1 !important;
-  grid-row:1 !important;
-  width:360px !important;
-  min-width:360px !important;
-  max-width:360px !important;
-  height:100vh !important;
-  position:relative !important;
-  inset:auto !important;
-  transform:none !important;
+  grid-column:1;
+  grid-row:1;
+  width:360px;
+  min-width:360px;
+  max-width:360px;
+  height:100vh;
+  position:relative;
+  inset:auto;
+  transform:none;
 }
 
 .app > .chat{
-  grid-column:2 !important;
-  grid-row:1 !important;
-  width:100% !important;
-  min-width:0 !important;
-  max-width:none !important;
-  height:100vh !important;
-  justify-self:stretch !important;
-  position:relative !important;
-  inset:auto !important;
-  transform:none !important;
-  display:flex !important;
-  flex-direction:column !important;
+  grid-column:2;
+  grid-row:1;
+  width:100%;
+  min-width:0;
+  max-width:none;
+  height:100vh;
+  justify-self:stretch;
+  position:relative;
+  inset:auto;
+  transform:none;
+  display:flex;
+  flex-direction:column;
 }
 
 .app > .profile-drawer{
-  grid-column:3 !important;
-  grid-row:1 !important;
-  width:360px !important;
-  min-width:360px !important;
-  max-width:360px !important;
-  height:100vh !important;
-  position:relative !important;
-  inset:auto !important;
-  transform:none !important;
+  grid-column:3;
+  grid-row:1;
+  width:360px;
+  min-width:360px;
+  max-width:360px;
+  height:100vh;
+  position:relative;
+  inset:auto;
+  transform:none;
 }
 
 .app:not(.has-profile-drawer) > .profile-drawer{
-  display:none !important;
+  display:none;
 }
 
 @media (max-width:1180px) and (min-width:769px){
   .app{
-    grid-template-columns:360px minmax(0, 1fr) 0 !important;
+    grid-template-columns:360px minmax(0, 1fr) 0;
   }
 
   .app.has-profile-drawer{
-    grid-template-columns:360px minmax(0, 1fr) !important;
+    grid-template-columns:360px minmax(0, 1fr);
   }
 
   .app > .profile-drawer{
-    position:fixed !important;
-    top:0 !important;
-    right:0 !important;
-    bottom:0 !important;
-    left:auto !important;
-    width:360px !important;
-    min-width:360px !important;
-    max-width:360px !important;
-    height:100vh !important;
-    z-index:20 !important;
-    transform:translateX(100%) !important;
-    transition:transform .22s ease !important;
-    box-shadow:-18px 0 45px rgba(0,0,0,.35) !important;
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:0;
+    left:auto;
+    width:360px;
+    min-width:360px;
+    max-width:360px;
+    height:100vh;
+    z-index:20;
+    transform:translateX(100%);
+    transition:transform .22s ease;
+    box-shadow:-18px 0 45px rgba(0,0,0,.35);
   }
 
   .app.has-profile-drawer > .profile-drawer{
-    display:block !important;
-    transform:translateX(0) !important;
+    display:block;
+    transform:translateX(0);
   }
 }
 
 .empty{
   margin:auto;
-  color:#7f91a4;
+  color:var(--color-text-subtle);
   font-size:22px;
 }
 
@@ -110,11 +110,11 @@
 
 html,
 body{
-  background:#09111a;
+  background:var(--color-bg-deep);
 }
 
 @media (min-width:769px){
   .mobile-back-button{
-    display:none !important;
+    display:none;
   }
 }

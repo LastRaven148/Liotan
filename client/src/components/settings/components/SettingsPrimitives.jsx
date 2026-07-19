@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 export function SettingsSection({ title, children, className = "" }) {
   return (
     <section className={`settings-card settings-page-section ${className}`.trim()}>
@@ -47,10 +49,11 @@ export function SettingsCheck({ checked, onChange, label, hint, disabled = false
 }
 
 export function SettingsSlider({ label, value, min, max, step = 1, onChange, suffix = "", disabled = false }) {
+  const labelId = useId();
   return (
     <div className={`settings-slider-row ${disabled ? "is-disabled" : ""}`.trim()}>
       <div className="settings-slider-head">
-        <span>{label}</span>
+        <span id={labelId}>{label}</span>
         <b>{value}{suffix}</b>
       </div>
       <input
@@ -60,6 +63,8 @@ export function SettingsSlider({ label, value, min, max, step = 1, onChange, suf
         step={step}
         value={value}
         disabled={disabled}
+        aria-labelledby={labelId}
+        aria-valuetext={`${value}${suffix}`}
         onChange={(e) => onChange?.(Number(e.target.value))}
       />
     </div>
@@ -68,7 +73,13 @@ export function SettingsSlider({ label, value, min, max, step = 1, onChange, suf
 
 export function SettingsRadio({ active, title, subtitle, stacked, onClick }) {
   return (
-    <button type="button" className={`settings-radio-row ${stacked ? "settings-radio-stacked" : ""}`.trim()} onClick={onClick}>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={Boolean(active)}
+      className={`settings-radio-row ${stacked ? "settings-radio-stacked" : ""}`.trim()}
+      onClick={onClick}
+    >
       <span className={active ? "settings-radio-dot active" : "settings-radio-dot"} />
       <span>
         <b>{title}</b>

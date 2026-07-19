@@ -1,0 +1,18 @@
+@supports (-webkit-touch-callout:none){
+  html{
+    height:-webkit-fill-available;
+  }
+
+  body,
+  #root{
+    min-height:-webkit-fill-available;
+  }
+
+  .app,
+  .app > .sidebar,
+  .app > .chat,
+  .app > .profile-drawer{
+    height:100svh;
+    min-height:100svh;
+  }
+}

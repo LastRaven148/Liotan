@@ -2,12 +2,21 @@ import { useEffect, useState } from "react";
 import { SettingsRadio, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
 
 import LiotanIcon from "../../common/LiotanIcon";
-import { applyMessageScale, normalizeMessageScale } from "../../../utils/uiPreferences";
+import {
+  applyMessageScale,
+  applyTheme,
+  applyTimeFormat,
+  applyWallpaper,
+  normalizeMessageScale
+} from "../../../utils/uiPreferences";
 export default function GeneralPage({ back, labels }) {
   const [textSize, setTextSize] = useState(() => normalizeMessageScale(localStorage.getItem("liotan_text_size") || 100));
   const [theme, setTheme] = useState(localStorage.getItem("liotan_theme") || "dark");
   const [timeFormat, setTimeFormat] = useState(localStorage.getItem("liotan_time_format") || "24");
-  const [wallpaper, setWallpaper] = useState(localStorage.getItem("liotan_wallpaper_mode") || "builtIn");
+  const [wallpaper, setWallpaper] = useState(() => {
+    const stored = localStorage.getItem("liotan_wallpaper_mode");
+    return stored === "plain" || stored === "personal" ? "plain" : "pattern";
+  });
   useEffect(() => {
     applyMessageScale(textSize);
   }, [textSize]);
@@ -17,17 +26,13 @@ export default function GeneralPage({ back, labels }) {
     localStorage.setItem("liotan_text_size", String(normalized));
   }
   function saveTheme(value) {
-    setTheme(value);
-    localStorage.setItem("liotan_theme", value);
-    document.documentElement.dataset.theme = value;
+    setTheme(applyTheme(value, { persist: true }));
   }
   function saveTime(value) {
-    setTimeFormat(value);
-    localStorage.setItem("liotan_time_format", value);
+    setTimeFormat(applyTimeFormat(value, { persist: true }));
   }
   function saveWallpaper(value) {
-    setWallpaper(value);
-    localStorage.setItem("liotan_wallpaper_mode", value);
+    setWallpaper(applyWallpaper(value, { persist: true }));
   }
   return (
     <>
@@ -41,8 +46,8 @@ export default function GeneralPage({ back, labels }) {
         <SettingsRadio active={theme === "system"} title={labels.system} onClick={() => saveTheme("system")} />
       </SettingsSection>
       <SettingsSection title={labels.wallpaper}>
-        <SettingsRadio active={wallpaper === "builtIn"} title={labels.defaultWallpaper} onClick={() => saveWallpaper("builtIn")} />
-        <SettingsRadio active={wallpaper === "personal"} title={labels.personalWallpaper || "Личные обои для чатов"} onClick={() => saveWallpaper("personal")} />
+        <SettingsRadio active={wallpaper === "pattern"} title={labels.defaultWallpaper} onClick={() => saveWallpaper("pattern")} />
+        <SettingsRadio active={wallpaper === "plain"} title={labels.plainWallpaper || "Однотонный фон"} onClick={() => saveWallpaper("plain")} />
       </SettingsSection>
       <SettingsSection title={labels.timeFormat}>
         <SettingsRadio active={timeFormat === "24"} title={labels.time24} onClick={() => saveTime("24")} />

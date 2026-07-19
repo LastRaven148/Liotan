@@ -38,7 +38,10 @@ export default function NotificationsPage({ back, labels }) {
       setPermission(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
     }
     window.addEventListener("focus", syncPermission);
-    return () => window.removeEventListener("focus", syncPermission);
+    return () => {
+      window.removeEventListener("focus", syncPermission);
+      window.clearTimeout(previewTimerRef.current);
+    };
   }, []);
 
   async function togglePermission() {
@@ -87,7 +90,7 @@ export default function NotificationsPage({ back, labels }) {
     previewTimerRef.current = window.setTimeout(() => playVolumePreview(value), 35);
   }
   const notificationsActive = permission === "granted" && settings.enabled;
-  const controlsDisabled = !notificationsActive;
+  const webControlsDisabled = !notificationsActive;
   const permissionHelp =
     permission === "denied"
       ? (labels.notificationsPermissionBlocked || "Браузер заблокировал запрос уведомлений. Откройте настройки сайта возле адресной строки и разрешите уведомления вручную.")
@@ -103,20 +106,20 @@ export default function NotificationsPage({ back, labels }) {
         <button type="button" className="settings-primary-button settings-primary-button-compact" onClick={togglePermission}>{notificationsActive ? labels.disableNotifications : labels.enableNotifications}</button>
         <div className="settings-muted-text">{permissionHelp}</div>
       </SettingsSection>
-      <div className={controlsDisabled ? "settings-disabled-area" : ""}>
+      <div>
         <SettingsSection title={labels.soundBlock}>
-          <SettingsCheck checked={settings.sound} disabled={controlsDisabled} onChange={(v) => update("sound", v, "liotan_notify_sound")} label={labels.notificationSound} />
-          <SettingsSlider label={labels.volume} value={settings.volume} min={0} max={100} suffix="%" disabled={controlsDisabled} onChange={updateVolume} />
+          <SettingsCheck checked={settings.sound} onChange={(v) => update("sound", v, "liotan_notify_sound")} label={labels.notificationSound} />
+          <SettingsSlider label={labels.volume} value={settings.volume} min={0} max={100} suffix="%" disabled={!settings.sound} onChange={updateVolume} />
           <div className="settings-muted-text">{labels.volumeHelp}</div>
         </SettingsSection>
         <SettingsSection title={labels.soundEffects}>
-          <SettingsCheck checked={settings.sent} disabled={controlsDisabled} onChange={(v) => update("sent", v, "liotan_sound_sent")} label={labels.sentSound} />
-          <SettingsCheck checked={settings.received} disabled={controlsDisabled} onChange={(v) => update("received", v, "liotan_sound_received")} label={labels.receivedSound} />
+          <SettingsCheck checked={settings.sent} disabled={!settings.sound} onChange={(v) => update("sent", v, "liotan_sound_sent")} label={labels.sentSound} />
+          <SettingsCheck checked={settings.received} disabled={!settings.sound} onChange={(v) => update("received", v, "liotan_sound_received")} label={labels.receivedSound} />
         </SettingsSection>
         <SettingsSection title={labels.chatTypes}>
-          <SettingsCheck checked={settings.privateChats} disabled={controlsDisabled} onChange={(v) => update("privateChats", v, "liotan_notify_private")} label={labels.privateChats} />
-          <SettingsCheck checked={settings.groups} disabled={controlsDisabled} onChange={(v) => update("groups", v, "liotan_notify_groups")} label={labels.groups} />
-          <SettingsCheck checked={settings.channels} disabled={controlsDisabled} onChange={(v) => update("channels", v, "liotan_notify_channels")} label={labels.channels} />
+          <SettingsCheck checked={settings.privateChats} disabled={webControlsDisabled} onChange={(v) => update("privateChats", v, "liotan_notify_private")} label={labels.privateChats} />
+          <SettingsCheck checked={settings.groups} disabled={webControlsDisabled} onChange={(v) => update("groups", v, "liotan_notify_groups")} label={labels.groups} />
+          <SettingsCheck checked={settings.channels} disabled={webControlsDisabled} onChange={(v) => update("channels", v, "liotan_notify_channels")} label={labels.channels} />
         </SettingsSection>
       </div>
     </>

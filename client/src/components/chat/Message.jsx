@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatTime } from "../../utils/date";
+import useTimeFormat from "../../hooks/ui/useTimeFormat";
 import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
 import { formatDuration, formatFileSize } from "./message/messageFormatters";
@@ -39,6 +40,7 @@ function Message({
   const {
     t
   } = useLanguage();
+  const timeFormat = useTimeFormat();
   const [videoDuration, setVideoDuration] = useState(0);
   const [downloadConfirmOpen, setDownloadConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -274,7 +276,7 @@ function Message({
   }
   function renderTimeLayer() {
     return <div className="photo-time-layer">
-        {formatTime(message.createdAt)}
+        {formatTime(message.createdAt, timeFormat)}
         {renderStatus()}
       </div>;
   }
@@ -282,7 +284,7 @@ function Message({
     if (isPhoto || isVideo) {
       return null;
     }
-    return <MessageTime time={formatTime(message.createdAt)} edited={message.edited} status={renderStatus()} className={className} />;
+    return <MessageTime time={formatTime(message.createdAt, timeFormat)} edited={message.edited} status={renderStatus()} className={className} />;
   }
   function renderMediaCaption() {
     if (!decryptedText) {

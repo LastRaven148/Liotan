@@ -56,6 +56,9 @@ import ChatSecurityNotice from "../../src/components/chat/ChatSecurityNotice";
 import SafetyNumberModal from "../../src/components/chat/SafetyNumberModal";
 import DevicesPage from "../../src/components/settings/pages/DevicesPage";
 import LiotanIcon from "../../src/components/common/LiotanIcon";
+import SettingsModal from "../../src/components/modals/SettingsModal";
+import CreateGroupModal from "../../src/components/modals/CreateGroupModal";
+import { LanguageProvider } from "../../src/context/LanguageContext";
 import useSecureTransition from "../../src/hooks/useSecureTransition";
 import { shouldAutomaticallyRepairDatabase } from "../../src/crypto/mls/databaseStorage";
 import { computeSafetyNumber } from "../../src/crypto/mlsEngine";
@@ -946,5 +949,51 @@ window.mountCryptoDevices = function mountCryptoDevices() {
 window.mountSettingsIcon = function mountSettingsIcon() {
   createRoot(document.querySelector("#root")).render(<LiotanIcon name="settings" size={48} title="Настройки" />);
 };
+
+window.mountSettingsFull = function mountSettingsFull() {
+  window.__fixtureDeletePayload = null;
+  createRoot(document.querySelector("#root")).render(
+    <LanguageProvider>
+      <div className="app app--desktop">
+        <SettingsModal
+          username="fixture_user"
+          displayName="Fixture User"
+          avatar=""
+          bio="Responsive settings fixture"
+          saveProfile={async value => ({ ...value })}
+          uploadAvatar={async () => ({})}
+          logout={() => {}}
+          deleteAccount={async value => {
+            window.__fixtureDeletePayload = value;
+            return false;
+          }}
+          onClose={() => {}}
+        />
+      </div>
+    </LanguageProvider>
+  );
+};
+
+window.mountCreateGroupFull = function mountCreateGroupFull() {
+  createRoot(document.querySelector("#root")).render(
+    <div className="app app--desktop">
+      <aside className="sidebar" />
+      <CreateGroupModal onClose={() => {}} onCreated={() => {}} />
+    </div>
+  );
+};
+
+window.mountResponsiveLayout = function mountResponsiveLayout({ mobile = false, activeChat = false, profile = false } = {}) {
+  createRoot(document.querySelector("#root")).render(
+    <div className={["app", mobile ? "app--mobile" : "app--desktop", activeChat ? "has-active-chat" : "", profile ? "has-profile-drawer" : ""].filter(Boolean).join(" ")}>
+      <aside className="sidebar">Sidebar</aside>
+      <main className="chat">Chat</main>
+      <aside className="profile-drawer">Profile</aside>
+    </div>
+  );
+};
+
+document.querySelector("#mount-settings")?.addEventListener("click", window.mountSettingsFull);
+document.querySelector("#mount-create-group")?.addEventListener("click", window.mountCreateGroupFull);
 
 document.querySelector("#status").textContent = "production-fixture-loaded";

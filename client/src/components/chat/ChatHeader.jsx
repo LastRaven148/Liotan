@@ -4,6 +4,7 @@ from "../../utils/avatarUrl";
 import {
   useLanguage
 } from "../../context/LanguageContext";
+import useTimeFormat from "../../hooks/ui/useTimeFormat";
 
 function isSameDay(a, b) {
 
@@ -15,13 +16,14 @@ function isSameDay(a, b) {
 
 }
 
-function formatShortTime(date) {
+function formatShortTime(date, timeFormat) {
 
   return date.toLocaleTimeString(
     [],
     {
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
+      hour12: timeFormat === "12"
     }
   );
 
@@ -41,7 +43,8 @@ function formatShortDate(date) {
 
 function getLastSeenText(
   value,
-  t
+  t,
+  timeFormat
 ) {
 
   if (!value) {
@@ -74,11 +77,11 @@ function getLastSeenText(
   );
 
   if (isSameDay(date, now)) {
-    return `${t.lastSeenTodayAt} ${formatShortTime(date)}`;
+    return `${t.lastSeenTodayAt} ${formatShortTime(date, timeFormat)}`;
   }
 
   if (isSameDay(date, yesterday)) {
-    return `${t.lastSeenYesterdayAt} ${formatShortTime(date)}`;
+    return `${t.lastSeenYesterdayAt} ${formatShortTime(date, timeFormat)}`;
   }
 
   if (diffDays < 7) {
@@ -109,6 +112,7 @@ export default function ChatHeader({
 
   const { t } =
     useLanguage();
+  const timeFormat = useTimeFormat();
 
   const isSavedMessages =
     activeChat === username;
@@ -198,7 +202,8 @@ export default function ChatHeader({
                   ? t.online
                   : getLastSeenText(
                       activeDialog?.lastSeen,
-                      t
+                      t,
+                      timeFormat
                     )}
           </div>
         )}

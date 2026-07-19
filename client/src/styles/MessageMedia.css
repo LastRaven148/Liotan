@@ -69,7 +69,7 @@
   background:rgba(0,0,0,.46);
   backdrop-filter:blur(8px);
 
-  color:#fff;
+  color:var(--color-text-primary);
   font-size:0;
 
   cursor:pointer;
@@ -109,7 +109,7 @@
 
   background:rgba(0,0,0,.58);
 
-  color:#fff;
+  color:var(--color-text-primary);
 
   font-size:11px;
   font-weight:600;
@@ -136,7 +136,7 @@
 
   background:rgba(0,0,0,.62);
 
-  color:white;
+  color:var(--color-text-primary);
 
   font-size:11px;
   font-weight:600;
@@ -159,7 +159,7 @@
 
   background:#182533;
 
-  color:#fff;
+  color:var(--color-text-primary);
 
   font-size:14px;
   line-height:1.36;
@@ -169,7 +169,7 @@
 }
 
 .me .message-media-caption{
-  background:#2b5278;
+  background:var(--color-accent-strong);
 }
 
 
@@ -193,7 +193,7 @@
 
   background:rgba(0,0,0,.48);
 
-  color:white;
+  color:var(--color-text-primary);
 
   font-size:11px;
 
@@ -206,7 +206,7 @@
 
 .photo-time-layer .message-status.sent,
 .photo-time-layer .message-status.delivered{
-  color:#d7dde5;
+  color:var(--color-text-secondary);
 }
 
 .photo-time-layer .message-status.read{
@@ -258,7 +258,7 @@
 }
 
 .media-viewer-title{
-  color:#fff;
+  color:var(--color-text-primary);
 
   font-size:14px;
 
@@ -282,7 +282,7 @@
 
   background:rgba(255,255,255,.08);
 
-  color:#fff;
+  color:var(--color-text-primary);
 
   cursor:pointer;
 
@@ -348,19 +348,6 @@
 
     border-radius:0;
   }
-}
-.message-encrypted-media-placeholder{
-  width:min(320px, 78vw);
-  min-height:150px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:18px;
-  border-radius:14px;
-  background:rgba(0,0,0,.18);
-  color:#b7c4d1;
-  font-size:13px;
-  text-align:center;
 }
 
 .message-media-pending{

@@ -17,6 +17,14 @@ export function notificationsEnabled() {
   return localStorage.getItem("liotan_notify_show") !== "0";
 }
 
+export function notificationsEnabledForChat(chatKey) {
+  if (!notificationsEnabled()) return false;
+  const value = String(chatKey || "");
+  if (value.startsWith("group:")) return localStorage.getItem("liotan_notify_groups") !== "0";
+  if (value.startsWith("channel:")) return localStorage.getItem("liotan_notify_channels") !== "0";
+  return localStorage.getItem("liotan_notify_private") !== "0";
+}
+
 export function notificationSoundEnabled() {
   return localStorage.getItem("liotan_notify_sound") !== "0";
 }
