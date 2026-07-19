@@ -630,6 +630,100 @@ test("new cryptographic devices remain pending until an existing device signs a 
   assert.equal(activeAccess.status, 200, activeAccess.text);
 });
 
+test("device API paginates complete history and renews the current manifest without changing its identity", async () => {
+  const account = await createAccount("device_pages");
+  const before = await signedJson(account, "GET", "/crypto/v4/devices?limit=100");
+  assert.equal(before.status, 200, before.text);
+  const target = before.body.devices.find(device => device.deviceId === account.deviceId);
+  const manifest = {
+    ...target.manifest,
+    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+  };
+  const manifestSignature = signCanonical(account.rootKey.privateKey, "liotan-device-manifest-v1", manifest);
+  const renewal = {
+    v: 1,
+    cryptoUserId: account.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    previousManifestHash: crypto.createHash("sha256").update(canonicalJson([
+      "liotan-device-manifest-v1",
+      target.manifest,
+      target.manifestSignature
+    ])).digest("base64url"),
+    newExpiresAt: manifest.expiresAt,
+    issuedAt: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const renewalSignature = signCanonical(account.requestKey.privateKey, "liotan-device-renewal-v1", renewal);
+  const nextDevice = { ...target, manifest, manifestSignature, manifestExpiresAt: manifest.expiresAt };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: account.cryptoUserId, directory: before.body.directory },
+    before.body.devices,
+    nextDevice,
+    "renew-device",
+    target.deviceId,
+    account.rootKey.privateKey
+  );
+  const path = `/crypto/v4/devices/${target.deviceId}/renew`;
+  const body = {
+    renewal,
+    renewalSignature,
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  };
+  const renewed = await signedJson(account, "POST", path, body);
+  assert.equal(renewed.status, 200, renewed.text);
+  assert.equal(renewed.body.duplicate, false);
+  assert.equal(renewed.body.device.clientId, target.clientId);
+  assert.equal(renewed.body.device.requestPublicKey, target.requestPublicKey);
+  assert.equal(renewed.body.device.credentialThumbprint, target.credentialThumbprint);
+  assert.equal(renewed.body.directory.version, before.body.directory.version + 1);
+  const duplicate = await signedJson(account, "POST", path, body);
+  assert.equal(duplicate.status, 200, duplicate.text);
+  assert.equal(duplicate.body.duplicate, true);
+
+  const extraDevices = Array.from({ length: 105 }, (_, index) => {
+    const deviceId = (index + 1000).toString(16).padStart(16, "0");
+    const createdAt = new Date(Date.now() - (105 - index) * 1000);
+    const historicalManifest = {
+      ...manifest,
+      deviceId,
+      clientId: `${account.cryptoUserId}:${deviceId}@${CRYPTO_DOMAIN}`,
+      createdAt: createdAt.toISOString()
+    };
+    return {
+      userId: account.user._id,
+      username: account.username,
+      cryptoUserId: account.cryptoUserId,
+      deviceId,
+      clientId: historicalManifest.clientId,
+      requestPublicKey: crypto.randomBytes(32).toString("base64url"),
+      credentialThumbprint: crypto.randomBytes(32).toString("base64url"),
+      manifest: historicalManifest,
+      manifestSignature: crypto.randomBytes(64).toString("base64url"),
+      manifestExpiresAt: new Date(manifest.expiresAt),
+      status: "revoked",
+      activationMode: "legacy-migrated",
+      revokedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt
+    };
+  });
+  await CryptoDevice.insertMany(extraDevices);
+  const firstPage = await signedJson(account, "GET", "/crypto/v4/devices?limit=100");
+  assert.equal(firstPage.status, 200, firstPage.text);
+  assert.equal(firstPage.body.devices.length, 100);
+  assert.equal(firstPage.body.hasMore, true);
+  assert.equal(firstPage.body.deviceCommitments.length, 106);
+  const secondPage = await signedJson(account, "GET", `/crypto/v4/devices?limit=100&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`);
+  assert.equal(secondPage.status, 200, secondPage.text);
+  assert.equal(secondPage.body.devices.length, 6);
+  assert.equal(secondPage.body.hasMore, false);
+  assert.equal(new Set([...firstPage.body.devices, ...secondPage.body.devices].map(device => device.deviceId)).size, 106);
+});
+
 test("stale self-update cannot clear the epoch block after device revocation", async () => {
   const alice = await createAccount("s_alice_test");
   const bob = await createAccount("s_bob_test");
@@ -1260,6 +1354,49 @@ test("server blocklist is idempotent, paginated and closes HTTP, MLS, media and 
   });
   assert.equal(resumed.status, 200, resumed.text);
   assert.equal(resumed.body.conversationId, initialized.conversationId);
+});
+
+test("notification settings are account-scoped, versioned and resolve concurrent writes with a current rollback value", async () => {
+  const account = await createAuthenticatedUser("notify_account");
+  const secondProfile = await createAdditionalSession(account);
+  const initial = await sessionJson(account, "GET", "/me/notification-settings");
+  assert.equal(initial.status, 200, initial.text);
+  assert.equal(initial.body.version, 1);
+  assert.equal(initial.body.desktopEnabled, true);
+
+  const changed = await sessionJson(account, "PATCH", "/me/notification-settings", {
+    expectedVersion: 1,
+    settings: { desktopEnabled: false, volume: 27, groupsEnabled: false }
+  });
+  assert.equal(changed.status, 200, changed.text);
+  assert.equal(changed.body.version, 2);
+  const readOtherProfile = await sessionJson(secondProfile, "GET", "/me/notification-settings");
+  assert.equal(readOtherProfile.status, 200, readOtherProfile.text);
+  assert.equal(readOtherProfile.body.volume, 27);
+  assert.equal(readOtherProfile.body.groupsEnabled, false);
+
+  const [left, right] = await Promise.all([
+    sessionJson(account, "PATCH", "/me/notification-settings", {
+      expectedVersion: 2,
+      settings: { privateChatsEnabled: false }
+    }),
+    sessionJson(secondProfile, "PATCH", "/me/notification-settings", {
+      expectedVersion: 2,
+      settings: { soundEnabled: false }
+    })
+  ]);
+  const statuses = [left.status, right.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+  const conflict = left.status === 409 ? left : right;
+  assert.equal(conflict.body.current.version, 3);
+  const final = await sessionJson(account, "GET", "/me/notification-settings");
+  assert.equal(final.body.version, 3);
+
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  assert.equal(await ClientInvalidation.countDocuments({
+    recipientUserId: account.user._id,
+    kind: "notification-settings-updated"
+  }), 2);
 });
 
 test("security email pages expose styled, confirmed actions without inline CSP exceptions", async () => {

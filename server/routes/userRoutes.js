@@ -12,6 +12,7 @@ const {
   toggleArchivedChat
 } = require("../controllers/userController");
 const { blockUser, listBlocks, unblockUser } = require("../controllers/blockController");
+const { getNotificationSettings, updateNotificationSettings } = require("../controllers/notificationSettingsController");
 
 const router =
   express.Router();
@@ -19,6 +20,8 @@ const router =
 router.get("/me/blocks", authMiddleware, listBlocks);
 router.put("/me/blocks/:username", authMiddleware, blockUser);
 router.delete("/me/blocks/:username", authMiddleware, unblockUser);
+router.get("/me/notification-settings", authMiddleware, getNotificationSettings);
+router.patch("/me/notification-settings", authMiddleware, updateNotificationSettings);
 
 router.get(
   "/users/search",

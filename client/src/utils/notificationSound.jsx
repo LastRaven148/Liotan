@@ -1,5 +1,58 @@
+import { getNotificationSettingsApi } from "../services/api";
+
 let audioContext = null;
 let unlocked = false;
+
+const DEFAULTS = Object.freeze({
+  version: 0,
+  desktopEnabled: true,
+  soundEnabled: true,
+  sentSoundEnabled: true,
+  receivedSoundEnabled: true,
+  privateChatsEnabled: true,
+  groupsEnabled: true,
+  volume: 50
+});
+
+function readCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("liotan:notification-settings-cache:v1") || "null");
+    return parsed && typeof parsed === "object" ? { ...DEFAULTS, ...parsed } : { ...DEFAULTS };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+
+let currentSettings = readCache();
+
+function normalized(settings) {
+  return {
+    version: Math.max(0, Number(settings?.version) || 0),
+    desktopEnabled: settings?.desktopEnabled !== false,
+    soundEnabled: settings?.soundEnabled !== false,
+    sentSoundEnabled: settings?.sentSoundEnabled !== false,
+    receivedSoundEnabled: settings?.receivedSoundEnabled !== false,
+    privateChatsEnabled: settings?.privateChatsEnabled !== false,
+    groupsEnabled: settings?.groupsEnabled !== false,
+    volume: Math.max(0, Math.min(100, Number(settings?.volume) || 0)),
+    updatedAt: settings?.updatedAt || null
+  };
+}
+
+export function applyNotificationSettings(settings) {
+  currentSettings = normalized(settings);
+  localStorage.setItem("liotan:notification-settings-cache:v1", JSON.stringify(currentSettings));
+  window.dispatchEvent(new CustomEvent("liotan:notification-settings", { detail: currentSettings }));
+  return { ...currentSettings };
+}
+
+export function getCachedNotificationSettings() {
+  return { ...currentSettings };
+}
+
+export async function refreshNotificationSettings() {
+  return applyNotificationSettings(await getNotificationSettingsApi({ fresh: true }));
+}
 
 function getAudioContext() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -9,32 +62,30 @@ function getAudioContext() {
 }
 
 function getVolume() {
-  const value = Number(localStorage.getItem("liotan_notify_volume") || 50);
-  return Math.max(0, Math.min(100, value)) / 100;
+  return currentSettings.volume / 100;
 }
 
 export function notificationsEnabled() {
-  return localStorage.getItem("liotan_notify_show") !== "0";
+  return currentSettings.desktopEnabled;
 }
 
 export function notificationsEnabledForChat(chatKey) {
   if (!notificationsEnabled()) return false;
   const value = String(chatKey || "");
-  if (value.startsWith("group:")) return localStorage.getItem("liotan_notify_groups") !== "0";
-  if (value.startsWith("channel:")) return localStorage.getItem("liotan_notify_channels") !== "0";
-  return localStorage.getItem("liotan_notify_private") !== "0";
+  if (value.startsWith("group:")) return currentSettings.groupsEnabled;
+  return currentSettings.privateChatsEnabled;
 }
 
 export function notificationSoundEnabled() {
-  return localStorage.getItem("liotan_notify_sound") !== "0";
+  return currentSettings.soundEnabled;
 }
 
 export function receivedSoundEnabled() {
-  return notificationSoundEnabled() && localStorage.getItem("liotan_sound_received") !== "0";
+  return notificationSoundEnabled() && currentSettings.receivedSoundEnabled;
 }
 
 export function sentSoundEnabled() {
-  return notificationSoundEnabled() && localStorage.getItem("liotan_sound_sent") !== "0";
+  return notificationSoundEnabled() && currentSettings.sentSoundEnabled;
 }
 
 export async function unlockNotificationSound() {
@@ -51,16 +102,11 @@ export async function unlockNotificationSound() {
 
 export function playTone({ frequency = 740, duration = 0.18, gainValue = 0.12 } = {}) {
   try {
-    // Creating or resuming AudioContext outside a user gesture produces noisy
-    // browser warnings and is blocked by autoplay policy. Incoming events stay
-    // silent until the first explicit click/key gesture unlocks audio.
     const ctx = audioContext;
     if (!unlocked || !ctx || ctx.state !== "running") return;
-
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
     const volume = getVolume();
-
     oscillator.type = "sine";
     oscillator.frequency.value = frequency;
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
@@ -74,11 +120,9 @@ export function playTone({ frequency = 740, duration = 0.18, gainValue = 0.12 } 
 }
 
 export function playNotificationSound() {
-  if (!receivedSoundEnabled()) return;
-  playTone({ frequency: 740, duration: 0.18, gainValue: 0.12 });
+  if (receivedSoundEnabled()) playTone({ frequency: 740, duration: 0.18, gainValue: 0.12 });
 }
 
 export function playSentSound() {
-  if (!sentSoundEnabled()) return;
-  playTone({ frequency: 920, duration: 0.1, gainValue: 0.075 });
+  if (sentSoundEnabled()) playTone({ frequency: 920, duration: 0.1, gainValue: 0.075 });
 }

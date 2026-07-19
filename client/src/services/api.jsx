@@ -403,6 +403,18 @@ export async function unblockUserApi(username) {
   return apiRequest(`${API}/me/blocks/${encodeURIComponent(username)}`, { method: "DELETE" });
 }
 
+export async function getNotificationSettingsApi({ fresh = false } = {}) {
+  return apiRequest(`${API}/me/notification-settings`, { fresh });
+}
+
+export async function updateNotificationSettingsApi(expectedVersion, settings) {
+  return apiRequest(`${API}/me/notification-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedVersion, settings })
+  });
+}
+
 export async function toggleArchivedChatApi(username) {
   return apiRequest(`${API}/me/archived-chats/toggle`, {
     method: "POST",

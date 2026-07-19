@@ -4,7 +4,7 @@ import { getApiCandidates } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, mergeHistoryPageIntoChat, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
-import { unlockNotificationSound, playNotificationSound, notificationsEnabledForChat, receivedSoundEnabled } from "../utils/notificationSound";
+import { unlockNotificationSound, playNotificationSound, notificationsEnabledForChat, receivedSoundEnabled, refreshNotificationSettings } from "../utils/notificationSound";
 import { getMlsEngine } from "../crypto/mlsEngine";
 
 function attachmentOfflineKeys(attachment) {
@@ -82,6 +82,9 @@ export default function useSocket({
     if (!token) {
       return;
     }
+    refreshNotificationSettings().catch(error => {
+      if (import.meta.env.DEV) console.warn("Notification settings sync failed", error);
+    });
     function unlockSoundOnUserGesture() {
       unlockNotificationSound();
       window.removeEventListener("click", unlockSoundOnUserGesture);
