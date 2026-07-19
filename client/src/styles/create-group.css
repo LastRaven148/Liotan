@@ -87,7 +87,8 @@
   cursor:pointer;
 }
 
-.create-group-user:hover{
+.create-group-user:hover,
+.create-group-user.selected{
   background:var(--color-surface-soft);
 }
 

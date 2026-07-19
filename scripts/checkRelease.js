@@ -63,6 +63,8 @@ async function testZip() {
 }
 
 async function main() {
+  runNpm("CSS architecture and reproducibility gates", ["run", "audit:css"]);
+  runNpm("reproducible CSS production build", ["run", "test:css-reproducible"]);
   runNpm("client build", ["run", "check:client"]);
   runNpm("server syntax check", ["run", "check:server"]);
   runNpm("unit, integration, browser, and coverage tests", ["test"]);

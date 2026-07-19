@@ -75,11 +75,6 @@
   font-weight:400;
 }
 
-:root{
-  --liotan-icon-size:22px;
-  --liotan-icon-color:var(--color-text-secondary);
-}
-
 .liotan-icon-button,
 .drawer-icon-button,
 .burger-button{
@@ -118,11 +113,6 @@
   padding-left:46px;
 }
 
-:root{
-  --liotan-action-icon-size:24px;
-  --liotan-action-icon-stroke:1.62;
-}
-
 .liotan-icon-button svg,
 .drawer-icon-button svg,
 .sidebar-search-icon svg{
@@ -144,11 +134,6 @@
   user-select:none;
   -webkit-user-select:none;
   pointer-events:none;
-}
-
-:root{
-  --liotan-sidebar-width:360px;
-  --liotan-menu-icon-size:24px;
 }
 
 .liotan-icon-button svg,

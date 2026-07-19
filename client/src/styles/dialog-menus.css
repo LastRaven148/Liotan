@@ -28,12 +28,12 @@
   }
 }
 
-.telegram-menu-item span{
+.dialog-context-menu .telegram-menu-item span{
   font-size:15px;
   opacity:.75;
 }
 
-.telegram-menu-item.danger{
+.dialog-context-menu .telegram-menu-item.danger{
   display:none;
 }
 
@@ -179,7 +179,7 @@
   box-shadow:0 14px 34px rgba(0,0,0,.38);
 }
 
-.telegram-menu-item{
+.telegram-menu.compact-menu .telegram-menu-item{
   height:42px;
   border-radius:9px;
   padding:0 12px;
@@ -189,7 +189,7 @@
   color:var(--color-text-primary);
 }
 
-.telegram-menu-item:hover{
+.telegram-menu.compact-menu .telegram-menu-item:hover{
   background:var(--color-surface-hover);
 }
 

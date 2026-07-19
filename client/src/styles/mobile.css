@@ -2,7 +2,8 @@
 
 @media (max-width:768px){
   input,
-  textarea{
+  textarea,
+  select{
     font-size:16px;
   }
 
