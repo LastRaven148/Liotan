@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { useLanguage } from "../../context/LanguageContext";
@@ -56,6 +56,9 @@ export default function DialogItem({
   const longPressRef = useRef(null);
   const dialogsScrollTopRef = useRef(null);
   const chatScrollSnapshotRef = useRef(null);
+  const deleteModalRef = useRef(null);
+  const deletePreviousFocusRef = useRef(null);
+  const deleteTitleId = useId();
   const chatKey = dialog.chatKey || dialog.username;
   const isGroup = dialog.type === "group";
   const unreadCount = unread[chatKey] || 0;
@@ -223,12 +226,35 @@ export default function DialogItem({
       return undefined;
     }
     document.body.classList.add("liotan-delete-modal-open");
+    deletePreviousFocusRef.current = document.activeElement;
+    const frame = requestAnimationFrame(() => {
+      deleteModalRef.current?.querySelector(".dialog-delete-modal-cancel")?.focus();
+    });
     return () => {
+      cancelAnimationFrame(frame);
       document.body.classList.remove("liotan-delete-modal-open");
+      deletePreviousFocusRef.current?.focus?.();
+      deletePreviousFocusRef.current = null;
     };
   }, [confirmDelete]);
   useEffect(() => {
     function handleEsc(e) {
+      if (e.key === "Tab" && confirmDelete && deleteModalRef.current) {
+        const focusable = [...deleteModalRef.current.querySelectorAll("button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex=\"-1\"])")]
+          .filter(item => item.getClientRects().length > 0);
+        if (focusable.length) {
+          const first = focusable[0];
+          const last = focusable.at(-1);
+          if (e.shiftKey && (document.activeElement === first || !deleteModalRef.current.contains(document.activeElement))) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+        return;
+      }
       if (e.key !== "Escape") {
         return;
       }
@@ -451,8 +477,8 @@ export default function DialogItem({
         </div>}
 
       {confirmDelete && createPortal(<div className="dialog-delete-modal-overlay" onClick={cancelDelete}>
-          <div className="dialog-delete-modal" onClick={e => e.stopPropagation()}>
-            <div className="dialog-delete-modal-title">
+          <div ref={deleteModalRef} className="dialog-delete-modal" role="dialog" aria-modal="true" aria-labelledby={deleteTitleId} onClick={e => e.stopPropagation()}>
+            <div className="dialog-delete-modal-title" id={deleteTitleId}>
               {isGroup ? dialog.owner === username ? t.deleteGroup || "Удалить группу" : t.leaveGroup || "Выйти из группы" : t.deleteChat || "Удалить чат"}
             </div>
 
