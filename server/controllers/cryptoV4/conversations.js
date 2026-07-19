@@ -76,11 +76,13 @@ async function resolveParticipants(req) {
   }
 
   if (chatType === "group") {
-    if (!mongoose.isValidObjectId(req.body.groupId)) {
+    const rawGroupId = req.body.groupId;
+    if (typeof rawGroupId !== "string" || !/^[a-f\d]{24}$/i.test(rawGroupId)) {
       const err = new Error("invalid group id"); err.status = 400; throw err;
     }
+    const groupId = new mongoose.Types.ObjectId(rawGroupId);
     const group = await Group.findOne({
-      _id: req.body.groupId,
+      _id: groupId,
       lifecycleState: { $ne: "deleting" }
     }).lean();
     if (!group || !group.members.includes(req.user.username)) {

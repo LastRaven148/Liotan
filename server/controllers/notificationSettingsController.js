@@ -50,10 +50,40 @@ function validatePatch(body) {
   if (!keys.length || keys.some(key => !FIELDS.includes(key))) throw new TypeError("invalid notification settings");
   const update = {};
   for (const key of keys) {
-    if (key === "volume") {
-      if (!Number.isInteger(settings[key]) || settings[key] < 0 || settings[key] > 100) throw new TypeError("invalid notification settings");
-    } else if (typeof settings[key] !== "boolean") throw new TypeError("invalid notification settings");
-    update[key] = settings[key];
+    switch (key) {
+      case "desktopEnabled":
+        if (typeof settings.desktopEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.desktopEnabled = settings.desktopEnabled;
+        break;
+      case "soundEnabled":
+        if (typeof settings.soundEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.soundEnabled = settings.soundEnabled;
+        break;
+      case "sentSoundEnabled":
+        if (typeof settings.sentSoundEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.sentSoundEnabled = settings.sentSoundEnabled;
+        break;
+      case "receivedSoundEnabled":
+        if (typeof settings.receivedSoundEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.receivedSoundEnabled = settings.receivedSoundEnabled;
+        break;
+      case "privateChatsEnabled":
+        if (typeof settings.privateChatsEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.privateChatsEnabled = settings.privateChatsEnabled;
+        break;
+      case "groupsEnabled":
+        if (typeof settings.groupsEnabled !== "boolean") throw new TypeError("invalid notification settings");
+        update.groupsEnabled = settings.groupsEnabled;
+        break;
+      case "volume":
+        if (!Number.isInteger(settings.volume) || settings.volume < 0 || settings.volume > 100) {
+          throw new TypeError("invalid notification settings");
+        }
+        update.volume = settings.volume;
+        break;
+      default:
+        throw new TypeError("invalid notification settings");
+    }
   }
   return { expectedVersion, update };
 }

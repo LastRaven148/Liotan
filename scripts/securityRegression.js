@@ -383,6 +383,14 @@ assert.match(deviceControllerSource, /createDeviceListInvalidation\(req, session
   "device directory changes must create their durable invalidation inside the directory transaction");
 assert.doesNotMatch(deviceControllerSource, /publishDeviceListUpdate/,
   "device mutations must not publish a post-commit-only invalidation");
+const conversationControllerSource = read("server/controllers/cryptoV4/conversations.js");
+assert.match(conversationControllerSource, /\^\[a-f\\d\]\{24\}\$\/i[\s\S]*new mongoose\.Types\.ObjectId\(rawGroupId\)/,
+  "group lookups must convert a strictly validated request value to a typed ObjectId");
+assert.doesNotMatch(conversationControllerSource, /_id:\s*req\.body\.groupId/,
+  "request-controlled group identifiers must not be inserted directly into a Mongo query");
+const notificationControllerSource = read("server/controllers/notificationSettingsController.js");
+assert.doesNotMatch(notificationControllerSource, /(?:settings|update)\[key\]/,
+  "notification patches must use explicit allowlisted properties instead of remote property writes");
 const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
 assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");
