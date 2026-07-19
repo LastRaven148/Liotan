@@ -83,7 +83,7 @@ function shouldExclude(fullPath) {
 function copyDirectory(source, destination) {
   fs.mkdirSync(destination, { recursive: true });
   const entries = fs.readdirSync(source, { withFileTypes: true })
-    .sort((left, right) => left.name.localeCompare(right.name, "en"));
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
 
   for (const entry of entries) {
     const sourcePath = sourceChildPath(source, entry.name);
@@ -102,7 +102,7 @@ function copyDirectory(source, destination) {
 function releaseFiles(directory, prefix = "Liotan") {
   const files = [];
   const entries = fs.readdirSync(directory, { withFileTypes: true })
-    .sort((left, right) => left.name.localeCompare(right.name, "en"));
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   for (const entry of entries) {
     const fullPath = childPath(directory, entry.name);
     const archivePath = `${prefix}/${entry.name}`;
@@ -123,7 +123,10 @@ async function zipWithArchiver() {
 
   await new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outFile);
-    const archive = createArchive(archiverModule, "zip", { zlib: { level: 9 } });
+    const archive = createArchive(archiverModule, "zip", {
+      zlib: { level: 9 },
+      forceLocalTime: false
+    });
 
     output.on("close", resolve);
     archive.on("error", reject);

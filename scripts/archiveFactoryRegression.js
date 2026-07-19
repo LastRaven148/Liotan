@@ -4,7 +4,7 @@
 const assert = require("assert");
 const { createArchive } = require("./archiveFactory");
 
-const expectedOptions = { zlib: { level: 9 } };
+const expectedOptions = { zlib: { level: 9 }, forceLocalTime: false };
 const legacyResult = { implementation: "v7" };
 let legacyCall = null;
 const legacyFactory = (format, options) => {
