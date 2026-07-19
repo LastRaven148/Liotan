@@ -265,6 +265,12 @@ assert.doesNotMatch(privacyAudit, /privateKey\|chatKey/,
   "privacy audit must not confuse a non-secret chat route with private key material");
 assert.match(privacyAudit, /recoveryKey\|databaseKey\|cacheKey/,
   "privacy audit must continue rejecting real E2EE secrets in localStorage values");
+assert.match(privacyAudit, /include:\s*\/\^server\\\/\(\?:controllers\|middleware\|routes\)/,
+  "storage locator audit must inspect every server input boundary");
+assert.match(privacyAudit, /req\\\.\(\?:body\|query\|params\)/,
+  "storage locator audit must detect request-derived provider identifiers");
+assert.match(privacyAudit, /id:\s*"client-storage-internal-id"[\s\S]*?include:\s*\/\^client\\\/src/,
+  "storage locator audit must independently reject provider identifiers in client source");
 assert.doesNotMatch(clientSources, /\bstyle\s*=|\.style\./,
   "strict client CSP forbids inline style attributes and CSSOM style mutations");
 assert.match(read("server/middleware/contentSecurityPolicy.js"), /styleSrcAttr:\s*\["'none'"\]/);
