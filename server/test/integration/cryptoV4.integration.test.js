@@ -1353,6 +1353,8 @@ test("server blocklist is idempotent, paginated and closes HTTP, MLS, media and 
   const alice = await createAccount("block_alice");
   const bob = await createAccount("block_bob");
   const initialized = await initializePrivateConversation(alice, bob);
+  const selfBlock = await sessionJson(alice, "PUT", "/me/blocks/block_alice");
+  assert.equal(selfBlock.status, 400, selfBlock.text);
   const block = await sessionJson(alice, "PUT", "/me/blocks/block_bob");
   assert.equal(block.status, 201, block.text);
   const duplicate = await sessionJson(alice, "PUT", "/me/blocks/block_bob");
@@ -1389,6 +1391,25 @@ test("server blocklist is idempotent, paginated and closes HTTP, MLS, media and 
   const profile = await requestFor(bob, "GET", "/profile/block_alice");
   assert.equal(profile.status, 404, profile.text);
 
+  const address = server.address();
+  const socketOptions = account => ({
+    transports: ["websocket"],
+    extraHeaders: { Cookie: account.cookie },
+    reconnection: false,
+    timeout: 3000
+  });
+  const aliceSocket = createSocketClient(`http://127.0.0.1:${address.port}`, socketOptions(alice));
+  const bobSocket = createSocketClient(`http://127.0.0.1:${address.port}`, socketOptions(bob));
+  await Promise.all([aliceSocket, bobSocket].map(socket => new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("connect_error", reject);
+  })));
+  let blockedTypingDelivered = false;
+  aliceSocket.once("userTyping", () => { blockedTypingDelivered = true; });
+  bobSocket.emit("typing", { to: alice.username });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  assert.equal(blockedTypingDelivered, false, "Socket.IO typing must not bypass a block relationship");
+
   const UserBlock = require("../../models/UserBlock");
   const bulkUsers = await User.insertMany(Array.from({ length: 105 }, (_, index) => ({
     username: `blocked_page_${String(index).padStart(3, "0")}`,
@@ -1412,6 +1433,17 @@ test("server blocklist is idempotent, paginated and closes HTTP, MLS, media and 
   const duplicateUnblock = await sessionJson(alice, "DELETE", "/me/blocks/block_bob");
   assert.equal(duplicateUnblock.status, 200, duplicateUnblock.text);
   assert.equal(duplicateUnblock.body.duplicate, true);
+  const typingAfterUnblock = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("typing did not resume after unblock")), 2000);
+    aliceSocket.once("userTyping", payload => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+  bobSocket.emit("typing", { to: alice.username });
+  assert.equal((await typingAfterUnblock).from, bob.username);
+  aliceSocket.close();
+  bobSocket.close();
   const resumed = await signedJson(bob, "POST", "/crypto/v4/conversations/resolve", {
     chatType: "private",
     targetUsername: alice.username
@@ -1597,6 +1629,9 @@ test("group deletion uses the global workflow and the legacy partial-delete endp
   const legacy = await sessionJson(owner, "DELETE", `/groups/${group._id}`);
   assert.equal(legacy.status, 410, legacy.text);
   assert.equal(legacy.body.error, "mls-v4-required");
+  const legacyLeave = await sessionJson(peer, "POST", `/groups/${group._id}/leave`);
+  assert.equal(legacyLeave.status, 410, legacyLeave.text);
+  assert.equal(legacyLeave.body.error, "mls-v4-required");
 
   const path = `/crypto/v4/conversations/${conversationId}/deletion`;
   const body = { confirm: true };

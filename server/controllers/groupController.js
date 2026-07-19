@@ -387,52 +387,10 @@ async function removeGroupMember(req, res, next) {
     next(err);
   }
 }
-async function leaveGroup(req, res, next) {
-  try {
-    const username = req.user.username;
-    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
-    if (!group) {
-      return res.status(404).json({
-        error: "group not found"
-      });
-    }
-    if (!group.members.includes(username)) {
-      return res.status(403).json({
-        error: "access denied"
-      });
-    }
-    if (group.owner === username) {
-      return res.status(400).json({
-        error: "owner must delete group"
-      });
-    }
-    await blockMlsGroup(group._id, {
-      removeClientIds: await activeCryptoClientIds(username),
-      reason: "group member left"
-    });
-    group.members = group.members.filter(item => item !== username);
-    group.admins = group.admins.filter(item => item !== username);
-    group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
-    await group.save();
-    const chatKey = `group:${group._id}`;
-    await User.updateOne({
-      username
-    }, {
-      $pull: {
-        pinnedChats: chatKey,
-        archivedChats: chatKey
-      }
-    });
-    // Do not destroy historical epochs. A new epoch is created above and the
-    // leaving member will not receive its wrappers.
-    const serialized = await serializeGroup(group);
-    emitGroupUpdated(req, serialized);
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
+async function leaveGroup(_req, res) {
+  // Compatibility tombstone: the product has no whole-chat "leave and keep
+  // history" mode. Current clients use the signed global deletion workflow.
+  return res.status(410).json({ error: "mls-v4-required" });
 }
 async function deleteGroup(_req, res) {
   // Compatibility tombstone: whole-chat deletion is exclusively handled by

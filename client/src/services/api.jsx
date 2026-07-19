@@ -502,9 +502,3 @@ export async function removeGroupMemberApi(
     }
   );
 }
-
-export async function leaveGroupApi(groupId) {
-  return apiRequest(`${API}/groups/${groupId}/leave`, {
-    method: "POST"
-  });
-}

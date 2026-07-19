@@ -325,6 +325,15 @@ assert.match(read("client/src/hooks/useDialogs.jsx"), /deleteConversation\(dialo
   "group chat deletion must use the same global conversation workflow");
 assert.doesNotMatch(read("client/src/hooks/useDialogs.jsx"), /leaveGroupApi/,
   "whole-chat deletion UI must not preserve group history through a leave path");
+const groupControllerSource = read("server/controllers/groupController.js");
+const legacyLeaveBlock = groupControllerSource.slice(
+  groupControllerSource.indexOf("async function leaveGroup"),
+  groupControllerSource.indexOf("async function deleteGroup")
+);
+assert.match(legacyLeaveBlock, /status\(410\)/,
+  "legacy group leave must remain a tombstone instead of preserving whole-chat history");
+assert.doesNotMatch(legacyLeaveBlock, /\.save\(|\.updateOne\(/,
+  "legacy group leave tombstone must not mutate membership");
 const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
 assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");

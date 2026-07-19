@@ -4,7 +4,7 @@ Baseline: `origin/main` at `80c035d8e187e64c22feddfc91cced1284829e54`.
 
 This document records executable production paths, not intended behavior. The companion command `npm run audit:architecture` fails when a referenced file or marker disappears, forcing this map to be updated with architectural changes.
 
-## Current production paths
+## Baseline production paths
 
 | Concern | Executable path | Baseline behavior |
 | --- | --- | --- |
@@ -18,6 +18,20 @@ This document records executable production paths, not intended behavior. The co
 | Device list | `GET /crypto/v4/devices` -> `.limit(50)` -> `listCryptoDevices` | No cursor. Directory verification requires commitments for the complete device set. Device manifests last one year and are not renewed. |
 | Blocklist | privacy settings copy only | No relationship model, API, or enforcement point exists. |
 | CSS | `App.jsx` -> `App.css` ordered imports -> `styles/*` | The refactored layer split is active. Four `!important` declarations are confined to reduced-motion accessibility rules. No architecture gate exists. |
+
+## Implemented production paths
+
+| Concern | Authoritative path after this change | Consistency guarantee |
+| --- | --- | --- |
+| Account deletion | reauthentication + CSRF + 2FA -> `DeletionWorkflow` -> freeze -> durable object tasks -> Mongo transaction -> durable invalidations -> reconciliation | A request cannot report `completed` while any known R2/local object task or Mongo record remains. A lease/CAS allows one backend process to advance a workflow. |
+| Whole-chat deletion | signed MLS device request -> `requestConversationDeletion` -> the same workflow engine | There is one global policy for private and group chats. The client waits for `completed`; a `202` remains visibly pending and is not an optimistic deletion. |
+| Per-message deletion | MLS authenticated delete control for everyone; `MessageVisibility` + `ClientInvalidation` for the current account | “For me” is durable and account-scoped without removing ciphertext needed by peers. “For everyone” is accepted only when the decrypted authenticated control sender owns the target message. |
+| Blocklist | `UserBlock` -> protected cursor API -> `blockPolicy` at HTTP/MLS/media/profile/search/Socket.IO boundaries | Block/unblock are idempotent, self-block is rejected, and the denial is neutral. Existing conversations remain but writes are blocked. |
+| Notifications | `UserNotificationSettings` with expected-version CAS -> durable account invalidation | Mongo is the source of truth. Optimistic UI rolls back to the server-provided current value after conflict/failure. |
+| Devices | stable cursor pages plus complete directory commitments; signed renewal endpoint and client timer | Active, pending, expired, and revoked devices remain visible beyond 100 rows. Renewal retains device identity and retries with bounded backoff. |
+| CSS | deterministic `App.css` and nested layer graph -> architecture gate -> double-build hash comparison | Deleted monoliths, import cycles, unreachable chunks, unexplained `!important`, global leakage, and mobile/iOS duplication fail the release gate. |
+
+R2 ownership is proved against remaining Mongo references before a task is created. A locator referenced outside the deletion plan is retained and counted as `sharedMediaRetained`; only the deleting metadata is removed. Avatar fields use their actual `avatarStorageKey`/`avatarStorageType` names and are included in the same durable object-task path.
 
 ## Authoritative stores and deletion ownership
 

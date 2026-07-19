@@ -167,9 +167,7 @@ const en = {
   selected: "Selected",
   tapToSelect: "Tap to select",
   deleteGroup: "Delete group",
-  leaveGroup: "Leave group",
   confirmDeleteGroup: "Are you sure you want to delete group",
-  confirmLeaveGroup: "Are you sure you want to leave group",
   groupCreated: "Group created",
 
   loginTitle: "Log in to Liotan",

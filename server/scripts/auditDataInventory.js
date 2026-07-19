@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const { createRequire } = require("node:module");
+const crypto = require("node:crypto");
 
 const serverRoot = process.cwd();
 const requireFromServer = createRequire(path.join(serverRoot, "package.json"));
@@ -23,14 +24,19 @@ async function run() {
   const CryptoConversation = model("CryptoConversation");
   const CryptoEvent = model("CryptoEvent");
   const CryptoDirectoryEntry = model("CryptoDirectoryEntry");
-  const users = await User.find({}, "username displayName emailVerified e2eePublicKey avatarStorageKey").lean();
+  const UserBlock = model("UserBlock");
+  const UserNotificationSettings = model("UserNotificationSettings");
+  const MessageVisibility = model("MessageVisibility");
+  const ClientInvalidation = model("ClientInvalidation");
+  const DeletionWorkflow = model("DeletionWorkflow");
+  const DeletionObjectTask = model("DeletionObjectTask");
+  const users = await User.find({}, "username emailVerified e2eePublicKey avatarStorageKey").lean();
   const now = new Date();
   const inventory = [];
 
   for (const user of users) {
     inventory.push({
-      username: user.username,
-      displayName: user.displayName || "",
+      userRef: crypto.createHash("sha256").update(String(user._id)).digest("hex").slice(0, 16),
       emailVerified: Boolean(user.emailVerified),
       hasLegacyPublicKey: Boolean(user.e2eePublicKey),
       hasAvatarObject: Boolean(user.avatarStorageKey),
@@ -39,6 +45,10 @@ async function run() {
       uploadsTotal: await AttachmentUpload.countDocuments({ owner: user.username }),
       legacyUploads: await AttachmentUpload.countDocuments({ owner: user.username, protocol: "legacy-v3" }),
       mlsUploads: await AttachmentUpload.countDocuments({ owner: user.username, protocol: "mls-media-1" }),
+      blockEdges: await UserBlock.countDocuments({ $or: [{ blockerUserId: user._id }, { blockedUserId: user._id }] }),
+      notificationSettings: await UserNotificationSettings.countDocuments({ userId: user._id }),
+      messageVisibility: await MessageVisibility.countDocuments({ userId: user._id }),
+      pendingInvalidations: await ClientInvalidation.countDocuments({ recipientUserId: user._id, acknowledgedAt: null }),
       messages: await Messages.countDocuments({ $or: [{ from: user.username }, { to: user.username }] }),
       legacyKeys: await E2EEKey.countDocuments({ user: user.username }),
       unversionedUploads: await AttachmentUpload.countDocuments({
@@ -53,7 +63,7 @@ async function run() {
   ]);
 
   console.log(JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     users: inventory,
     legacy: {
       e2eeConversations: await E2EEConversation.countDocuments({}),
@@ -67,7 +77,13 @@ async function run() {
       directoryEntries: await CryptoDirectoryEntry.countDocuments({})
     },
     messages: await Messages.countDocuments({}),
-    uploads
+    uploads,
+    deletion: {
+      activeWorkflows: await DeletionWorkflow.countDocuments({ terminal: false }),
+      deadLetterWorkflows: await DeletionWorkflow.countDocuments({ state: "dead-letter" }),
+      pendingObjectTasks: await DeletionObjectTask.countDocuments({ state: "pending" }),
+      deadLetterObjectTasks: await DeletionObjectTask.countDocuments({ state: "dead-letter" })
+    }
   }, null, 2));
 
   await mongoose.disconnect();

@@ -35,7 +35,10 @@ const flows = Object.freeze({
   ],
   messageDeletion: [
     "client/src/hooks/useChat.jsx#sendControl",
+    "client/src/crypto/mlsEngine.jsx#hideMessageForAccount",
     "client/src/crypto/mlsEngine.jsx#sendControl",
+    "server/controllers/cryptoV4/deletion.js#hideMessage",
+    "server/models/MessageVisibility.js#messageVisibilitySchema",
     "server/controllers/cryptoV4/conversations.js#sendCiphertext",
     "client/src/crypto/mls/envelope.jsx#dispatchCryptoMessage"
   ],
@@ -48,17 +51,26 @@ const flows = Object.freeze({
     "client/src/components/chat/message/messageStorage.jsx#deleteOfflineBlobs"
   ],
   notifications: [
-    "client/src/components/settings/pages/NotificationsPage.jsx#localStorage",
+    "server/models/UserNotificationSettings.js#userNotificationSettingsSchema",
+    "server/controllers/notificationSettingsController.js#updateNotificationSettings",
+    "client/src/components/settings/pages/NotificationsPage.jsx#updateNotificationSettingsApi",
     "client/src/utils/notificationSound.jsx#notificationsEnabledForChat",
     "client/src/hooks/useSocket.jsx#notifyIncomingMessage"
   ],
   devices: [
     "server/controllers/cryptoV4/identityDevices.js#listDevices",
+    "server/controllers/cryptoV4/identityDevices.js#renewDevice",
     "client/src/crypto/mls/identity.jsx#listCryptoDevices",
+    "client/src/crypto/mls/identity.jsx#renewCryptoDeviceManifest",
     "client/src/components/settings/pages/DevicesPage.jsx#loadCryptoDevices"
   ],
   blocklist: [
-    "client/src/components/settings/pages/PrivacyPage.jsx#privacyControlsUnavailable"
+    "server/models/UserBlock.js#userBlockSchema",
+    "server/services/blockPolicy.js#assertPrivateInteractionAllowed",
+    "server/utils/userRelations.js#CryptoConversation",
+    "server/sockets/handlers/typingHandlers.js#hasBlockBetweenUsernames",
+    "server/controllers/blockController.js#listBlocks",
+    "client/src/components/settings/pages/BlocklistPage.jsx#getBlocklistApi"
   ],
   css: [
     "client/src/App.css#@import",

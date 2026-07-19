@@ -105,6 +105,13 @@ test("notification settings synchronize between two independent browser profiles
     await second.evaluate(() => window.dispatchEvent(new CustomEvent("liotan:account-state-invalidated", { detail: { kind: "notification-settings-updated" } })));
     await expect(secondGroups).not.toBeChecked();
     expect(state.version).toBe(2);
+
+    state = { ...state, version: 3, privateChatsEnabled: true, updatedAt: new Date().toISOString() };
+    const privateChats = page.getByRole("checkbox", { name: "Private chats" });
+    await expect(privateChats).toBeChecked();
+    await page.locator(".settings-check-row").filter({ hasText: "Private chats" }).click();
+    await expect(privateChats).toBeChecked();
+    await expect(page.getByRole("alert")).toContainText(/version conflict/i);
   } finally {
     await secondContext.close();
   }

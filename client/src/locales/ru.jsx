@@ -167,9 +167,7 @@ const ru = {
   selected: "Выбран",
   tapToSelect: "Нажми, чтобы выбрать",
   deleteGroup: "Удалить группу",
-  leaveGroup: "Выйти из группы",
   confirmDeleteGroup: "Вы точно хотите удалить группу",
-  confirmLeaveGroup: "Вы точно хотите выйти из группы",
   groupCreated: "Группа создана",
 
   loginTitle: "Вход в Liotan",
