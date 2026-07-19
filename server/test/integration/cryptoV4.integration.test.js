@@ -1095,6 +1095,70 @@ test("crypto state migration removes the unsafe TTL index and quarantines ambigu
   await AttachmentUpload.collection.deleteOne({ _id: inserted.insertedId });
 });
 
+test("crypto state migration resumes from a durable batch cursor and rejects a parallel lease", async () => {
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const migration = require("../../scripts/migrateCryptoState");
+  const { acquireLease } = require("../../utils/durableMigration");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const documents = Array.from({ length: 3 }, (_, index) => ({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: "migration_resume_test",
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    storageKey: `integration/migration-resume-${index}`,
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }));
+  const inserted = await AttachmentUpload.collection.insertMany(documents);
+  let interrupted = false;
+  await assert.rejects(
+    migration.applyMigration({
+      batchSize: 1,
+      hooks: {
+        afterBatch: () => {
+          if (interrupted) return;
+          interrupted = true;
+          const error = new Error("simulated process stop");
+          error.code = "MIGRATION_INTERRUPTED";
+          throw error;
+        }
+      }
+    }),
+    error => error.code === "MIGRATION_INTERRUPTED"
+  );
+  const paused = await migrations.findOne({ _id: migration.MIGRATION_ID });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.phase, "media");
+  assert.ok(paused.cursor);
+  const resumed = await migration.applyMigration({ batchSize: 1 });
+  assert.equal(resumed.mediaQuarantined, 3);
+  assert.equal(await AttachmentUpload.countDocuments({
+    owner: "migration_resume_test",
+    lifecycleState: "legacy-unverified",
+    expiresAt: null
+  }), 3);
+
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await acquireLease(migrations, migration.MIGRATION_ID, {
+    owner: "parallel-owner-a",
+    version: 1,
+    leaseMs: 60_000
+  });
+  await assert.rejects(
+    migration.applyMigration({ owner: "parallel-owner-b" }),
+    error => error.code === "MIGRATION_LEASE_BUSY"
+  );
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await AttachmentUpload.collection.deleteMany({ _id: { $in: Object.values(inserted.insertedIds) } });
+});
+
 test("expired device is rejected and blocks every affected conversation", async () => {
   const carol = await createAccount("carol_test");
   const resolve = await signedJson(carol, "POST", "/crypto/v4/conversations/resolve", {
@@ -1502,6 +1566,138 @@ test("conversation deletion is global, idempotent, invalidates peers and permits
   assert.equal(recreated.body.initialized, false);
   assert.equal(recreated.body.epoch, 0);
   assert.equal(recreated.body.sequence, 0);
+});
+
+test("group deletion uses the global workflow and the legacy partial-delete endpoint is a tombstone", async () => {
+  const owner = await createAccount("delgroup_owner");
+  const peer = await createAccount("delgroup_peer");
+  const Group = require("../../models/Group");
+  const Message = require("../../models/Messages");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  const group = await Group.create({
+    name: "Deletion proof",
+    owner: owner.username,
+    admins: [owner.username],
+    members: [owner.username, peer.username]
+  });
+  const conversationId = crypto.randomUUID();
+  await CryptoConversation.create({
+    conversationId,
+    lookupKey: `group:${group._id}`,
+    chatType: "group",
+    groupId: group._id,
+    participantUserIds: [owner.user._id, peer.user._id],
+    participantUsernames: [owner.username, peer.username],
+    adminUserIds: [owner.user._id],
+    createdByUserId: owner.user._id,
+    createdByClientId: owner.clientId
+  });
+  await Message.create({ chatType: "group", groupId: group._id, from: owner.username, text: "legacy ciphertext tombstone" });
+
+  const legacy = await sessionJson(owner, "DELETE", `/groups/${group._id}`);
+  assert.equal(legacy.status, 410, legacy.text);
+  assert.equal(legacy.body.error, "mls-v4-required");
+
+  const path = `/crypto/v4/conversations/${conversationId}/deletion`;
+  const body = { confirm: true };
+  const deleted = await requestFor(owner, "POST", path)
+    .set(signedHeaders(owner, "POST", path, body))
+    .set("Idempotency-Key", crypto.randomBytes(24).toString("base64url"))
+    .send(body);
+  assert.equal(deleted.status, 200, deleted.text);
+  assert.equal(deleted.body.state, "completed");
+  assert.equal(await Group.countDocuments({ _id: group._id }), 0);
+  assert.equal(await Message.countDocuments({ groupId: group._id }), 0);
+  assert.equal(await CryptoConversation.countDocuments({ conversationId }), 0);
+  assert(await ClientInvalidation.exists({
+    recipientUserId: peer.user._id,
+    kind: "conversation-deleted",
+    conversationId,
+    chatKey: `group:${group._id}`
+  }));
+});
+
+test("account deletion destroys multiple private and group conversations with one resumable workflow", async () => {
+  const owner = await createAuthenticatedUser("delacct_multi_owner");
+  const peerA = await createAuthenticatedUser("delacct_multi_peer_a");
+  const peerB = await createAuthenticatedUser("delacct_multi_peer_b");
+  const Group = require("../../models/Group");
+  const CryptoOperation = require("../../models/CryptoOperation");
+  const ClientInvalidation = require("../../models/ClientInvalidation");
+  const DeletionWorkflow = require("../../models/DeletionWorkflow");
+  const { requestAccountDeletion, runDeletionWorkflow } = require("../../services/deletionWorkflow");
+  const privateA = crypto.randomUUID();
+  const privateB = crypto.randomUUID();
+  const groupConversation = crypto.randomUUID();
+  const group = await Group.create({
+    name: "Account deletion group",
+    owner: peerA.username,
+    admins: [peerA.username],
+    members: [owner.username, peerA.username, peerB.username]
+  });
+  const common = {
+    createdByUserId: owner.user._id,
+    createdByClientId: `${crypto.randomUUID()}:0000000000000001@${CRYPTO_DOMAIN}`
+  };
+  await CryptoConversation.insertMany([
+    {
+      ...common,
+      conversationId: privateA,
+      lookupKey: `private:${[owner.user._id, peerA.user._id].map(String).sort().join(":")}`,
+      chatType: "private",
+      participantUserIds: [owner.user._id, peerA.user._id],
+      participantUsernames: [owner.username, peerA.username],
+      adminUserIds: [owner.user._id, peerA.user._id]
+    },
+    {
+      ...common,
+      conversationId: privateB,
+      lookupKey: `private:${[owner.user._id, peerB.user._id].map(String).sort().join(":")}`,
+      chatType: "private",
+      participantUserIds: [owner.user._id, peerB.user._id],
+      participantUsernames: [owner.username, peerB.username],
+      adminUserIds: [owner.user._id, peerB.user._id]
+    },
+    {
+      ...common,
+      conversationId: groupConversation,
+      lookupKey: `group:${group._id}`,
+      chatType: "group",
+      groupId: group._id,
+      participantUserIds: [owner.user._id, peerA.user._id, peerB.user._id],
+      participantUsernames: [owner.username, peerA.username, peerB.username],
+      adminUserIds: [peerA.user._id]
+    }
+  ]);
+  await CryptoOperation.collection.insertOne({
+    operationId: crypto.randomUUID(),
+    conversationId: privateA,
+    requestedByUserId: owner.user._id,
+    status: "pending",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  const [left, right] = await Promise.all([
+    requestAccountDeletion({ userId: owner.user._id, username: owner.username, idempotencyKey: crypto.randomBytes(24).toString("base64url") }),
+    requestAccountDeletion({ userId: owner.user._id, username: owner.username, idempotencyKey: crypto.randomBytes(24).toString("base64url") })
+  ]);
+  assert.equal(left.workflowId, right.workflowId);
+  const completed = await runDeletionWorkflow({ workflowId: left.workflowId });
+  assert.equal(completed.state, "completed");
+  assert.equal(await User.countDocuments({ _id: owner.user._id }), 0);
+  assert.equal(await CryptoConversation.countDocuments({ conversationId: { $in: [privateA, privateB, groupConversation] } }), 0);
+  assert.equal(await Group.countDocuments({ _id: group._id }), 0);
+  assert.equal(await CryptoOperation.countDocuments({ conversationId: privateA }), 0);
+  const invalidations = await ClientInvalidation.find({
+    kind: "account-deleted",
+    conversationId: { $in: [privateA, privateB, groupConversation] }
+  }).lean();
+  assert.equal(invalidations.length, 4);
+  assert.deepEqual(new Set(invalidations.map(item => item.conversationId)), new Set([privateA, privateB, groupConversation]));
+  const persisted = await DeletionWorkflow.findOne({ workflowId: left.workflowId }).lean();
+  assert.equal(persisted.counters.conversations, 3);
+  assert.equal(persisted.counters.groups, 1);
+  assert.equal(persisted.counters.invalidations, 4);
 });
 
 test("account deletion remains frozen and resumable while an R2 object retry is pending", async () => {
