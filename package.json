@@ -19,6 +19,7 @@
     "release:check": "node scripts/checkRelease.js",
     "audit:vps": "cd server && npm run audit:vps",
     "audit:e2ee-replies": "cd server && npm run audit:e2ee-replies",
+    "audit:architecture": "node scripts/architectureMap.js",
     "test:crypto-static": "node scripts/cryptoStaticAnalysis.js",
     "test:unit": "npm run test:unit --prefix server && npm run test:coverage",
     "test:integration": "npm run test:integration --prefix server",
