@@ -1,6 +1,7 @@
 const { isValidUsername } = require("../../utils/validators");
 const User = require("../../models/User");
 const { usersAreRelated } = require("../../utils/userRelations");
+const { hasBlockBetweenUsernames } = require("../../services/blockPolicy");
 const {
   typingTimers,
   getTypingKey,
@@ -18,12 +19,13 @@ function emitStopTyping({ io, from, to }) {
 async function canSendTyping({ from, to }) {
   if (!isValidUsername(to) || !isValidUsername(from) || from === to) return false;
 
-  const [exists, related] = await Promise.all([
+  const [exists, related, blocked] = await Promise.all([
     User.exists({ username: to, emailVerified: true }),
-    usersAreRelated(from, to)
+    usersAreRelated(from, to),
+    hasBlockBetweenUsernames(from, to)
   ]);
 
-  return Boolean(exists && related);
+  return Boolean(exists && related && !blocked);
 }
 
 function registerTypingHandlers({ io, socket }) {

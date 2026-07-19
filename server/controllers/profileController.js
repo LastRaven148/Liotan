@@ -10,8 +10,12 @@ const deleteUploadedFile =
 const { buildSanitizedAvatarFile } =
   require("../utils/avatarProcessing");
 
-const deleteAccountData =
-  require("../utils/deleteAccountData");
+const {
+  assertWorkflowAccess,
+  requestAccountDeletion,
+  runDeletionWorkflow,
+  workflowView
+} = require("../services/deletionWorkflow");
 
 const {
   normalizeMime,
@@ -25,6 +29,7 @@ const {
 } = require("../utils/validators");
 
 const { getRelatedUsernames, usersAreRelated } = require("../utils/userRelations");
+const { hasBlockBetweenIds } = require("../services/blockPolicy");
 
 function withAvatarCacheBust(url) {
   if (!url) return "";
@@ -65,7 +70,7 @@ async function getProfile(req, res, next) {
 
     const user =
       await User.findOne(
-        { username, emailVerified: true },
+        { username, emailVerified: true, lifecycleState: { $ne: "deleting" } },
         "username displayName avatar bio"
       );
 
@@ -76,6 +81,10 @@ async function getProfile(req, res, next) {
     }
 
     const requester = req.user.username;
+    if (requester !== username && await hasBlockBetweenIds(req.user.userId, user._id)) {
+      return res.status(404).json({ error: "not found" });
+    }
+
     const related = requester === username || await usersAreRelated(requester, username);
 
     if (!related) {
@@ -255,46 +264,37 @@ async function uploadAvatar(req, res, next) {
 
 async function deleteAccount(req, res, next) {
   try {
-    const username =
-      req.user.username;
-
-    const { disconnectUserId } = require("../sockets/sessionRegistry");
-    disconnectUserId(req.user.userId);
-
-    const result =
-      await deleteAccountData(username);
-
-    if (!result.ok) {
-      return res.status(404).json({
-        error: "not found"
-      });
+    if (req.body.confirm !== true) {
+      return res.status(400).json({ error: "irreversible deletion confirmation required" });
     }
-
-    const io =
-      req.app.get("io");
-
-    if (io) {
-      io.to(username).emit(
-        "accountDeleted",
-        {
-          username
-        }
-      );
-
-      const related = await getRelatedUsernames(username).catch(() => []);
-      [...new Set([username, ...related])].forEach(target => {
-        io.to(target).emit("userDeleted", {
-          username,
-          chatIds: result.chatIds || []
-        });
-      });
-    }
-
-    res.json({
-      ok: true
+    const workflow = await requestAccountDeletion({
+      userId: req.user.userId,
+      username: req.user.username,
+      idempotencyKey: req.get("idempotency-key")
     });
-  } catch (err) {
-    next(err);
+    const result = await runDeletionWorkflow({
+      workflowId: workflow.workflowId,
+      io: req.app.get("io")
+    });
+    if (result?.state === "completed") {
+      const { disconnectUserId } = require("../sockets/sessionRegistry");
+      disconnectUserId(req.user.userId);
+    }
+    return res.status(result?.state === "completed" ? 200 : 202).json(result || workflowView(workflow));
+  } catch (error) {
+    if (error?.status) return res.status(error.status).json({ error: error.message });
+    return next(error);
+  }
+}
+
+async function getAccountDeletionStatus(req, res, next) {
+  try {
+    const workflow = await assertWorkflowAccess(req.params.workflowId, req.user.userId);
+    if (workflow.type !== "account") return res.status(404).json({ error: "deletion workflow not found" });
+    return res.json(workflowView(workflow));
+  } catch (error) {
+    if (error?.status) return res.status(error.status).json({ error: error.message });
+    return next(error);
   }
 }
 
@@ -302,5 +302,6 @@ module.exports = {
   getProfile,
   updateProfile,
   uploadAvatar,
-  deleteAccount
+  deleteAccount,
+  getAccountDeletionStatus
 };

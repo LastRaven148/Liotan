@@ -220,6 +220,11 @@ export async function apiRequest(url, options = {}) {
     return performRequest(url, options);
   }
 
+  if (options.fresh) {
+    const { fresh: _fresh, ...requestOptions } = options;
+    return performRequest(url, requestOptions);
+  }
+
   const key = makeRequestKey(url, options);
 
   const cached = getCachedResponse(key);

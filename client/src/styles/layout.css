@@ -98,21 +98,6 @@
   display:block;
 }
 
-.saved-icon{
-  width:100%;
-  height:100%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:18px;
-  font-weight:700;
-}
-
-html,
-body{
-  background:var(--color-bg-deep);
-}
-
 @media (min-width:769px){
   .mobile-back-button{
     display:none;

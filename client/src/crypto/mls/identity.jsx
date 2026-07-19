@@ -165,7 +165,21 @@ export async function publishKeyPackagesIfNeeded(engine) {
 }
 
 export async function listCryptoDevices(engine) {
-  const response = await signedCryptoRequest("/crypto/v4/devices");
+  const devices = [];
+  let cursor = "";
+  let firstPage = null;
+  do {
+    const path = `/crypto/v4/devices?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const page = await signedCryptoRequest(path);
+    if (!firstPage) firstPage = page;
+    else if (canonicalJson(page.directory) !== canonicalJson(firstPage.directory) ||
+      canonicalJson(page.deviceCommitments) !== canonicalJson(firstPage.deviceCommitments)) {
+      throw new Error("Device directory changed while pagination was in progress");
+    }
+    devices.push(...(page.devices || []));
+    cursor = page.hasMore ? String(page.nextCursor || "") : "";
+  } while (cursor);
+  const response = firstPage || { deviceCommitments: [], directory: {}, directoryLog: [] };
   const identity = {
     ...engine.bootstrap.identity,
     directory: response.directory,
@@ -175,16 +189,71 @@ export async function listCryptoDevices(engine) {
     username: engine.username,
     identity,
     deviceCommitments: response.deviceCommitments || [],
-    allDevices: response.devices || []
+    allDevices: devices
   });
   engine.bootstrap.identity = identity;
-  engine.bootstrap.accountDevices = response.devices || [];
+  engine.bootstrap.accountDevices = devices;
   engine.bootstrap.deviceCommitments = response.deviceCommitments || [];
   return {
     currentDeviceId: engine.deviceId,
-    devices: response.devices || [],
+    devices,
     directory: response.directory
   };
+}
+
+export async function renewCryptoDeviceManifestIfNeeded(engine, { force = false } = {}) {
+  const current = await listCryptoDevices(engine);
+  const target = current.devices.find(device => device.deviceId === engine.deviceId);
+  if (!target || target.status !== "active") throw new Error("Current cryptographic device is not active");
+  const expiresAt = Date.parse(target.manifestExpiresAt || target.manifest?.expiresAt || "");
+  const renewalWindowMs = 45 * 24 * 60 * 60 * 1000;
+  if (!force && Number.isFinite(expiresAt) && expiresAt - Date.now() > renewalWindowMs) {
+    return { renewed: false, expiresAt: target.manifestExpiresAt || target.manifest.expiresAt };
+  }
+  const manifest = {
+    ...target.manifest,
+    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+  };
+  const manifestSignature = await signCanonical(engine.keys.rootSecretKey, "liotan-device-manifest-v1", manifest);
+  const renewal = {
+    v: 1,
+    cryptoUserId: engine.bootstrap.identity.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    previousManifestHash: sha256Base64Url(canonicalJson([
+      "liotan-device-manifest-v1",
+      target.manifest,
+      target.manifestSignature
+    ])),
+    newExpiresAt: manifest.expiresAt,
+    issuedAt: new Date().toISOString(),
+    nonce: randomId(24)
+  };
+  const renewalSignature = await signCanonical(engine.keys.requestSecretKey, "liotan-device-renewal-v1", renewal);
+  const nextDevice = { ...target, manifest, manifestSignature, manifestExpiresAt: manifest.expiresAt };
+  const directory = await buildDirectoryMutation(engine, {
+    devices: current.devices,
+    nextDevice,
+    action: "renew-device",
+    targetDeviceId: target.deviceId
+  });
+  const response = await signedCryptoRequest(`/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/renew`, {
+    method: "POST",
+    body: {
+      renewal,
+      renewalSignature,
+      manifest,
+      manifestSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
+    }
+  });
+  engine.bootstrap.device = response.device;
+  engine.bootstrap.identity.directory = response.directory;
+  engine.bootstrap.accountDevices = directory.prospective.map(device =>
+    device.deviceId === response.device.deviceId ? response.device : device
+  );
+  return { ...response, renewed: !response.duplicate };
 }
 
 export async function approveCryptoDevice(engine, deviceId) {

@@ -65,7 +65,8 @@ function setupSocket(io) {
         User.exists({
           _id: decoded.userId,
           username: decoded.username,
-          emailVerified: true
+          emailVerified: true,
+          lifecycleState: { $ne: "deleting" }
         }),
         isSessionActive({
           userId: decoded.userId,
@@ -114,7 +115,8 @@ function setupSocket(io) {
         User.exists({
           _id: socket.user.userId,
           username: socket.user.username,
-          emailVerified: true
+          emailVerified: true,
+          lifecycleState: { $ne: "deleting" }
         }),
         isSessionActive({
           userId: socket.user.userId,

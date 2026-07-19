@@ -406,15 +406,21 @@ export default function useChat({ username, socketRef, setUnread, chats, dialogs
       sendControl("delete", message);
       return;
     }
-    window.dispatchEvent(new CustomEvent("liotan:mls-event", {
-      detail: { type: "delete", chatId, messageId: message._id, localOnly: true }
-    }));
+    getMlsEngine().hideMessageForAccount(activeChat, getDialogForChat(activeChat), message._id)
+      .catch(err => alert(err?.message || "Не удалось скрыть сообщение на ваших устройствах"));
   }
 
-  function deleteChat(chat = activeChat, options = {}) {
+  function deleteChat(chat = activeChat) {
     if (!chat) return;
     stopTyping(chat);
-    if (activeChatRef.current === chat) closeChat();
+    return getMlsEngine().deleteConversation(chat, getDialogForChat(chat))
+      .then(() => {
+        if (activeChatRef.current === chat) closeChat();
+      })
+      .catch(err => {
+        alert(err?.message || "Не удалось удалить чат для всех участников");
+        throw err;
+      });
   }
 
   function handleKey(event) {

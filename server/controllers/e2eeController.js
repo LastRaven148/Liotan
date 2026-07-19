@@ -13,6 +13,7 @@ const privacy =
 const {
   isValidUsername
 } = require("../utils/validators");
+const { hasBlockBetweenUsernames } = require("../services/blockPolicy");
 
 function getSafeDeviceName(session, requester, targetUser) {
   if (requester === targetUser || privacy.exposeDeviceNamesToContacts) {
@@ -43,6 +44,8 @@ async function canReadTargetDevices(requester, targetUser) {
   if (requester === targetUser) {
     return true;
   }
+
+  if (await hasBlockBetweenUsernames(requester, targetUser)) return false;
 
   return hasSharedPrivateConversation(requester, targetUser);
 }

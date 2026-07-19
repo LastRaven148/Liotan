@@ -59,6 +59,19 @@ const userSchema = new mongoose.Schema({
   lastSeen: {
     type: Date,
     default: Date.now
+  },
+
+  lifecycleState: {
+    type: String,
+    enum: ["active", "deleting"],
+    default: "active",
+    index: true
+  },
+
+  deletionWorkflowId: {
+    type: String,
+    default: "",
+    index: true
   }
 });
 

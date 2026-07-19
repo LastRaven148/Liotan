@@ -22,10 +22,14 @@ import {
   getEncryptedRecord,
   getEncryptedHistoryRecord,
   listEncryptedHistoryRecords,
+  deleteEncryptedConversationData,
+  deleteEncryptedMessageRecord,
+  deleteLocalCryptoStore,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
   putEncryptedRecord
 } from "./recoveryStore";
+import { clearOfflineMedia, deleteOfflineBlobs } from "../components/chat/message/messageStorage";
 import {
   BACKGROUND_MAINTENANCE_INTERVAL_MS,
   MLS_CIPHER_SUITE as SUITE,
@@ -54,6 +58,7 @@ import {
   listCryptoDevices,
   publishKeyPackagesIfNeeded,
   registerCryptographicIdentity,
+  renewCryptoDeviceManifestIfNeeded,
   revokeCryptoDevice
 } from "./mls/identity";
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
@@ -67,6 +72,7 @@ import { destroyUniffi, destroyUniffiAll } from "./mls/uniffiLifecycle";
 const conversationByChat = new Map();
 const conversationById = new Map();
 const loadedHistory = new Set();
+const hiddenMessagesByConversation = new Map();
 const CONVERSATION_DIRECTORY_TTL_MS = 60 * 1000;
 const CONVERSATION_FAST_SYNC_TTL_MS = 3000;
 const INITIAL_HISTORY_LIMIT = 80;
@@ -114,9 +120,14 @@ class LiotanMlsEngine {
     this.ensuring = new Map();
     this.sendQueues = new Map();
     this.historyMigrations = new Map();
+    this.deletionRequests = new Map();
+    this.purgingConversations = new Set();
+    this.invalidationSync = null;
     this.closing = false;
     this.pollTimer = null;
     this.maintenanceTimer = null;
+    this.manifestRenewalTimer = null;
+    this.manifestRenewalFailures = 0;
     this.maintenanceQueue = new Map();
     this.initializationStage = "created";
     this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
@@ -169,6 +180,10 @@ class LiotanMlsEngine {
     await this.registerCryptographicIdentity();
     this.initializationStage = "key-package-publication";
     await this.publishKeyPackagesIfNeeded();
+    this.initializationStage = "manifest-renewal";
+    await this.runManifestRenewal();
+    this.initializationStage = "client-invalidation-sync";
+    await this.syncInvalidations();
     this.pollTimer = window.setInterval(() => this.syncAll().catch(error => {
       if (import.meta.env.DEV) console.warn("MLS periodic sync failed", error);
     }), 15000);
@@ -180,12 +195,188 @@ class LiotanMlsEngine {
     this.initializationStage = "ready";
   }
 
+  async hiddenMessages(conversationId) {
+    const key = String(conversationId || "");
+    if (hiddenMessagesByConversation.has(key)) return hiddenMessagesByConversation.get(key);
+    const record = await getEncryptedRecord(`hidden-messages:${key}`, this.keys.cacheKey);
+    const values = new Set(Array.isArray(record?.messageIds) ? record.messageIds.map(String) : []);
+    hiddenMessagesByConversation.set(key, values);
+    return values;
+  }
+
+  async rememberHiddenMessage(conversationId, clientMessageId) {
+    const values = await this.hiddenMessages(conversationId);
+    values.add(String(clientMessageId));
+    await putEncryptedRecord(`hidden-messages:${conversationId}`, {
+      v: 1,
+      conversationId,
+      messageIds: [...values].sort()
+    }, this.keys.cacheKey);
+  }
+
+  attachmentOfflineKeys(attachment) {
+    if (!attachment) return [];
+    const media = attachment.mlsMedia || {};
+    return [attachment.mediaId, attachment.uploadId, attachment.url, media.mediaId, media.uploadId, media.url]
+      .filter(Boolean)
+      .map(String);
+  }
+
+  async purgeConversation(conversationId, chatKey = "") {
+    const id = String(conversationId || "");
+    const state = conversationById.get(id);
+    const resolvedChatKey = String(chatKey || state?.chatKey || "");
+    if (!id) {
+      if (resolvedChatKey) {
+        window.dispatchEvent(new CustomEvent("liotan:mls-event", {
+          detail: { type: "conversation-delete", conversationId: "", chatKey: resolvedChatKey }
+        }));
+      }
+      return;
+    }
+    this.purgingConversations.add(id);
+    await Promise.allSettled([
+      this.historyMigrations.get(id),
+      this.syncing.get(id)
+    ].filter(Boolean));
+    const offlineKeys = [];
+    let beforeSequence = null;
+    while (true) {
+      const records = await listEncryptedHistoryRecords(id, this.keys.cacheKey, {
+        limit: 200,
+        ...(beforeSequence === null ? {} : { beforeSequence })
+      });
+      records.forEach(record => offlineKeys.push(...this.attachmentOfflineKeys(record?.envelope?.attachment)));
+      if (records.length < 200) break;
+      beforeSequence = Math.min(...records.map(record => Number(record?.sequence || 0)).filter(Boolean));
+      if (!beforeSequence) break;
+    }
+    if (offlineKeys.length) await deleteOfflineBlobs(offlineKeys);
+    const conversationIdObject = conversationObject(id);
+    try {
+      const exists = await this.core.transaction(ctx => ctx.conversationExists(conversationIdObject));
+      if (exists) await this.core.transaction(ctx => ctx.wipeConversation(conversationIdObject));
+    } finally {
+      destroyUniffi(conversationIdObject);
+    }
+    await deleteEncryptedConversationData(id);
+    localStorage.removeItem(`liotan:mls-sequence:${id}`);
+    loadedHistory.delete(id);
+    hiddenMessagesByConversation.delete(id);
+    this.historyMigrations.delete(id);
+    if (state) {
+      conversationById.delete(id);
+      if (conversationByChat.get(state.chatKey) === state) conversationByChat.delete(state.chatKey);
+      this.maintenanceQueue.delete(state.chatKey);
+    }
+    window.dispatchEvent(new CustomEvent("liotan:mls-event", {
+      detail: { type: "conversation-delete", conversationId: id, chatKey: resolvedChatKey }
+    }));
+  }
+
+  async applyInvalidation(item) {
+    if (item.kind === "message-hidden") {
+      const cached = await this.findCachedEnvelope(item.conversationId, item.clientMessageId);
+      const state = conversationById.get(String(item.conversationId));
+      await this.rememberHiddenMessage(item.conversationId, item.clientMessageId);
+      await deleteEncryptedMessageRecord(item.conversationId, item.clientMessageId);
+      const offlineKeys = this.attachmentOfflineKeys(cached?.envelope?.attachment);
+      if (offlineKeys.length) await deleteOfflineBlobs(offlineKeys);
+      if (state && cached?.envelope) {
+        window.dispatchEvent(new CustomEvent("liotan:mls-event", {
+          detail: {
+            type: "delete",
+            chatId: this.envelopeToUiMessage(state, { ...(cached?.envelope || {}), attachment: null }).chatId,
+            messageId: item.clientMessageId,
+            localOnly: true
+          }
+        }));
+      }
+      return;
+    }
+    if (["conversation-deleted", "account-deleted"].includes(item.kind)) {
+      await this.purgeConversation(item.conversationId, item.chatKey);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("liotan:account-state-invalidated", { detail: item }));
+  }
+
+  async syncInvalidations() {
+    if (this.invalidationSync) return this.invalidationSync;
+    this.invalidationSync = (async () => {
+      let cursor = "";
+      do {
+        const path = `/crypto/v4/invalidations?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+        const page = await signedCryptoRequest(path);
+        for (const item of page.invalidations || []) {
+          await this.applyInvalidation(item);
+          await signedCryptoRequest(`/crypto/v4/invalidations/${encodeURIComponent(item.eventId)}/ack`, {
+            method: "POST",
+            body: {}
+          });
+        }
+        cursor = page.hasMore ? String(page.nextCursor || "") : "";
+      } while (cursor);
+    })().finally(() => { this.invalidationSync = null; });
+    return this.invalidationSync;
+  }
+
+  async deleteConversation(chatKey, dialog = null) {
+    const state = conversationByChat.get(String(chatKey)) || await this.resolveConversation(chatKey, dialog);
+    const existing = this.deletionRequests.get(state.conversationId);
+    if (existing) return existing;
+    const request = (async () => {
+      let result = await signedCryptoRequest(
+        `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/deletion`,
+        {
+          method: "POST",
+          body: { confirm: true },
+          headers: { "Idempotency-Key": randomId(24) }
+        }
+      );
+      for (let attempt = 0; result?.state !== "completed" && !result?.terminal && attempt < 30; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, Math.min(5000, 750 * (attempt + 1))));
+        result = await signedCryptoRequest(
+          `/crypto/v4/deletions/${encodeURIComponent(result.workflowId)}`
+        );
+      }
+      if (result?.state !== "completed") {
+        const error = new Error(result?.terminal
+          ? "Conversation deletion requires operator reconciliation."
+          : "Conversation deletion is still removing encrypted media. Retry status shortly.");
+        error.code = result?.terminal ? "conversation-deletion-blocked" : "conversation-deletion-pending";
+        error.workflowId = result?.workflowId || "";
+        throw error;
+      }
+      await this.purgeConversation(state.conversationId, state.chatKey);
+      return result;
+    })();
+    this.deletionRequests.set(state.conversationId, request);
+    try {
+      return await request;
+    } finally {
+      this.deletionRequests.delete(state.conversationId);
+    }
+  }
+
+  async hideMessageForAccount(chatKey, dialog, clientMessageId) {
+    const state = conversationByChat.get(String(chatKey)) || await this.ensureConversation(chatKey, dialog);
+    await signedCryptoRequest(
+      `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/messages/${encodeURIComponent(clientMessageId)}/hide`,
+      { method: "POST", body: {} }
+    );
+    await this.syncInvalidations();
+  }
+
   async closeDatabase() {
     if (this.pollTimer) window.clearInterval(this.pollTimer);
     this.pollTimer = null;
     if (this.maintenanceTimer) window.clearInterval(this.maintenanceTimer);
     this.maintenanceTimer = null;
+    if (this.manifestRenewalTimer) window.clearTimeout(this.manifestRenewalTimer);
+    this.manifestRenewalTimer = null;
     this.maintenanceQueue.clear();
+    this.deletionRequests.clear();
     const database = this.database;
     const core = this.core;
     const credentialRef = this.credentialRef;
@@ -210,6 +401,25 @@ class LiotanMlsEngine {
 
   async publishKeyPackagesIfNeeded() {
     return publishKeyPackagesIfNeeded(this);
+  }
+
+  scheduleManifestRenewal(delayMs) {
+    if (this.closing) return;
+    if (this.manifestRenewalTimer) window.clearTimeout(this.manifestRenewalTimer);
+    this.manifestRenewalTimer = window.setTimeout(() => this.runManifestRenewal(), delayMs);
+  }
+
+  async runManifestRenewal() {
+    try {
+      await renewCryptoDeviceManifestIfNeeded(this);
+      this.manifestRenewalFailures = 0;
+      this.scheduleManifestRenewal(24 * 60 * 60 * 1000);
+    } catch (error) {
+      this.manifestRenewalFailures += 1;
+      const retryMs = Math.min(6 * 60 * 60 * 1000, 30 * 1000 * (2 ** Math.min(10, this.manifestRenewalFailures - 1)));
+      this.scheduleManifestRenewal(retryMs);
+      if (import.meta.env.DEV) console.warn("Cryptographic device manifest renewal failed", error);
+    }
   }
 
   async listCryptoDevices() {
@@ -568,7 +778,7 @@ class LiotanMlsEngine {
     }
     const migration = migrateEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
       batchSize: 128,
-      shouldContinue: () => !this.closing
+      shouldContinue: () => !this.closing && !this.purgingConversations.has(state.conversationId)
     }).then(result => {
       if (result.completed && result.latest.length) {
         this.dispatchHistoryRecords(state, result.latest, "initial");
@@ -587,6 +797,7 @@ class LiotanMlsEngine {
   async loadCachedHistory(state) {
     if (loadedHistory.has(state.conversationId)) return;
     try {
+      await this.hiddenMessages(state.conversationId);
       const records = await listEncryptedHistoryRecords(state.conversationId, this.keys.cacheKey, {
         limit: INITIAL_HISTORY_LIMIT
       });
@@ -602,9 +813,11 @@ class LiotanMlsEngine {
   dispatchHistoryRecords(state, records, direction = "initial") {
     const messages = [];
     const controls = [];
+    const hidden = hiddenMessagesByConversation.get(state.conversationId) || new Set();
     for (const record of records) {
       const envelope = record?.envelope;
       if (!envelope) continue;
+      if (hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId))) continue;
       if (envelope.kind === "message") {
         messages.push(this.envelopeToUiMessage(state, envelope, "", record.sequence));
       } else {
@@ -681,6 +894,8 @@ class LiotanMlsEngine {
       if (!decrypted.message) return;
       const envelope = JSON.parse(textDecoder.decode(decrypted.message));
       this.validateEnvelope(state, event, decrypted, envelope);
+      const hidden = await this.hiddenMessages(state.conversationId);
+      const isHidden = hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId));
       if (["edit", "delete"].includes(envelope.kind)) {
         const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
         const target = targetRecord?.envelope;
@@ -688,11 +903,14 @@ class LiotanMlsEngine {
           throw new Error("Unauthorized MLS message mutation rejected");
         }
       }
-      try {
-        await this.cacheEnvelope(state, event.sequence, envelope);
-      } catch (error) {
-        if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
+      if (!isHidden) {
+        try {
+          await this.cacheEnvelope(state, event.sequence, envelope);
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
+        }
       }
+      if (isHidden) return;
       if (envelope.kind === "message") {
         dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence) });
       } else {
@@ -717,6 +935,7 @@ class LiotanMlsEngine {
       let after = reconcileSyncCursor({ checkpoint, localHint }).after;
       localStorage.setItem(`liotan:mls-sequence:${state.conversationId}`, String(after));
       while (true) {
+        if (this.purgingConversations.has(state.conversationId)) return;
         const path = `/crypto/v4/conversations/${encodeURIComponent(state.conversationId)}/events?after=${after}&limit=100`;
         let response;
         try {
@@ -748,6 +967,7 @@ class LiotanMlsEngine {
           throw error;
         }
         for (const event of response.events) {
+          if (this.purgingConversations.has(state.conversationId)) return;
           const conversationId = conversationObject(state.conversationId);
           try {
             if (event.kind === "commit") {
@@ -779,7 +999,10 @@ class LiotanMlsEngine {
               const cachedRecord = await this.findCachedEnvelope(state.conversationId, event.clientMessageId);
               const cached = cachedRecord?.envelope;
               if (cached) {
-                this.dispatchCachedEnvelope(state, event, cached);
+                const hidden = await this.hiddenMessages(state.conversationId);
+                if (!hidden.has(String(cached.clientMessageId)) && !hidden.has(String(cached.targetMessageId))) {
+                  this.dispatchCachedEnvelope(state, event, cached);
+                }
               } else if (event.senderClientId === this.clientIdString) {
                 const error = new Error("An acknowledged local MLS message is missing from encrypted history");
                 error.code = "mls-local-history-gap";
@@ -826,6 +1049,7 @@ class LiotanMlsEngine {
   }
 
   async syncAll() {
+    await this.syncInvalidations();
     for (const state of conversationById.values()) await this.syncConversation(state);
   }
 
@@ -1322,6 +1546,40 @@ export async function resetMlsEngine() {
   conversationByChat.clear();
   conversationById.clear();
   loadedHistory.clear();
+  hiddenMessagesByConversation.clear();
+}
+
+export async function purgeDeletedAccountLocalState(username) {
+  const current = engine;
+  const cryptoUserId = String(current?.bootstrap?.identity?.cryptoUserId || "").toLowerCase();
+  const databaseNames = new Set(current?.databaseName ? [current.databaseName] : []);
+  if (cryptoUserId && typeof indexedDB.databases === "function") {
+    const databases = await indexedDB.databases();
+    databases.forEach(database => {
+      if (String(database.name || "").startsWith(`liotan-mls-${cryptoUserId}-`)) databaseNames.add(database.name);
+    });
+  }
+  await resetMlsEngine();
+  const results = await Promise.allSettled([
+    ...[...databaseNames].map(name => deleteCoreCryptoDatabase(name)),
+    deleteLocalCryptoStore(),
+    clearOfflineMedia()
+  ]);
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index) || "";
+    if (key.startsWith("liotan:mls-sequence:") ||
+      key === deviceIdRecordName(username) ||
+      key === `liotan:last-chat:${encodeURIComponent(username)}` ||
+      key === "liotan-open-totp-setup") {
+      localStorage.removeItem(key);
+    }
+  }
+  const failures = results.filter(result => result.status === "rejected");
+  if (failures.length) {
+    const error = new Error("Deleted account data is blocked by another browser tab; close it and retry local cleanup");
+    error.causes = failures.map(item => item.reason);
+    throw error;
+  }
 }
 
 export { decryptMlsMediaBlob, downloadMlsCiphertext };

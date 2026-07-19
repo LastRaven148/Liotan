@@ -4,6 +4,7 @@ const User =
 const {
   isValidUsername
 } = require("../utils/validators");
+const { blockedUserIdsFor } = require("../services/blockPolicy");
 
 function escapeRegex(value) {
   return value.replace(
@@ -40,6 +41,7 @@ async function searchUsers(req, res, next) {
 
     const escaped =
       escapeRegex(query);
+    const excludedUserIds = await blockedUserIdsFor(req.user.userId);
 
     const exact =
       await User.findOne(
@@ -55,6 +57,12 @@ async function searchUsers(req, res, next) {
               username: {
                 $ne: currentUsername
               }
+            },
+            {
+              lifecycleState: { $ne: "deleting" }
+            },
+            {
+              _id: { $nin: excludedUserIds }
             }
           ]
         },
@@ -79,6 +87,12 @@ async function searchUsers(req, res, next) {
               username: {
                 $ne: currentUsername
               }
+            },
+            {
+              lifecycleState: { $ne: "deleting" }
+            },
+            {
+              _id: { $nin: excludedUserIds }
             }
           ]
         },

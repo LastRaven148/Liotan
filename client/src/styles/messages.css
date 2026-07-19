@@ -459,10 +459,6 @@ html.liotan-message-scale-150 .message-text{font-size:21px}
   color:var(--color-danger);
 }
 
-.attach-menu button:hover{
-  background:var(--color-surface-hover);
-}
-
 @media (max-width:768px){
   .message{
     max-width:82%;
@@ -491,11 +487,6 @@ html.liotan-message-scale-150 .message-text{font-size:21px}
     max-width:190px;
   }
 
-  input,
-  textarea,
-  select{
-    font-size:16px;
-  }
 }
 
 .message-menu button .menu-icon{

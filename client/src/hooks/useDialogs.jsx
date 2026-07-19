@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { getDialogs, searchUsers, getPinnedChatsApi, togglePinnedChatApi, getArchivedChatsApi, toggleArchivedChatApi, getGroupsApi, leaveGroupApi, deleteGroupApi } from "../services/api";
+import { getDialogs, searchUsers, getPinnedChatsApi, togglePinnedChatApi, getArchivedChatsApi, toggleArchivedChatApi, getGroupsApi } from "../services/api";
+import { getMlsEngine } from "../crypto/mlsEngine";
 function normalizeAttachment(attachment) {
   if (!attachment?.url) {
     return null;
@@ -278,18 +279,10 @@ export default function useDialogs({
     if (!dialog || dialog.type !== "group" || !dialog.groupId) {
       return;
     }
-    try {
-      if (dialog.owner === username) {
-        await deleteGroupApi(dialog.groupId);
-      } else {
-        await leaveGroupApi(dialog.groupId);
-      }
-      const key = dialog.chatKey || `group:${dialog.groupId}`;
-      removeDialog(key);
-    } catch (err) {
-      // startup/network errors are handled by request guards
-    }
-  }, [username, removeDialog]);
+    await getMlsEngine().deleteConversation(dialog.chatKey || `group:${dialog.groupId}`, dialog);
+    const key = dialog.chatKey || `group:${dialog.groupId}`;
+    removeDialog(key);
+  }, [removeDialog]);
   const filteredDialogs = useMemo(() => {
     if (search.trim()) {
       const privateResults = searchResults.map(user => {

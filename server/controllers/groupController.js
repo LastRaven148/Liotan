@@ -1,16 +1,9 @@
 const Group = require("../models/Group");
 const User = require("../models/User");
-const Message = require("../models/Messages");
-const E2EEKey = require("../models/E2EEKey");
-const CryptoConversation = require("../models/CryptoConversation");
-const CryptoEvent = require("../models/CryptoEvent");
-const CryptoOperation = require("../models/CryptoOperation");
 const CryptoDevice = require("../models/CryptoDevice");
-const AttachmentUpload = require("../models/AttachmentUpload");
 const { uploadToR2 } = require("../utils/uploadToR2");
 const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
-const { messagesMediaKeys } = require("../sockets/services/mediaKeys");
 const { transitionConversationRoster } = require("../security/cryptoRosterState");
 const {
   normalizeMime,
@@ -20,6 +13,7 @@ const {
 const {
   isValidUsername
 } = require("../utils/validators");
+const { hasBlockBetweenUsernames } = require("../services/blockPolicy");
 
 const emitToGroupMembers =
   require("../sockets/services/emitToGroupMembers");
@@ -90,22 +84,6 @@ function emitGroupUpdated(req, group) {
   });
 }
 
-function emitGroupDeleted(req, group, deletedMediaKeys = []) {
-  const io = req.app.get("io");
-  if (!io) {
-    return;
-  }
-
-  emitToGroupMembers({
-    io,
-    members: group.members || [],
-    event: "groupDeleted",
-    payload: {
-      groupId: String(group._id),
-      deletedMediaKeys
-    }
-  });
-}
 function canManageGroup(group, username) {
   return group.owner === username || group.admins.includes(username);
 }
@@ -127,17 +105,6 @@ async function activeCryptoClientIds(username) {
   }, "clientId").lean();
   return devices.map(device => device.clientId);
 }
-async function deleteGroupMessageFiles(messages) {
-  for (const message of messages) {
-    await deleteUploadedFile({
-      url: message.attachment?.url,
-      storageKey: message.attachment?.storageKey,
-      storageType: message.attachment?.storageType,
-      uploadId: message.attachment?.uploadId,
-      mediaId: message.attachment?.mediaId
-    });
-  }
-}
 async function createGroup(req, res, next) {
   try {
     const owner = req.user.username;
@@ -157,10 +124,16 @@ async function createGroup(req, res, next) {
     if (members.length > MAX_GROUP_MEMBERS) {
       return res.status(400).json({ error: "group member limit exceeded" });
     }
+    for (const member of members) {
+      if (member !== owner && await hasBlockBetweenUsernames(owner, member)) {
+        return res.status(403).json({ error: "group membership target unavailable" });
+      }
+    }
     const existingUsers = await User.find({
       username: {
         $in: members
-      }
+      },
+      lifecycleState: { $ne: "deleting" }
     }, "username");
     const validMembers = existingUsers.map(user => user.username);
     if (!validMembers.includes(owner)) {
@@ -183,7 +156,8 @@ async function createGroup(req, res, next) {
 async function getMyGroups(req, res, next) {
   try {
     const groups = await Group.find({
-      members: req.user.username
+      members: req.user.username,
+      lifecycleState: { $ne: "deleting" }
     }).sort({
       updatedAt: -1
     });
@@ -207,7 +181,7 @@ async function getMyGroups(req, res, next) {
 async function getGroupById(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -226,7 +200,7 @@ async function getGroupById(req, res, next) {
 async function updateGroup(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -262,7 +236,7 @@ async function updateGroup(req, res, next) {
 async function uploadGroupAvatar(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -321,7 +295,7 @@ async function addGroupMember(req, res, next) {
         error: "invalid username"
       });
     }
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -332,9 +306,13 @@ async function addGroupMember(req, res, next) {
         error: "access denied"
       });
     }
+    if (await hasBlockBetweenUsernames(username, member)) {
+      return res.status(403).json({ error: "group membership target unavailable" });
+    }
     const userExists = await User.exists({
       username: member,
-      emailVerified: true
+      emailVerified: true,
+      lifecycleState: { $ne: "deleting" }
     });
     if (!userExists) {
       return res.status(404).json({
@@ -364,7 +342,7 @@ async function removeGroupMember(req, res, next) {
   try {
     const username = req.user.username;
     const member = String(req.params.username || "").trim();
-    const group = await Group.findById(req.params.id);
+    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -409,118 +387,16 @@ async function removeGroupMember(req, res, next) {
     next(err);
   }
 }
-async function leaveGroup(req, res, next) {
-  try {
-    const username = req.user.username;
-    const group = await Group.findById(req.params.id);
-    if (!group) {
-      return res.status(404).json({
-        error: "group not found"
-      });
-    }
-    if (!group.members.includes(username)) {
-      return res.status(403).json({
-        error: "access denied"
-      });
-    }
-    if (group.owner === username) {
-      return res.status(400).json({
-        error: "owner must delete group"
-      });
-    }
-    await blockMlsGroup(group._id, {
-      removeClientIds: await activeCryptoClientIds(username),
-      reason: "group member left"
-    });
-    group.members = group.members.filter(item => item !== username);
-    group.admins = group.admins.filter(item => item !== username);
-    group.e2eeVersion = (Number(group.e2eeVersion) || 1) + 1;
-    await group.save();
-    const chatKey = `group:${group._id}`;
-    await User.updateOne({
-      username
-    }, {
-      $pull: {
-        pinnedChats: chatKey,
-        archivedChats: chatKey
-      }
-    });
-    // Do not destroy historical epochs. A new epoch is created above and the
-    // leaving member will not receive its wrappers.
-    const serialized = await serializeGroup(group);
-    emitGroupUpdated(req, serialized);
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
+async function leaveGroup(_req, res) {
+  // Compatibility tombstone: the product has no whole-chat "leave and keep
+  // history" mode. Current clients use the signed global deletion workflow.
+  return res.status(410).json({ error: "mls-v4-required" });
 }
-async function deleteGroup(req, res, next) {
-  try {
-    const username = req.user.username;
-    const group = await Group.findById(req.params.id);
-    if (!group) {
-      return res.status(404).json({
-        error: "group not found"
-      });
-    }
-    if (group.owner !== username) {
-      return res.status(403).json({
-        error: "only owner can delete group"
-      });
-    }
-    const messages = await Message.find({
-      chatType: "group",
-      groupId: group._id
-    });
-    const deletedMediaKeys = messagesMediaKeys(messages);
-
-    await deleteGroupMessageFiles(messages);
-    await Message.deleteMany({
-      chatType: "group",
-      groupId: group._id
-    });
-    await deleteUploadedFile({
-      url: group.avatar,
-      storageKey: group.avatarStorageKey,
-      storageType: group.avatarStorageType
-    });
-    const chatKey = `group:${group._id}`;
-    await User.updateMany({}, {
-      $pull: {
-        pinnedChats: chatKey,
-        archivedChats: chatKey
-      }
-    });
-    await Group.deleteOne({
-      _id: group._id
-    });
-    await E2EEKey.deleteMany({
-      conversationId: {
-        $regex: `^${chatKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::v\\d+)?$`
-      }
-    });
-    const cryptoConversation = await CryptoConversation.findOne({ lookupKey: `group:${group._id}` }).lean();
-    if (cryptoConversation) {
-      const uploads = await AttachmentUpload.find({ cryptoConversationId: cryptoConversation.conversationId }).lean();
-      for (const upload of uploads) {
-        await deleteUploadedFile({ storageKey: upload.storageKey, storageType: upload.storageType });
-      }
-      await Promise.all([
-        AttachmentUpload.deleteMany({ cryptoConversationId: cryptoConversation.conversationId }),
-        CryptoEvent.deleteMany({ conversationId: cryptoConversation.conversationId }),
-        CryptoOperation.deleteMany({ conversationId: cryptoConversation.conversationId }),
-        CryptoConversation.deleteOne({ _id: cryptoConversation._id })
-      ]);
-    }
-    emitGroupDeleted(req, group, deletedMediaKeys);
-    res.json({
-      ok: true
-    });
-  } catch (err) {
-    next(err);
-  }
+async function deleteGroup(_req, res) {
+  // Compatibility tombstone: whole-chat deletion is exclusively handled by
+  // the signed MLS v4 deletion workflow. Keeping this endpoint prevents old
+  // clients from silently falling back to the former partial delete path.
+  return res.status(410).json({ error: "mls-v4-required" });
 }
 module.exports = {
   createGroup,

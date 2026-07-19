@@ -179,6 +179,8 @@
   justify-content:center;
   background:var(--color-accent-secondary);
   color:var(--color-text-primary);
+  font-size:18px;
+  font-weight:700;
 }
 
 .saved-icon svg{

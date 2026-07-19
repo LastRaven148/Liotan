@@ -19,6 +19,7 @@ import DevicesPage from "../settings/pages/DevicesPage";
 import LanguagePage from "../settings/pages/LanguagePage";
 import TwoFactorPage from "../settings/pages/TwoFactorPage";
 import SupportPage from "../settings/pages/SupportPage";
+import BlocklistPage from "../settings/pages/BlocklistPage";
 import {
   getSecurityStatus,
   startTotpSetup,
@@ -63,6 +64,7 @@ export default function SettingsModal({
   const [sessions, setSessions] = useState([]);
   const drawerRef = useRef(null);
   const previousFocusRef = useRef(null);
+  const deleteIdempotencyRef = useRef(crypto.randomUUID());
 
   useEffect(() => setNameValue(displayName || ""), [displayName]);
   useEffect(() => setBioValue(bio || ""), [bio]);
@@ -222,6 +224,7 @@ export default function SettingsModal({
   }
 
   function askDelete() {
+    deleteIdempotencyRef.current = crypto.randomUUID();
     setMenuOpen(false);
     setDeleteStep(1);
     setDeleteError("");
@@ -246,8 +249,8 @@ export default function SettingsModal({
     setDeleting(true);
     try {
       const ok = await deleteAccount?.(securityStatus?.totp?.enabled
-        ? { totpCode: deleteCredential.trim() }
-        : { currentPassword: deleteCredential });
+        ? { totpCode: deleteCredential.trim(), idempotencyKey: deleteIdempotencyRef.current }
+        : { currentPassword: deleteCredential, idempotencyKey: deleteIdempotencyRef.current });
       if (ok !== false) {
         onClose?.();
         return;
@@ -323,10 +326,13 @@ export default function SettingsModal({
             labels={labels}
             actions={{
               openEmailChange: () => setEmailChangeOpen(true),
+              openBlocklist: () => setPage("blocklist"),
               openTotp: () => setTotpOpen(true),
               totpEnabled: Boolean(securityStatus?.totp?.enabled)
             }}
           />
+        ) : page === "blocklist" ? (
+          <BlocklistPage back={() => setPage("privacy")} labels={labels} />
         ) : page === "twofactor" ? (
           <TwoFactorPage
             back={() => setPage("main")}

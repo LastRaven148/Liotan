@@ -57,6 +57,13 @@ export default function DevicesPage({
 
   useEffect(() => { loadCryptoDevices(); }, [loadCryptoDevices]);
   useEffect(() => {
+    function handleInvalidation(event) {
+      if (event?.detail?.kind === "device-list-updated") loadCryptoDevices();
+    }
+    window.addEventListener("liotan:account-state-invalidated", handleInvalidation);
+    return () => window.removeEventListener("liotan:account-state-invalidated", handleInvalidation);
+  }, [loadCryptoDevices]);
+  useEffect(() => {
     cryptoServices.getRecoveryProtectionStatus(state.username)
       .then(setRecoveryProtection)
       .catch(() => setRecoveryProtection({ configured: false, requiresUserPresence: false }));

@@ -219,11 +219,19 @@ export async function uploadAvatarApi(
 }
 
 export async function deleteAccountApi(reauth = {}) {
+  const { idempotencyKey = crypto.randomUUID(), ...credentials } = reauth;
   return apiRequest(`${API}/me/account`, {
     method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reauth)
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey
+    },
+    body: JSON.stringify({ ...credentials, confirm: true })
   });
+}
+
+export async function getAccountDeletionStatusApi(workflowId) {
+  return apiRequest(`${API}/me/account/deletion/${encodeURIComponent(workflowId)}`);
 }
 
 
@@ -381,6 +389,32 @@ export async function getArchivedChatsApi() {
   return apiRequest(`${API}/me/archived-chats`);
 }
 
+export async function getBlocklistApi({ cursor = "", limit = 50 } = {}) {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return apiRequest(`${API}/me/blocks?${query}`);
+}
+
+export async function blockUserApi(username) {
+  return apiRequest(`${API}/me/blocks/${encodeURIComponent(username)}`, { method: "PUT" });
+}
+
+export async function unblockUserApi(username) {
+  return apiRequest(`${API}/me/blocks/${encodeURIComponent(username)}`, { method: "DELETE" });
+}
+
+export async function getNotificationSettingsApi({ fresh = false } = {}) {
+  return apiRequest(`${API}/me/notification-settings`, { fresh });
+}
+
+export async function updateNotificationSettingsApi(expectedVersion, settings) {
+  return apiRequest(`${API}/me/notification-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expectedVersion, settings })
+  });
+}
+
 export async function toggleArchivedChatApi(username) {
   return apiRequest(`${API}/me/archived-chats/toggle`, {
     method: "POST",
@@ -467,16 +501,4 @@ export async function removeGroupMemberApi(
       method: "DELETE"
     }
   );
-}
-
-export async function leaveGroupApi(groupId) {
-  return apiRequest(`${API}/groups/${groupId}/leave`, {
-    method: "POST"
-  });
-}
-
-export async function deleteGroupApi(groupId) {
-  return apiRequest(`${API}/groups/${groupId}`, {
-    method: "DELETE"
-  });
 }

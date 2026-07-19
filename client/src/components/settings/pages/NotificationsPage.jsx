@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { updateNotificationSettingsApi } from "../../../services/api";
+import {
+  applyNotificationSettings,
+  getCachedNotificationSettings,
+  refreshNotificationSettings
+} from "../../../utils/notificationSound";
 import { SettingsCheck, SettingsSection, SettingsSlider } from "../components/SettingsPrimitives";
-
 import LiotanIcon from "../../common/LiotanIcon";
+
 function playVolumePreview(volume) {
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -22,106 +28,127 @@ function playVolumePreview(volume) {
 
 export default function NotificationsPage({ back, labels }) {
   const [permission, setPermission] = useState(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+  const [settings, setSettings] = useState(getCachedNotificationSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const previewTimerRef = useRef(null);
-  const [settings, setSettings] = useState(() => ({
-    enabled: localStorage.getItem("liotan_notify_show") !== "0",
-    sound: localStorage.getItem("liotan_notify_sound") !== "0",
-    sent: localStorage.getItem("liotan_sound_sent") !== "0",
-    received: localStorage.getItem("liotan_sound_received") !== "0",
-    privateChats: localStorage.getItem("liotan_notify_private") !== "0",
-    groups: localStorage.getItem("liotan_notify_groups") !== "0",
-    channels: localStorage.getItem("liotan_notify_channels") !== "0",
-    volume: Number(localStorage.getItem("liotan_notify_volume") || 50)
-  }));
+  const volumeSaveTimerRef = useRef(null);
+  const savingRef = useRef(false);
+  const settingsRef = useRef(settings);
+  const serverSettingsRef = useRef(settings);
+
+  function applyLocal(value, { authoritative = false } = {}) {
+    const applied = applyNotificationSettings(value);
+    settingsRef.current = applied;
+    if (authoritative) serverSettingsRef.current = applied;
+    setSettings(applied);
+    return applied;
+  }
+
+  const reload = useCallback(async () => {
+    setError("");
+    try {
+      applyLocal(await refreshNotificationSettings(), { authoritative: true });
+    } catch (err) {
+      setError(err?.message || "Не удалось загрузить настройки уведомлений");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
     function syncPermission() {
       setPermission(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
     }
+    function syncAccount(event) {
+      if (event?.detail?.kind === "notification-settings-updated") reload();
+    }
     window.addEventListener("focus", syncPermission);
+    window.addEventListener("liotan:account-state-invalidated", syncAccount);
     return () => {
       window.removeEventListener("focus", syncPermission);
+      window.removeEventListener("liotan:account-state-invalidated", syncAccount);
       window.clearTimeout(previewTimerRef.current);
+      window.clearTimeout(volumeSaveTimerRef.current);
     };
-  }, []);
+  }, [reload]);
 
-  async function togglePermission() {
+  async function persist(patch) {
+    if (savingRef.current || loading) return;
+    const previous = serverSettingsRef.current;
+    const optimistic = { ...settingsRef.current, ...patch };
+    savingRef.current = true;
+    setSaving(true);
+    setError("");
+    applyLocal(optimistic);
+    try {
+      const saved = await updateNotificationSettingsApi(previous.version, patch);
+      applyLocal(saved, { authoritative: true });
+    } catch (err) {
+      const rollback = err?.status === 409 && err?.data?.current ? err.data.current : previous;
+      applyLocal(rollback, { authoritative: true });
+      setError(err?.message || "Настройки не сохранены; изменения отменены");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function toggleDesktop() {
     if (typeof Notification === "undefined") {
       setPermission("unsupported");
-      setSettings((prev) => ({ ...prev, enabled: false }));
-      localStorage.setItem("liotan_notify_show", "0");
       return;
     }
-
-    const currentPermission = Notification.permission;
-    setPermission(currentPermission);
-
-    if (currentPermission === "denied") {
-      setSettings((prev) => ({ ...prev, enabled: false }));
-      localStorage.setItem("liotan_notify_show", "0");
-      return;
-    }
-
-    if (currentPermission === "default") {
-      let result = "default";
-      try {
-        result = await Notification.requestPermission();
-      } catch {
-        result = Notification.permission || "default";
-      }
+    if (!settings.desktopEnabled && Notification.permission === "default") {
+      const result = await Notification.requestPermission().catch(() => Notification.permission || "default");
       setPermission(result);
-      const granted = result === "granted";
-      setSettings((prev) => ({ ...prev, enabled: granted }));
-      localStorage.setItem("liotan_notify_show", granted ? "1" : "0");
+      if (result !== "granted") return;
+    }
+    if (!settings.desktopEnabled && Notification.permission === "denied") {
+      setPermission("denied");
       return;
     }
+    await persist({ desktopEnabled: !settings.desktopEnabled });
+  }
 
-    const next = !settings.enabled;
-    setSettings((prev) => ({ ...prev, enabled: next }));
-    localStorage.setItem("liotan_notify_show", next ? "1" : "0");
-  }
-  function update(key, value, storeKey) {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-    localStorage.setItem(storeKey, value ? "1" : "0");
-  }
   function updateVolume(value) {
-    setSettings((p) => ({...p, volume:value}));
-    localStorage.setItem("liotan_notify_volume", String(value));
+    applyLocal({ ...settingsRef.current, volume: value });
+    window.clearTimeout(volumeSaveTimerRef.current);
+    volumeSaveTimerRef.current = window.setTimeout(() => persist({ volume: value }), 220);
     window.clearTimeout(previewTimerRef.current);
     previewTimerRef.current = window.setTimeout(() => playVolumePreview(value), 35);
   }
-  const notificationsActive = permission === "granted" && settings.enabled;
-  const webControlsDisabled = !notificationsActive;
-  const permissionHelp =
-    permission === "denied"
-      ? (labels.notificationsPermissionBlocked || "Браузер заблокировал запрос уведомлений. Откройте настройки сайта возле адресной строки и разрешите уведомления вручную.")
-      : permission === "unsupported"
-        ? (labels.notificationsUnsupported || "Этот браузер не поддерживает web-уведомления.")
-        : notificationsActive
-          ? labels.notificationsAllowed
-          : (labels.notificationsHelp || labels.notificationsBlocked || "Уведомления выключены.");
-  return (
-    <>
-      <div className="drawer-topbar"><button className="drawer-icon-button" onClick={back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.notifications}</div></div>
+
+  const permissionHelp = permission === "denied"
+    ? "Браузер запретил уведомления. Разрешите их в настройках сайта."
+    : permission === "unsupported"
+      ? "Этот браузер не поддерживает web-уведомления."
+      : "Настройки принадлежат аккаунту и синхронизируются между устройствами.";
+
+  return <>
+    <div className="drawer-topbar"><button type="button" className="drawer-icon-button" onClick={back} aria-label={labels.back}><LiotanIcon name="back" size={22} /></button><div className="drawer-title">{labels.notifications}</div></div>
+    {loading && <div className="settings-muted-text" role="status">Загрузка…</div>}
+    {error && <div className="settings-action-error" role="alert">{error}</div>}
+    <fieldset className="settings-fieldset" disabled={loading || saving}>
       <SettingsSection title="Web" className="settings-notifications-web">
-        <button type="button" className="settings-primary-button settings-primary-button-compact" onClick={togglePermission}>{notificationsActive ? labels.disableNotifications : labels.enableNotifications}</button>
+        <button type="button" className="settings-primary-button settings-primary-button-compact" onClick={toggleDesktop}>{settings.desktopEnabled ? labels.disableNotifications : labels.enableNotifications}</button>
         <div className="settings-muted-text">{permissionHelp}</div>
       </SettingsSection>
-      <div>
-        <SettingsSection title={labels.soundBlock}>
-          <SettingsCheck checked={settings.sound} onChange={(v) => update("sound", v, "liotan_notify_sound")} label={labels.notificationSound} />
-          <SettingsSlider label={labels.volume} value={settings.volume} min={0} max={100} suffix="%" disabled={!settings.sound} onChange={updateVolume} />
-          <div className="settings-muted-text">{labels.volumeHelp}</div>
-        </SettingsSection>
-        <SettingsSection title={labels.soundEffects}>
-          <SettingsCheck checked={settings.sent} disabled={!settings.sound} onChange={(v) => update("sent", v, "liotan_sound_sent")} label={labels.sentSound} />
-          <SettingsCheck checked={settings.received} disabled={!settings.sound} onChange={(v) => update("received", v, "liotan_sound_received")} label={labels.receivedSound} />
-        </SettingsSection>
-        <SettingsSection title={labels.chatTypes}>
-          <SettingsCheck checked={settings.privateChats} disabled={webControlsDisabled} onChange={(v) => update("privateChats", v, "liotan_notify_private")} label={labels.privateChats} />
-          <SettingsCheck checked={settings.groups} disabled={webControlsDisabled} onChange={(v) => update("groups", v, "liotan_notify_groups")} label={labels.groups} />
-          <SettingsCheck checked={settings.channels} disabled={webControlsDisabled} onChange={(v) => update("channels", v, "liotan_notify_channels")} label={labels.channels} />
-        </SettingsSection>
-      </div>
-    </>
-  );
+      <SettingsSection title={labels.soundBlock}>
+        <SettingsCheck checked={settings.soundEnabled} onChange={value => persist({ soundEnabled: value })} label={labels.notificationSound} />
+        <SettingsSlider label={labels.volume} value={settings.volume} min={0} max={100} suffix="%" disabled={!settings.soundEnabled} onChange={updateVolume} />
+        <div className="settings-muted-text">{labels.volumeHelp}</div>
+      </SettingsSection>
+      <SettingsSection title={labels.soundEffects}>
+        <SettingsCheck checked={settings.sentSoundEnabled} disabled={!settings.soundEnabled} onChange={value => persist({ sentSoundEnabled: value })} label={labels.sentSound} />
+        <SettingsCheck checked={settings.receivedSoundEnabled} disabled={!settings.soundEnabled} onChange={value => persist({ receivedSoundEnabled: value })} label={labels.receivedSound} />
+      </SettingsSection>
+      <SettingsSection title={labels.chatTypes}>
+        <SettingsCheck checked={settings.privateChatsEnabled} onChange={value => persist({ privateChatsEnabled: value })} label={labels.privateChats} />
+        <SettingsCheck checked={settings.groupsEnabled} onChange={value => persist({ groupsEnabled: value })} label={labels.groups} />
+      </SettingsSection>
+    </fieldset>
+  </>;
 }

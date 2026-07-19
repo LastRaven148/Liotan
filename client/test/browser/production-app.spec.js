@@ -111,7 +111,6 @@ test("transition gate covers login, registration and logout phases with accessib
   await expect(page.locator(".secure-transition")).toBeHidden();
   for (const action of ["login", "register"]) {
     await page.locator(`[data-action="${action}"]`).click();
-    await expect(page.locator(".secure-transition")).toBeVisible();
     await expect(page.locator(".secure-transition [role=status]")).toBeVisible();
     await expect(page.locator(".secure-transition")).toBeHidden();
   }
@@ -204,6 +203,9 @@ test("safety number UI renders a bound QR and requires an explicit comparison", 
 test("device security UI approves pending devices, confirms revoke and protects local recovery", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   await page.evaluate(() => window.mountCryptoDevices());
+  await expect(page.locator(".settings-crypto-device-row")).toHaveCount(106);
+  await expect(page.locator(".settings-crypto-device-row").filter({ hasText: "00000…0104" })).toContainText("срок истёк");
+  await expect(page.locator(".settings-crypto-device-row").filter({ hasText: "00000…0105" })).toContainText("отозвано");
   await expect(page.getByText("Устройства и ключи")).toBeVisible();
   await page.getByRole("button", { name: "Подтвердить" }).click();
   await expect(page.getByRole("status")).toContainText("Устройство подтверждено");
@@ -331,5 +333,8 @@ test("account deletion uses the nested TOTP status schema", async ({ page }) => 
   await page.locator(".dialog-delete-modal-danger").click();
   await page.locator(".settings-input").fill("123456");
   await page.locator(".dialog-delete-modal-danger").click();
-  await expect.poll(() => page.evaluate(() => window.__fixtureDeletePayload)).toEqual({ totpCode: "123456" });
+  await expect.poll(() => page.evaluate(() => window.__fixtureDeletePayload)).toEqual({
+    totpCode: "123456",
+    idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/)
+  });
 });

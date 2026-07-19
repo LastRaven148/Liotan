@@ -4,7 +4,7 @@ import { getApiCandidates } from "../config/api";
 import { addMessageToChat, editMessageInChat, deleteMessageFromChat, deleteChatFromState, mergeHistoryPageIntoChat, replaceChatHistory, updateMessagesStatus, pinMessageInChat } from "../utils/chatState";
 import { SOCKET_EVENTS } from "../constants/socketEvents";
 import { deleteOfflineBlobs } from "../components/chat/message/messageStorage";
-import { unlockNotificationSound, playNotificationSound, notificationsEnabledForChat, receivedSoundEnabled } from "../utils/notificationSound";
+import { unlockNotificationSound, playNotificationSound, notificationsEnabledForChat, receivedSoundEnabled, refreshNotificationSettings } from "../utils/notificationSound";
 import { getMlsEngine } from "../crypto/mlsEngine";
 
 function attachmentOfflineKeys(attachment) {
@@ -82,6 +82,9 @@ export default function useSocket({
     if (!token) {
       return;
     }
+    refreshNotificationSettings().catch(error => {
+      if (import.meta.env.DEV) console.warn("Notification settings sync failed", error);
+    });
     function unlockSoundOnUserGesture() {
       unlockNotificationSound();
       window.removeEventListener("click", unlockSoundOnUserGesture);
@@ -98,6 +101,32 @@ export default function useSocket({
 
     function handleMlsEvent(event) {
       const detail = event?.detail || {};
+      if (detail.type === "conversation-delete") {
+        const chatKey = String(detail.chatKey || "");
+        setChats(previous => {
+          const next = { ...previous };
+          if (chatKey) delete next[chatKey];
+          Object.entries(next).forEach(([key, messages]) => {
+            if ((messages || []).some(message => message?.mls?.conversationId === detail.conversationId)) delete next[key];
+          });
+          return next;
+        });
+        if (chatKey) {
+          setUnread(previous => {
+            const next = { ...previous };
+            delete next[chatKey];
+            return next;
+          });
+          setTypingUsers(previous => {
+            const next = { ...previous };
+            delete next[chatKey];
+            return next;
+          });
+          removeDialog(chatKey);
+          if (activeChatRef.current === chatKey) setActiveChat(null);
+        }
+        return;
+      }
       if (detail.type === "history-page" && Array.isArray(detail.messages)) {
         setChats(previous => mergeHistoryPageIntoChat(previous, detail.messages, detail.direction));
         return;
@@ -167,6 +196,18 @@ export default function useSocket({
       } catch (error) {
         if (import.meta.env.DEV && error?.message !== "End-to-end encryption is locked") {
           console.warn("MLS roster event could not reach the active engine", error);
+        }
+      }
+    }
+
+    function handleClientInvalidationAvailable() {
+      try {
+        getMlsEngine().syncInvalidations().catch(error => {
+          if (import.meta.env.DEV) console.warn("Client invalidation sync failed", error);
+        });
+      } catch (error) {
+        if (import.meta.env.DEV && error?.message !== "End-to-end encryption is locked") {
+          console.warn("Client invalidation could not reach the active engine", error);
         }
       }
     }
@@ -493,6 +534,7 @@ export default function useSocket({
     currentSocket.on(SOCKET_EVENTS.GROUP_DELETED, handleGroupDeleted);
     currentSocket.on("cryptoEventAvailable", handleCryptoEventAvailable);
     currentSocket.on("cryptoRosterChanged", handleCryptoRosterChanged);
+    currentSocket.on("clientInvalidationAvailable", handleClientInvalidationAvailable);
     }
 
     attachSocketHandlers(socket);

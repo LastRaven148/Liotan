@@ -28,12 +28,12 @@
   }
 }
 
-.telegram-menu-item span{
+.dialog-context-menu .telegram-menu-item span{
   font-size:15px;
   opacity:.75;
 }
 
-.telegram-menu-item.danger{
+.dialog-context-menu .telegram-menu-item.danger{
   display:none;
 }
 
@@ -83,6 +83,13 @@
   font-size:14px;
   line-height:1.35;
   font-weight:500;
+}
+
+.dialog-delete-modal-error{
+  margin:-6px 0 14px;
+  color:var(--color-danger);
+  font-size:13px;
+  line-height:1.4;
 }
 
 .dialog-delete-checkbox-row{
@@ -169,6 +176,11 @@
   background:rgba(255,255,255,.06);
 }
 
+.dialog-delete-modal-actions button:disabled{
+  opacity:.58;
+  cursor:wait;
+}
+
 .telegram-menu.compact-menu{
   top:12px;
   left:12px;
@@ -179,7 +191,7 @@
   box-shadow:0 14px 34px rgba(0,0,0,.38);
 }
 
-.telegram-menu-item{
+.telegram-menu.compact-menu .telegram-menu-item{
   height:42px;
   border-radius:9px;
   padding:0 12px;
@@ -189,7 +201,7 @@
   color:var(--color-text-primary);
 }
 
-.telegram-menu-item:hover{
+.telegram-menu.compact-menu .telegram-menu-item:hover{
   background:var(--color-surface-hover);
 }
 

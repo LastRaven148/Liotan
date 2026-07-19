@@ -63,10 +63,14 @@ async function testZip() {
 }
 
 async function main() {
+  runNpm("executable architecture map", ["run", "audit:architecture"]);
+  runNpm("CSS architecture and reproducibility gates", ["run", "audit:css"]);
+  runNpm("reproducible CSS production build", ["run", "test:css-reproducible"]);
   runNpm("client build", ["run", "check:client"]);
   runNpm("server syntax check", ["run", "check:server"]);
   runNpm("unit, integration, browser, and coverage tests", ["test"]);
   runNpm("license policy and CycloneDX SBOM", ["run", "supply-chain"]);
+  runNpm("reproducible CycloneDX SBOM", ["run", "test:sbom-reproducible"]);
   runNpm("root dependency audit", ["audit"]);
   runNpm("client production audit", ["audit", "--omit=dev"], path.join(root, "client"));
   runNpm("server production audit", ["audit", "--omit=dev"], path.join(root, "server"));

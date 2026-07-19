@@ -17,6 +17,7 @@ router.post("/crypto/v4/devices/:deviceId/recovery-bootstrap", controller.confir
 router.get("/crypto/v4/devices", cryptoDeviceAuth, controller.listDevices);
 router.post("/crypto/v4/devices/:deviceId/approve", cryptoDeviceAuth, controller.approveDevice);
 router.post("/crypto/v4/devices/:deviceId/revoke", cryptoDeviceAuth, controller.revokeDevice);
+router.post("/crypto/v4/devices/:deviceId/renew", cryptoDeviceAuth, controller.renewDevice);
 router.post("/crypto/v4/key-packages", cryptoDeviceAuth, controller.publishKeyPackages);
 router.get("/crypto/v4/key-packages/status", cryptoDeviceAuth, controller.keyPackageStatus);
 router.post("/crypto/v4/conversations/resolve", cryptoDeviceAuth, controller.resolveConversation);
@@ -24,6 +25,15 @@ router.post("/crypto/v4/conversations/:conversationId/operations", cryptoDeviceA
 router.post("/crypto/v4/conversations/:conversationId/operations/:operationId/commit", cryptoDeviceAuth, controller.commitOperation);
 router.post("/crypto/v4/conversations/:conversationId/messages", cryptoDeviceAuth, controller.sendCiphertext);
 router.get("/crypto/v4/conversations/:conversationId/events", cryptoDeviceAuth, controller.getEvents);
+router.post("/crypto/v4/conversations/:conversationId/deletion", cryptoDeviceAuth, controller.deleteConversation);
+router.get("/crypto/v4/deletions/:workflowId", cryptoDeviceAuth, controller.getDeletionStatus);
+router.post(
+  "/crypto/v4/conversations/:conversationId/messages/:clientMessageId/hide",
+  cryptoDeviceAuth,
+  controller.hideMessage
+);
+router.get("/crypto/v4/invalidations", cryptoDeviceAuth, controller.listInvalidations);
+router.post("/crypto/v4/invalidations/:eventId/ack", cryptoDeviceAuth, controller.acknowledgeInvalidation);
 router.post(
   "/crypto/v4/media/upload",
   cryptoDeviceAuth,

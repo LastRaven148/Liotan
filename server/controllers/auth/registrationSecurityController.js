@@ -331,11 +331,11 @@ async function handleRegistrationSecurityAction(req, res, next) {
       // Successful account deletion removes every security record itself. If
       // storage deletion fails, keep this one-time link unconsumed so the user
       // can safely retry instead of stranding R2 objects behind a dead token.
-      if (!result.ok) {
+      if (!result.ok && !result.pending) {
         await markRegistrationActionUsed(record, "delete-final-not-found");
       }
 
-      if (email) {
+      if (email && result.ok) {
         await sendAccountDeletedNotice({
           to: email,
           username: record.username,
@@ -344,11 +344,17 @@ async function handleRegistrationSecurityAction(req, res, next) {
       }
 
       return sendSimpleSecurityPage(res, {
-        ok: result.ok,
-        title: result.ok ? (locale === "ru" ? "Аккаунт удалён" : "Account deleted") : (locale === "ru" ? "Не удалось удалить аккаунт" : "Could not delete account"),
+        ok: result.ok || result.pending,
+        title: result.ok
+          ? (locale === "ru" ? "Аккаунт удалён" : "Account deleted")
+          : result.pending
+            ? (locale === "ru" ? "Удаление выполняется" : "Deletion in progress")
+            : (locale === "ru" ? "Не удалось удалить аккаунт" : "Could not delete account"),
         message: result.ok
           ? (locale === "ru" ? "Аккаунт Liotan и связанные данные были удалены." : "The Liotan account and related data were deleted.")
-          : (locale === "ru" ? "Аккаунт уже не найден или действие больше не может быть применено." : "The account was not found, or the action can no longer be applied.")
+          : result.pending
+            ? (locale === "ru" ? "Аккаунт заблокирован, а безопасное удаление данных будет автоматически продолжено." : "The account is locked and durable data deletion will continue automatically.")
+            : (locale === "ru" ? "Аккаунт уже не найден или действие больше не может быть применено." : "The account was not found, or the action can no longer be applied.")
       });
     }
 

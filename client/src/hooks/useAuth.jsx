@@ -11,6 +11,7 @@ import {
   verifyAuthEmailCode,
   resetPasswordApi,
   deleteAccountApi,
+  getAccountDeletionStatusApi,
   logoutCurrentSessionApi,
   getCurrentSessionApi
 } from "../services/api";
@@ -23,7 +24,7 @@ import {
 import {
   resetAppBootstrapGuard
 } from "./app/useAppInitialization";
-import { resetMlsEngine } from "../crypto/mlsEngine";
+import { purgeDeletedAccountLocalState, resetMlsEngine } from "../crypto/mlsEngine";
 import useSecureTransition from "./useSecureTransition";
 
 export default function useAuth({
@@ -386,8 +387,28 @@ export default function useAuth({
 
   async function deleteAccount(socketRef, reauth = {}) {
     try {
-      await deleteAccountApi(reauth);
+      let result = await deleteAccountApi(reauth);
+      for (let attempt = 0; result?.state !== "completed" && attempt < 30; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, Math.min(5000, 750 * (attempt + 1))));
+        try {
+          result = await getAccountDeletionStatusApi(result.workflowId);
+        } catch (error) {
+          if (error?.status === 401) {
+            showToast("Account deletion was accepted and continues safely in the background.");
+            await purgeDeletedAccountLocalState(username);
+            await clearSession(socketRef, { showTransition: true });
+            return true;
+          }
+          throw error;
+        }
+      }
+      if (result?.state !== "completed") {
+        const pending = new Error("Account deletion is still removing encrypted media. It will continue safely in the background.");
+        pending.code = "account-deletion-pending";
+        throw pending;
+      }
       showToast("Account deleted");
+      await purgeDeletedAccountLocalState(username);
       await clearSession(socketRef, { showTransition: true });
       return true;
     } catch (err) {

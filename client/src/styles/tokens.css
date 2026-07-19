@@ -36,6 +36,12 @@
   --motion-fast:140ms;
   --motion-normal:220ms;
   --chat-wallpaper:none;
+  --liotan-icon-size:22px;
+  --liotan-icon-color:var(--color-text-secondary);
+  --liotan-action-icon-size:24px;
+  --liotan-action-icon-stroke:1.62;
+  --liotan-sidebar-width:360px;
+  --liotan-menu-icon-size:24px;
 
   --z-content:1;
   --z-sticky:10;

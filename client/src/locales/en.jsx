@@ -76,6 +76,10 @@ const en = {
 
   deleteChat: "Delete chat",
   deleteChatConfirm: "Delete chat with",
+  deleteChatGlobalWarning: "The chat with {name}, its entire message history, and all attachments will be permanently deleted for every participant on every device.",
+  deleteGroupGlobalWarning: "The group {name}, its entire message history, and all attachments will be permanently deleted for every participant on every device.",
+  deletionPending: "Deletion in progress…",
+  deletionRetry: "Deletion has not completed yet. Retry shortly; the server will continue the cleanup safely.",
   clearSavedMessages: "Clear Saved Messages?",
   deleteMessage: "Delete message",
   deleteMessageConfirm: "Are you sure you want to delete this message?",
@@ -163,9 +167,7 @@ const en = {
   selected: "Selected",
   tapToSelect: "Tap to select",
   deleteGroup: "Delete group",
-  leaveGroup: "Leave group",
   confirmDeleteGroup: "Are you sure you want to delete group",
-  confirmLeaveGroup: "Are you sure you want to leave group",
   groupCreated: "Group created",
 
   loginTitle: "Log in to Liotan",

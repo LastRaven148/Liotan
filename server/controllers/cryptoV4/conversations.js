@@ -9,6 +9,7 @@ const CryptoOperation = require("../../models/CryptoOperation");
 const CryptoEvent = require("../../models/CryptoEvent");
 const AttachmentUpload = require("../../models/AttachmentUpload");
 const { decodeBase64Url, sha256Base64Url, isUuid } = require("../../security/cryptoV4");
+const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 const {
   normalizeClientIds,
   clientIdsHash,
@@ -51,7 +52,8 @@ async function resolveParticipants(req) {
     const targetUsername = String(req.body.targetUsername || "").trim();
     const users = await User.find({
       username: { $in: [...new Set([req.user.username, targetUsername])] },
-      emailVerified: true
+      emailVerified: true,
+      lifecycleState: { $ne: "deleting" }
     }, "username").lean();
     const expectedCount = targetUsername === req.user.username ? 1 : 2;
     if (users.length !== expectedCount || !users.some(user => user.username === targetUsername)) {
@@ -60,6 +62,10 @@ async function resolveParticipants(req) {
       throw err;
     }
     users.sort((a, b) => idString(a).localeCompare(idString(b)));
+    if (targetUsername !== req.user.username) {
+      const target = users.find(user => user.username === targetUsername);
+      await assertPrivateInteractionAllowed(req.user.userId, target._id);
+    }
     return {
       chatType,
       lookupKey: `private:${idString(users[0])}:${idString(users[1])}`,
@@ -70,10 +76,15 @@ async function resolveParticipants(req) {
   }
 
   if (chatType === "group") {
-    if (!mongoose.isValidObjectId(req.body.groupId)) {
+    const rawGroupId = req.body.groupId;
+    if (typeof rawGroupId !== "string" || !/^[a-f\d]{24}$/i.test(rawGroupId)) {
       const err = new Error("invalid group id"); err.status = 400; throw err;
     }
-    const group = await Group.findById(req.body.groupId).lean();
+    const groupId = new mongoose.Types.ObjectId(rawGroupId);
+    const group = await Group.findOne({
+      _id: groupId,
+      lifecycleState: { $ne: "deleting" }
+    }).lean();
     if (!group || !group.members.includes(req.user.username)) {
       const err = new Error("group not found"); err.status = 404; throw err;
     }
@@ -98,6 +109,9 @@ async function resolveConversation(req, res, next) {
     const resolved = await resolveParticipants(req);
     const userIds = resolved.users.map(user => user._id);
     let conversation = await CryptoConversation.findOne({ lookupKey: resolved.lookupKey });
+    if (conversation?.lifecycleState === "deleting") {
+      const err = new Error("conversation deletion is in progress"); err.status = 409; throw err;
+    }
     if (!conversation) {
       try {
         conversation = await CryptoConversation.create({
@@ -476,7 +490,7 @@ async function sendCiphertext(req, res, next) {
   try {
     let emitted;
     await session.withTransaction(async () => {
-      const conversation = await assertConversationAccess(req, req.params.conversationId);
+      const conversation = await assertConversationAccess(req, req.params.conversationId, { session });
       const activeIds = normalizeClientIds(conversation.activeClientIds);
       const authorizedIds = authorizedClientIds(conversation);
       if (!conversation.initialized || conversation.blockedForEpochChange ||

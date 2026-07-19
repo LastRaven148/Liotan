@@ -252,8 +252,26 @@ assert.match(cryptoMigration, /APPLY_50_1_0_CRYPTO_STATE_MIGRATION/);
 assert.match(cryptoMigration, /legacy-unverified/);
 assert.match(cryptoMigration, /dropIndex/,
   "the historical attachment TTL index must be removed before the new lifecycle is active");
+for (const durableModel of [
+  "ClientInvalidation",
+  "DeletionObjectTask",
+  "DeletionWorkflow",
+  "MessageVisibility",
+  "UserBlock",
+  "UserNotificationSettings"
+]) {
+  assert.match(cryptoMigration, new RegExp(`${durableModel}\\.createIndexes\\(\\)`),
+    `migration reconciliation must explicitly create ${durableModel} indexes`);
+}
 assert.match(read("server/deploy/install-release.sh"), /migrateCryptoState\.js --apply[\s\S]*switch_current/,
   "the idempotent crypto migration must finish before current is switched");
+const productionDeployWorkflow = read(".github/workflows/deploy-vps.yml");
+assert.match(productionDeployWorkflow, /workflow_dispatch:/,
+  "production deployment must require an explicit manual dispatch");
+assert.doesNotMatch(productionDeployWorkflow, /workflow_run:/,
+  "merging a green main build must not automatically deploy production");
+assert.match(productionDeployWorkflow, /branch=main&status=success[\s\S]*release-evidence-/,
+  "manual production deployment must remain bound to successful main CI evidence");
 const clientSources = fs.readdirSync(path.join(root, "client", "src"), { recursive: true, withFileTypes: true })
   .filter(entry => entry.isFile() && /\.(?:js|jsx|html)$/.test(entry.name))
   .map(entry => read(path.relative(root, path.join(entry.parentPath, entry.name))))
@@ -265,6 +283,12 @@ assert.doesNotMatch(privacyAudit, /privateKey\|chatKey/,
   "privacy audit must not confuse a non-secret chat route with private key material");
 assert.match(privacyAudit, /recoveryKey\|databaseKey\|cacheKey/,
   "privacy audit must continue rejecting real E2EE secrets in localStorage values");
+assert.match(privacyAudit, /include:\s*\/\^server\\\/\(\?:controllers\|middleware\|routes\)/,
+  "storage locator audit must inspect every server input boundary");
+assert.match(privacyAudit, /req\\\.\(\?:body\|query\|params\)/,
+  "storage locator audit must detect request-derived provider identifiers");
+assert.match(privacyAudit, /id:\s*"client-storage-internal-id"[\s\S]*?include:\s*\/\^client\\\/src/,
+  "storage locator audit must independently reject provider identifiers in client source");
 assert.doesNotMatch(clientSources, /\bstyle\s*=|\.style\./,
   "strict client CSP forbids inline style attributes and CSSOM style mutations");
 assert.match(read("server/middleware/contentSecurityPolicy.js"), /styleSrcAttr:\s*\["'none'"\]/);
@@ -290,8 +314,83 @@ assert.doesNotMatch(accountCleanup, /Message\.deleteMany|E2EEKey\.deleteMany|ali
   "administrative cleanup must not maintain a second incomplete or broad deletion implementation");
 
 const accountDeletion = read("server/utils/deleteAccountData.js");
-assert.match(accountDeletion, /PendingEmailChange\.deleteMany/,
-  "account deletion must remove pending email-change hashes and envelopes");
+assert.match(accountDeletion, /requestAccountDeletion/,
+  "administrative account deletion must delegate to the durable workflow");
+assert.doesNotMatch(accountDeletion, /\.deleteMany\(|\.deleteOne\(/,
+  "the compatibility adapter must not become a second deletion implementation");
+const deletionWorkflow = read("server/services/deletionWorkflow.js");
+for (const requiredErasure of [
+  "PendingEmailChange.deleteMany",
+  "UserNotificationSettings.deleteMany",
+  "UserBlock.deleteMany",
+  "CryptoDevice.deleteMany",
+  "CryptoIdentity.deleteMany",
+  "CryptoKeyPackage.deleteMany",
+  "CryptoEvent.deleteMany",
+  "MessageVisibility.deleteMany"
+]) {
+  assert.match(deletionWorkflow, new RegExp(requiredErasure.replace(".", "\\.")),
+    `durable account deletion must include ${requiredErasure}`);
+}
+assert.match(deletionWorkflow, /lifecycleState:\s*"deleting"/,
+  "deletion must freeze accounts and conversations before erasure");
+assert.match(deletionWorkflow, /DeletionObjectTask/,
+  "external object deletion must use durable object tasks");
+assert.match(deletionWorkflow, /runMongoTransaction/,
+  "Mongo deletion and durable invalidation creation must share a transaction");
+assert.match(deletionWorkflow, /objectPlanCompleted:\s*true/,
+  "post-freeze media inventory must expose a durable completion barrier");
+assert.match(deletionWorkflow, /\$inc:\s*\{\s*claimCount:\s*1\s*\}/,
+  "successful worker claims must not consume the failure retry budget");
+assert.match(deletionWorkflow, /async function failWorkflow[\s\S]*?\$inc:\s*\{\s*attempts:\s*1\s*\}/,
+  "only actual workflow failures may consume the failure retry budget");
+const deletionRunner = deletionWorkflow.slice(deletionWorkflow.indexOf("async function runDeletionWorkflow"));
+assert(deletionRunner.indexOf("freezeWorkflow") < deletionRunner.indexOf("planWorkflowObjects") &&
+  deletionRunner.indexOf("planWorkflowObjects") < deletionRunner.indexOf("deleteWorkflowObjects"),
+  "deletion must freeze writes before media ownership planning and physical deletion");
+const dialogDeletionClient = read("client/src/crypto/mlsEngine.jsx");
+const deletionClientBlock = dialogDeletionClient.slice(
+  dialogDeletionClient.indexOf("async deleteConversation("),
+  dialogDeletionClient.indexOf("async hideMessageForAccount(")
+);
+assert(deletionClientBlock.indexOf('/crypto/v4/deletions/') < deletionClientBlock.indexOf("await this.purgeConversation"),
+  "the client must confirm durable completion before purging a whole chat");
+assert.match(read("client/src/hooks/useDialogs.jsx"), /deleteConversation\(dialog\.chatKey/,
+  "group chat deletion must use the same global conversation workflow");
+assert.doesNotMatch(read("client/src/hooks/useDialogs.jsx"), /leaveGroupApi/,
+  "whole-chat deletion UI must not preserve group history through a leave path");
+const groupControllerSource = read("server/controllers/groupController.js");
+const legacyLeaveBlock = groupControllerSource.slice(
+  groupControllerSource.indexOf("async function leaveGroup"),
+  groupControllerSource.indexOf("async function deleteGroup")
+);
+assert.match(legacyLeaveBlock, /status\(410\)/,
+  "legacy group leave must remain a tombstone instead of preserving whole-chat history");
+assert.doesNotMatch(legacyLeaveBlock, /\.save\(|\.updateOne\(/,
+  "legacy group leave tombstone must not mutate membership");
+for (const consistencyController of [
+  "server/controllers/blockController.js",
+  "server/controllers/notificationSettingsController.js"
+]) {
+  const source = read(consistencyController);
+  assert.match(source, /runMongoTransaction/,
+    `${consistencyController} must commit the account mutation and durable invalidation atomically`);
+  assert.match(source, /ClientInvalidation\.create\(\[[\s\S]*?\{\s*session\s*\}\)/,
+    `${consistencyController} must create its durable invalidation in the active transaction`);
+}
+const deviceControllerSource = read("server/controllers/cryptoV4/identityDevices.js");
+assert.match(deviceControllerSource, /createDeviceListInvalidation\(req, session\)/,
+  "device directory changes must create their durable invalidation inside the directory transaction");
+assert.doesNotMatch(deviceControllerSource, /publishDeviceListUpdate/,
+  "device mutations must not publish a post-commit-only invalidation");
+const conversationControllerSource = read("server/controllers/cryptoV4/conversations.js");
+assert.match(conversationControllerSource, /\^\[a-f\\d\]\{24\}\$\/i[\s\S]*new mongoose\.Types\.ObjectId\(rawGroupId\)/,
+  "group lookups must convert a strictly validated request value to a typed ObjectId");
+assert.doesNotMatch(conversationControllerSource, /_id:\s*req\.body\.groupId/,
+  "request-controlled group identifiers must not be inserted directly into a Mongo query");
+const notificationControllerSource = read("server/controllers/notificationSettingsController.js");
+assert.doesNotMatch(notificationControllerSource, /(?:settings|update)\[key\]/,
+  "notification patches must use explicit allowlisted properties instead of remote property writes");
 const fullAccountPurge = read("server/scripts/purgeAllAccountData.js");
 assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");

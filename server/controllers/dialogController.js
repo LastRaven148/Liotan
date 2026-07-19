@@ -14,7 +14,8 @@ async function getDialogs(req, res, next) {
     const limit = limitNumber(req.query.limit, 50, 100);
     const conversations = await CryptoConversation.find({
       chatType: "private",
-      participantUserIds: req.user.userId
+      participantUserIds: req.user.userId,
+      lifecycleState: { $ne: "deleting" }
     }).sort({ updatedAt: -1, _id: -1 }).limit(limit).lean();
 
     const usernames = conversations.map(conversation => {
@@ -24,7 +25,8 @@ async function getDialogs(req, res, next) {
     });
     const users = await User.find({
       username: { $in: [...new Set(usernames)] },
-      emailVerified: true
+      emailVerified: true,
+      lifecycleState: { $ne: "deleting" }
     }, "username avatar bio lastSeen displayName").lean();
     const usersByName = new Map(users.map(user => [user.username, user]));
 

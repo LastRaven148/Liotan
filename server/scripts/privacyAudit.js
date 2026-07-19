@@ -56,9 +56,17 @@ const RULES = [
   {
     id: "server-storage-internal-id",
     severity: "high",
-    pattern: /storageKey|storageType/i,
-    allow: /models[\/](Messages|AttachmentUpload|Group|User)\.js$|services[\/]attachmentOwnership\.js$|services[\/]attachmentAccess\.js$|services[\/]deleteAttachmentFile\.js$|services[\/]deleteMessageAttachments\.js$|controllers[\/]groupController\.js$|controllers[\/]profileController\.js$|controllers[\/]attachmentController\.js$|controllers[\/]cryptoV4(Controller\.js|[\/]media\.js)$|utils[\/]deleteUploadedFile\.js$|utils[\/]deleteAccountData\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]uploadToR2\.js$|utils[\/]cleanup|test[\/]|scripts[\/]/,
+    include: /^server\/(?:controllers|middleware|routes)\//,
+    pattern: /req\.(?:body|query|params)[^\n]*(?:storageKey|storageType)|(?:storageKey|storageType)[^\n]*req\.(?:body|query|params)|\{[^}\n]*(?:storageKey|storageType)[^}\n]*\}\s*=\s*req\.(?:body|query|params)/i,
     note: "Storage storageKey/storageType must stay server-side and must not be accepted from client payloads."
+  },
+  {
+    id: "client-storage-internal-id",
+    severity: "high",
+    include: /^client\/src\//,
+    pattern: /storageKey|storageType/i,
+    allow: /components[\/]chat[\/]message[\/]messageStorage\.jsx$/,
+    note: "Client code must not receive or submit provider storage locators."
   },
   {
     id: "direct-storage-signed-upload",
@@ -98,6 +106,7 @@ const RULES = [
   {
     id: "security-secret-fallback-risk",
     severity: "high",
+    include: /\.(?:js|jsx)$/,
     pattern: /SECURITY_ENCRYPTION_SECRET\s*\|\|\s*process\.env\.JWT_SECRET|JWT_SECRET.*SECURITY_ENCRYPTION_SECRET/i,
     allow: /scripts[\/]privacyAudit\.js$|security[\/]crypto[\/]secureEnvelope\.js$/,
     note: "Production security encryption must not silently fall back to JWT_SECRET."
@@ -206,6 +215,7 @@ function run() {
     const rel = relative(file);
 
     for (const rule of RULES) {
+      if (rule.include && !rule.include.test(rel)) continue;
       if (rule.filePattern && rule.filePattern.test(rel) &&
           !(rule.id === "env-file-present" && isGitIgnored(file))) {
         findings.push({ rule: rule.id, severity: rule.severity, file: rel, line: 1, note: rule.note });
@@ -222,6 +232,7 @@ function run() {
     lines.forEach((line, index) => {
       for (const rule of RULES) {
         if (!rule.pattern) continue;
+        if (rule.include && !rule.include.test(rel)) continue;
         if (rule.allow && rule.allow.test(rel)) continue;
         if (!rule.pattern.test(line)) continue;
         findings.push({ rule: rule.id, severity: rule.severity, file: rel, line: index + 1, note: rule.note });

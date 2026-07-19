@@ -17,6 +17,7 @@ const {
   transitionConversationRoster
 } = require("../../security/cryptoRosterState");
 const { userRoom } = require("../../sockets/sessionRegistry");
+const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 
 const DIRECTORY_LOG_WINDOW = 1024;
 
@@ -61,6 +62,9 @@ function identityView(identity) {
 }
 
 function deviceView(device) {
+  const manifestExpired = ["active", "pending"].includes(device.status) &&
+    (!device.manifestExpiresAt || Date.parse(device.manifestExpiresAt) <= Date.now());
+  const status = manifestExpired ? "expired" : device.status;
   return {
     cryptoUserId: device.cryptoUserId,
     deviceId: device.deviceId,
@@ -70,9 +74,9 @@ function deviceView(device) {
     manifest: device.manifest,
     manifestSignature: device.manifestSignature,
     manifestExpiresAt: device.manifestExpiresAt || null,
-    status: device.status,
+    status,
     activationMode: device.activationMode || "device-approval",
-    approvalChallenge: device.status === "pending" ? device.approvalChallenge || "" : "",
+    approvalChallenge: status === "pending" ? device.approvalChallenge || "" : "",
     approval: device.approval || null,
     approvalSignature: device.approvalSignature || "",
     approvedByClientId: device.approvedByClientId || "",
@@ -181,17 +185,25 @@ function conversationView(conversation, directory) {
 }
 
 async function assertConversationAccess(req, conversationId, { session = null } = {}) {
-  let findConversation = CryptoConversation.findOne({ conversationId });
+  let findConversation = CryptoConversation.findOne({ conversationId, lifecycleState: { $ne: "deleting" } });
   if (session) findConversation = findConversation.session(session);
   const conversation = await findConversation;
   if (!conversation || !conversation.participantUserIds.some(id => idString(id) === idString(req.user.userId))) {
     const err = new Error("conversation not found"); err.status = 404; throw err;
   }
   if (conversation.chatType === "group") {
-    let findGroup = Group.findOne({ _id: conversation.groupId, members: req.user.username });
+    let findGroup = Group.findOne({
+      _id: conversation.groupId,
+      members: req.user.username,
+      lifecycleState: { $ne: "deleting" }
+    });
     if (session) findGroup = findGroup.session(session);
     const group = await findGroup.lean();
     if (!group) { const err = new Error("conversation not found"); err.status = 404; throw err; }
+  }
+  if (conversation.chatType === "private") {
+    const otherUserId = conversation.participantUserIds.find(id => idString(id) !== idString(req.user.userId));
+    if (otherUserId) await assertPrivateInteractionAllowed(req.user.userId, otherUserId, { session });
   }
   await expireConversationDevices(conversation);
   return conversation;

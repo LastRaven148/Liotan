@@ -34,11 +34,21 @@ async function authMiddleware(
         _id: decoded.userId,
         username: decoded.username,
         emailVerified: true
-      }, "username").lean();
+      }, "username lifecycleState deletionWorkflowId").lean();
 
     if (!user) {
       return res.status(401).json({
         error: "auth required"
+      });
+    }
+
+    const deletionEndpoint =
+      (req.method === "DELETE" && req.path === "/me/account") ||
+      (req.method === "GET" && req.path.startsWith("/me/account/deletion/"));
+    if (user.lifecycleState === "deleting" && !deletionEndpoint) {
+      return res.status(423).json({
+        error: "account deletion in progress",
+        workflowId: user.deletionWorkflowId || ""
       });
     }
 

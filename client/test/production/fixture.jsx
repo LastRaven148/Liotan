@@ -55,6 +55,9 @@ import UserProfileModal from "../../src/components/modals/UserProfileModal";
 import ChatSecurityNotice from "../../src/components/chat/ChatSecurityNotice";
 import SafetyNumberModal from "../../src/components/chat/SafetyNumberModal";
 import DevicesPage from "../../src/components/settings/pages/DevicesPage";
+import BlocklistPage from "../../src/components/settings/pages/BlocklistPage";
+import NotificationsPage from "../../src/components/settings/pages/NotificationsPage";
+import DialogItem from "../../src/components/sidebars/DialogItem";
 import LiotanIcon from "../../src/components/common/LiotanIcon";
 import SettingsModal from "../../src/components/modals/SettingsModal";
 import CreateGroupModal from "../../src/components/modals/CreateGroupModal";
@@ -906,6 +909,16 @@ window.mountCryptoDevices = function mountCryptoDevices() {
       lastSeenAt: "2026-01-04T00:00:00.000Z"
     }
   ];
+  for (let index = 4; index <= 106; index += 1) {
+    devices.push({
+      deviceId: String(index).padStart(16, "0"),
+      status: index === 104 ? "expired" : index === 105 ? "revoked" : "active",
+      activationMode: "device-approval",
+      credentialThumbprint: `${String(index).padStart(3, "0")}${"D".repeat(40)}`,
+      createdAt: `2026-02-${String((index % 27) + 1).padStart(2, "0")}T00:00:00.000Z`,
+      lastSeenAt: `2026-03-${String((index % 27) + 1).padStart(2, "0")}T00:00:00.000Z`
+    });
+  }
   let protectedRecovery = false;
   const cryptoServices = {
     currentDeviceId: () => devices[0].deviceId,
@@ -944,6 +957,72 @@ window.mountCryptoDevices = function mountCryptoDevices() {
     labels={labels}
     cryptoServices={cryptoServices}
   />);
+};
+
+const fixtureSettingsLabels = {
+  back: "Back",
+  blacklist: "Blocked users",
+  notifications: "Notifications",
+  enableNotifications: "Enable notifications",
+  disableNotifications: "Disable notifications",
+  soundBlock: "Sound",
+  notificationSound: "Notification sound",
+  volume: "Volume",
+  volumeHelp: "Choose notification volume",
+  soundEffects: "Sound effects",
+  sentSound: "Sent messages",
+  receivedSound: "Received messages",
+  chatTypes: "Chat types",
+  privateChats: "Private chats",
+  groups: "Groups"
+};
+
+window.mountBlocklist = function mountBlocklist() {
+  createRoot(document.querySelector("#root")).render(
+    <div className="settings-drawer" role="dialog" aria-label="Blocked users">
+      <BlocklistPage back={() => {}} labels={fixtureSettingsLabels} />
+    </div>
+  );
+};
+
+window.mountNotifications = function mountNotifications() {
+  createRoot(document.querySelector("#root")).render(
+    <div className="settings-drawer" role="dialog" aria-label="Notifications">
+      <NotificationsPage back={() => {}} labels={fixtureSettingsLabels} />
+    </div>
+  );
+};
+
+window.mountDialogDeletion = function mountDialogDeletion({ group = false, language = "en", pending = false } = {}) {
+  localStorage.setItem("language", language);
+  let finishDeletion = () => {};
+  const deleteConversation = pending
+    ? () => new Promise(resolve => { finishDeletion = resolve; })
+    : () => Promise.resolve();
+  window.__finishFixtureDeletion = () => finishDeletion();
+  const dialog = group
+    ? { type: "group", groupId: "507f1f77bcf86cd799439011", chatKey: "group:507f1f77bcf86cd799439011", owner: "fixture-user", title: "A very long encrypted research group name that must wrap safely" }
+    : { type: "private", username: "peer-user", chatKey: "peer-user", displayName: "A very long peer display name that must wrap safely", lastMessage: "Encrypted message" };
+  createRoot(document.querySelector("#root")).render(
+    <LanguageProvider>
+      <div className="dialog-list">
+        <DialogItem
+          dialog={dialog}
+          activeChat=""
+          openChat={() => {}}
+          deleteChat={deleteConversation}
+          unread={{}}
+          username="fixture-user"
+          isPinned={false}
+          isArchived={false}
+          togglePin={() => {}}
+          toggleArchive={() => {}}
+          showArchive={false}
+          deleteGroupDialog={deleteConversation}
+        />
+      </div>
+    </LanguageProvider>
+  );
 };
 
 window.mountSettingsIcon = function mountSettingsIcon() {
