@@ -4,7 +4,7 @@
   "license": "GPL-3.0-only",
   "private": true,
   "dependencies": {
-    "@noble/ed25519": "3.0.0",
+    "@noble/ed25519": "3.1.0",
     "@noble/hashes": "2.0.1",
     "@wireapp/core-crypto": "10.0.0",
     "qrcode": "1.5.4",
