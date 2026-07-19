@@ -11,7 +11,7 @@
 }
 
 .message.audio-message.me{
-  background:#2b5278;
+  background:var(--color-accent-strong);
   border-radius:16px 16px 5px 16px;
 }
 
@@ -29,7 +29,7 @@
   flex-shrink:0;
   border:none;
   border-radius:50%;
-  background:#3390ec;
+  background:var(--color-accent);
   cursor:pointer;
 }
 
@@ -50,7 +50,7 @@
 }
 
 .me .audio-play-button::before{
-  border-left-color:#2b5278;
+  border-left-color:var(--color-accent-strong);
 }
 
 .audio-play-button.is-playing::before,
@@ -67,7 +67,7 @@
 
 .me .audio-play-button.is-playing::before,
 .me .audio-play-button.is-playing::after{
-  background:#2b5278;
+  background:var(--color-accent-strong);
 }
 
 .audio-play-button.is-playing::before{
@@ -84,7 +84,7 @@
 }
 
 .audio-title{
-  color:#ffffff;
+  color:var(--color-text-primary);
   font-size:14px;
   line-height:1.25;
   font-weight:600;
@@ -102,20 +102,13 @@
   align-items:center;
 }
 
-.audio-range-placeholder{
-  width:100%;
-  height:3px;
-  border-radius:6px;
-  background:rgba(255,255,255,.18);
-}
-
 .audio-meta{
   margin-top:5px;
   display:grid;
   grid-template-columns:minmax(0, 1fr) auto;
   align-items:end;
   column-gap:10px;
-  color:#8da2b5;
+  color:var(--color-text-muted);
   font-size:12px;
   line-height:16px;
   min-height:16px;
@@ -199,18 +192,4 @@
   border:none;
   border-radius:50%;
   background:#ffffff;
-}
-
-.audio-progress-meta{
-  margin-top:5px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  color:#8da2b5;
-  font-size:12px;
-  line-height:1.2;
-}
-
-.me .audio-progress-meta{
-  color:#adc4d8;
 }

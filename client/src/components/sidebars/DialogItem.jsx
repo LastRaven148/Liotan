@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { avatarUrl } from "../../utils/avatarUrl";
 import { useLanguage } from "../../context/LanguageContext";
 import { mediaUrl } from "../../utils/mediaUrl";
+import { formatTime } from "../../utils/date";
+import useTimeFormat from "../../hooks/ui/useTimeFormat";
 import LiotanIcon from "../common/LiotanIcon";
 import { decryptAttachmentBlobForChat, decryptTextForChat, getEffectiveE2EEChatKey, isEncryptedAttachment } from "../../utils/e2ee";
 import { downloadMlsCiphertext } from "../../crypto/mlsEngine";
@@ -46,6 +48,7 @@ export default function DialogItem({
   const {
     t
   } = useLanguage();
+  const timeFormat = useTimeFormat();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteForEveryone, setDeleteForEveryone] = useState(false);
@@ -510,10 +513,7 @@ export default function DialogItem({
 
       <div className="dialog-meta">
         <div className="dialog-time">
-          {dialog.createdAt ? new Date(dialog.createdAt).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit"
-        }) : ""}
+          {dialog.createdAt ? formatTime(dialog.createdAt, timeFormat) : ""}
         </div>
 
         {unreadCount > 0 && <div className="unread">

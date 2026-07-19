@@ -75,6 +75,13 @@ export default function MainSettingsPage({ state, actions, labels }) {
     value={otherCount ? String(otherCount + 1) : ""}
     onClick={() => actions.openPage("devices")}
 />
+
+<SettingsItem
+    icon={<LiotanIcon name="language" size={23} />}
+    title={labels.language}
+    value={currentLabel}
+    onClick={() => actions.openPage("language")}
+/>
       </SettingsSection>
 
       <SettingsSection title={labels.connectionPrivacy}>
@@ -92,6 +99,7 @@ export default function MainSettingsPage({ state, actions, labels }) {
         <button
           type="button"
           className="settings-support-button"
+          onClick={actions.openSupport}
         >
           {labels.support || "Поддержка"}
         </button>

@@ -11,7 +11,7 @@
 }
 
 .message.voice-message.me{
-  background:#2b5278;
+  background:var(--color-accent-strong);
   border-radius:16px 16px 5px 16px;
 }
 
@@ -29,7 +29,7 @@
   flex-shrink:0;
   border:none;
   border-radius:50%;
-  background:#3390ec;
+  background:var(--color-accent);
   cursor:pointer;
 }
 
@@ -50,7 +50,7 @@
 }
 
 .me .voice-play-button::before{
-  border-left-color:#2b5278;
+  border-left-color:var(--color-accent-strong);
 }
 
 .voice-play-button.is-playing::before,
@@ -67,7 +67,7 @@
 
 .me .voice-play-button.is-playing::before,
 .me .voice-play-button.is-playing::after{
-  background:#2b5278;
+  background:var(--color-accent-strong);
 }
 
 .voice-play-button.is-playing::before{
@@ -136,7 +136,7 @@
   grid-template-columns:minmax(0, 1fr) auto;
   align-items:end;
   column-gap:10px;
-  color:#8da2b5;
+  color:var(--color-text-muted);
   font-size:12px;
   line-height:16px;
 }

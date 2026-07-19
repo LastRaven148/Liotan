@@ -1,5 +1,6 @@
 export function formatTime(
-  date
+  date,
+  timeFormat = localStorage.getItem("liotan_time_format") === "12" ? "12" : "24"
 ) {
 
   return new Date(
@@ -8,7 +9,8 @@ export function formatTime(
     [],
     {
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
+      hour12: timeFormat === "12"
     }
   );
 }

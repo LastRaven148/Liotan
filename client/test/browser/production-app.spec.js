@@ -227,3 +227,109 @@ test("settings uses the unified gear icon instead of the old sunburst", async ({
   await expect(icon.locator("path")).toHaveCount(1);
   await expect(icon.locator("circle")).toHaveCount(1);
 });
+
+async function mockSettingsBootstrap(page, { totpEnabled = false } = {}) {
+  await page.route("**/auth/sessions", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ sessions: [] })
+  }));
+  await page.route("**/security/status", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      security: {
+        totp: { enabled: totpEnabled },
+        support: {
+          supportCanGrantAccess: false,
+          supportCanReset2FA: false,
+          supportCanViewSecrets: false
+        }
+      },
+      restrictedSession: { restricted: false }
+    })
+  }));
+}
+
+test("settings drawer is responsive, keyboard-addressable and applies the selected theme", async ({ page }) => {
+  await mockSettingsBootstrap(page);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountSettingsFull());
+
+  const drawer = page.getByRole("dialog", { name: "Settings" });
+  await expect(drawer).toBeVisible();
+  const geometry = await drawer.evaluate(element => ({
+    width: element.getBoundingClientRect().width,
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth
+  }));
+  expect(geometry.width).toBeLessThanOrEqual(320);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+
+  await page.getByRole("button", { name: "General settings" }).click();
+  const light = page.getByRole("radio", { name: "Light" });
+  await expect(light).toHaveAttribute("aria-checked", "false");
+  await light.click();
+  await expect(light).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.getByRole("slider", { name: "Message text" })).toBeVisible();
+});
+
+test("create-group drawer fits a 320px viewport without clipping", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountCreateGroupFull());
+  const drawer = page.locator(".create-group-drawer");
+  await expect(drawer).toBeVisible();
+  const geometry = await drawer.evaluate(element => ({
+    width: element.getBoundingClientRect().width,
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth
+  }));
+  expect(geometry.width).toBeLessThanOrEqual(320);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+});
+
+test("messenger layout switches from desktop grid to bounded mobile panels", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountResponsiveLayout({ profile: true }));
+  const desktop = await page.locator(".app").evaluate(element => {
+    const sidebar = element.querySelector(".sidebar").getBoundingClientRect();
+    const chat = element.querySelector(".chat").getBoundingClientRect();
+    const profile = element.querySelector(".profile-drawer").getBoundingClientRect();
+    return { sidebar: sidebar.width, chat: chat.width, profile: profile.width };
+  });
+  expect(desktop.sidebar).toBe(360);
+  expect(desktop.profile).toBe(360);
+  expect(desktop.chat).toBeGreaterThan(600);
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.evaluate(() => window.mountResponsiveLayout({ mobile: true, activeChat: true, profile: true }));
+  const mobile = await page.locator(".app").evaluate(element => {
+    const panels = [...element.children].map(item => item.getBoundingClientRect());
+    return {
+      appWidth: element.getBoundingClientRect().width,
+      widths: panels.map(item => item.width),
+      heights: panels.map(item => item.height),
+      scrollWidth: document.documentElement.scrollWidth
+    };
+  });
+  expect(mobile.appWidth).toBe(320);
+  expect(mobile.widths).toEqual([320, 320, 320]);
+  expect(mobile.heights.every(value => value === 568)).toBe(true);
+  expect(mobile.scrollWidth).toBe(320);
+});
+
+test("account deletion uses the nested TOTP status schema", async ({ page }) => {
+  await mockSettingsBootstrap(page, { totpEnabled: true });
+  await page.goto("/test/production/fixture.html");
+  await page.evaluate(() => window.mountSettingsFull());
+  await page.locator(".settings-topbar-actions > .drawer-icon-button").last().click();
+  await page.locator(".settings-overflow-menu .danger").click();
+  await page.locator(".dialog-delete-modal-danger").click();
+  await page.locator(".settings-input").fill("123456");
+  await page.locator(".dialog-delete-modal-danger").click();
+  await expect.poll(() => page.evaluate(() => window.__fixtureDeletePayload)).toEqual({ totpCode: "123456" });
+});

@@ -1,6 +1,6 @@
 .composer-shell{
   padding:4px 18px 10px 15px;
-  background:#0e1621;
+  background:var(--color-bg-canvas);
 }
 
 .composer-shell .composer{
@@ -9,7 +9,7 @@
   align-items:flex-end;
   width:100%;
   min-height:46px;
-  background:#242f3d;
+  background:var(--color-surface-raised);
   border-radius:10px;
   overflow:visible;
 }
@@ -32,7 +32,7 @@
   border:none;
   border-radius:50%;
   background:transparent;
-  color:#8fa4b8;
+  color:var(--color-text-muted);
   font-size:24px;
   line-height:36px;
   cursor:pointer;
@@ -44,7 +44,7 @@
 
 .attach-button:hover{
   background:#2b394a;
-  color:white;
+  color:var(--color-text-primary);
 }
 
 .composer-shell textarea{
@@ -56,7 +56,7 @@
   border:none;
   outline:none;
   background:transparent;
-  color:white;
+  color:var(--color-text-primary);
   padding:13px 58px 11px 48px;
   font-family:inherit;
   font-size:14px;
@@ -79,7 +79,7 @@
   align-items:center;
   position:relative;
   padding:7px 34px 7px 18px;
-  background:#242f3d;
+  background:var(--color-surface-raised);
   border-radius:10px 10px 0 0;
   border-bottom:1px solid rgba(255,255,255,.04);
 }
@@ -92,7 +92,7 @@
   bottom:8px;
   width:3px;
   border-radius:3px;
-  background:#3390ec;
+  background:var(--color-accent);
 }
 
 .reply-panel-content{
@@ -101,7 +101,7 @@
 }
 
 .reply-panel-title{
-  color:#3390ec;
+  color:var(--color-accent);
   font-size:12px;
   font-weight:700;
   overflow:hidden;
@@ -111,7 +111,7 @@
 
 .reply-panel-text{
   margin-top:1px;
-  color:#9fb0c1;
+  color:var(--color-text-muted);
   font-size:12px;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -127,7 +127,7 @@
   border:none;
   border-radius:50%;
   background:transparent;
-  color:#7f91a4;
+  color:var(--color-text-subtle);
   cursor:pointer;
   font-size:18px;
   line-height:24px;
@@ -135,7 +135,7 @@
 
 .reply-panel-close:hover{
   background:#2b394a;
-  color:white;
+  color:var(--color-text-primary);
 }
 
 .send-button{
@@ -146,8 +146,8 @@
   height:34px;
   border:none;
   border-radius:8px;
-  background:#3390ec;
-  color:white;
+  background:var(--color-accent);
+  color:var(--color-text-primary);
   font-size:17px;
   cursor:pointer;
   display:flex;
@@ -171,10 +171,10 @@
 }
 
 .composer textarea::placeholder{
-  color:#7f91a4;
+  color:var(--color-text-subtle);
 }
 .voice-button{
-  background:#3390ec;
+  background:var(--color-accent);
 }
 
 .voice-record-error{
@@ -194,7 +194,7 @@
   display:flex;
   align-items:center;
   gap:10px;
-  background:#242f3d;
+  background:var(--color-surface-raised);
   border:1px solid #324355;
   border-radius:12px;
 }
@@ -224,8 +224,8 @@
   width:34px;
   height:34px;
   border-radius:9px;
-  background:#3390ec;
-  color:#fff;
+  background:var(--color-accent);
+  color:var(--color-text-primary);
   font-size:16px;
 }
 
@@ -238,7 +238,7 @@
 }
 
 .voice-record-time{
-  color:#d7dde5;
+  color:var(--color-text-secondary);
   font-size:13px;
   font-variant-numeric:tabular-nums;
   min-width:38px;

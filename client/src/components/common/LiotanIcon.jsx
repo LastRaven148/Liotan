@@ -238,6 +238,14 @@ export default function LiotanIcon({ name, size = 22, className = "", title }) {
         </Svg>
       );
 
+    case "language":
+      return (
+        <Svg size={size} className={className} title={title}>
+          <circle cx="12" cy="12" r="8.25" />
+          <path d="M3.95 12h16.1M12 3.75c2.1 2.25 3.15 5 3.15 8.25S14.1 18 12 20.25C9.9 18 8.85 15.25 8.85 12S9.9 6 12 3.75Z" />
+        </Svg>
+      );
+
     case "arrowRight":
       return (
         <Svg size={size} className={className} title={title}>

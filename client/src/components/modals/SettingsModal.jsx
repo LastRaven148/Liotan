@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../../context/LanguageContext";
 import {
   getDeviceSessionsApi,
@@ -18,6 +18,7 @@ import SoundPage from "../settings/pages/SoundPage";
 import DevicesPage from "../settings/pages/DevicesPage";
 import LanguagePage from "../settings/pages/LanguagePage";
 import TwoFactorPage from "../settings/pages/TwoFactorPage";
+import SupportPage from "../settings/pages/SupportPage";
 import {
   getSecurityStatus,
   startTotpSetup,
@@ -60,9 +61,43 @@ export default function SettingsModal({
   const [securityStatus, setSecurityStatus] = useState(null);
   const [restrictedSession, setRestrictedSession] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const drawerRef = useRef(null);
+  const previousFocusRef = useRef(null);
 
   useEffect(() => setNameValue(displayName || ""), [displayName]);
   useEffect(() => setBioValue(bio || ""), [bio]);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement;
+    const drawer = drawerRef.current;
+    drawer?.focus();
+
+    function trapFocus(event) {
+      if (event.key !== "Tab" || !drawer) return;
+      const focusable = [...drawer.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+        .filter((item) => item.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    drawer?.addEventListener("keydown", trapFocus);
+    return () => {
+      drawer?.removeEventListener("keydown", trapFocus);
+      previousFocusRef.current?.focus?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!initialTotpOpen) {
@@ -210,7 +245,7 @@ export default function SettingsModal({
     }
     setDeleting(true);
     try {
-      const ok = await deleteAccount?.(securityStatus?.totpEnabled
+      const ok = await deleteAccount?.(securityStatus?.totp?.enabled
         ? { totpCode: deleteCredential.trim() }
         : { currentPassword: deleteCredential });
       if (ok !== false) {
@@ -260,12 +295,20 @@ export default function SettingsModal({
     askDelete,
     askLogout: () => { setMenuOpen(false); setLogoutOpen(true); },
     openTotp: () => setTotpOpen(true),
-    openSupport: () => {}
+    openSupport: () => setPage("support")
   };
 
   return (
     <div className="drawer-overlay drawer-overlay-left" onClick={onClose}>
-      <aside className="settings-drawer" onClick={(e) => e.stopPropagation()}>
+      <aside
+        ref={drawerRef}
+        className="settings-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={labels.settings}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         {editing ? (
           <EditProfilePage
             labels={labels}
@@ -299,6 +342,8 @@ export default function SettingsModal({
           <DevicesPage back={() => setPage("main")} labels={labels} state={{ sessions, username }} actions={{ revoke, logoutOthers }} />
         ) : page === "language" ? (
           <LanguagePage back={() => setPage("main")} labels={labels} language={language} setLanguage={setLanguage} />
+        ) : page === "support" ? (
+          <SupportPage back={() => setPage("main")} labels={labels} securityStatus={securityStatus} />
         ) : (
           <MainSettingsPage labels={labels} state={commonState} actions={commonActions} />
         )}
@@ -335,12 +380,12 @@ export default function SettingsModal({
         >
           {deleteStep === 2 && <input
             className="settings-input"
-            type={securityStatus?.totpEnabled ? "text" : "password"}
-            inputMode={securityStatus?.totpEnabled ? "numeric" : undefined}
-            autoComplete={securityStatus?.totpEnabled ? "one-time-code" : "current-password"}
+            type={securityStatus?.totp?.enabled ? "text" : "password"}
+            inputMode={securityStatus?.totp?.enabled ? "numeric" : undefined}
+            autoComplete={securityStatus?.totp?.enabled ? "one-time-code" : "current-password"}
             value={deleteCredential}
             onChange={(event) => setDeleteCredential(event.target.value)}
-            placeholder={securityStatus?.totpEnabled ? labels.totpCode : labels.currentPassword}
+            placeholder={securityStatus?.totp?.enabled ? labels.totpCode : labels.currentPassword}
           />}
         </ConfirmModal>}
       </aside>
@@ -351,7 +396,7 @@ export default function SettingsModal({
 function ConfirmModal({ title, text, error, cancel, action, onClose, onAction, disabled, children }) {
   return (
     <div className="dialog-delete-modal-overlay settings-confirm-modal-overlay" onClick={onClose}>
-      <div className="dialog-delete-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog-delete-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="dialog-delete-modal-title">{title}</div>
         <div className="dialog-delete-modal-text">{text}</div>
         {children}
@@ -367,6 +412,7 @@ function ConfirmModal({ title, text, error, cancel, action, onClose, onAction, d
 
 function getLabels(t) {
   return {
+    back: t.back || "Назад",
     settings: t.settings || "Настройки",
     editProfile: t.editProfile || "Изменить профиль",
     save: t.save || "Сохранить",
@@ -388,15 +434,17 @@ function getLabels(t) {
     accept: t.accept || "Принять",
     notifications: t.notifications || "Уведомления и звук",
     privacy: t.privacy || "Конфиденциальность",
+    privacyControlsTitle: t.privacyControlsTitle || "Дополнительные настройки",
+    privacyControlsUnavailable: t.privacyControlsUnavailable || "Чёрный список и правила видимости не показываются как активные, пока сервер не умеет надёжно применять их ко всем сообщениям, профилям и звонкам.",
     general: t.general || "Общие настройки",
     sound: t.sound || "Звук и камера",
     devices: t.devices || "Устройства",
     language: t.language || "Язык",
     connectionPrivacy: t.connectionPrivacy || "Приватность соединения",
-    connectionPrivacyText: t.connectionPrivacyText || "Liotan автоматически выбирает безопасный маршрут соединения и при необходимости использует резервный API-маршрут.",
-    connectionSecureText: t.connectionSecureText || "Ваше соединение защищено.",
-    connectionUnsafeText: t.connectionUnsafeText || "Ваше соединение небезопасно.",
-    connectionPrivacyAdvice: t.connectionPrivacyAdvice || "Если соединение выглядит небезопасным из-за VPN, прокси или сторонних сетевых сервисов, это предупреждение можно игнорировать.",
+    connectionPrivacyText: t.connectionPrivacyText || "Проверяется только защищённый контекст браузера; приложение не определяет VPN или прокси.",
+    connectionSecureText: t.connectionSecureText || "Страница открыта в защищённом контексте HTTPS.",
+    connectionUnsafeText: t.connectionUnsafeText || "Браузер не подтверждает защищённый контекст HTTPS.",
+    connectionPrivacyAdvice: t.connectionPrivacyAdvice || "Не вводите пароль и коды, пока страница не открыта по HTTPS с ожидаемого адреса.",
     available: t.available || "доступен",
     off: t.off || "не включён",
     showNotifications: t.showNotifications || "Показывать уведомления",
@@ -440,6 +488,9 @@ function getLabels(t) {
     close: t.close || "Закрыть",
     backupCode: t.backupCode || "Backup code",
     support: t.support || "Поддержка",
+    supportSecurityTitle: t.supportSecurityTitle || "Что может поддержка",
+    supportSecurityText: t.supportSecurityText || "Поддержка не может видеть ключи, сбрасывать 2FA или возвращать доступ к зашифрованным данным. Используйте резервные коды и защищённое восстановление устройства.",
+    supportUnavailableText: t.supportUnavailableText || "Канал поддержки пока не настроен.",
     lastSeen: t.lastSeenPrivacy || "Кто видит последнее посещение",
     profilePhoto: t.profilePhoto || "Кто видит фото в моём профиле",
     about: t.about || "Кто видит мой раздел «О себе»",
@@ -457,7 +508,8 @@ function getLabels(t) {
     wallpaper: t.wallpaper || "Обои для чатов",
     defaultWallpaper: t.defaultWallpaper || "Встроенные обои Liotan",
     wallpaperLater: t.wallpaperLater || "",
-    personalWallpaper: t.personalWallpaper || "Личные обои для чатов",
+    personalWallpaper: t.personalWallpaper || "Однотонный фон",
+    plainWallpaper: t.plainWallpaper || "Однотонный фон",
     timeFormat: t.timeFormat || "Формат времени",
     time24: t.time24 || "24-часовой",
     time12: t.time12 || "12-часовой",
@@ -465,6 +517,8 @@ function getLabels(t) {
     speaker: t.speaker || "Динамик",
     defaultDevice: t.defaultDevice || "По умолчанию",
     acceptCalls: t.acceptCalls || "Принимать звонки на этом устройстве",
+    camera: t.camera || "Камера",
+    callsUnavailable: t.callsUnavailable || "Звонки отключены до завершения аудита защищённого протокола. Ложный переключатель приёма звонков удалён.",
     thisDevice: t.thisDevice || "Это устройство",
     activeSessions: t.activeSessions || "Активные сеансы",
     noDevices: t.noDevices || "Активные устройства не найдены",

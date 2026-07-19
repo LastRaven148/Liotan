@@ -1,0 +1,190 @@
+/* sidebar */
+
+.sidebar{
+  background:var(--color-surface);
+  border-right:1px solid var(--color-border-strong);
+  display:flex;
+  flex-direction:column;
+}
+
+.sidebar-top{
+  display:flex;
+  align-items:center;
+  background:var(--color-surface);
+}
+
+.burger-button{
+  border:none;
+  border-radius:50%;
+  background:transparent;
+  color:var(--color-text-muted);
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:.15s;
+  flex-shrink:0;
+}
+
+.burger-button:hover{
+  background:var(--color-surface-hover);
+  color:var(--color-text-primary);
+}
+
+.sidebar-search{
+  flex:1;
+}
+
+.sidebar-search input{
+  width:100%;
+  border:none;
+  outline:none;
+  background:var(--color-surface-raised);
+  color:var(--color-text-primary);
+}
+
+.sidebar-search input::placeholder{
+  color:var(--color-text-subtle);
+}
+
+.sidebar{
+  width:360px;
+  min-width:360px;
+  max-width:360px;
+}
+
+.sidebar-top{
+  height:62px;
+  padding:10px 14px;
+  gap:12px;
+}
+
+.burger-button{
+  width:42px;
+  height:42px;
+}
+
+.sidebar-search input{
+  height:44px;
+  border-radius:22px;
+  padding:0 18px;
+  font-size:15px;
+}
+
+.sidebar-search input{
+  font-weight:400;
+}
+
+:root{
+  --liotan-icon-size:22px;
+  --liotan-icon-color:var(--color-text-secondary);
+}
+
+.liotan-icon-button,
+.drawer-icon-button,
+.burger-button{
+  color:var(--liotan-icon-color);
+}
+
+.liotan-icon-button svg{
+  display:block;
+  overflow:visible;
+  color:currentColor;
+  fill:none;
+  stroke:none;
+}
+
+.burger-button{
+  font-size:0;
+}
+
+.sidebar-search{
+  position:relative;
+  display:flex;
+  align-items:center;
+}
+
+.sidebar-search-icon{
+  position:absolute;
+  left:16px;
+  top:50%;
+  transform:translateY(-50%);
+  width:22px;
+  height:22px;
+  z-index:1;
+}
+
+.sidebar-search input{
+  padding-left:46px;
+}
+
+:root{
+  --liotan-action-icon-size:24px;
+  --liotan-action-icon-stroke:1.62;
+}
+
+.liotan-icon-button svg,
+.drawer-icon-button svg,
+.sidebar-search-icon svg{
+  fill:none;
+  stroke:none;
+}
+
+.burger-button svg{
+  width:23px;
+  height:23px;
+}
+
+.sidebar-search-icon svg{
+  width:23px;
+  height:23px;
+}
+
+.sidebar-search-icon{
+  user-select:none;
+  -webkit-user-select:none;
+  pointer-events:none;
+}
+
+:root{
+  --liotan-sidebar-width:360px;
+  --liotan-menu-icon-size:24px;
+}
+
+.liotan-icon-button svg,
+.drawer-icon-button svg,
+.sidebar-search-icon svg{
+  width:var(--liotan-menu-icon-size);
+  height:var(--liotan-menu-icon-size);
+  display:block;
+  overflow:visible;
+  color:currentColor;
+  flex-shrink:0;
+}
+
+.drawer-icon-button{
+  margin-left:-4px;
+}
+
+.drawer-icon-button svg{
+  width:24px;
+  height:24px;
+}
+
+.sidebar-search-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--color-text-muted);
+  flex-shrink:0;
+}
+
+.settings-topbar-actions .drawer-icon-button svg,
+.settings-overflow-menu svg{
+  width:21px;
+  height:21px;
+}
+
+.sidebar{
+  position:relative;
+}
