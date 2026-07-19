@@ -17,6 +17,7 @@ router.post("/crypto/v4/devices/:deviceId/recovery-bootstrap", controller.confir
 router.get("/crypto/v4/devices", cryptoDeviceAuth, controller.listDevices);
 router.post("/crypto/v4/devices/:deviceId/approve", cryptoDeviceAuth, controller.approveDevice);
 router.post("/crypto/v4/devices/:deviceId/revoke", cryptoDeviceAuth, controller.revokeDevice);
+router.post("/crypto/v4/devices/:deviceId/renew", cryptoDeviceAuth, controller.renewDevice);
 router.post("/crypto/v4/key-packages", cryptoDeviceAuth, controller.publishKeyPackages);
 router.get("/crypto/v4/key-packages/status", cryptoDeviceAuth, controller.keyPackageStatus);
 router.post("/crypto/v4/conversations/resolve", cryptoDeviceAuth, controller.resolveConversation);

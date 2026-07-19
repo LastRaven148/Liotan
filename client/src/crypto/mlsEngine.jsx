@@ -58,6 +58,7 @@ import {
   listCryptoDevices,
   publishKeyPackagesIfNeeded,
   registerCryptographicIdentity,
+  renewCryptoDeviceManifestIfNeeded,
   revokeCryptoDevice
 } from "./mls/identity";
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
@@ -124,6 +125,8 @@ class LiotanMlsEngine {
     this.closing = false;
     this.pollTimer = null;
     this.maintenanceTimer = null;
+    this.manifestRenewalTimer = null;
+    this.manifestRenewalFailures = 0;
     this.maintenanceQueue = new Map();
     this.initializationStage = "created";
     this.databaseName = getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, deviceId);
@@ -176,6 +179,8 @@ class LiotanMlsEngine {
     await this.registerCryptographicIdentity();
     this.initializationStage = "key-package-publication";
     await this.publishKeyPackagesIfNeeded();
+    this.initializationStage = "manifest-renewal";
+    await this.runManifestRenewal();
     this.initializationStage = "client-invalidation-sync";
     await this.syncInvalidations();
     this.pollTimer = window.setInterval(() => this.syncAll().catch(error => {
@@ -337,6 +342,8 @@ class LiotanMlsEngine {
     this.pollTimer = null;
     if (this.maintenanceTimer) window.clearInterval(this.maintenanceTimer);
     this.maintenanceTimer = null;
+    if (this.manifestRenewalTimer) window.clearTimeout(this.manifestRenewalTimer);
+    this.manifestRenewalTimer = null;
     this.maintenanceQueue.clear();
     const database = this.database;
     const core = this.core;
@@ -362,6 +369,25 @@ class LiotanMlsEngine {
 
   async publishKeyPackagesIfNeeded() {
     return publishKeyPackagesIfNeeded(this);
+  }
+
+  scheduleManifestRenewal(delayMs) {
+    if (this.closing) return;
+    if (this.manifestRenewalTimer) window.clearTimeout(this.manifestRenewalTimer);
+    this.manifestRenewalTimer = window.setTimeout(() => this.runManifestRenewal(), delayMs);
+  }
+
+  async runManifestRenewal() {
+    try {
+      await renewCryptoDeviceManifestIfNeeded(this);
+      this.manifestRenewalFailures = 0;
+      this.scheduleManifestRenewal(24 * 60 * 60 * 1000);
+    } catch (error) {
+      this.manifestRenewalFailures += 1;
+      const retryMs = Math.min(6 * 60 * 60 * 1000, 30 * 1000 * (2 ** Math.min(10, this.manifestRenewalFailures - 1)));
+      this.scheduleManifestRenewal(retryMs);
+      if (import.meta.env.DEV) console.warn("Cryptographic device manifest renewal failed", error);
+    }
   }
 
   async listCryptoDevices() {

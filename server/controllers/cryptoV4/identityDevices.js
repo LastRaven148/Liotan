@@ -6,6 +6,7 @@ const CryptoIdentity = require("../../models/CryptoIdentity");
 const CryptoDevice = require("../../models/CryptoDevice");
 const CryptoDirectoryEntry = require("../../models/CryptoDirectoryEntry");
 const CryptoKeyPackage = require("../../models/CryptoKeyPackage");
+const ClientInvalidation = require("../../models/ClientInvalidation");
 const Session = require("../../models/Session");
 const { transitionUserConversations } = require("../../security/cryptoRosterState");
 const {
@@ -14,7 +15,7 @@ const {
 } = require("../../security/cryptoV4");
 const { canonicalJson } = require("../../utils/canonicalJson");
 const { hashSessionId } = require("../../utils/sessionSecurity");
-const { disconnectSessionHash } = require("../../sockets/sessionRegistry");
+const { disconnectSessionHash, userRoom } = require("../../sockets/sessionRegistry");
 const {
   directoryDeviceCommitment,
   directoryStateView,
@@ -26,6 +27,41 @@ const {
 
 const MAX_KEY_PACKAGE_BYTES = 64 * 1024;
 const DIRECTORY_LOG_WINDOW = 1024;
+const MANIFEST_RENEWAL_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
+
+function encodeDeviceCursor(device) {
+  return device ? Buffer.from(JSON.stringify({ createdAt: device.createdAt, id: device._id }), "utf8").toString("base64url") : "";
+}
+
+function decodeDeviceCursor(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(String(value), "base64url").toString("utf8"));
+    const createdAt = new Date(parsed.createdAt);
+    if (!mongoose.isValidObjectId(parsed.id) || !Number.isFinite(createdAt.getTime())) throw new Error();
+    return { createdAt, id: new mongoose.Types.ObjectId(parsed.id) };
+  } catch {
+    const error = new Error("invalid cursor"); error.status = 400; throw error;
+  }
+}
+
+async function publishDeviceListUpdate(req) {
+  const devices = await CryptoDevice.find({
+    userId: req.user.userId,
+    status: "active",
+    manifestExpiresAt: { $gt: new Date() }
+  }, "clientId").lean();
+  const invalidation = await ClientInvalidation.create({
+    eventId: crypto.randomBytes(24).toString("base64url"),
+    recipientUserId: req.user.userId,
+    kind: "device-list-updated",
+    pendingClientIds: devices.map(device => device.clientId)
+  });
+  req.app.get("io")?.to(userRoom(String(req.user.userId))).emit("clientInvalidationAvailable", {
+    eventId: invalidation.eventId,
+    kind: invalidation.kind
+  });
+}
 
 async function persistDirectoryHead(identity, verifiedDirectory, session) {
   const currentDirectory = directoryStateView(identity);
@@ -269,6 +305,7 @@ async function registerDevice(req, res, next) {
       }
     });
     if (rosterConversations.length) emitCryptoRosterChanged(req, rosterConversations);
+    await publishDeviceListUpdate(req);
     const updatedIdentity = await CryptoIdentity.findById(identity._id).lean();
     return res.status(created ? 201 : 200).json({
       ok: true,
@@ -369,6 +406,7 @@ async function approveDevice(req, res, next) {
       });
     });
     emitCryptoRosterChanged(req, conversations);
+    await publishDeviceListUpdate(req);
     return res.json({
       ok: true,
       device: deviceView(approvedDevice),
@@ -460,6 +498,7 @@ async function confirmRecoveryBootstrap(req, res, next) {
       });
     });
     emitCryptoRosterChanged(req, conversations);
+    await publishDeviceListUpdate(req);
     return res.json({
       ok: true,
       securityIdentityChanged: true,
@@ -633,6 +672,7 @@ async function revokeDevice(req, res, next) {
     });
     if (revokedSessionHash) disconnectSessionHash(revokedSessionHash);
     emitCryptoRosterChanged(req, conversations);
+    await publishDeviceListUpdate(req);
     return res.json({
       ok: true,
       device: deviceView(device),
@@ -651,22 +691,124 @@ async function revokeDevice(req, res, next) {
 
 async function listDevices(req, res, next) {
   try {
-    const [identity, devices, directoryEntries] = await Promise.all([
+    const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 50, 100));
+    const cursor = decodeDeviceCursor(req.query.cursor);
+    const pageQuery = { userId: req.user.userId };
+    if (cursor) pageQuery.$or = [
+      { createdAt: { $gt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, _id: { $gt: cursor.id } }
+    ];
+    const [identity, page, allDevices, directoryEntries] = await Promise.all([
       CryptoIdentity.findOne({ userId: req.user.userId }).lean(),
-      CryptoDevice.find({ userId: req.user.userId })
-        .sort({ lastSeenAt: -1 })
-        .limit(50)
+      CryptoDevice.find(pageQuery)
+        .sort({ createdAt: 1, _id: 1 })
+        .limit(limit + 1)
         .lean(),
+      CryptoDevice.find({ userId: req.user.userId }).sort({ deviceId: 1 }).lean(),
       CryptoDirectoryEntry.find({ userId: req.user.userId }).sort({ version: -1 }).limit(DIRECTORY_LOG_WINDOW).lean()
     ]);
+    const hasMore = page.length > limit;
+    const devices = page.slice(0, limit);
     return res.json({
       devices: devices.map(deviceView),
-      deviceCommitments: devices.map(directoryDeviceCommitment),
+      deviceCommitments: allDevices.map(directoryDeviceCommitment),
       directory: directoryStateView(identity),
-      directoryLog: directoryLogView(directoryEntries)
+      directoryLog: directoryLogView(directoryEntries),
+      hasMore,
+      nextCursor: hasMore ? encodeDeviceCursor(devices.at(-1)) : ""
     });
   } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
     return next(err);
+  }
+}
+
+async function renewDevice(req, res, next) {
+  const session = await mongoose.startSession();
+  try {
+    const targetDeviceId = String(req.params.deviceId || "").toLowerCase();
+    const renewal = req.body.renewal;
+    const renewalSignature = String(req.body.renewalSignature || "");
+    const manifest = req.body.manifest;
+    const manifestSignature = String(req.body.manifestSignature || "");
+    let renewed;
+    let duplicate = false;
+    await session.withTransaction(async () => {
+      const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
+      const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
+      const target = devices.find(device => device.deviceId === targetDeviceId);
+      if (!identity?.rootPublicKey || !target || target.status !== "active" ||
+        req.cryptoDevice.clientId !== target.clientId) {
+        const error = new Error("active current device not found"); error.status = 404; throw error;
+      }
+      if (canonicalJson(target.manifest) === canonicalJson(manifest) && target.manifestSignature === manifestSignature) {
+        renewed = target;
+        duplicate = true;
+        return;
+      }
+      const issuedAt = Date.parse(String(renewal?.issuedAt || ""));
+      const oldExpiresAt = Date.parse(String(target.manifestExpiresAt || ""));
+      const newExpiresAt = Date.parse(String(manifest?.expiresAt || ""));
+      const expectedPreviousHash = sha256Base64Url(Buffer.from(canonicalJson([
+        "liotan-device-manifest-v1",
+        target.manifest,
+        target.manifestSignature
+      ]), "utf8"));
+      if (!renewal || renewal.v !== 1 || renewal.cryptoUserId !== identity.cryptoUserId ||
+        renewal.deviceId !== target.deviceId || renewal.clientId !== target.clientId ||
+        renewal.previousManifestHash !== expectedPreviousHash ||
+        !Number.isFinite(issuedAt) || Math.abs(Date.now() - issuedAt) > 10 * 60 * 1000 ||
+        oldExpiresAt - Date.now() > MANIFEST_RENEWAL_WINDOW_MS ||
+        !/^[A-Za-z0-9_-]{22,96}$/.test(String(renewal.nonce || "")) ||
+        !verifyEd25519({ publicKey: target.requestPublicKey, signature: renewalSignature, value: renewal, domain: "liotan-device-renewal-v1" })) {
+        const error = new Error("invalid device manifest renewal"); error.status = 400; throw error;
+      }
+      if (!manifest || manifest.v !== 1 || manifest.cryptoUserId !== target.cryptoUserId ||
+        manifest.username !== target.username || manifest.deviceId !== target.deviceId ||
+        manifest.clientId !== target.clientId || manifest.requestPublicKey !== target.requestPublicKey ||
+        manifest.credentialThumbprint !== target.credentialThumbprint ||
+        manifest.createdAt !== target.manifest.createdAt ||
+        !Number.isFinite(newExpiresAt) || newExpiresAt < Date.now() + 30 * 24 * 60 * 60 * 1000 ||
+        newExpiresAt > Date.now() + 400 * 24 * 60 * 60 * 1000 ||
+        renewal.newExpiresAt !== manifest.expiresAt ||
+        !verifyEd25519({ publicKey: identity.rootPublicKey, signature: manifestSignature, value: manifest, domain: "liotan-device-manifest-v1" })) {
+        const error = new Error("invalid renewed device manifest"); error.status = 400; throw error;
+      }
+      const prospectiveTarget = { ...target.toObject(), manifest, manifestSignature, manifestExpiresAt: new Date(newExpiresAt) };
+      const prospectiveDevices = devices
+        .filter(device => device.deviceId !== targetDeviceId)
+        .map(device => device.toObject())
+        .concat(prospectiveTarget);
+      const verifiedDirectory = validateDirectoryMutation({
+        identity,
+        devices: prospectiveDevices,
+        update: req.body.directoryUpdate,
+        signature: req.body.directorySignature,
+        action: "renew-device",
+        targetDeviceId
+      });
+      renewed = await CryptoDevice.findOneAndUpdate(
+        { _id: target._id, status: "active", manifestExpiresAt: target.manifestExpiresAt },
+        { $set: { manifest, manifestSignature, manifestExpiresAt: new Date(newExpiresAt), lastSeenAt: new Date() } },
+        { returnDocument: "after", session }
+      );
+      if (!renewed) { const error = new Error("device changed during renewal"); error.status = 409; throw error; }
+      await persistDirectoryHead(identity, verifiedDirectory, session);
+    });
+    const updatedIdentity = await CryptoIdentity.findOne({ userId: req.user.userId }).lean();
+    if (!duplicate) await publishDeviceListUpdate(req);
+    return res.json({
+      ok: true,
+      duplicate,
+      device: deviceView(renewed),
+      directory: directoryStateView(updatedIdentity)
+    });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    if (err instanceof TypeError) return res.status(400).json({ error: err.message });
+    return next(err);
+  } finally {
+    await session.endSession();
   }
 }
 
@@ -679,5 +821,6 @@ module.exports = {
   publishKeyPackages,
   keyPackageStatus,
   revokeDevice,
+  renewDevice,
   listDevices
 };
