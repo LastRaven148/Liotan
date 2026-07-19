@@ -111,7 +111,6 @@ test("transition gate covers login, registration and logout phases with accessib
   await expect(page.locator(".secure-transition")).toBeHidden();
   for (const action of ["login", "register"]) {
     await page.locator(`[data-action="${action}"]`).click();
-    await expect(page.locator(".secure-transition")).toBeVisible();
     await expect(page.locator(".secure-transition [role=status]")).toBeVisible();
     await expect(page.locator(".secure-transition")).toBeHidden();
   }
