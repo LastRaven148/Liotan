@@ -40,6 +40,7 @@
     "test:all": "npm test && npm run check && npm run supply-chain",
     "licenses:check": "node scripts/checkLicenses.js",
     "sbom:generate": "node scripts/generateSbom.js",
+    "test:sbom-reproducible": "node scripts/sbomReproducibility.js",
     "supply-chain": "npm run licenses:check && npm run sbom:generate"
   },
   "devDependencies": {

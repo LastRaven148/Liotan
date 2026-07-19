@@ -70,6 +70,7 @@ async function main() {
   runNpm("server syntax check", ["run", "check:server"]);
   runNpm("unit, integration, browser, and coverage tests", ["test"]);
   runNpm("license policy and CycloneDX SBOM", ["run", "supply-chain"]);
+  runNpm("reproducible CycloneDX SBOM", ["run", "test:sbom-reproducible"]);
   runNpm("root dependency audit", ["audit"]);
   runNpm("client production audit", ["audit", "--omit=dev"], path.join(root, "client"));
   runNpm("server production audit", ["audit", "--omit=dev"], path.join(root, "server"));
