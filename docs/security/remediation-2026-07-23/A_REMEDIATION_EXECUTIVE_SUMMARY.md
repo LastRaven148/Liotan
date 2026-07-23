@@ -8,8 +8,8 @@
 - The audit archive was extracted outside the repository and treated as an
   untrusted backlog, not as source of truth.
 - `git ls-files` reported 440 tracked files at the audited commit. The
-  code-complete checkpoint `d0059ca` has 446 tracked files after intentional
-  additions and proven deletions; the final count must always be obtained from
+  code-complete checkpoint `ff13e65` has 457 tracked files after intentional
+  additions, evidence and proven deletions; the final count must always be obtained from
   `git ls-files`, including these evidence documents.
 - No production database, R2 bucket, Cloudflare, Nginx, DNS, PM2 process, VPS,
   secret, deployment, merge, or `main` history was changed.

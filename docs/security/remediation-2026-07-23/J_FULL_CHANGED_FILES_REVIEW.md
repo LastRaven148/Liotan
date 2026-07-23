@@ -2,7 +2,7 @@
 
 ## Review method
 
-The code-complete checkpoint is `d0059ca`, compared with audited/base commit
+The code-complete checkpoint is `ff13e65`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
 - 147 tracked files differ;
@@ -19,7 +19,7 @@ The code-complete checkpoint is `d0059ca`, compared with audited/base commit
 The canonical review command is:
 
 ```text
-git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..d0059ca
+git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..ff13e65
 ```
 
 ## Risk-focused review
