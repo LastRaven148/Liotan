@@ -40,6 +40,19 @@ test("media authorization and quota reservation happen before multipart parsing"
   assert.match(source, /mediaDownloadLimiter/);
 });
 
+test("legacy message and media surfaces are immutable tombstones", () => {
+  const attachmentRoutes = read("server/routes/attachmentRoutes.js");
+  const groupHistoryRoutes = read("server/routes/groupMessageRoutes.js");
+  const connectionHandlers = read("server/sockets/handlers/connectionHandlers.js");
+  const userRelations = read("server/utils/userRelations.js");
+  assert.match(attachmentRoutes, /legacyMediaGone/);
+  assert.match(groupHistoryRoutes, /legacyGroupHistoryGone/);
+  assert.doesNotMatch(attachmentRoutes, /attachmentController|downloadAttachment|uploadAttachment/);
+  assert.doesNotMatch(groupHistoryRoutes, /groupMessageController|models\/Messages/);
+  assert.doesNotMatch(connectionHandlers, /markDeliveredForUser|models\/Messages/);
+  assert.doesNotMatch(userRelations, /models\/Messages/);
+});
+
 test("the IP safety limiter runs before request bodies are parsed", () => {
   const source = read("server/app.js");
   assert(source.indexOf("strictIpLimiter") > -1);

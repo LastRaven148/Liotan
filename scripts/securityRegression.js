@@ -111,9 +111,24 @@ assert.match(socket, /socket\.use\(async/);
 assert.match(socket, /SOCKET_AUTH_RECHECK_MS/);
 assert.match(read("server/utils/sessionSecurity.js"), /disconnectSessionHashes/);
 
-const attachment = read("server/controllers/attachmentController.js");
-assert.match(attachment, /encrypted attachment required/);
 assert.match(read("server/services/attachmentOwnership.js"), /encrypted: true/);
+const legacyMediaRoutes = read("server/routes/attachmentRoutes.js");
+assert.match(legacyMediaRoutes, /legacyMediaGone/);
+assert.doesNotMatch(legacyMediaRoutes, /controllers\/attachmentController|downloadAttachment|uploadAttachment/);
+const legacyGroupHistory = read("server/routes/groupMessageRoutes.js");
+assert.match(legacyGroupHistory, /legacyGroupHistoryGone/);
+assert.doesNotMatch(legacyGroupHistory, /controllers\/groupMessageController|models\/Messages/);
+for (const removedLegacyRuntime of [
+  "server/controllers/attachmentController.js",
+  "server/controllers/groupMessageController.js",
+  "server/controllers/e2eeController.js",
+  "server/services/attachmentAccess.js",
+  "server/sockets/services/markDeliveredForUser.js",
+  "server/sockets/services/serializeMessage.js"
+]) {
+  assert(!fs.existsSync(path.join(root, removedLegacyRuntime)),
+    `${removedLegacyRuntime} must stay removed after the MLS-only cutover`);
+}
 const cryptoRoutes = read("server/routes/cryptoV4Routes.js");
 assert.match(cryptoRoutes, /cryptoDeviceAuth/);
 const mediaRoute = cryptoRoutes.slice(cryptoRoutes.indexOf('"\/crypto\/v4\/media\/upload"'));

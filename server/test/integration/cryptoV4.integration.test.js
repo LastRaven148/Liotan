@@ -678,6 +678,85 @@ test("durable media byte quotas account for rejected reservations", async () => 
   }
 });
 
+test("media storage quota follows temporary, persistent and released object state exactly once", async () => {
+  const account = await createAccount("quota_life");
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const {
+    completeMediaTransfer,
+    promoteMediaUploadQuota,
+    releaseMediaUploadQuota,
+    reserveMediaTransfer
+  } = require("../../services/mediaQuota");
+  const req = {
+    user: {
+      userId: account.user._id,
+      username: account.username,
+      sid: account.sessionId
+    },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.43" }
+  };
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: account.clientId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    lifecycleState: "temporary",
+    storageKey: "integration/quota-lifecycle",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000)
+  });
+  const reservation = await reserveMediaTransfer(req, {
+    direction: "upload",
+    bytes: 32,
+    conversationId: upload.cryptoConversationId
+  });
+  assert.equal(await completeMediaTransfer(
+    reservation.reservationId,
+    32,
+    { uploadId: upload.uploadId }
+  ), true);
+  let tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "temporary");
+  assert.equal(tracked.quotaBytes, 32);
+  assert.equal(tracked.quotaScopes.length, 5);
+
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 32);
+    assert.equal(state.persistentStorageBytes, 0);
+    assert.equal(state.objectCount, 1);
+  }
+
+  assert.equal(await promoteMediaUploadQuota(upload.uploadId), true);
+  tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "persistent");
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 0);
+    assert.equal(state.persistentStorageBytes, 32);
+    assert.equal(state.objectCount, 1);
+  }
+
+  assert.equal(await releaseMediaUploadQuota(upload.uploadId), true);
+  assert.equal(await releaseMediaUploadQuota(upload.uploadId), false);
+  tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "released");
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 0);
+    assert.equal(state.persistentStorageBytes, 0);
+    assert.equal(state.objectCount, 0);
+  }
+  await AttachmentUpload.deleteOne({ _id: upload._id });
+});
+
 test("device authentication v2 migrates with old and new proofs without changing MLS identity", async () => {
   const account = await createAccount("authv2_migrate");
   const listed = await signedJson(account, "GET", "/crypto/v4/devices");
@@ -1410,6 +1489,54 @@ test("crypto state migration resumes from a durable batch cursor and rejects a p
   );
   await migrations.deleteOne({ _id: migration.MIGRATION_ID });
   await AttachmentUpload.collection.deleteMany({ _id: { $in: Object.values(inserted.insertedIds) } });
+});
+
+test("media quota lifecycle migration backfills exact object state and reconciles counters idempotently", async () => {
+  const account = await createAuthenticatedUser("quota_migration_test");
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const migration = require("../../scripts/migrateMediaQuotaLifecycle");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    lifecycleState: "committed",
+    quotaStorageState: "untracked",
+    storageKey: "integration/quota-migration",
+    storageType: "r2:private-media",
+    expiresAt: null
+  });
+  const migrated = await migration.applyMigration({
+    batchSize: 1,
+    headObject: async () => ({ headers: { "content-length": "47" } })
+  });
+  assert.equal(migrated.objectsBackfilled >= 1, true);
+  const tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.ciphertextBytes, 47);
+  assert.equal(tracked.quotaBytes, 47);
+  assert.equal(tracked.quotaStorageState, "persistent");
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "global"), true);
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "account"), true);
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "device"), true);
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.persistentStorageBytes >= 47, true);
+    assert.equal(state.objectCount >= 1, true);
+  }
+  const repeated = await migration.applyMigration({
+    headObject: async () => {
+      throw new Error("completed migration must not re-read object storage");
+    }
+  });
+  assert.equal(repeated.alreadyApplied, true);
+  await AttachmentUpload.deleteOne({ _id: upload._id });
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {
@@ -2637,4 +2764,85 @@ test("key transparency backfill migration is resumable, idempotent and preserves
   assert.equal(repeated.alreadyApplied, true);
   assert.equal((await migration.inspect()).missingLeaves, 0);
   assert.equal(typeof require("../../utils/durableMigration").acquireLease, "function");
+});
+
+test("legacy retirement is count-only in dry-run and deletes objects before metadata idempotently", async () => {
+  const account = await createAuthenticatedUser("legacy_retirement_test");
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const E2EEConversation = require("../../models/E2EEConversation");
+  const E2EEKey = require("../../models/E2EEKey");
+  const LegacyRetirementObjectTask = require("../../models/LegacyRetirementObjectTask");
+  const Message = require("../../models/Messages");
+  const migration = require("../../scripts/retireLegacyData");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await LegacyRetirementObjectTask.deleteMany({ migrationId: migration.MIGRATION_ID });
+  await User.updateOne(
+    { _id: account.user._id },
+    { $set: { e2eePublicKey: { legacy: true } } }
+  );
+  const conversationId = crypto.randomUUID();
+  await E2EEConversation.create({
+    conversationId,
+    commitId: crypto.randomUUID(),
+    participants: [account.username],
+    createdBy: account.username
+  });
+  await E2EEKey.create({
+    conversationId,
+    user: account.username,
+    sender: account.username,
+    commitId: crypto.randomUUID(),
+    wrappedKey: crypto.randomBytes(32).toString("base64url"),
+    iv: crypto.randomBytes(12).toString("base64url")
+  });
+  const storageKey = "liotan/u/integration/legacy-retirement.bin";
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "legacy-v3",
+    storageKey,
+    storageType: "r2:private-media"
+  });
+  await Message.create({
+    chatType: "private",
+    from: account.username,
+    to: account.username,
+    contentMode: "plain",
+    text: "legacy plaintext",
+    attachment: {
+      uploadId: upload.uploadId,
+      storageKey,
+      url: `/attachments/${upload.uploadId}/download`
+    }
+  });
+
+  const dryRun = await migration.inspect();
+  assert.equal(dryRun.outputMode, "aggregate-counts-only");
+  assert.equal(dryRun.containsRawIdentifiers, false);
+  assert.equal(dryRun.legacy.messages >= 1, true);
+  assert.equal(dryRun.objects.exclusiveObjectCandidates >= 1, true);
+  const deletedObjects = [];
+  const applied = await migration.applyMigration({
+    adapters: {
+      deleteR2: async key => deletedObjects.push(key),
+      deleteLocal: async locator => deletedObjects.push(locator)
+    }
+  });
+  assert.equal(applied.alreadyApplied, false);
+  assert.equal(deletedObjects.includes(storageKey), true);
+  assert.equal(await Message.countDocuments({}), 0);
+  assert.equal(await E2EEKey.countDocuments({}), 0);
+  assert.equal(await E2EEConversation.countDocuments({}), 0);
+  assert.equal(await AttachmentUpload.countDocuments({ protocol: { $ne: "mls-media-1" } }), 0);
+  assert.equal((await User.findById(account.user._id).lean()).e2eePublicKey, null);
+  const repeated = await migration.applyMigration({
+    adapters: {
+      deleteR2: async () => {
+        throw new Error("completed retirement must not delete objects twice");
+      }
+    }
+  });
+  assert.equal(repeated.alreadyApplied, true);
 });

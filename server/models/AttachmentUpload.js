@@ -1,5 +1,15 @@
 const mongoose = require("mongoose");
 
+const quotaScopeSchema = new mongoose.Schema({
+  key: { type: String, required: true },
+  scope: {
+    type: String,
+    enum: ["global", "account", "device", "session", "ip"],
+    required: true
+  },
+  scopeIdHash: { type: String, required: true }
+}, { _id: false });
+
 const attachmentUploadSchema = new mongoose.Schema(
   {
     uploadId: {
@@ -42,6 +52,21 @@ const attachmentUploadSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0
+    },
+    quotaScopes: {
+      type: [quotaScopeSchema],
+      default: []
+    },
+    quotaBytes: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    quotaStorageState: {
+      type: String,
+      enum: ["untracked", "temporary", "persistent", "released"],
+      default: "untracked",
+      index: true
     },
     encrypted: {
       type: Boolean,
@@ -149,5 +174,6 @@ attachmentUploadSchema.index(
   { unique: true, partialFilterExpression: { protocol: "mls-media-1" } }
 );
 attachmentUploadSchema.index({ lifecycleState: 1, expiresAt: 1 });
+attachmentUploadSchema.index({ quotaStorageState: 1, "quotaScopes.key": 1 });
 
 module.exports = mongoose.model("AttachmentUpload", attachmentUploadSchema);

@@ -220,6 +220,8 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
 
         const err = new Error(`R2 ${method} failed with ${res.statusCode}`);
         err.status = 502;
+        err.upstreamStatus = res.statusCode;
+        err.code = res.statusCode === 404 ? "R2_OBJECT_NOT_FOUND" : "R2_REQUEST_FAILED";
         err.details = responseBody.slice(0, 500);
         reject(err);
       });
@@ -289,6 +291,19 @@ async function getFromR2(key, options = {}) {
   return requestR2({ method: "GET", key, range: options.range || "", storageClass: options.storageClass || "private-media" });
 }
 
+async function headFromR2(key, options = {}) {
+  if (!key) {
+    const err = new Error("R2 key is required");
+    err.status = 404;
+    throw err;
+  }
+  return requestR2({
+    method: "HEAD",
+    key,
+    storageClass: options.storageClass || "private-media"
+  });
+}
+
 async function streamFromR2(key, responseTarget, options = {}) {
   if (!key || !responseTarget) {
     const err = new Error("R2 streaming target and key are required");
@@ -307,7 +322,12 @@ async function streamFromR2(key, responseTarget, options = {}) {
 
 async function deleteFromR2(key, options = {}) {
   if (!key) return;
-  await requestR2({ method: "DELETE", key, storageClass: options.storageClass || "private-media" });
+  try {
+    await requestR2({ method: "DELETE", key, storageClass: options.storageClass || "private-media" });
+  } catch (error) {
+    if (error?.upstreamStatus === 404) return;
+    throw error;
+  }
 }
 
 function decodeXmlEntities(value = "") {
@@ -412,6 +432,7 @@ async function deleteR2Prefix(prefix, options = {}) {
 module.exports = {
   uploadToR2,
   getFromR2,
+  headFromR2,
   streamFromR2,
   deleteFromR2,
   listR2Objects,

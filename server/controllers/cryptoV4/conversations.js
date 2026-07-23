@@ -8,6 +8,7 @@ const CryptoConversation = require("../../models/CryptoConversation");
 const CryptoOperation = require("../../models/CryptoOperation");
 const CryptoEvent = require("../../models/CryptoEvent");
 const AttachmentUpload = require("../../models/AttachmentUpload");
+const { promoteMediaUploadQuota } = require("../../services/mediaQuota");
 const { decodeBase64Url, sha256Base64Url, isUuid } = require("../../security/cryptoV4");
 const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 const {
@@ -583,6 +584,7 @@ async function sendCiphertext(req, res, next) {
         if (!committedUpload) {
           const err = new Error("MLS attachment commit capability is invalid, expired, or already used"); err.status = 409; throw err;
         }
+        await promoteMediaUploadQuota(committedUpload.uploadId, { session });
       }
       if (attachmentDelete) {
         const scheduled = await AttachmentUpload.findOneAndUpdate(

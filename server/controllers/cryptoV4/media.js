@@ -21,6 +21,7 @@ async function removeTempFile(file) {
 async function uploadMedia(req, res, next) {
   let uploadedObject = null;
   let createdUpload = null;
+  let quotaCompleted = false;
   try {
     const {
       conversationId,
@@ -70,12 +71,13 @@ async function uploadMedia(req, res, next) {
     createdUpload = upload;
     const completed = await completeMediaTransfer(
       req.mediaQuotaReservation.reservationId,
-      req.file.size
+      req.file.size,
+      { uploadId: upload.uploadId }
     );
     if (!completed) throw new Error("media quota reservation expired before upload completion");
+    quotaCompleted = true;
     req.settleMediaQuota?.();
-    uploadedObject = null;
-    return res.status(201).json({
+    const response = res.status(201).json({
       uploadId: upload.uploadId,
       uploadCommitToken,
       uploadDeleteToken,
@@ -84,11 +86,13 @@ async function uploadMedia(req, res, next) {
       bytes: req.file.size,
       protocol: "mls-media-1"
     });
+    uploadedObject = null;
+    return response;
   } catch (err) {
-    if (createdUpload?._id) {
+    if (createdUpload?._id && !quotaCompleted) {
       await AttachmentUpload.deleteOne({ _id: createdUpload._id }).catch(() => {});
     }
-    if (uploadedObject?.key) {
+    if (uploadedObject?.key && !quotaCompleted) {
       try {
         await deleteFromR2(uploadedObject.key, { storageClass: "private-media" });
       } catch {

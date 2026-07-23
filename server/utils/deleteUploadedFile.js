@@ -3,6 +3,7 @@ const fs = require("fs/promises");
 const logger = require("./logger");
 const AttachmentUpload = require("../models/AttachmentUpload");
 const { deleteFromR2 } = require("./uploadToR2");
+const { releaseAndDeleteMediaUpload } = require("../services/mediaQuota");
 
 const uploadsDir = path.resolve(__dirname, "..", "uploads");
 
@@ -102,7 +103,10 @@ async function removeAttachmentUploadMetadata(file, storageKeys) {
   if (!or.length) return;
 
   try {
-    await AttachmentUpload.deleteMany({ $or: or });
+    const uploads = await AttachmentUpload.find({ $or: or }, "uploadId").lean();
+    for (const upload of uploads) {
+      await releaseAndDeleteMediaUpload(upload.uploadId);
+    }
   } catch (err) {
     logger.warn("delete attachment upload metadata failed", { code: err.code });
   }

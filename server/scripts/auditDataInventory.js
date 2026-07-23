@@ -2,7 +2,6 @@
 
 const path = require("node:path");
 const { createRequire } = require("node:module");
-const crypto = require("node:crypto");
 
 const serverRoot = process.cwd();
 const requireFromServer = createRequire(path.join(serverRoot, "package.json"));
@@ -30,33 +29,7 @@ async function run() {
   const ClientInvalidation = model("ClientInvalidation");
   const DeletionWorkflow = model("DeletionWorkflow");
   const DeletionObjectTask = model("DeletionObjectTask");
-  const users = await User.find({}, "username emailVerified e2eePublicKey avatarStorageKey").lean();
   const now = new Date();
-  const inventory = [];
-
-  for (const user of users) {
-    inventory.push({
-      userRef: crypto.createHash("sha256").update(String(user._id)).digest("hex").slice(0, 16),
-      emailVerified: Boolean(user.emailVerified),
-      hasLegacyPublicKey: Boolean(user.e2eePublicKey),
-      hasAvatarObject: Boolean(user.avatarStorageKey),
-      sessionsTotal: await Session.countDocuments({ username: user.username }),
-      sessionsActive: await Session.countDocuments({ username: user.username, revokedAt: null, expiresAt: { $gt: now } }),
-      uploadsTotal: await AttachmentUpload.countDocuments({ owner: user.username }),
-      legacyUploads: await AttachmentUpload.countDocuments({ owner: user.username, protocol: "legacy-v3" }),
-      mlsUploads: await AttachmentUpload.countDocuments({ owner: user.username, protocol: "mls-media-1" }),
-      blockEdges: await UserBlock.countDocuments({ $or: [{ blockerUserId: user._id }, { blockedUserId: user._id }] }),
-      notificationSettings: await UserNotificationSettings.countDocuments({ userId: user._id }),
-      messageVisibility: await MessageVisibility.countDocuments({ userId: user._id }),
-      pendingInvalidations: await ClientInvalidation.countDocuments({ recipientUserId: user._id, acknowledgedAt: null }),
-      messages: await Messages.countDocuments({ $or: [{ from: user.username }, { to: user.username }] }),
-      legacyKeys: await E2EEKey.countDocuments({ user: user.username }),
-      unversionedUploads: await AttachmentUpload.countDocuments({
-        owner: user.username,
-        $or: [{ protocol: { $exists: false } }, { protocol: "" }, { protocol: null }]
-      })
-    });
-  }
 
   const uploads = await AttachmentUpload.aggregate([
     { $group: { _id: { protocol: "$protocol", encrypted: "$encrypted" }, count: { $sum: 1 } } }
@@ -64,10 +37,31 @@ async function run() {
 
   console.log(JSON.stringify({
     schemaVersion: 2,
-    users: inventory,
+    privacy: {
+      outputMode: "aggregate-counts-only",
+      containsUserReferences: false
+    },
+    accounts: {
+      total: await User.countDocuments({}),
+      emailVerified: await User.countDocuments({ emailVerified: true }),
+      withLegacyPublicKey: await User.countDocuments({ e2eePublicKey: { $ne: null } }),
+      withAvatarObject: await User.countDocuments({ avatarStorageKey: { $type: "string", $ne: "" } })
+    },
+    sessions: {
+      total: await Session.countDocuments({}),
+      active: await Session.countDocuments({ revokedAt: null, expiresAt: { $gt: now } })
+    },
     legacy: {
       e2eeConversations: await E2EEConversation.countDocuments({}),
-      e2eeKeys: await E2EEKey.countDocuments({})
+      e2eeKeys: await E2EEKey.countDocuments({}),
+      messages: await Messages.countDocuments({}),
+      plaintextMessages: await Messages.countDocuments({ contentMode: { $ne: "e2ee" } }),
+      legacyUploads: await AttachmentUpload.countDocuments({
+        protocol: { $ne: "mls-media-1" }
+      }),
+      unversionedUploads: await AttachmentUpload.countDocuments({
+        $or: [{ protocol: { $exists: false } }, { protocol: "" }, { protocol: null }]
+      })
     },
     mls: {
       identities: await CryptoIdentity.countDocuments({}),
@@ -76,8 +70,13 @@ async function run() {
       events: await CryptoEvent.countDocuments({}),
       directoryEntries: await CryptoDirectoryEntry.countDocuments({})
     },
-    messages: await Messages.countDocuments({}),
     uploads,
+    application: {
+      blockEdges: await UserBlock.countDocuments({}),
+      notificationSettings: await UserNotificationSettings.countDocuments({}),
+      messageVisibility: await MessageVisibility.countDocuments({}),
+      pendingInvalidations: await ClientInvalidation.countDocuments({ acknowledgedAt: null })
+    },
     deletion: {
       activeWorkflows: await DeletionWorkflow.countDocuments({ terminal: false }),
       deadLetterWorkflows: await DeletionWorkflow.countDocuments({ state: "dead-letter" }),

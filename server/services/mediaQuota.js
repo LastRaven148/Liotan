@@ -4,8 +4,10 @@ const crypto = require("crypto");
 const MediaQuotaBucket = require("../models/MediaQuotaBucket");
 const MediaQuotaState = require("../models/MediaQuotaState");
 const MediaTransferReservation = require("../models/MediaTransferReservation");
+const AttachmentUpload = require("../models/AttachmentUpload");
 const { hmac, hashRequestIp } = require("../utils/securityIds");
 const { hashSessionId } = require("../utils/sessionSecurity");
+const { runMongoTransaction } = require("../utils/mongoTransaction");
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
@@ -149,7 +151,7 @@ function windowStart(now, duration) {
   return new Date(Math.floor(now.getTime() / duration) * duration);
 }
 
-async function incrementState(scope, direction, bytes) {
+async function incrementState(scope, direction, bytes, { session = null } = {}) {
   const limits = stateLimit(scope.scope);
   const activeField = direction === "upload" ? "activeUploads" : "activeDownloads";
   const activeLimit = direction === "upload" ? limits.activeUploads : limits.activeDownloads;
@@ -196,11 +198,12 @@ async function incrementState(scope, direction, bytes) {
           scopeIdHash: scope.scopeIdHash
         }
       },
-      { upsert: true }
+      { upsert: true, session }
     );
     const result = await MediaQuotaState.updateOne(
       { key: scope.key, $expr: { $and: expressions } },
-      { $inc: increment }
+      { $inc: increment },
+      { session }
     );
     if (!result.matchedCount) throw quotaError();
   } catch (err) {
@@ -209,17 +212,7 @@ async function incrementState(scope, direction, bytes) {
   }
 }
 
-async function decrementState(scope, direction, bytes) {
-  const activeField = direction === "upload" ? "activeUploads" : "activeDownloads";
-  const increment = { [activeField]: -1 };
-  if (direction === "upload") increment.reservedStorageBytes = -bytes;
-  await MediaQuotaState.updateOne(
-    { key: scope.key },
-    { $inc: increment }
-  );
-}
-
-async function incrementWindow(scope, direction, window, bytes, now) {
+async function incrementWindow(scope, direction, window, bytes, now, { session = null } = {}) {
   const duration = WINDOWS[window];
   const startedAt = windowStart(now, duration);
   const key = `${scope.key}:${direction}:${window}:${startedAt.getTime()}`;
@@ -238,7 +231,7 @@ async function incrementWindow(scope, direction, window, bytes, now) {
           expiresAt: new Date(startedAt.getTime() + duration * 2)
         }
       },
-      { upsert: true }
+      { upsert: true, session }
     );
     const result = await MediaQuotaBucket.updateOne(
       {
@@ -260,7 +253,8 @@ async function incrementWindow(scope, direction, window, bytes, now) {
           ]
         }
       },
-      { $inc: { bytes, requests: 1 } }
+      { $inc: { bytes, requests: 1 } },
+      { session }
     );
     if (!result.matchedCount) throw quotaError();
     return key;
@@ -284,94 +278,115 @@ async function reserveMediaTransfer(req, {
 
   const now = new Date();
   const scopes = transferScopes(req);
-  const reservation = await MediaTransferReservation.create({
-    reservationId: crypto.randomBytes(24).toString("base64url"),
-    direction,
-    userId: req.user.userId,
-    clientIdHash: scopeHash("client-record", req.cryptoDevice.clientId),
-    sessionIdHash: hashSessionId(req.user.sid),
-    ipHash: hashRequestIp(req),
-    conversationIdHash: conversationId ? scopeHash("conversation", conversationId) : "",
-    uploadIdHash: uploadId ? scopeHash("upload", uploadId) : "",
-    declaredBytes: bytes,
-    scopes,
-    expiresAt: new Date(now.getTime() + RESERVATION_TTL_MS)
-  });
-
-  const incrementedStates = [];
-  const bucketKeys = [];
-  try {
+  return runMongoTransaction(async session => {
+    const [reservation] = await MediaTransferReservation.create([{
+      reservationId: crypto.randomBytes(24).toString("base64url"),
+      direction,
+      userId: req.user.userId,
+      clientIdHash: scopeHash("client-record", req.cryptoDevice.clientId),
+      sessionIdHash: hashSessionId(req.user.sid),
+      ipHash: hashRequestIp(req),
+      conversationIdHash: conversationId ? scopeHash("conversation", conversationId) : "",
+      uploadIdHash: uploadId ? scopeHash("upload", uploadId) : "",
+      declaredBytes: bytes,
+      scopes,
+      expiresAt: new Date(now.getTime() + RESERVATION_TTL_MS)
+    }], { session });
+    const bucketKeys = [];
     for (const scope of scopes) {
-      await incrementState(scope, direction, bytes);
-      incrementedStates.push(scope);
+      await incrementState(scope, direction, bytes, { session });
       for (const window of Object.keys(WINDOWS)) {
-        bucketKeys.push(await incrementWindow(scope, direction, window, bytes, now));
+        bucketKeys.push(await incrementWindow(scope, direction, window, bytes, now, { session }));
       }
     }
     reservation.state = "reserved";
     reservation.bucketKeys = bucketKeys;
-    await reservation.save();
+    await reservation.save({ session });
     return {
       reservationId: reservation.reservationId,
       declaredBytes: bytes
     };
-  } catch (err) {
-    await Promise.allSettled(
-      incrementedStates.map(scope => decrementState(scope, direction, bytes))
-    );
-    reservation.state = "released";
-    reservation.releasedAt = new Date();
-    await reservation.save().catch(() => {});
-    throw err;
-  }
+  });
 }
 
 async function settleReservation(reservationId, {
   completed,
-  actualBytes = 0
+  actualBytes = 0,
+  uploadId = ""
 }) {
-  const reservation = await MediaTransferReservation.findOneAndUpdate(
-    { reservationId, state: "reserved" },
-    {
-      $set: {
-        state: completed ? "completed" : "released",
-        actualBytes: completed ? actualBytes : 0,
-        ...(completed ? { completedAt: new Date() } : { releasedAt: new Date() })
-      }
-    },
-    { returnDocument: "before" }
-  ).lean();
-  if (!reservation) return false;
+  return runMongoTransaction(async session => {
+    const reservation = await MediaTransferReservation.findOne({
+      reservationId,
+      state: "reserved"
+    }).session(session).lean();
+    if (!reservation) return false;
+    if (completed && actualBytes > reservation.declaredBytes) {
+      throw quotaError("encrypted media exceeded its signed byte reservation");
+    }
 
-  const direction = reservation.direction;
-  await Promise.all(reservation.scopes.map(scope => {
-    const activeField = direction === "upload" ? "activeUploads" : "activeDownloads";
-    const increment = { [activeField]: -1 };
-    if (direction === "upload") {
-      increment.reservedStorageBytes = -reservation.declaredBytes;
-      if (completed) {
-        increment.temporaryStorageBytes = actualBytes;
-        increment.objectCount = 1;
+    if (completed && reservation.direction === "upload") {
+      const upload = await AttachmentUpload.findOneAndUpdate(
+        {
+          uploadId,
+          protocol: "mls-media-1",
+          lifecycleState: "temporary",
+          quotaStorageState: "untracked"
+        },
+        {
+          $set: {
+            quotaScopes: reservation.scopes,
+            quotaBytes: actualBytes,
+            quotaStorageState: "temporary"
+          }
+        },
+        { returnDocument: "after", session }
+      ).lean();
+      if (!upload) {
+        const error = new Error("encrypted media quota cannot bind to upload metadata");
+        error.code = "MEDIA_QUOTA_UPLOAD_BINDING_FAILED";
+        throw error;
       }
     }
-    return MediaQuotaState.updateOne({ key: scope.key }, { $inc: increment });
-  }));
-  return true;
+
+    const transition = await MediaTransferReservation.updateOne(
+      { _id: reservation._id, state: "reserved" },
+      {
+        $set: {
+          state: completed ? "completed" : "released",
+          actualBytes: completed ? actualBytes : 0,
+          ...(completed ? { completedAt: new Date() } : { releasedAt: new Date() })
+        }
+      },
+      { session }
+    );
+    if (transition.modifiedCount !== 1) return false;
+
+    const direction = reservation.direction;
+    for (const scope of reservation.scopes) {
+      const activeField = direction === "upload" ? "activeUploads" : "activeDownloads";
+      const increment = { [activeField]: -1 };
+      if (direction === "upload") {
+        increment.reservedStorageBytes = -reservation.declaredBytes;
+        if (completed) {
+          increment.temporaryStorageBytes = actualBytes;
+          increment.objectCount = 1;
+        }
+      }
+      await MediaQuotaState.updateOne(
+        { key: scope.key },
+        { $inc: increment },
+        { session }
+      );
+    }
+    return true;
+  });
 }
 
-async function completeMediaTransfer(reservationId, actualBytes) {
+async function completeMediaTransfer(reservationId, actualBytes, { uploadId = "" } = {}) {
   if (!Number.isSafeInteger(actualBytes) || actualBytes <= 0) {
     throw new TypeError("invalid completed media byte count");
   }
-  const reservation = await MediaTransferReservation.findOne({
-    reservationId,
-    state: "reserved"
-  }).select("declaredBytes").lean();
-  if (!reservation) return false;
-  if (actualBytes > reservation.declaredBytes) {
-    throw quotaError("encrypted media exceeded its signed byte reservation");
-  }
-  return settleReservation(reservationId, { completed: true, actualBytes });
+  return settleReservation(reservationId, { completed: true, actualBytes, uploadId });
 }
 
 async function releaseMediaTransfer(reservationId) {
@@ -389,11 +404,82 @@ async function releaseExpiredMediaTransfers(now = new Date()) {
   return settled.filter(item => item.status === "fulfilled" && item.value).length;
 }
 
+function storageIncrement(from, to, bytes) {
+  const increment = {};
+  if (from === "temporary") increment.temporaryStorageBytes = -bytes;
+  if (from === "persistent") increment.persistentStorageBytes = -bytes;
+  if (to === "temporary") increment.temporaryStorageBytes = bytes;
+  if (to === "persistent") increment.persistentStorageBytes = bytes;
+  if (to === "released") increment.objectCount = -1;
+  return increment;
+}
+
+async function transitionMediaUploadQuota(uploadId, {
+  from,
+  to,
+  session = null
+}) {
+  const allowedFrom = Array.isArray(from) ? from : [from];
+  if (!allowedFrom.every(value => ["temporary", "persistent"].includes(value)) ||
+      !["persistent", "released"].includes(to)) {
+    throw new TypeError("invalid media quota storage transition");
+  }
+  const work = async transactionSession => {
+    const upload = await AttachmentUpload.findOneAndUpdate(
+      {
+        uploadId,
+        quotaStorageState: { $in: allowedFrom },
+        quotaBytes: { $gt: 0 },
+        "quotaScopes.0": { $exists: true }
+      },
+      { $set: { quotaStorageState: to } },
+      { returnDocument: "before", session: transactionSession }
+    ).lean();
+    if (!upload) return false;
+    for (const scope of upload.quotaScopes) {
+      await MediaQuotaState.updateOne(
+        { key: scope.key },
+        { $inc: storageIncrement(upload.quotaStorageState, to, upload.quotaBytes) },
+        { session: transactionSession }
+      );
+    }
+    return true;
+  };
+  return session ? work(session) : runMongoTransaction(work);
+}
+
+async function promoteMediaUploadQuota(uploadId, options = {}) {
+  return transitionMediaUploadQuota(uploadId, {
+    from: "temporary",
+    to: "persistent",
+    session: options.session || null
+  });
+}
+
+async function releaseMediaUploadQuota(uploadId, options = {}) {
+  return transitionMediaUploadQuota(uploadId, {
+    from: ["temporary", "persistent"],
+    to: "released",
+    session: options.session || null
+  });
+}
+
+async function releaseAndDeleteMediaUpload(uploadId) {
+  return runMongoTransaction(async session => {
+    await releaseMediaUploadQuota(uploadId, { session });
+    return AttachmentUpload.deleteOne({ uploadId }, { session });
+  });
+}
+
 module.exports = {
   reserveMediaTransfer,
   completeMediaTransfer,
   releaseMediaTransfer,
   releaseExpiredMediaTransfers,
+  promoteMediaUploadQuota,
+  releaseMediaUploadQuota,
+  releaseAndDeleteMediaUpload,
+  scopeHash,
   windowLimit,
   stateLimit
 };

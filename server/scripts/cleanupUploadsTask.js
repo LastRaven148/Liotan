@@ -22,7 +22,10 @@ const {
   cleanupPendingAvatars,
   cleanupDetachedAvatars
 } = require("../services/avatarLifecycle");
-const { releaseExpiredMediaTransfers } = require("../services/mediaQuota");
+const {
+  releaseAndDeleteMediaUpload,
+  releaseExpiredMediaTransfers
+} = require("../services/mediaQuota");
 
 const uploadsDir =
   path.resolve(
@@ -140,7 +143,7 @@ async function cleanupR2OrphanUploads({ deleteObject = deleteFromR2, now = new D
   for (const upload of orphanUploads) {
     try {
       await deleteObject(upload.storageKey, { storageClass: "private-media" });
-      await AttachmentUpload.deleteOne({ _id: upload._id, lifecycleState: upload.lifecycleState });
+      await releaseAndDeleteMediaUpload(upload.uploadId);
       deleted += 1;
     } catch (err) {
       await AttachmentUpload.updateOne(
