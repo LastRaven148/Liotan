@@ -2,15 +2,15 @@
 
 ## Review method
 
-The code-and-generated-evidence checkpoint is `8396771`, compared with audited/base commit
+The code-and-generated-evidence checkpoint is `db7ee8d`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
-- 162 tracked files differ;
+- 166 tracked files differ;
 - every JavaScript/JSX/MJS production module is parsed into the relative-import
   graph;
 - explicit roots are the client entry, server entry and every operational
   `server/scripts` entry;
-- all 297 production modules are reachable from the 21 roots;
+- all 298 production modules are reachable from the 22 roots;
 - `durableMigration.js` is reachable from operational migration roots;
 - every deletion is locked by regression/import-graph evidence;
 - evidence documents in this directory are reviewed separately and are not
@@ -19,7 +19,7 @@ The code-and-generated-evidence checkpoint is `8396771`, compared with audited/b
 The canonical review command is:
 
 ```text
-git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..8396771
+git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..db7ee8d
 ```
 
 ## Risk-focused review
@@ -44,7 +44,9 @@ M  .github/workflows/codeql.yml
 M  .github/workflows/deploy-vps.yml
 M  SECURITY.md
 M  artifacts/licenses/license-inventory.json
+M  artifacts/sbom/client.cdx.json
 M  artifacts/sbom/root.cdx.json
+M  artifacts/sbom/server.cdx.json
 M  client/.env.example
 D  client/src/components/chat/message/MessagePhoto.jsx
 D  client/src/components/chat/message/MessageVideo.jsx
@@ -91,8 +93,10 @@ M  scripts/checkRelease.js
 A  scripts/codeHealthAudit.js
 M  scripts/deployInstallerPreflightRegression.sh
 M  scripts/deploymentBundleRegression.js
+M  scripts/generateSbom.js
 M  scripts/makeRelease.js
 M  scripts/mediaStorageRegression.js
+M  scripts/sbomReproducibility.js
 M  scripts/securityRegression.js
 A  scripts/sourceRevision.js
 A  scripts/workflowSecurityAudit.js

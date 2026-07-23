@@ -31,8 +31,10 @@ GitHub and the deployment edge are supply-chain/operational trust domains.
 ## Correct CodeQL statement
 
 The remediation does not claim that CodeQL has no alerts. It fixes the concrete
-path, dynamic property/query and release TOCTOU sinks reproduced in source and
-adds local workflow/code-health gates. The exact remediation branch must still
-complete CodeQL on GitHub, and the owner must verify a ruleset that blocks
-merging at the accepted severity. No alert should be dismissed only to obtain a
-green check.
+path, dynamic property/query, release TOCTOU and insecure-temporary-file sinks
+reproduced in source and adds local workflow/code-health gates. Both CodeQL
+checks pass on the remediation head without dismissing an alert. Read-only
+inspection confirms that 33 historical high alerts remain open on `main` and
+that branch protection requires `analyze`, not the aggregate `CodeQL` alert
+gate. The owner must change that policy if merges are to be blocked at the
+accepted alert severity.

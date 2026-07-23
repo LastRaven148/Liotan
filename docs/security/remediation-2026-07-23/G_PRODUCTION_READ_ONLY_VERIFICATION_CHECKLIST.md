@@ -126,15 +126,20 @@ verification.
 
 In the Draft PR:
 
-- CodeQL branch scan completes for the remediation SHA;
+- CodeQL analysis and aggregate alert checks complete for the remediation SHA;
 - Dependency Review completes;
 - required checks are attached to the protected target through a ruleset;
 - CodeQL merge protection is configured for the owner’s accepted severity;
 - no open alert is dismissed merely to make the check green;
 - artifact attestation identifies the exact reviewed SHA.
 
-These settings/results are `BLOCKED BY PRODUCTION ACCESS` from the local
-workspace and must be verified by the repository owner.
+Read-only inspection of PR #26 confirmed that the remediation-head `analyze`
+and aggregate `CodeQL` checks pass and no alert was dismissed. It also
+confirmed that `main` protection strictly requires `Release gate (Node 22)`,
+`analyze`, `review`, and `semgrep-cloud-platform/scan`, but does not require the
+aggregate `CodeQL` alert check. There are 33 historical high alerts open on
+`main`. Changing the required policy or triaging historical alerts remains
+`BLOCKED BY PRODUCTION ACCESS` and must be performed by the repository owner.
 
 ## 7. External private reporting decision
 

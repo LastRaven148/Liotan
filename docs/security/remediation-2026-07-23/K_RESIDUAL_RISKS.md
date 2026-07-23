@@ -35,10 +35,13 @@ of the dependency’s cryptographic implementation.
 
 ### GitHub CodeQL enforcement
 
-Concrete code sinks were fixed and local workflow/static gates pass. The actual
-branch CodeQL result, current alerts, required code-scanning ruleset and merge
-protection exist on GitHub. They were not changed or silently dismissed from
-this local remediation.
+Concrete code sinks were fixed, local workflow/static gates pass, and both the
+analysis and aggregate alert checks are green on the remediation head. Read-only
+GitHub inspection found 33 historical high alerts on `main`; strict branch
+protection requires the `analyze` workflow check but not the aggregate `CodeQL`
+alert gate. No alert was changed or silently dismissed. Requiring the accepted
+aggregate code-scanning result and triaging the historical baseline are
+repository-owner operations.
 
 ### Production posture evidence
 

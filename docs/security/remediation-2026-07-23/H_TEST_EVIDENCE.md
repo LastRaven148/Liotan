@@ -107,6 +107,47 @@ Commit `8396771` synchronizes those generated artifacts with the audited
 lockfile. License policy and two independent SBOM generations pass and produce
 identical component hashes. The failed candidate is not counted as a clean run.
 
+### Pull-request container ownership and exact revision
+
+The first Draft PR CI run (`30012427703`) failed before the release graph
+because Git rejected the container-mounted checkout as dubious ownership.
+That run also exposed that `github.sha` represented GitHub’s synthetic
+pull-request merge commit rather than the reviewed branch head.
+
+Commit `da7d1e5` trusts only the exact `$GITHUB_WORKSPACE` inside the ephemeral
+container and binds checkout, manifests and evidence to the PR-head SHA (or the
+push SHA outside pull requests). Workflow and security regressions lock both
+properties. CI run `30013780533` subsequently passed the entire Linux release
+gate but showed that the separate deployment-bundle step did not reuse the
+trusted container HOME and therefore lost the Git safe-directory setting.
+Commit `db7ee8d` makes the packaging step reuse `/root`, and the workflow audit
+locks that cross-step provenance requirement. Neither failed CI run is counted
+as a clean run.
+
+### CodeQL insecure temporary directory
+
+The first aggregate PR CodeQL gate (`89224009130`) reported one new high
+`js/insecure-temporary-file` alert in release staging. The directory name used
+PID and wall-clock time below the shared OS temporary directory.
+
+Commit `aa2dedc` uses atomic `mkdtempSync`, removes the predictable path and
+adds a regression. The repeated analysis and aggregate CodeQL checks passed;
+the alert was fixed in source and was not dismissed or suppressed.
+
+### Cross-platform CycloneDX evidence
+
+CI run `30013046046` passed checkout, the exact workspace trust step, browser
+runtime launch, tests, audits and SBOM reproducibility, then the clean-release
+guard correctly rejected the tracked tree. The client SBOM generated on Linux
+contained Linux esbuild/Rollup optional binaries while the committed evidence
+contained the Windows variants. A simultaneous clean Windows release run on
+the same SHA passed, proving that the generator was host-dependent.
+
+Commit `a47618f` switches CycloneDX generation to complete lockfile-only input.
+The regression requires both Linux and Windows optional components and two
+byte-identical generations. The diagnostic Windows pass and failed Linux run
+are not counted as the two final clean runs.
+
 ## Final clean-run protocol
 
 Publication is permitted only after two consecutive runs on the final

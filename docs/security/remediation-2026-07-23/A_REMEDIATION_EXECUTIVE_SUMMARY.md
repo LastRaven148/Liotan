@@ -8,7 +8,7 @@
 - The audit archive was extracted outside the repository and treated as an
   untrusted backlog, not as source of truth.
 - `git ls-files` reported 440 tracked files at the audited commit. The
-  code-and-generated-evidence checkpoint `8396771` has 458 tracked files after intentional
+  code-and-generated-evidence checkpoint `db7ee8d` has 458 tracked files after intentional
   additions, evidence and proven deletions; the final count must always be obtained from
   `git ls-files`, including these evidence documents.
 - No production database, R2 bucket, Cloudflare, Nginx, DNS, PM2 process, VPS,
@@ -37,6 +37,12 @@ protocol and storage invariants:
   mutation chain;
 - release archives, client builds, deployment bundles, installer checks, and
   GitHub attestations bind to one exact source commit;
+- pull-request CI checks out the exact reviewed head, trusts only its exact
+  container workspace, and creates release staging in an atomically allocated
+  temporary directory;
+- CycloneDX evidence is generated from complete lockfiles and is reproducible
+  across Windows and Linux instead of reflecting host-specific optional
+  packages;
 - high dependency advisories were removed, workflow permissions were narrowed,
   and production import reachability is enforced;
 - filesystem, Mongo query/property, and release TOCTOU sinks identified during
@@ -44,10 +50,10 @@ protocol and storage invariants:
 
 ## Finding disposition
 
-The detailed matrix is in `B_FINDING_STATUS_MATRIX.md`. Of 24 original and new
+The detailed matrix is in `B_FINDING_STATUS_MATRIX.md`. Of 27 original and new
 findings:
 
-- 15 are `FIXED`;
+- 18 are `FIXED`;
 - 1 is `NOT APPLICABLE`;
 - 5 are `RESIDUAL PLATFORM LIMITATION`;
 - 1 is `BLOCKED BY PRODUCTION ACCESS`;
@@ -84,8 +90,9 @@ The following cannot be honestly closed by repository code alone:
 - recipients can retain plaintext or old key material after a delete event;
 - exact security properties inside the third-party CoreCrypto/WASM
   implementation are outside this repository;
-- GitHub Code Scanning merge protection and current branch alert state require
-  repository-platform access;
+- the remediation branch CodeQL scan is green, but `main` protection requires
+  the analysis workflow rather than the aggregate alert gate; changing that
+  repository-platform policy is owner work;
 - physical production legacy deletion and external private-vulnerability intake
   require explicit owner decisions.
 
