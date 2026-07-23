@@ -95,6 +95,18 @@ concurrent render.
 Fix `ff13e65` reuses one root and commits the desktop-to-mobile fixture render
 with `flushSync`. The exact WebKit case then passed 10 consecutive repetitions.
 
+### Dependency evidence synchronization
+
+The first final-tree candidate run passed all 111 browser tests and all
+security/privacy/dependency audits, then the clean-release guard rejected the
+tree. License/SBOM generation had correctly updated two tracked artifacts that
+still described the pre-remediation `brace-expansion 2.1.1` and
+`fast-uri 3.1.3` even though the lockfile used patched 2.1.2/3.1.4.
+
+Commit `8396771` synchronizes those generated artifacts with the audited
+lockfile. License policy and two independent SBOM generations pass and produce
+identical component hashes. The failed candidate is not counted as a clean run.
+
 ## Final clean-run protocol
 
 Publication is permitted only after two consecutive runs on the final

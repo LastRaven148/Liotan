@@ -2,10 +2,10 @@
 
 ## Review method
 
-The code-complete checkpoint is `ff13e65`, compared with audited/base commit
+The code-and-generated-evidence checkpoint is `8396771`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
-- 147 tracked files differ;
+- 162 tracked files differ;
 - every JavaScript/JSX/MJS production module is parsed into the relative-import
   graph;
 - explicit roots are the client entry, server entry and every operational
@@ -19,7 +19,7 @@ The code-complete checkpoint is `ff13e65`, compared with audited/base commit
 The canonical review command is:
 
 ```text
-git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..ff13e65
+git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..8396771
 ```
 
 ## Risk-focused review
@@ -43,6 +43,8 @@ M  .github/workflows/ci.yml
 M  .github/workflows/codeql.yml
 M  .github/workflows/deploy-vps.yml
 M  SECURITY.md
+M  artifacts/licenses/license-inventory.json
+M  artifacts/sbom/root.cdx.json
 M  client/.env.example
 D  client/src/components/chat/message/MessagePhoto.jsx
 D  client/src/components/chat/message/MessageVideo.jsx
@@ -71,6 +73,18 @@ M  client/src/utils/chatState.jsx
 M  client/test/browser/mls-core.spec.js
 M  client/test/production/fixture.jsx
 M  client/vite.config.js
+ A  docs/security/remediation-2026-07-23/A_REMEDIATION_EXECUTIVE_SUMMARY.md
+ A  docs/security/remediation-2026-07-23/B_FINDING_STATUS_MATRIX.md
+ A  docs/security/remediation-2026-07-23/C_CRYPTO_V4_POST_REMEDIATION_MAP.md
+ A  docs/security/remediation-2026-07-23/D_DEVICE_RECOVERY_MIGRATION.md
+ A  docs/security/remediation-2026-07-23/E_MEDIA_QUOTA_AND_STORAGE_ARCHITECTURE.md
+ A  docs/security/remediation-2026-07-23/F_LEGACY_RETIREMENT_PLAN.md
+ A  docs/security/remediation-2026-07-23/G_PRODUCTION_READ_ONLY_VERIFICATION_CHECKLIST.md
+ A  docs/security/remediation-2026-07-23/H_TEST_EVIDENCE.md
+ A  docs/security/remediation-2026-07-23/I_BREAKING_CHANGE_AND_ROLLBACK_PLAN.md
+ A  docs/security/remediation-2026-07-23/J_FULL_CHANGED_FILES_REVIEW.md
+ A  docs/security/remediation-2026-07-23/K_RESIDUAL_RISKS.md
+ A  docs/security/remediation-2026-07-23/L_CORRECTIONS_TO_PREVIOUS_AUDIT.md
 M  package-lock.json
 M  package.json
 M  scripts/checkRelease.js
@@ -78,6 +92,7 @@ A  scripts/codeHealthAudit.js
 M  scripts/deployInstallerPreflightRegression.sh
 M  scripts/deploymentBundleRegression.js
 M  scripts/makeRelease.js
+M  scripts/mediaStorageRegression.js
 M  scripts/securityRegression.js
 A  scripts/sourceRevision.js
 A  scripts/workflowSecurityAudit.js
