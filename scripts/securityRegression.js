@@ -32,6 +32,11 @@ assert.match(releaseCheck, /require\("yauzl"\)/,
   "release ZIP validation must use a locked cross-platform implementation");
 assert.doesNotMatch(releaseCheck, /execFileSync\("(?:unzip|bsdtar|tar)"/,
   "release validation must not depend on runner-specific ZIP commands");
+const makeRelease = read("scripts/makeRelease.js");
+assert.match(makeRelease, /fs\.mkdtempSync\(path\.join\(os\.tmpdir\(\), "liotan-release-"\)\)/,
+  "release staging must use an atomically-created unpredictable temporary directory");
+assert.doesNotMatch(makeRelease, /liotan-release-\$\{process\.pid\}-\$\{Date\.now\(\)\}/,
+  "release staging must not use a predictable temporary path");
 
 const first = getChatId("abc", "def_ghi");
 const second = getChatId("abc_def", "ghi");

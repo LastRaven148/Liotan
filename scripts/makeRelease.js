@@ -13,7 +13,7 @@ const version = String(rootPackage.version || "dev");
 const outDir = path.join(root, "release");
 const outFile = path.join(outDir, `Liotan-${version}-clean.zip`);
 const checksumFile = `${outFile}.sha256`;
-const tmpDir = path.join(os.tmpdir(), `liotan-release-${process.pid}-${Date.now()}`);
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "liotan-release-"));
 const stagedRoot = path.join(tmpDir, "Liotan");
 const rootReal = fs.realpathSync.native(root);
 const ARCHIVE_DATE = new Date("2000-01-01T00:00:00.000Z");
@@ -196,7 +196,6 @@ async function createZip() {
 async function main() {
   const sourceSha = resolveSourceRevision(root);
   assertCleanTrackedSource(root);
-  fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
   fs.rmSync(outFile, { force: true });
   fs.rmSync(checksumFile, { force: true });
