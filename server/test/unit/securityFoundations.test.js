@@ -102,3 +102,46 @@ test("device authentication v2 uses local entropy, dual-proof migration and expl
   assert.match(identity, /CryptoDeviceSecurityEvent/);
   assert.match(identity, /visibleSecurityEventAcknowledged/);
 });
+
+test("avatar authorization, limiter and lease run before multipart parsing", () => {
+  for (const relativePath of [
+    "server/routes/profileRoutes.js",
+    "server/routes/groupRoutes.js"
+  ]) {
+    const source = read(relativePath);
+    const route = source.slice(source.indexOf("uploadLimiter"));
+    assert(route.indexOf("uploadLimiter") < route.indexOf('upload.single("avatar")'));
+    assert(route.indexOf("guard") < route.indexOf('upload.single("avatar")'));
+  }
+});
+
+test("avatar decoding rejects animation, disguised GIF and oversized dimensions", () => {
+  const { isAllowedAvatar } = require("../../middleware/uploadSecurity");
+  const { assertSafeAvatarDimensions } = require("../../utils/avatarProcessing");
+
+  assert.equal(isAllowedAvatar({
+    mimeType: "image/gif",
+    fileName: "avatar.gif",
+    size: 128
+  }), false);
+
+  const oversizedPng = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(oversizedPng);
+  oversizedPng.write("IHDR", 12, "ascii");
+  oversizedPng.writeUInt32BE(4097, 16);
+  oversizedPng.writeUInt32BE(1, 20);
+  assert.throws(
+    () => assertSafeAvatarDimensions(oversizedPng, "image/png"),
+    err => err.status === 400 && /decode budget/.test(err.message)
+  );
+
+  const animatedWebp = Buffer.alloc(30);
+  animatedWebp.write("RIFF", 0, "ascii");
+  animatedWebp.write("WEBP", 8, "ascii");
+  animatedWebp.write("VP8X", 12, "ascii");
+  animatedWebp[20] = 0x02;
+  assert.throws(
+    () => assertSafeAvatarDimensions(animatedWebp, "image/webp"),
+    err => err.status === 400 && /animated/.test(err.message)
+  );
+});

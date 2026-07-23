@@ -334,6 +334,19 @@ function readXmlTags(xml, tag) {
   return result;
 }
 
+function readR2ObjectEntries(xml) {
+  const entries = [];
+  const re = /<Contents>([\s\S]*?)<\/Contents>/g;
+  let match;
+  while ((match = re.exec(String(xml || "")))) {
+    entries.push({
+      key: decodeXmlEntities(readXmlTag(match[1], "Key")),
+      lastModified: readXmlTag(match[1], "LastModified")
+    });
+  }
+  return entries.filter(entry => entry.key);
+}
+
 async function listR2Objects({
   prefix = "",
   continuationToken = "",
@@ -351,6 +364,7 @@ async function listR2Objects({
 
   return {
     keys: readXmlTags(body, "Key"),
+    objects: readR2ObjectEntries(body),
     isTruncated: readXmlTag(body, "IsTruncated") === "true",
     nextContinuationToken: readXmlTag(body, "NextContinuationToken")
   };

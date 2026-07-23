@@ -2383,3 +2383,79 @@ test("account deletion without conversations has a single multi-instance worker 
   assert.equal(results.find(Boolean).state, "completed");
   assert.equal(await User.countDocuments({ _id: account.user._id }), 0);
 });
+
+test("concurrent avatar replacements have one CAS winner and delete the losing object", async () => {
+  const account = await createAuthenticatedUser("avatar_cas_owner");
+  const AvatarObject = require("../../models/AvatarObject");
+  const { replaceAvatar } = require("../../services/avatarLifecycle");
+  const current = await User.findById(account.user._id);
+  const deletedKeys = [];
+  const deleteFile = async file => {
+    deletedKeys.push(file.storageKey);
+  };
+  const createResult = suffix => ({
+    url: `https://avatars.invalid/${suffix}`,
+    key: `liotan/avatars/${suffix}`,
+    storageType: "r2:public-avatar"
+  });
+  const replacements = await Promise.allSettled([
+    replaceAvatar({
+      model: User,
+      selector: { _id: current._id },
+      current,
+      ownerType: "user",
+      result: createResult("cas-left.png"),
+      avatarUrl: "https://avatars.invalid/cas-left.png?v=1",
+      deleteFile
+    }),
+    replaceAvatar({
+      model: User,
+      selector: { _id: current._id },
+      current,
+      ownerType: "user",
+      result: createResult("cas-right.png"),
+      avatarUrl: "https://avatars.invalid/cas-right.png?v=1",
+      deleteFile
+    })
+  ]);
+  assert.equal(replacements.filter(result => result.status === "fulfilled").length, 1);
+  const rejected = replacements.find(result => result.status === "rejected");
+  assert.equal(rejected.reason.status, 409);
+  const persisted = await User.findById(current._id).lean();
+  assert.equal(persisted.avatarVersion, 1);
+  const records = await AvatarObject.find({
+    storageKey: { $in: ["liotan/avatars/cas-left.png", "liotan/avatars/cas-right.png"] }
+  }).lean();
+  assert.deepEqual(new Set(records.map(record => record.state)), new Set(["active", "deleted"]));
+  assert.equal(deletedKeys.length, 1);
+  assert.notEqual(deletedKeys[0], persisted.avatarStorageKey);
+});
+
+test("avatar reconciliation is dry-run by default and only selects old detached objects", async () => {
+  const { cleanupDetachedAvatars } = require("../../services/avatarLifecycle");
+  const oldKey = `liotan/avatars/detached-${crypto.randomUUID()}.png`;
+  const freshKey = `liotan/avatars/fresh-${crypto.randomUUID()}.png`;
+  const page = {
+    objects: [
+      { key: oldKey, lastModified: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() },
+      { key: freshKey, lastModified: new Date().toISOString() }
+    ],
+    isTruncated: false,
+    nextContinuationToken: ""
+  };
+  const deleted = [];
+  const dryRun = await cleanupDetachedAvatars({
+    dryRun: true,
+    listObjects: async () => page,
+    deleteObject: async key => deleted.push(key)
+  });
+  assert.deepEqual(dryRun.keys, [oldKey]);
+  assert.deepEqual(deleted, []);
+
+  const applied = await cleanupDetachedAvatars({
+    listObjects: async () => page,
+    deleteObject: async key => deleted.push(key)
+  });
+  assert.deepEqual(applied.keys, [oldKey]);
+  assert.deepEqual(deleted, [oldKey]);
+});

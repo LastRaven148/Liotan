@@ -6,6 +6,8 @@ const authMiddleware =
 
 const upload =
   require("../config/upload");
+const { uploadLimiter } = require("../middleware/rateLimiters");
+const { guardGroupAvatarUpload } = require("../middleware/avatarUploadGuard");
 
 const {
   createGroup,
@@ -49,6 +51,8 @@ router.patch(
 router.post(
   "/groups/:id/avatar",
   authMiddleware,
+  uploadLimiter,
+  guardGroupAvatarUpload,
   upload.single("avatar"),
   uploadGroupAvatar
 );

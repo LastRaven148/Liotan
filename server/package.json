@@ -17,6 +17,7 @@
     "audit:data-inventory": "node scripts/auditDataInventory.js",
     "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js",
     "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js",
+    "reconcile:avatars": "node scripts/reconcileAvatarStorage.js",
     "migrate:crypto": "node scripts/migrateCryptoState.js"
   },
   "keywords": [],
