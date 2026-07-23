@@ -411,6 +411,7 @@ build="$release/client/build"
 [[ -f "$release/server/scripts/migrateCryptoState.js" ]] || { echo "crypto state migration is missing from the candidate release" >&2; exit 2; }
 [[ -f "$release/server/scripts/migrateKeyTransparency.js" ]] || { echo "key transparency migration is missing from the candidate release" >&2; exit 2; }
 [[ -f "$release/server/scripts/migrateMediaQuotaLifecycle.js" ]] || { echo "media quota migration is missing from the candidate release" >&2; exit 2; }
+[[ -f "$release/server/scripts/migrateMessageMutationProtocol.js" ]] || { echo "message mutation migration is missing from the candidate release" >&2; exit 2; }
 [[ ! -e "$release/server/.env" && ! -L "$release/server/.env" ]] || { echo "deployment archive must not contain server/.env" >&2; exit 2; }
 validate_candidate_provenance "$release" "$revision" || exit 2
 
@@ -454,6 +455,9 @@ NODE
   LIOTAN_MEDIA_QUOTA_MIGRATION_CONFIRM=APPLY_50_3_0_MEDIA_QUOTA_LIFECYCLE \
   LIOTAN_MAINTENANCE_MODE=true \
     node scripts/migrateMediaQuotaLifecycle.js --apply
+  LIOTAN_MESSAGE_MUTATION_MIGRATION_CONFIRM=APPLY_50_5_0_MESSAGE_MUTATION_CHAIN \
+  LIOTAN_MAINTENANCE_MODE=true \
+    node scripts/migrateMessageMutationProtocol.js --apply
 ); then
   if restart_pm2 && wait_for_health && validate_pm2_runtime "migration rollback PM2" "$previous"; then
     backend_stopped=0

@@ -107,6 +107,19 @@ export function assertEnvelopeSchema(envelope) {
     (envelope.kind !== "edit" && envelope.text !== "")) {
     throw new Error("Invalid authenticated MLS control event");
   }
+  if (["edit", "delete"].includes(envelope.kind) && envelope.mutation !== undefined) {
+    const mutation = envelope.mutation;
+    if (!mutation || mutation.v !== 2 ||
+      typeof mutation.targetSenderUsername !== "string" || !mutation.targetSenderUsername ||
+      typeof mutation.targetSenderClientId !== "string" || !mutation.targetSenderClientId ||
+      !Number.isFinite(Date.parse(String(mutation.targetSentAt || ""))) ||
+      !Number.isSafeInteger(mutation.revision) || mutation.revision < 1 ||
+      !MESSAGE_REFERENCE_RE.test(String(mutation.previousMutationId || ""))) {
+      throw new Error("Invalid authenticated MLS mutation chain");
+    }
+  } else if (envelope.kind === "pin" && envelope.mutation !== undefined) {
+    throw new Error("Invalid authenticated MLS pin event");
+  }
 }
 
 export function envelopeToUiMessage(state, envelope, username, eventCreatedAt = "") {
@@ -139,7 +152,12 @@ export function envelopeToUiMessage(state, envelope, username, eventCreatedAt = 
     replyTo: envelope.replyTo || null,
     createdAt: eventCreatedAt || envelope.sentAt,
     status: "sent",
-    mls: { conversationId: state.conversationId, senderClientId: envelope.senderClientId }
+    mls: {
+      conversationId: state.conversationId,
+      senderClientId: envelope.senderClientId,
+      mutationRevision: 0,
+      lastMutationId: envelope.clientMessageId
+    }
   };
 }
 

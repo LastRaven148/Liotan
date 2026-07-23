@@ -531,6 +531,13 @@ async function sendCiphertext(req, res, next) {
         const err = new Error("MLS event cannot commit and delete an attachment together"); err.status = 400; throw err;
       }
       const attachmentDeleteUploadId = String(attachmentDelete?.uploadId || "");
+      const attachmentDeleteBaseSequence = Number(req.body.attachmentDeleteBaseSequence);
+      if (attachmentDelete && (
+        !Number.isSafeInteger(attachmentDeleteBaseSequence) ||
+        attachmentDeleteBaseSequence < 0
+      )) {
+        const err = new Error("invalid MLS attachment deletion sequence guard"); err.status = 400; throw err;
+      }
       idempotencyInput = {
         conversationId: conversation.conversationId,
         clientMessageId,
@@ -550,6 +557,11 @@ async function sendCiphertext(req, res, next) {
         }
         emitted = { duplicate: true, conversation, sequence: existing.sequence, epoch: existing.epoch };
         return;
+      }
+      if (attachmentDelete && attachmentDeleteBaseSequence !== Number(conversation.sequence)) {
+        const err = new Error("MLS attachment deletion raced with another conversation event");
+        err.status = 409;
+        throw err;
       }
       if (epoch !== Number(conversation.epoch)) {
         const err = new Error("invalid MLS message metadata"); err.status = 400; throw err;

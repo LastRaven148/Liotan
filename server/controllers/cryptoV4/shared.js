@@ -181,6 +181,7 @@ function conversationView(conversation, directory) {
     blockedForEpochChange: conversation.blockedForEpochChange,
     epoch: conversation.epoch,
     sequence: conversation.sequence,
+    legacyMutationCutoffSequence: Number(conversation.legacyMutationCutoffSequence) || 0,
     creatorClientId: conversation.createdByClientId,
     activeClientIds: conversation.activeClientIds,
     authorizedClientIds: authorizedClientIds(conversation),

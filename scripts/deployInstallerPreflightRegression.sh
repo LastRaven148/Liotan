@@ -22,6 +22,7 @@ create_release_payload() {
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateCryptoState.js"
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateKeyTransparency.js"
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMediaQuotaLifecycle.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMessageMutationProtocol.js"
   printf '<!doctype html><script type="module" src="/assets/index-%s.js"></script>\n' "$marker" >"$target/client/build/index.html"
   printf 'console.log("%s");\n' "$marker" >"$target/client/build/assets/index-$marker.js"
   printf '\0asm' >"$target/client/build/assets/core-$marker.wasm"
@@ -164,7 +165,7 @@ MOCK_NPM
 set -Eeuo pipefail
 case "${1:-}" in
   -) cat >/dev/null ;;
-  scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js)
+  scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js|scripts/migrateMessageMutationProtocol.js)
     [[ "${2:-}" == "--apply" ]]
     ;;
   *) echo "unexpected mock node command: ${1:-}" >&2; exit 2 ;;

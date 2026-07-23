@@ -1289,8 +1289,12 @@ test("MLS media capability commits atomically with its message and leaves failur
     clientMessageId: crypto.randomUUID(),
     epoch: 1,
     ciphertext: crypto.randomBytes(160).toString("base64url"),
-    attachmentDelete: { uploadId: upload.uploadId, token: deleteToken }
+    attachmentDelete: { uploadId: upload.uploadId, token: deleteToken },
+    attachmentDeleteBaseSequence: sent.body.sequence - 1
   };
+  const staleDelete = await signedJson(alice, "POST", messagePath, deleteBody);
+  assert.equal(staleDelete.status, 409, staleDelete.text);
+  deleteBody.attachmentDeleteBaseSequence = sent.body.sequence;
   const scheduledDelete = await signedJson(alice, "POST", messagePath, deleteBody);
   assert.equal(scheduledDelete.status, 201, scheduledDelete.text);
   const deletionPending = await AttachmentUpload.findOne({ uploadId: upload.uploadId }).lean();
@@ -2845,4 +2849,29 @@ test("legacy retirement is count-only in dry-run and deletes objects before meta
     }
   });
   assert.equal(repeated.alreadyApplied, true);
+});
+
+test("message mutation migration freezes the exact legacy sequence cutoff idempotently", async () => {
+  const migration = require("../../scripts/migrateMessageMutationProtocol");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const rawConversation = await CryptoConversation.collection.findOne({});
+  assert.ok(rawConversation);
+  await CryptoConversation.collection.updateOne(
+    { _id: rawConversation._id },
+    {
+      $unset: { legacyMutationCutoffSequence: "" },
+      $set: { sequence: 37 }
+    }
+  );
+  const dryRun = await migration.inspect();
+  assert.equal(dryRun.conversationsWithoutCutoff >= 1, true);
+  assert.equal(dryRun.containsRawIdentifiers, false);
+  const first = await migration.applyMigration({ batchSize: 1 });
+  assert.equal(first.alreadyApplied, false);
+  const migrated = await CryptoConversation.collection.findOne({ _id: rawConversation._id });
+  assert.equal(migrated.legacyMutationCutoffSequence, 37);
+  const second = await migration.applyMigration({ batchSize: 1 });
+  assert.equal(second.alreadyApplied, true);
+  assert.equal((await migration.inspect()).conversationsWithoutCutoff, 0);
 });

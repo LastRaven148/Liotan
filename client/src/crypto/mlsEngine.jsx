@@ -29,6 +29,7 @@ import {
   loadOrCreateDeviceRequestSecret,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
+  putEncryptedHistoryRecords,
   putEncryptedRecord
 } from "./recoveryStore";
 import { clearOfflineMedia, deleteOfflineBlobs } from "../components/chat/message/messageStorage";
@@ -38,6 +39,12 @@ import {
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
 import { assertEnvelopeSchema, dispatchCryptoMessage, envelopeToUiMessage } from "./mls/envelope";
+import {
+  applyMessageMutation,
+  initialMessageMutationState,
+  mutationUiMetadata,
+  nextMutationBinding
+} from "./mls/messageMutations.mjs";
 import {
   bytesToHex,
   clientIdText,
@@ -122,6 +129,7 @@ class LiotanMlsEngine {
     this.resolving = new Map();
     this.ensuring = new Map();
     this.sendQueues = new Map();
+    this.mutationQueues = new Map();
     this.historyMigrations = new Map();
     this.deletionRequests = new Map();
     this.purgingConversations = new Set();
@@ -677,12 +685,49 @@ class LiotanMlsEngine {
   }
 
   async cacheEnvelope(state, sequence, envelope) {
-    const record = { sequence, envelope };
+    const record = {
+      sequence,
+      envelope,
+      ...(envelope.kind === "message" ? {
+        mutationState: initialMessageMutationState(envelope),
+        materialized: { text: envelope.text, deleted: false }
+      } : {})
+    };
     await putEncryptedHistoryRecord({
       conversationId: state.conversationId,
       sequence,
       clientMessageId: envelope.clientMessageId
     }, record, this.keys.cacheKey);
+  }
+
+  async acceptMessageMutation(state, event, envelope, { requireV2 = true } = {}) {
+    const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
+    const updatedTarget = applyMessageMutation(targetRecord, envelope, { requireV2 });
+    await putEncryptedHistoryRecords([
+      {
+        meta: {
+          conversationId: state.conversationId,
+          sequence: event.sequence,
+          clientMessageId: envelope.clientMessageId
+        },
+        value: { sequence: event.sequence, envelope }
+      },
+      {
+        meta: {
+          conversationId: state.conversationId,
+          sequence: targetRecord.sequence,
+          clientMessageId: targetRecord.envelope.clientMessageId
+        },
+        value: updatedTarget
+      }
+    ], this.keys.cacheKey);
+    if (updatedTarget.mutationState.deleted) {
+      const offlineKeys = this.attachmentOfflineKeys(
+        this.envelopeToUiMessage(state, targetRecord.envelope).attachment
+      );
+      if (offlineKeys.length) await deleteOfflineBlobs(offlineKeys);
+    }
+    return updatedTarget.mutationState;
   }
 
   syncCheckpointKey(conversationId) {
@@ -763,7 +808,8 @@ class LiotanMlsEngine {
       ).chatId,
       messageId: envelope.targetMessageId,
       text: envelope.text || "",
-      from: envelope.senderUsername
+      from: envelope.senderUsername,
+      ...mutationUiMetadata(envelope)
     });
   }
 
@@ -822,8 +868,21 @@ class LiotanMlsEngine {
       if (!envelope) continue;
       if (hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId))) continue;
       if (envelope.kind === "message") {
-        messages.push(this.envelopeToUiMessage(state, envelope, "", record.sequence));
+        if (record.materialized?.deleted || record.mutationState?.deleted) continue;
+        const message = this.envelopeToUiMessage(
+          state,
+          { ...envelope, text: record.materialized?.text ?? envelope.text },
+          "",
+          record.sequence
+        );
+        message.mls = {
+          ...message.mls,
+          mutationRevision: Number(record.mutationState?.revision || 0),
+          lastMutationId: String(record.mutationState?.lastMutationId || envelope.clientMessageId)
+        };
+        messages.push(message);
       } else {
+        if (envelope.mutation?.v === 2) continue;
         controls.push({
           type: envelope.kind,
           chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, "", record.sequence).chatId,
@@ -910,21 +969,20 @@ class LiotanMlsEngine {
       await observeTransparencyGossip(this, envelope.transparencyCheckpoint);
       const hidden = await this.hiddenMessages(state.conversationId);
       const isHidden = hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId));
+      if (isHidden) return;
+      let mutationState = null;
       if (["edit", "delete"].includes(envelope.kind)) {
-        const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
-        const target = targetRecord?.envelope;
-        if (!target || target.kind !== "message" || target.senderUsername !== envelope.senderUsername) {
-          throw new Error("Unauthorized MLS message mutation rejected");
-        }
-      }
-      if (!isHidden) {
+        const cutoff = Number(state.legacyMutationCutoffSequence || 0);
+        mutationState = await this.acceptMessageMutation(state, event, envelope, {
+          requireV2: Number(event.sequence) > cutoff
+        });
+      } else {
         try {
           await this.cacheEnvelope(state, event.sequence, envelope);
         } catch (error) {
           if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
         }
       }
-      if (isHidden) return;
       if (envelope.kind === "message") {
         dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence) });
       } else {
@@ -933,7 +991,9 @@ class LiotanMlsEngine {
           chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt, event.sequence).chatId,
           messageId: envelope.targetMessageId,
           text: envelope.text || "",
-          from: envelope.senderUsername
+          from: envelope.senderUsername,
+          mutationRevision: Number(mutationState?.revision || 0),
+          lastMutationId: String(mutationState?.lastMutationId || "")
         });
       }
     } finally {
@@ -972,6 +1032,10 @@ class LiotanMlsEngine {
           throw err;
         }
         const recipientHead = Math.max(0, Number(response.recipientHead) || 0);
+        state.sequence = Math.max(Number(state.sequence) || 0, Number(response.conversation?.sequence) || recipientHead);
+        state.legacyMutationCutoffSequence = Number(
+          response.conversation?.legacyMutationCutoffSequence ?? state.legacyMutationCutoffSequence ?? 0
+        );
         try {
           reconcileSyncCursor({ checkpoint, localHint: after, recipientHead });
           validateRecipientEventPage({ after, recipientHead, events: response.events });
@@ -1156,12 +1220,18 @@ class LiotanMlsEngine {
           epoch,
           ciphertext: bytesToBase64Url(ciphertext),
           ...(transport.attachmentCommit ? { attachmentCommit: transport.attachmentCommit } : {}),
-          ...(transport.attachmentDelete ? { attachmentDelete: transport.attachmentDelete } : {})
+          ...(transport.attachmentDelete ? {
+            attachmentDelete: transport.attachmentDelete,
+            attachmentDeleteBaseSequence: transport.attachmentDeleteBaseSequence
+          } : {})
         }
       }
     );
+    state.sequence = Math.max(Number(state.sequence) || 0, Number(response.sequence) || 0);
     try {
-      await this.cacheEnvelope(state, response.sequence, envelope);
+      if (!transport.deferLocalMutation) {
+        await this.cacheEnvelope(state, response.sequence, envelope);
+      }
     } catch (error) {
       // Delivery already committed. Never retry as a second message merely
       // because the encrypted local cache is full/unavailable.
@@ -1201,6 +1271,53 @@ class LiotanMlsEngine {
   async sendControl({ chatKey, dialog, kind, targetMessageId, text = "", attachmentDelete = null }) {
     if (!["edit", "delete", "pin"].includes(kind)) throw new Error("Invalid MLS control event");
     const state = await this.ensureConversation(chatKey, dialog);
+    if (["edit", "delete"].includes(kind)) {
+      const mutationKey = `${state.conversationId}:${String(targetMessageId || "")}`;
+      const previous = this.mutationQueues.get(mutationKey) || Promise.resolve();
+      const queued = previous.catch(() => {}).then(async () => {
+        await this.syncConversation(state);
+        const targetRecord = await this.findCachedEnvelope(state.conversationId, targetMessageId);
+        const target = targetRecord?.envelope;
+        if (!target || target.kind !== "message" || target.senderUsername !== this.username) {
+          throw new Error("Only the authenticated sender can mutate this MLS message");
+        }
+        const envelope = {
+          v: 1,
+          kind,
+          conversationId: state.conversationId,
+          clientMessageId: crypto.randomUUID(),
+          senderUsername: this.username,
+          senderClientId: this.clientIdString,
+          sentAt: new Date().toISOString(),
+          transparencyCheckpoint: this.transparencyGossip(state),
+          targetMessageId: String(targetMessageId || ""),
+          text: kind === "edit" ? String(text || "").slice(0, 20000) : "",
+          mutation: nextMutationBinding(target, targetRecord.mutationState)
+        };
+        const response = await this.enqueueEnvelope(state, envelope, {
+          attachmentDelete: kind === "delete" ? attachmentDelete : null,
+          attachmentDeleteBaseSequence: Number(state.sequence) || 0,
+          deferLocalMutation: true
+        });
+        const mutationState = await this.acceptMessageMutation(state, response, envelope, { requireV2: true });
+        dispatchCryptoMessage({
+          type: kind,
+          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,
+          messageId: envelope.targetMessageId,
+          text: envelope.text,
+          from: this.username,
+          mutationRevision: mutationState.revision,
+          lastMutationId: mutationState.lastMutationId
+        });
+        return { ok: true };
+      });
+      this.mutationQueues.set(mutationKey, queued);
+      try {
+        return await queued;
+      } finally {
+        if (this.mutationQueues.get(mutationKey) === queued) this.mutationQueues.delete(mutationKey);
+      }
+    }
     const envelope = {
       v: 1,
       kind,
