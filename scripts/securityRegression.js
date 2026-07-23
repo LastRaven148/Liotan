@@ -434,6 +434,30 @@ assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
 assert.match(fullAccountPurge, /dry-run/,
   "full account purge must default to a dry-run");
 
+const dataInventory = read("server/scripts/auditDataInventory.js");
+assert.match(dataInventory, /--production-read-only/,
+  "production data inventory must require an explicit read-only flag");
+assert.doesNotMatch(dataInventory, /\.(?:delete|update|replace)(?:One|Many)\(/,
+  "production data inventory must remain read-only");
+assert.match(dataInventory, /outputMode:\s*"aggregate-counts-only"/,
+  "production data inventory must expose only aggregate counts");
+
+const productionReadOnlyAudit = read("server/scripts/verifyProductionReadOnly.js");
+assert.match(productionReadOnlyAudit, /requiredFlag:\s*"--production-read-only"/,
+  "production verification must default to a safe plan");
+assert.match(productionReadOnlyAudit, /mutatesProduction:\s*false/,
+  "production verification must explicitly remain read-only");
+assert.doesNotMatch(productionReadOnlyAudit, /(?:writeFile|appendFile|unlink|rmSync|rmdir|spawn)\s*\(/,
+  "production verification must not contain filesystem or process mutation sinks");
+assert.match(productionReadOnlyAudit, /outputsSecretsOrIdentifiers:\s*false/,
+  "production verification output must exclude secret values and raw identifiers");
+
+const securityPolicy = read("SECURITY.md");
+assert.match(securityPolicy, /Private\s+Vulnerability Reporting is not currently enabled/,
+  "security policy must not promise an unavailable private reporting channel");
+assert.match(securityPolicy, /New draft advisory/,
+  "security policy must name the private channel available to maintainers");
+
 const group = read("server/controllers/groupController.js");
 const addBlock = group.slice(group.indexOf("async function addGroupMember"), group.indexOf("async function removeGroupMember"));
 const removeBlock = group.slice(group.indexOf("async function removeGroupMember"), group.indexOf("async function leaveGroup"));

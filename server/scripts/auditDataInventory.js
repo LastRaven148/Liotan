@@ -6,10 +6,31 @@ const { createRequire } = require("node:module");
 const serverRoot = process.cwd();
 const requireFromServer = createRequire(path.join(serverRoot, "package.json"));
 
+function assertReadOnlyInvocation() {
+  const production = process.env.NODE_ENV === "production";
+  const explicitlyConfirmed = process.argv.includes("--production-read-only");
+  if (production && !explicitlyConfirmed) {
+    throw new Error(
+      "Production inventory requires the explicit --production-read-only flag"
+    );
+  }
+}
+
+function safeError(error) {
+  return {
+    name: String(error?.name || "Error").slice(0, 80),
+    code: String(error?.code || "INVENTORY_FAILED").slice(0, 80)
+  };
+}
+
 async function run() {
+  assertReadOnlyInvocation();
   requireFromServer("dotenv").config({ path: path.join(serverRoot, ".env") });
   const mongoose = requireFromServer("mongoose");
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGO_URI, {
+    maxPoolSize: 2,
+    serverSelectionTimeoutMS: 10_000
+  });
 
   const model = name => require(path.join(serverRoot, "models", name));
   const User = model("User");
@@ -29,6 +50,14 @@ async function run() {
   const ClientInvalidation = model("ClientInvalidation");
   const DeletionWorkflow = model("DeletionWorkflow");
   const DeletionObjectTask = model("DeletionObjectTask");
+  const AvatarObject = model("AvatarObject");
+  const AvatarUploadLease = model("AvatarUploadLease");
+  const MediaQuotaBucket = model("MediaQuotaBucket");
+  const MediaQuotaState = model("MediaQuotaState");
+  const MediaTransferReservation = model("MediaTransferReservation");
+  const LegacyRetirementObjectTask = model("LegacyRetirementObjectTask");
+  const CryptoTransparencyLeaf = model("CryptoTransparencyLeaf");
+  const CryptoTransparencyCheckpoint = model("CryptoTransparencyCheckpoint");
   const now = new Date();
 
   const uploads = await AttachmentUpload.aggregate([
@@ -82,6 +111,26 @@ async function run() {
       deadLetterWorkflows: await DeletionWorkflow.countDocuments({ state: "dead-letter" }),
       pendingObjectTasks: await DeletionObjectTask.countDocuments({ state: "pending" }),
       deadLetterObjectTasks: await DeletionObjectTask.countDocuments({ state: "dead-letter" })
+    },
+    storageLifecycle: {
+      avatarObjects: await AvatarObject.countDocuments({}),
+      activeAvatarLeases: await AvatarUploadLease.countDocuments({ expiresAt: { $gt: now } }),
+      mediaQuotaBuckets: await MediaQuotaBucket.countDocuments({}),
+      mediaQuotaStates: await MediaQuotaState.countDocuments({}),
+      activeTransferReservations: await MediaTransferReservation.countDocuments({
+        state: "active",
+        expiresAt: { $gt: now }
+      }),
+      pendingLegacyObjectTasks: await LegacyRetirementObjectTask.countDocuments({
+        state: "pending"
+      }),
+      deadLetterLegacyObjectTasks: await LegacyRetirementObjectTask.countDocuments({
+        state: "dead-letter"
+      })
+    },
+    transparency: {
+      leaves: await CryptoTransparencyLeaf.countDocuments({}),
+      checkpoints: await CryptoTransparencyCheckpoint.countDocuments({})
     }
   }, null, 2));
 
@@ -89,6 +138,6 @@ async function run() {
 }
 
 run().catch(error => {
-  console.error(JSON.stringify({ error: error.message }));
+  console.error(JSON.stringify({ error: safeError(error) }));
   process.exitCode = 1;
 });

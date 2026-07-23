@@ -56,7 +56,8 @@ function main() {
   mustInclude(findings, "server/app.js", appJs, "apiNoStore", "low", "No-store middleware for unsafe API responses is missing.");
   mustInclude(findings, "server/app.js", appJs, "allowRequest: createSocketAllowRequest", "high", "Socket.IO production handshake guard is not enabled.");
 
-  if (!hostGuardJs.includes("api.liotan.com") || !hostGuardJs.includes("421")) {
+  if (!/DEFAULT_ALLOWED_API_HOSTS\s*=\s*new Set\(\[[\s\S]*?"api\.liotan\.com"/.test(hostGuardJs) ||
+      !/\.status\(\s*421\s*\)/.test(hostGuardJs)) {
     addFinding(findings, "high", "server/middleware/productionHostGuard.js", "Production Host header guard is missing allowed API hosts or rejection status.");
   }
 
