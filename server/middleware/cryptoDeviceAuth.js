@@ -5,6 +5,7 @@ const CryptoRequestNonce = require("../models/CryptoRequestNonce");
 const { transitionUserConversations } = require("../security/cryptoRosterState");
 const { canonicalJson } = require("../utils/canonicalJson");
 const { decodeBase64Url, sha256Base64Url, verifyEd25519, isDeviceId } = require("../security/cryptoV4");
+const { hashSessionId } = require("../utils/sessionSecurity");
 
 const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const NONCE_RE = /^[A-Za-z0-9_-]{22,96}$/;
@@ -44,6 +45,7 @@ async function cryptoDeviceAuth(req, res, next) {
       userId: req.user.userId,
       username: req.user.username,
       deviceId,
+      sessionIdHash: hashSessionId(req.user.sid),
       status: "active"
     });
 

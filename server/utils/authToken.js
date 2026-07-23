@@ -37,13 +37,18 @@ function sanitizeDecodedToken(decoded) {
   const userId = String(decoded.userId || "");
   const username = String(decoded.username || "");
   const sid = String(decoded.sid || "");
+  const iat = Number(decoded.iat);
+  const exp = Number(decoded.exp);
 
   if (
     !/^[a-fA-F0-9]{24}$/.test(userId) ||
     !/^[a-zA-Z0-9_]{3,15}$/.test(username) ||
     sid.length < 32 ||
     sid.length > 256 ||
-    !/^[A-Za-z0-9_-]+$/.test(sid)
+    !/^[A-Za-z0-9_-]+$/.test(sid) ||
+    !Number.isSafeInteger(iat) ||
+    !Number.isSafeInteger(exp) ||
+    exp <= iat
   ) {
     return null;
   }
@@ -51,7 +56,9 @@ function sanitizeDecodedToken(decoded) {
   return {
     userId,
     username,
-    sid
+    sid,
+    iat,
+    exp
   };
 }
 

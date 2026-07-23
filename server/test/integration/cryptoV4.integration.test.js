@@ -594,6 +594,58 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
   assert.equal(conversation.blockedForEpochChange, false);
 });
 
+test("a cryptographic device signature cannot cross its bound browser session", async () => {
+  const account = await createAccount("bound_device");
+  const otherSession = await createAdditionalSession(account);
+  const crossed = await signedJson(otherSession, "GET", "/crypto/v4/devices");
+  assert.equal(crossed.status, 401, crossed.text);
+
+  const original = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(original.status, 200, original.text);
+});
+
+test("durable media byte quotas account for rejected reservations", async () => {
+  const account = await createAccount("media_quota");
+  const {
+    reserveMediaTransfer,
+    releaseMediaTransfer
+  } = require("../../services/mediaQuota");
+  const envName = "MEDIA_QUOTA_ACCOUNT_UPLOAD_MINUTE_BYTES";
+  const prior = process.env[envName];
+  process.env[envName] = "64";
+  const req = {
+    user: {
+      userId: account.user._id,
+      username: account.username,
+      sid: account.sessionId
+    },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.42" }
+  };
+
+  let reservation;
+  try {
+    reservation = await reserveMediaTransfer(req, {
+      direction: "upload",
+      bytes: 40,
+      conversationId: crypto.randomUUID()
+    });
+    await assert.rejects(
+      reserveMediaTransfer(req, {
+        direction: "upload",
+        bytes: 40,
+        conversationId: crypto.randomUUID()
+      }),
+      err => err?.status === 429 && err?.code === "MEDIA_QUOTA_EXCEEDED"
+    );
+  } finally {
+    if (reservation) await releaseMediaTransfer(reservation.reservationId);
+    if (prior == null) delete process.env[envName];
+    else process.env[envName] = prior;
+  }
+});
+
 test("new cryptographic devices remain pending until an existing device signs a bound approval", async () => {
   const alice = await createAccount("appr_alice_t");
   const pending = await registerDevice(alice, {

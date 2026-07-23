@@ -57,3 +57,31 @@ test("plain npm test builds the deployment bundle before inspecting it", () => {
   assert(script.indexOf("build-client") > -1);
   assert(script.indexOf("build-client") < script.indexOf("test:deployment-bundle"));
 });
+
+test("proxy topology ignores spoofed forwarding headers outside trusted CIDRs", () => {
+  const { socketClientIp } = require("../../config/proxyTrust");
+  const socket = {
+    handshake: {
+      address: "203.0.113.20",
+      headers: { "x-forwarded-for": "198.51.100.9" }
+    }
+  };
+  assert.equal(socketClientIp(socket, {
+    NODE_ENV: "production",
+    LIOTAN_PROXY_TOPOLOGY: "trusted-nginx",
+    TRUSTED_PROXY_CIDRS: "127.0.0.1/32"
+  }), "203.0.113.20");
+
+  socket.handshake.address = "127.0.0.1";
+  assert.equal(socketClientIp(socket, {
+    NODE_ENV: "production",
+    LIOTAN_PROXY_TOPOLOGY: "trusted-nginx",
+    TRUSTED_PROXY_CIDRS: "127.0.0.1/32"
+  }), "198.51.100.9");
+
+  assert.equal(socketClientIp(socket, {
+    NODE_ENV: "production",
+    LIOTAN_PROXY_TOPOLOGY: "direct",
+    TRUSTED_PROXY_CIDRS: ""
+  }), "127.0.0.1");
+});

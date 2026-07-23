@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const { proxyConfigFromEnv } = require("../config/proxyTrust");
+const { validateIndependentSecrets } = require("./secretIsolation");
 
 const DEFAULT_SECRET_PATTERNS = [
   "secret",
@@ -22,6 +24,7 @@ function looksLikeWeakSecret(value) {
 
 function validateStartupSecurity(env, logger = console) {
   const findings = [];
+  const runtimeEnv = { ...process.env, ...env };
 
   if (env.NODE_ENV === "production") {
     let publicSecurityUrl;
@@ -60,11 +63,20 @@ function validateStartupSecurity(env, logger = console) {
         message: "LIOTAN_CRYPTO_DOMAIN must be a stable production domain used in MLS ClientIds."
       });
     }
-    if (looksLikeWeakSecret(env.JWT_SECRET)) {
+    findings.push(...validateIndependentSecrets(runtimeEnv, looksLikeWeakSecret));
+    try {
+      const proxy = proxyConfigFromEnv(runtimeEnv);
+      if (!runtimeEnv.LIOTAN_PROXY_TOPOLOGY) {
+        throw new TypeError("explicit production topology required");
+      }
+      if (proxy.topology !== "direct" && proxy.trustedCidrs.length === 0) {
+        throw new TypeError("trusted proxy CIDRs required");
+      }
+    } catch {
       findings.push({
         severity: "critical",
-        code: "weak_jwt_secret",
-        message: "JWT_SECRET must be a strong production secret of at least 32 characters."
+        code: "invalid_proxy_trust_topology",
+        message: "LIOTAN_PROXY_TOPOLOGY and TRUSTED_PROXY_CIDRS must describe the exact production edge path."
       });
     }
 
