@@ -1661,7 +1661,7 @@
     {
       "project": "root",
       "name": "brace-expansion",
-      "version": "2.1.1",
+      "version": "2.1.2",
       "license": "MIT",
       "development": true,
       "optional": true
@@ -2037,7 +2037,7 @@
     {
       "project": "root",
       "name": "fast-uri",
-      "version": "3.1.3",
+      "version": "3.1.4",
       "license": "BSD-3-Clause",
       "development": true,
       "optional": true
