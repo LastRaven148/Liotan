@@ -33,51 +33,42 @@ function isSanitizableObject(value) {
   return true;
 }
 
-function assignCleanValue(target, key, value) {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    configurable: true,
-    writable: true
-  });
-}
-
 function sanitizeValue(value) {
-  if (Array.isArray(value)) {
-    return value.map(sanitizeValue);
-  }
-
-  if (!isSanitizableObject(value)) {
-    return value;
-  }
-
-  const clean = Object.create(null);
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (isBlockedKey(key)) {
-      continue;
+  const pending = [value];
+  let visited = 0;
+  while (pending.length) {
+    const current = pending.pop();
+    if (!isSanitizableObject(current)) continue;
+    visited += 1;
+    if (visited > 10_000) {
+      const error = new Error("request structure is too complex");
+      error.status = 400;
+      throw error;
     }
-
-    assignCleanValue(clean, key, sanitizeValue(nestedValue));
+    for (const [key, nestedValue] of Object.entries(current)) {
+      if (isBlockedKey(key)) {
+        const error = new Error("invalid request fields");
+        error.status = 400;
+        throw error;
+      }
+      pending.push(nestedValue);
+    }
   }
-
-  return clean;
+  return value;
 }
 
 function mongoSanitize(req, res, next) {
-  if (req.body) {
-    req.body = sanitizeValue(req.body);
+  try {
+    sanitizeValue(req.body);
+    sanitizeValue(req.params);
+    sanitizeValue(req.query);
+    next();
+  } catch (error) {
+    if (error?.status === 400) {
+      return res.status(400).json({ error: error.message });
+    }
+    return next(error);
   }
-
-  if (req.params) {
-    req.params = sanitizeValue(req.params);
-  }
-
-  if (req.query) {
-    req.query = sanitizeValue(req.query);
-  }
-
-  next();
 }
 
 module.exports = mongoSanitize;

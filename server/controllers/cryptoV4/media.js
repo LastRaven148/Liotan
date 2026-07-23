@@ -1,6 +1,5 @@
 "use strict";
 
-const fs = require("fs/promises");
 const AttachmentUpload = require("../../models/AttachmentUpload");
 const { uploadToR2, streamFromR2, deleteFromR2 } = require("../../utils/uploadToR2");
 const { registerAttachmentUpload } = require("../../services/attachmentOwnership");
@@ -14,8 +13,8 @@ const {
 } = require("../../services/mediaQuota");
 
 async function removeTempFile(file) {
-  if (!file?.path) return;
-  try { await fs.unlink(file.path); } catch {}
+  if (typeof file?.removeManagedFile !== "function") return;
+  try { await file.removeManagedFile(); } catch {}
 }
 
 async function uploadMedia(req, res, next) {

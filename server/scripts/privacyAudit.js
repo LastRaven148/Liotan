@@ -86,7 +86,7 @@ const RULES = [
     id: "direct-console-client",
     severity: "medium",
     pattern: /console\.(log|error|debug)/,
-    allow: /scripts[\/]|utils[\/](logger|devLogger)\.(js|jsx)$/,
+    allow: /^(?:server\/)?scripts\/|(?:^|\/)utils\/(?:logger|devLogger)\.(?:js|jsx)$/,
     note: "Avoid production console output; use dev-only logger/warnings."
   },
   {

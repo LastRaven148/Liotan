@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
@@ -73,15 +74,22 @@ const ciphertextDiskStorage = {
       callback(null, {
         destination: uploadTmpDir,
         filename,
-        path: filePath,
         size: output.bytesWritten,
-        ciphertextHash
+        ciphertextHash,
+        openReadStream: () => fs.createReadStream(filePath, { flags: "r" }),
+        removeManagedFile: async () => {
+          try {
+            await fsp.unlink(filePath);
+          } catch (error) {
+            if (error?.code !== "ENOENT") throw error;
+          }
+        }
       });
     });
   },
   _removeFile(_req, file, callback) {
-    if (!file?.path) return callback();
-    fs.unlink(file.path, err => callback(err?.code === "ENOENT" ? null : err));
+    if (typeof file?.removeManagedFile !== "function") return callback();
+    file.removeManagedFile().then(() => callback(), callback);
   }
 };
 

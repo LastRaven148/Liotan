@@ -195,8 +195,8 @@ async function createZip() {
 async function main() {
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
-  if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
-  if (fs.existsSync(checksumFile)) fs.unlinkSync(checksumFile);
+  fs.rmSync(outFile, { force: true });
+  fs.rmSync(checksumFile, { force: true });
 
   copyDirectory(rootReal, stagedRoot);
   await createZip();

@@ -1,6 +1,4 @@
 const crypto = require("crypto");
-const fs = require("fs");
-const fsp = require("fs/promises");
 const https = require("https");
 const { URL } = require("url");
 const { sanitizeAttachmentName } = require("./attachmentSafety");
@@ -121,7 +119,7 @@ function getFileSize(file) {
 function getRequestBody(file, method) {
   if (method === "DELETE" || method === "GET" || method === "HEAD") return null;
   if (file?.buffer) return file.buffer;
-  if (file?.path) return fs.createReadStream(file.path);
+  if (typeof file?.openReadStream === "function") return file.openReadStream();
   return Buffer.alloc(0);
 }
 
@@ -250,12 +248,9 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
   });
 }
 
-async function getUploadFileMeta(file) {
+function getUploadFileMeta(file) {
   if (file?.buffer) return { size: file.buffer.length };
-  if (file?.path) {
-    const stat = await fsp.stat(file.path);
-    return { size: stat.size };
-  }
+  if (Number.isSafeInteger(file?.size) && file.size >= 0) return { size: file.size };
   return { size: 0 };
 }
 
@@ -264,7 +259,12 @@ async function uploadToR2(file, options = {}) {
   const config = getR2Config(storageClass);
   const key = buildObjectKey(file, options);
   const contentType = String(file?.mimetype || options.mimeType || "application/octet-stream");
-  const meta = await getUploadFileMeta(file);
+  const meta = getUploadFileMeta(file);
+  if (meta.size <= 0 || (!file?.buffer && typeof file?.openReadStream !== "function")) {
+    const error = new Error("Upload payload is unavailable");
+    error.status = 400;
+    throw error;
+  }
   const uploadFile = {
     ...file,
     size: meta.size

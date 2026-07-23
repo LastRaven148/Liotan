@@ -3,36 +3,23 @@ const COOKIE_NAME = process.env.AUTH_COOKIE_NAME ||
 const COOKIE_DOMAIN = String(process.env.AUTH_COOKIE_DOMAIN || process.env.COOKIE_DOMAIN || "").trim();
 const COOKIE_MAX_AGE_MS = Number(process.env.AUTH_COOKIE_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000;
 
-function parseCookies(header = "") {
-  return String(header || "")
-    .split(";")
-    .map(part => part.trim())
-    .filter(Boolean)
-    .reduce((cookies, part) => {
-      const index = part.indexOf("=");
-      if (index <= 0) {
-        return cookies;
-      }
-
-      const key = part.slice(0, index).trim();
-      const value = part.slice(index + 1).trim();
-
-      if (!key) {
-        return cookies;
-      }
-
-      try {
-        cookies[key] = decodeURIComponent(value);
-      } catch {
-        cookies[key] = value;
-      }
-
-      return cookies;
-    }, {});
+function findCookie(header = "", expectedName = "") {
+  for (const rawPart of String(header || "").split(";")) {
+    const part = rawPart.trim();
+    const index = part.indexOf("=");
+    if (index <= 0 || part.slice(0, index).trim() !== expectedName) continue;
+    const value = part.slice(index + 1).trim();
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+  return "";
 }
 
 function getAuthCookie(req) {
-  return parseCookies(req.headers.cookie || "")[COOKIE_NAME] || "";
+  return findCookie(req.headers.cookie || "", COOKIE_NAME);
 }
 
 function getCookieOptions() {

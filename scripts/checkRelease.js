@@ -22,8 +22,8 @@ function runNpm(label, args, cwd = root) {
   });
 }
 
-async function listZipEntries() {
-  const zipFile = await yauzl.openPromise(releaseZip);
+async function listZipEntries(fd) {
+  const zipFile = await yauzl.fromFdPromise(fd, { autoClose: false });
   const entries = [];
 
   for await (const entry of zipFile.eachEntry()) {
@@ -34,31 +34,40 @@ async function listZipEntries() {
 }
 
 async function testZip() {
-  if (!fs.existsSync(releaseZip)) {
-    throw new Error(`Release ZIP was not created: ${releaseZip}`);
-  }
-
   console.log("\n==> ZIP exists and has non-empty payload");
-  const size = fs.statSync(releaseZip).size;
-  if (size < 1024) {
-    throw new Error("Release ZIP is unexpectedly small");
-  }
-  const signature = fs.readFileSync(releaseZip, { encoding: null, flag: "r" }).subarray(0, 4);
-  if (signature[0] !== 0x50 || signature[1] !== 0x4b) {
-    throw new Error("Release file does not look like a ZIP archive");
-  }
-  if (!fs.existsSync(checksumFile)) {
-    throw new Error("Release checksum was not created");
-  }
-  const expected = fs.readFileSync(checksumFile, "utf8").trim().split(/\s+/)[0].toUpperCase();
-  const actual = require("crypto").createHash("sha256").update(fs.readFileSync(releaseZip)).digest("hex").toUpperCase();
-  if (expected !== actual) {
-    throw new Error("Release checksum does not match ZIP contents");
-  }
-  const entries = await listZipEntries();
-  const forbidden = entries.filter(entry => /(^|\/)(node_modules|\.git|build|dist|coverage|test-results|playwright-report)(\/|$)|(^|\/)\.env(?:\.|$)|\.zip$/i.test(entry));
-  if (forbidden.length) {
-    throw new Error(`Forbidden release entries: ${forbidden.slice(0, 10).join(", ")}`);
+  let fd;
+  let checksumFd;
+  try {
+    fd = fs.openSync(releaseZip, "r");
+    const size = fs.fstatSync(fd).size;
+    if (size < 1024) throw new Error("Release ZIP is unexpectedly small");
+    const signature = Buffer.alloc(4);
+    if (fs.readSync(fd, signature, 0, signature.length, 0) !== signature.length ||
+      signature[0] !== 0x50 || signature[1] !== 0x4b) {
+      throw new Error("Release file does not look like a ZIP archive");
+    }
+    checksumFd = fs.openSync(checksumFile, "r");
+    const expected = fs.readFileSync(checksumFd, "utf8").trim().split(/\s+/)[0].toUpperCase();
+    const hash = require("crypto").createHash("sha256");
+    const block = Buffer.allocUnsafe(64 * 1024);
+    let position = 0;
+    while (position < size) {
+      const bytesRead = fs.readSync(fd, block, 0, Math.min(block.length, size - position), position);
+      if (bytesRead <= 0) throw new Error("Release ZIP changed while it was being verified");
+      hash.update(block.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    if (expected !== hash.digest("hex").toUpperCase()) {
+      throw new Error("Release checksum does not match ZIP contents");
+    }
+    const entries = await listZipEntries(fd);
+    const forbidden = entries.filter(entry => /(^|\/)(node_modules|\.git|build|dist|coverage|test-results|playwright-report)(\/|$)|(^|\/)\.env(?:\.|$)|\.zip$/i.test(entry));
+    if (forbidden.length) {
+      throw new Error(`Forbidden release entries: ${forbidden.slice(0, 10).join(", ")}`);
+    }
+  } finally {
+    if (checksumFd !== undefined) fs.closeSync(checksumFd);
+    if (fd !== undefined) fs.closeSync(fd);
   }
 }
 
