@@ -23,6 +23,22 @@ for (const match of all.matchAll(/^\s*uses:\s*([^#\s]+)(?:\s*#.*)?$/gm)) {
 assert.doesNotMatch(all, /\bpull_request_target\s*:/, "pull_request_target is forbidden");
 assert.match(ci, /^permissions:\s*\n\s+contents:\s+read\s*$/m,
   "CI default token permissions must be read-only");
+assert.ok(
+  ci.includes("LIOTAN_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}")
+    && ci.includes("ref: ${{ github.event.pull_request.head.sha || github.sha }}"),
+  "CI must check out and attest the exact PR head or push revision"
+);
+assert.ok(
+  ci.includes('git config --global --add safe.directory "$GITHUB_WORKSPACE"'),
+  "container CI must trust only the exact checked-out workspace"
+);
+assert.doesNotMatch(ci, /safe\.directory\s+["']?\*/,
+  "CI must never trust every repository through a safe.directory wildcard");
+assert.ok(
+  ci.includes('node - "$MANIFEST" "$VERSION" "$LIOTAN_SOURCE_SHA"')
+    && ci.includes("name: release-evidence-${{ env.LIOTAN_SOURCE_SHA }}"),
+  "deployment manifests and uploaded evidence must use the exact tested source revision"
+);
 assert.match(ci, /attest:[\s\S]*permissions:[\s\S]*id-token:\s*write[\s\S]*attestations:\s*write/,
   "provenance writes must be isolated to the attestation job");
 assert.doesNotMatch(codeql.split("jobs:")[0], /security-events:\s*write/,
