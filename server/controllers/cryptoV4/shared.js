@@ -18,6 +18,7 @@ const {
 } = require("../../security/cryptoRosterState");
 const { userRoom } = require("../../sockets/sessionRegistry");
 const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
+const { transparencyBundle } = require("../../security/keyTransparency");
 
 const DIRECTORY_LOG_WINDOW = 1024;
 
@@ -149,7 +150,7 @@ async function conversationDirectory(conversation) {
     ? await CryptoDirectoryEntry.find({ $or: directoryWindows }).sort({ userId: 1, version: 1 }).lean()
     : [];
   const identityByUser = new Map(identities.map(item => [idString(item.userId), item]));
-  return conversation.participantUserIds.map((userId, index) => {
+  return Promise.all(conversation.participantUserIds.map(async (userId, index) => {
     const identity = identityByUser.get(idString(userId));
     const userDevices = devices.filter(device => idString(device.userId) === idString(userId));
     return {
@@ -159,14 +160,15 @@ async function conversationDirectory(conversation) {
         ...identityView(identity),
         directoryLog: directoryLogView(
           directoryEntries.filter(entry => idString(entry.userId) === idString(userId))
-        )
+        ),
+        transparency: await transparencyBundle(identity)
       } : null,
       deviceCommitments: userDevices.map(directoryDeviceCommitment),
       devices: userDevices
         .filter(device => device.status === "active" && Date.parse(device.manifestExpiresAt || "") > Date.now())
         .map(deviceView)
     };
-  });
+  }));
 }
 
 function conversationView(conversation, directory) {

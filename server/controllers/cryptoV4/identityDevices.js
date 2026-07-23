@@ -30,6 +30,10 @@ const {
   sessionBindingId,
   legacyEnrollmentAllowed
 } = require("../../security/deviceAuthProtocol");
+const {
+  appendDirectoryTransparency,
+  transparencyBundle
+} = require("../../security/keyTransparency");
 
 const MAX_KEY_PACKAGE_BYTES = 64 * 1024;
 const DIRECTORY_LOG_WINDOW = 1024;
@@ -111,6 +115,7 @@ async function persistDirectoryHead(identity, verifiedDirectory, session) {
     statement: verifiedDirectory.statement,
     signature: verifiedDirectory.signature
   }], { session });
+  await appendDirectoryTransparency(identity, verifiedDirectory, session);
 }
 
 async function bootstrap(req, res, next) {
@@ -130,7 +135,11 @@ async function bootstrap(req, res, next) {
       protocol: "mls-1.0",
       cipherSuite: 1,
       domain: cryptoDomain(),
-      identity: { ...identityView(identity), directoryLog: directoryLogView(directoryEntries) },
+      identity: {
+        ...identityView(identity),
+        directoryLog: directoryLogView(directoryEntries),
+        transparency: await transparencyBundle(identity)
+      },
       device: device ? deviceView(device) : null,
       accountDevices: devices.map(deviceView),
       deviceCommitments: devices.map(directoryDeviceCommitment),
@@ -1086,6 +1095,7 @@ async function listDevices(req, res, next) {
       deviceCommitments: allDevices.map(directoryDeviceCommitment),
       directory: directoryStateView(identity),
       directoryLog: directoryLogView(directoryEntries),
+      transparency: await transparencyBundle(identity),
       securityEvents: securityEvents.map(securityEventView),
       hasMore,
       nextCursor: hasMore ? encodeDeviceCursor(devices.at(-1)) : ""

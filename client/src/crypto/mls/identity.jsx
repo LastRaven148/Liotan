@@ -287,7 +287,8 @@ export async function listCryptoDevices(engine) {
   const identity = {
     ...engine.bootstrap.identity,
     directory: response.directory,
-    directoryLog: response.directoryLog || []
+    directoryLog: response.directoryLog || [],
+    transparency: response.transparency || null
   };
   await verifyAndPinAccountDirectory(engine, {
     username: engine.username,

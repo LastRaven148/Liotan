@@ -4,7 +4,8 @@ const APP_SECRET_NAMES = [
   "JWT_SECRET",
   "PRIVACY_HASH_SECRET",
   "SECURITY_ENCRYPTION_SECRET",
-  "CALL_ROUTE_SECRET"
+  "CALL_ROUTE_SECRET",
+  "KEY_TRANSPARENCY_SIGNING_KEY"
 ];
 
 function getRuntimeSecret(name, developmentLabel, source = process.env) {

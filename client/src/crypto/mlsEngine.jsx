@@ -66,6 +66,7 @@ import {
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
 import {
   markDirectoryVerified,
+  observeTransparencyGossip,
   validateLocalRoster,
   verifyAndPinAccountDirectory,
   verifyDirectory
@@ -873,6 +874,16 @@ class LiotanMlsEngine {
     };
   }
 
+  transparencyGossip(state) {
+    const checkpoints = Object.values(state?.trustStates || {})
+      .map(item => item?.transparencyCheckpoint)
+      .filter(Boolean)
+      .sort((left, right) =>
+        Number(right.checkpoint?.treeSize || 0) - Number(left.checkpoint?.treeSize || 0)
+      );
+    return checkpoints[0] || null;
+  }
+
   validateEnvelope(state, event, decrypted, envelope) {
     assertEnvelopeSchema(envelope);
     const actualSender = decrypted.senderClientId ? clientIdText(decrypted.senderClientId) : "";
@@ -896,6 +907,7 @@ class LiotanMlsEngine {
       if (!decrypted.message) return;
       const envelope = JSON.parse(textDecoder.decode(decrypted.message));
       this.validateEnvelope(state, event, decrypted, envelope);
+      await observeTransparencyGossip(this, envelope.transparencyCheckpoint);
       const hidden = await this.hiddenMessages(state.conversationId);
       const isHidden = hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId));
       if (["edit", "delete"].includes(envelope.kind)) {
@@ -1173,6 +1185,7 @@ class LiotanMlsEngine {
       senderUsername: this.username,
       senderClientId: this.clientIdString,
       sentAt: new Date().toISOString(),
+      transparencyCheckpoint: this.transparencyGossip(state),
       text: String(text || "").slice(0, 20000),
       attachment,
       replyTo: replyTo ? { messageId: String(replyTo._id || replyTo.messageId || "") } : null
@@ -1196,6 +1209,7 @@ class LiotanMlsEngine {
       senderUsername: this.username,
       senderClientId: this.clientIdString,
       sentAt: new Date().toISOString(),
+      transparencyCheckpoint: this.transparencyGossip(state),
       targetMessageId: String(targetMessageId || ""),
       text: kind === "edit" ? String(text || "").slice(0, 20000) : ""
     };

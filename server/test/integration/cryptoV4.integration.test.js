@@ -2459,3 +2459,182 @@ test("avatar reconciliation is dry-run by default and only selects old detached 
   assert.deepEqual(applied.keys, [oldKey]);
   assert.deepEqual(deleted, [oldKey]);
 });
+
+test("key transparency checkpoints prove inclusion, append-only consistency and reject tampering", async () => {
+  const account = await createAccount("kt_owner");
+  const {
+    CHECKPOINT_DOMAIN,
+    leafHash,
+    nodeHash
+  } = require("../../security/keyTransparency");
+  const { verifyEd25519, sha256Base64Url } = require("../../security/cryptoV4");
+
+  const checkpointResponse = await signedJson(
+    account,
+    "GET",
+    "/crypto/v4/transparency/checkpoint"
+  );
+  assert.equal(checkpointResponse.status, 200, checkpointResponse.text);
+  const before = checkpointResponse.body.checkpoint;
+  assert(verifyEd25519({
+    publicKey: before.signingPublicKey,
+    signature: before.signature,
+    value: before.checkpoint,
+    domain: CHECKPOINT_DOMAIN
+  }));
+  assert.equal(
+    before.signingKeyId,
+    sha256Base64Url(Buffer.from(before.signingPublicKey, "base64url"))
+  );
+
+  await registerDevice(account, { rootKey: account.rootKey });
+  const bootstrap = await requestFor(
+    account,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${account.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const evidence = bootstrap.body.identity.transparency;
+  assert(evidence);
+  assert.equal(evidence.leaf.directoryHash, bootstrap.body.identity.directory.hash);
+  assert.equal(evidence.leafHash, leafHash(evidence.leaf));
+
+  function verifyInclusion(bundle) {
+    let hash = bundle.leafHash;
+    let index = Number(bundle.leaf.sequence) - 1;
+    let last = Number(bundle.checkpoint.checkpoint.treeSize) - 1;
+    for (const sibling of bundle.inclusionProof) {
+      if (index === last || (index & 1) === 1) {
+        hash = nodeHash(sibling, hash);
+        while (index !== 0 && (index & 1) === 0) {
+          index >>= 1;
+          last >>= 1;
+        }
+      } else {
+        hash = nodeHash(hash, sibling);
+      }
+      index >>= 1;
+      last >>= 1;
+    }
+    return last === 0 && hash === bundle.checkpoint.checkpoint.rootHash;
+  }
+  assert.equal(verifyInclusion(evidence), true);
+
+  const afterSize = Number(evidence.checkpoint.checkpoint.treeSize);
+  const consistencyResponse = await signedJson(
+    account,
+    "GET",
+    `/crypto/v4/transparency/consistency?from=${before.checkpoint.treeSize}&to=${afterSize}`
+  );
+  assert.equal(consistencyResponse.status, 200, consistencyResponse.text);
+
+  function verifyConsistency(oldSize, oldRoot, newSize, newRoot, proof) {
+    let oldIndex = oldSize - 1;
+    let newIndex = newSize - 1;
+    while ((oldIndex & 1) === 1) {
+      oldIndex >>= 1;
+      newIndex >>= 1;
+    }
+    let offset = 0;
+    let oldHash;
+    let newHash;
+    if ((oldSize & (oldSize - 1)) === 0) {
+      oldHash = oldRoot;
+      newHash = oldRoot;
+    } else {
+      oldHash = proof[offset];
+      newHash = proof[offset];
+      offset += 1;
+    }
+    while (offset < proof.length) {
+      const sibling = proof[offset];
+      offset += 1;
+      if (newIndex === 0) return false;
+      if ((oldIndex & 1) === 1 || oldIndex === newIndex) {
+        oldHash = nodeHash(sibling, oldHash);
+        newHash = nodeHash(sibling, newHash);
+        while (oldIndex !== 0 && (oldIndex & 1) === 0) {
+          oldIndex >>= 1;
+          newIndex >>= 1;
+        }
+      } else {
+        newHash = nodeHash(newHash, sibling);
+      }
+      oldIndex >>= 1;
+      newIndex >>= 1;
+    }
+    return newIndex === 0 && oldHash === oldRoot && newHash === newRoot;
+  }
+
+  const consistency = consistencyResponse.body;
+  assert.equal(verifyConsistency(
+    Number(consistency.from.checkpoint.treeSize),
+    consistency.from.checkpoint.rootHash,
+    Number(consistency.to.checkpoint.treeSize),
+    consistency.to.checkpoint.rootHash,
+    consistency.proof
+  ), true);
+  const tampered = [...consistency.proof];
+  tampered[0] = `${tampered[0][0] === "A" ? "B" : "A"}${tampered[0].slice(1)}`;
+  assert.equal(verifyConsistency(
+    Number(consistency.from.checkpoint.treeSize),
+    consistency.from.checkpoint.rootHash,
+    Number(consistency.to.checkpoint.treeSize),
+    consistency.to.checkpoint.rootHash,
+    tampered
+  ), false);
+});
+
+test("key transparency backfill migration is resumable, idempotent and preserves durableMigration", async () => {
+  const account = await createAuthenticatedUser("kt_legacy");
+  const CryptoIdentityModel = require("../../models/CryptoIdentity");
+  const CryptoDirectoryEntry = require("../../models/CryptoDirectoryEntry");
+  const CryptoTransparencyLeaf = require("../../models/CryptoTransparencyLeaf");
+  const migration = require("../../scripts/migrateKeyTransparency");
+  const cryptoUserId = crypto.randomUUID();
+  const root = crypto.generateKeyPairSync("ed25519");
+  const rootPublicKey = rawPublicKey(root.publicKey);
+  const identity = await CryptoIdentityModel.create({
+    userId: account.user._id,
+    username: account.username,
+    cryptoUserId,
+    rootPublicKey,
+    rootFingerprint: crypto.createHash("sha256")
+      .update(Buffer.from(rootPublicKey, "base64url"))
+      .digest("base64url")
+  });
+  const statement = {
+    v: 1,
+    cryptoUserId,
+    version: 1,
+    previousHash: crypto.randomBytes(32).toString("base64url"),
+    devicesHash: crypto.randomBytes(32).toString("base64url"),
+    action: "register-device",
+    targetDeviceId: crypto.randomBytes(8).toString("hex"),
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const signature = signCanonical(root.privateKey, "liotan-device-directory-v1", statement);
+  const hash = crypto.createHash("sha256")
+    .update(canonicalJson(["liotan-device-directory-v1", statement, signature]))
+    .digest("base64url");
+  await CryptoDirectoryEntry.create({
+    userId: identity.userId,
+    cryptoUserId,
+    version: 1,
+    previousHash: statement.previousHash,
+    hash,
+    statement,
+    signature
+  });
+
+  const before = await migration.inspect();
+  assert.equal(before.missingLeaves, 1);
+  const applied = await migration.applyMigration({ batchSize: 7 });
+  assert.equal(applied.alreadyApplied, false);
+  assert(await CryptoTransparencyLeaf.exists({ cryptoUserId, directoryVersion: 1 }));
+  const repeated = await migration.applyMigration({ batchSize: 7 });
+  assert.equal(repeated.alreadyApplied, true);
+  assert.equal((await migration.inspect()).missingLeaves, 0);
+  assert.equal(typeof require("../../utils/durableMigration").acquireLease, "function");
+});

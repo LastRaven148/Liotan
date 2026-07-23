@@ -57,6 +57,15 @@ test("device request keys are local-only, stable across reload and distinct per 
   )).toBe(first);
 });
 
+test("key transparency inclusion and consistency proofs reject a forked path", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  expect(await page.evaluate(() => window.runKeyTransparencyProofProbe())).toEqual({
+    inclusion: true,
+    consistency: true,
+    tamperRejected: true
+  });
+});
+
 test("passphrase recovery wrapping rejects raw dumps, wrong secrets and resumes interrupted migration", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   expect(await page.evaluate(() => window.runRecoveryProtectionProbe())).toEqual({

@@ -65,6 +65,22 @@ function validateStartupSecurity(env, logger = console) {
     }
     findings.push(...validateIndependentSecrets(runtimeEnv, looksLikeWeakSecret));
     try {
+      const signingSeed = Buffer.from(
+        String(runtimeEnv.KEY_TRANSPARENCY_SIGNING_KEY || ""),
+        "base64url"
+      );
+      if (signingSeed.length !== 32 ||
+        signingSeed.toString("base64url") !== String(runtimeEnv.KEY_TRANSPARENCY_SIGNING_KEY || "")) {
+        throw new TypeError("invalid signing seed");
+      }
+    } catch {
+      findings.push({
+        severity: "critical",
+        code: "invalid_key_transparency_signing_key",
+        message: "KEY_TRANSPARENCY_SIGNING_KEY must be a canonical base64url-encoded 32-byte Ed25519 seed."
+      });
+    }
+    try {
       const proxy = proxyConfigFromEnv(runtimeEnv);
       if (!runtimeEnv.LIOTAN_PROXY_TOPOLOGY) {
         throw new TypeError("explicit production topology required");

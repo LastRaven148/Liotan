@@ -33,6 +33,8 @@ router.post("/crypto/v4/devices/:deviceId/revoke", cryptoDeviceAuth, controller.
 router.post("/crypto/v4/devices/:deviceId/renew", cryptoDeviceAuth, controller.renewDevice);
 router.post("/crypto/v4/key-packages", cryptoDeviceAuth, controller.publishKeyPackages);
 router.get("/crypto/v4/key-packages/status", cryptoDeviceAuth, controller.keyPackageStatus);
+router.get("/crypto/v4/transparency/checkpoint", cryptoDeviceAuth, controller.getTransparencyCheckpoint);
+router.get("/crypto/v4/transparency/consistency", cryptoDeviceAuth, controller.getTransparencyConsistency);
 router.post("/crypto/v4/conversations/resolve", cryptoDeviceAuth, controller.resolveConversation);
 router.post("/crypto/v4/conversations/:conversationId/operations", cryptoDeviceAuth, controller.beginOperation);
 router.post("/crypto/v4/conversations/:conversationId/operations/:operationId/commit", cryptoDeviceAuth, controller.commitOperation);
