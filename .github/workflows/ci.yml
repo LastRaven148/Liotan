@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,6 +28,8 @@ jobs:
       CI: "true"
       MONGOMS_VERSION: "8.0.14"
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      LIOTAN_SOURCE_SHA: ${{ github.sha }}
+      VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}
     steps:
       - name: Check out exact revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -81,6 +81,9 @@ jobs:
 
       - name: Build immutable deployment bundle
         run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]
+          fi
           VERSION=$(node -p "require('./package.json').version")
           npm run test:deployment-bundle
           test -f client/build/index.html
@@ -88,15 +91,28 @@ jobs:
           find client/build/assets -maxdepth 1 -type f -name '*.wasm' -print -quit | grep -q .
           BUNDLE="release/Liotan-${VERSION}-deploy.tar.gz"
           FIRST_BUNDLE=$(mktemp)
+          MANIFEST="DEPLOYMENT-MANIFEST.json"
+          trap 'rm -f "$FIRST_BUNDLE" "$MANIFEST"' EXIT
+          node - "$MANIFEST" "$VERSION" "$GITHUB_SHA" <<'NODE'
+          const fs = require("node:fs");
+          const [output, version, sourceSha] = process.argv.slice(2);
+          if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error("invalid source revision");
+          fs.writeFileSync(output, `${JSON.stringify({
+            schema: "liotan-deployment/v1",
+            version,
+            sourceSha
+          }, null, 2)}\n`);
+          NODE
           build_bundle() {
             tar --sort=name --mtime='UTC 2000-01-01' --owner=0 --group=0 --numeric-owner \
               --exclude='server/node_modules' --exclude='server/test' --exclude='server/.env*' \
-              -czf "$1" server client/build LICENSE THIRD-PARTY-NOTICES.md
+              -czf "$1" server client/build LICENSE THIRD-PARTY-NOTICES.md "$MANIFEST"
           }
           build_bundle "$FIRST_BUNDLE"
           build_bundle "$BUNDLE"
           cmp --silent "$FIRST_BUNDLE" "$BUNDLE"
-          rm -f "$FIRST_BUNDLE"
+          rm -f "$FIRST_BUNDLE" "$MANIFEST"
+          trap - EXIT
 
       - name: Upload release evidence
         if: always()
@@ -114,11 +130,27 @@ jobs:
             coverage/coverage-summary.json
             test-results/
 
+  attest:
+    name: Attest immutable release evidence
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download exact release evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-evidence-${{ github.sha }}
+          path: release-evidence
+
       - name: Attest release provenance
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
-            release/*.zip
-            release/*.sha256
-            release/*-deploy.tar.gz
+            release-evidence/release/*.zip
+            release-evidence/release/*.sha256
+            release-evidence/release/*-deploy.tar.gz

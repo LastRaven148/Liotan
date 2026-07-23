@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const yauzl = require("yauzl");
+const { resolveSourceRevision } = require("./sourceRevision");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
@@ -25,12 +26,24 @@ function runNpm(label, args, cwd = root) {
 async function listZipEntries(fd) {
   const zipFile = await yauzl.fromFdPromise(fd, { autoClose: false });
   const entries = [];
+  let manifest = null;
 
   for await (const entry of zipFile.eachEntry()) {
     entries.push(entry.fileName);
+    if (entry.fileName === "Liotan/RELEASE-MANIFEST.json") {
+      const stream = await zipFile.openReadStreamPromise(entry);
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of stream) {
+        bytes += chunk.length;
+        if (bytes > 16 * 1024) throw new Error("Release manifest is unexpectedly large");
+        chunks.push(chunk);
+      }
+      manifest = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    }
   }
 
-  return entries;
+  return { entries, manifest };
 }
 
 async function testZip() {
@@ -60,10 +73,15 @@ async function testZip() {
     if (expected !== hash.digest("hex").toUpperCase()) {
       throw new Error("Release checksum does not match ZIP contents");
     }
-    const entries = await listZipEntries(fd);
+    const { entries, manifest } = await listZipEntries(fd);
     const forbidden = entries.filter(entry => /(^|\/)(node_modules|\.git|build|dist|coverage|test-results|playwright-report)(\/|$)|(^|\/)\.env(?:\.|$)|\.zip$/i.test(entry));
     if (forbidden.length) {
       throw new Error(`Forbidden release entries: ${forbidden.slice(0, 10).join(", ")}`);
+    }
+    if (manifest?.schema !== "liotan-clean-release/v1" ||
+      manifest.version !== String(rootPackage.version) ||
+      manifest.sourceSha !== resolveSourceRevision(root)) {
+      throw new Error("Release manifest is absent or does not bind this exact source revision");
     }
   } finally {
     if (checksumFd !== undefined) fs.closeSync(checksumFd);

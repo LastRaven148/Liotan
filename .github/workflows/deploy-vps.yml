@@ -19,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 60
     environment: production
 
     steps:
@@ -47,6 +47,14 @@ jobs:
           path: release-evidence
           run-id: ${{ steps.evidence.outputs.run_id }}
           github-token: ${{ github.token }}
+
+      - name: Verify GitHub build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BUNDLE=$(find release-evidence -name '*-deploy.tar.gz' -type f -print -quit)
+          test -n "$BUNDLE"
+          gh attestation verify "$BUNDLE" --repo "$GITHUB_REPOSITORY"
 
       - name: Configure SSH host verification
         env:
@@ -87,11 +95,14 @@ jobs:
           FRONTEND_SMOKE_URL: ${{ vars.FRONTEND_SMOKE_URL }}
           FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
           PUBLIC_FRONTEND_LINK: ${{ vars.PUBLIC_FRONTEND_LINK }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
         run: |
           BUNDLE=$(find release-evidence -name '*-deploy.tar.gz' -type f -print -quit)
           test -n "$BUNDLE"
-          REMOTE_BUNDLE="/tmp/liotan-${{ inputs.release_sha }}.tar.gz"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          REMOTE_BUNDLE="/tmp/liotan-${RELEASE_SHA}.tar.gz"
           scp -i ~/.ssh/id_ed25519 "$BUNDLE" "$VPS_USER@$VPS_HOST:$REMOTE_BUNDLE"
-          ssh -i ~/.ssh/id_ed25519 "$VPS_USER@$VPS_HOST" \
-            "bash -s -- '$REMOTE_BUNDLE' '$DEPLOY_ROOT' '$PM2_PROCESS' '$HEALTH_URL' '${{ inputs.release_sha }}' '$FRONTEND_SMOKE_URL' '$FRONTEND_HOST' '$PUBLIC_FRONTEND_LINK'" \
-            < server/deploy/install-release.sh
+          printf -v REMOTE_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q' \
+            "$REMOTE_BUNDLE" "$DEPLOY_ROOT" "$PM2_PROCESS" "$HEALTH_URL" "$RELEASE_SHA" \
+            "$FRONTEND_SMOKE_URL" "$FRONTEND_HOST" "$PUBLIC_FRONTEND_LINK"
+          ssh -i ~/.ssh/id_ed25519 "$VPS_USER@$VPS_HOST" "$REMOTE_COMMAND" < server/deploy/install-release.sh
