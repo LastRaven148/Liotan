@@ -87,6 +87,8 @@ jobs:
         run: npm run release:check
 
       - name: Build immutable deployment bundle
+        env:
+          HOME: /root
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
             [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]

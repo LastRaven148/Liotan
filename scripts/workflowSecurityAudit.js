@@ -32,6 +32,11 @@ assert.ok(
   ci.includes('git config --global --add safe.directory "$GITHUB_WORKSPACE"'),
   "container CI must trust only the exact checked-out workspace"
 );
+assert.match(
+  ci,
+  /name:\s*Build immutable deployment bundle\s+env:\s+HOME:\s*\/root/,
+  "every post-gate Git provenance check must reuse the trusted container home"
+);
 assert.doesNotMatch(ci, /safe\.directory\s+["']?\*/,
   "CI must never trust every repository through a safe.directory wildcard");
 assert.ok(
