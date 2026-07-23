@@ -7,6 +7,7 @@ const CryptoDevice = require("../../models/CryptoDevice");
 const CryptoDirectoryEntry = require("../../models/CryptoDirectoryEntry");
 const CryptoKeyPackage = require("../../models/CryptoKeyPackage");
 const ClientInvalidation = require("../../models/ClientInvalidation");
+const CryptoDeviceSecurityEvent = require("../../models/CryptoDeviceSecurityEvent");
 const Session = require("../../models/Session");
 const { transitionUserConversations } = require("../../security/cryptoRosterState");
 const {
@@ -24,6 +25,11 @@ const {
 const {
   getIdentityForUser, identityView, deviceView, directoryLogView, safeB64, emitCryptoRosterChanged
 } = require("./shared");
+const {
+  DEVICE_AUTH_PROTOCOL_V2,
+  sessionBindingId,
+  legacyEnrollmentAllowed
+} = require("../../security/deviceAuthProtocol");
 
 const MAX_KEY_PACKAGE_BYTES = 64 * 1024;
 const DIRECTORY_LOG_WINDOW = 1024;
@@ -67,6 +73,17 @@ function emitDeviceListUpdate(req, invalidation) {
   });
 }
 
+function securityEventView(event) {
+  return {
+    eventId: event.eventId,
+    type: event.type,
+    targetDeviceId: event.targetDeviceId,
+    targetClientId: event.targetClientId,
+    priorActiveDeviceCount: Number(event.priorActiveDeviceCount) || 0,
+    createdAt: event.createdAt || null
+  };
+}
+
 async function persistDirectoryHead(identity, verifiedDirectory, session) {
   const currentDirectory = directoryStateView(identity);
   const versionSelector = currentDirectory.version === 0
@@ -100,9 +117,10 @@ async function bootstrap(req, res, next) {
   try {
     const identity = await getIdentityForUser(req.user);
     const deviceId = String(req.query.deviceId || "").toLowerCase();
-    const [devices, directoryEntries] = await Promise.all([
+    const [devices, directoryEntries, securityEvents] = await Promise.all([
       CryptoDevice.find({ userId: req.user.userId }).sort({ createdAt: 1 }).lean(),
-      CryptoDirectoryEntry.find({ userId: req.user.userId }).sort({ version: -1 }).limit(DIRECTORY_LOG_WINDOW).lean()
+      CryptoDirectoryEntry.find({ userId: req.user.userId }).sort({ version: -1 }).limit(DIRECTORY_LOG_WINDOW).lean(),
+      CryptoDeviceSecurityEvent.find({ userId: req.user.userId }).sort({ createdAt: -1 }).limit(50).lean()
     ]);
     const device = isDeviceId(deviceId)
       ? devices.find(item => item.deviceId === deviceId) || null
@@ -116,9 +134,16 @@ async function bootstrap(req, res, next) {
       device: device ? deviceView(device) : null,
       accountDevices: devices.map(deviceView),
       deviceCommitments: devices.map(directoryDeviceCommitment),
+      securityEvents: securityEvents.map(securityEventView),
       recovery: {
         serverEscrow: false,
         passwordDerivedKeysAccepted: false
+      },
+      sessionBindingId: sessionBindingId(req.user.sid),
+      deviceAuth: {
+        currentVersion: 2,
+        protocol: DEVICE_AUTH_PROTOCOL_V2,
+        legacyEnrollmentCutoff: process.env.DEVICE_AUTH_V2_ENFORCED_AT || "2026-08-01T00:00:00.000Z"
       }
     });
   } catch (err) {
@@ -190,8 +215,10 @@ async function registerDevice(req, res, next) {
     const parsed = parseClientId(manifest.clientId, cryptoDomain());
     const expiresAt = Date.parse(String(manifest.expiresAt || ""));
     const createdAt = Date.parse(String(manifest.createdAt || ""));
+    const authVersion = Number(manifest.v);
+    const expectedSessionBindingId = sessionBindingId(req.user.sid);
     if (
-      manifest.v !== 1 ||
+      ![1, 2].includes(authVersion) ||
       parsed.cryptoUserId !== identity.cryptoUserId ||
       parsed.deviceId !== String(manifest.deviceId || "").toLowerCase() ||
       manifest.cryptoUserId !== identity.cryptoUserId ||
@@ -201,13 +228,22 @@ async function registerDevice(req, res, next) {
     ) {
       return res.status(400).json({ error: "invalid device manifest" });
     }
+    if (authVersion === 1 && !legacyEnrollmentAllowed(new Date(createdAt))) {
+      return res.status(426).json({ error: "device authentication v2 is required for new enrollment" });
+    }
+    if (authVersion === 2 && (
+      manifest.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+      manifest.sessionBindingId !== expectedSessionBindingId
+    )) {
+      return res.status(400).json({ error: "invalid device session binding" });
+    }
     decodeBase64Url(manifest.requestPublicKey, 32, "request public key");
     decodeBase64Url(manifest.credentialThumbprint, 32, "credential thumbprint");
     if (!verifyEd25519({
       publicKey: identity.rootPublicKey,
       signature,
       value: manifest,
-      domain: "liotan-device-manifest-v1"
+      domain: authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1"
     })) {
       return res.status(400).json({ error: "invalid device manifest signature" });
     }
@@ -252,6 +288,10 @@ async function registerDevice(req, res, next) {
         deviceId: parsed.deviceId,
         clientId: manifest.clientId,
         requestPublicKey: manifest.requestPublicKey,
+        authVersion,
+        authProtocol: authVersion === 2 ? DEVICE_AUTH_PROTOCOL_V2 : "liotan-device-auth-v1",
+        sessionBindingId: authVersion === 2 ? expectedSessionBindingId : "",
+        authMigrationState: authVersion === 2 ? "v2-active" : "legacy",
         credentialThumbprint: manifest.credentialThumbprint,
         manifest,
         manifestSignature: signature,
@@ -283,6 +323,10 @@ async function registerDevice(req, res, next) {
             deviceId: parsed.deviceId,
             clientId: manifest.clientId,
             requestPublicKey: manifest.requestPublicKey,
+            authVersion,
+            authProtocol: authVersion === 2 ? DEVICE_AUTH_PROTOCOL_V2 : "liotan-device-auth-v1",
+            sessionBindingId: authVersion === 2 ? expectedSessionBindingId : "",
+            authMigrationState: authVersion === 2 ? "v2-active" : "legacy",
             credentialThumbprint: manifest.credentialThumbprint
           },
           $set: {
@@ -330,6 +374,162 @@ async function registerDevice(req, res, next) {
   }
 }
 
+async function migrateDeviceAuthentication(req, res, next) {
+  const session = await mongoose.startSession();
+  try {
+    const targetDeviceId = String(req.params.deviceId || "").toLowerCase();
+    const migration = req.body.migration;
+    const oldProof = String(req.body.oldProof || "");
+    const newProof = String(req.body.newProof || "");
+    const manifest = req.body.manifest;
+    const manifestSignature = String(req.body.manifestSignature || "");
+    const expectedBindingId = sessionBindingId(req.user.sid);
+    let migrated;
+    let deviceListInvalidation;
+
+    await session.withTransaction(async () => {
+      const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
+      const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
+      const target = devices.find(item => item.deviceId === targetDeviceId);
+      const expiresAt = Date.parse(String(migration?.expiresAt || ""));
+      if (!identity?.rootPublicKey || !target || target.status !== "active" ||
+        target.clientId !== req.cryptoDevice.clientId ||
+        Number(target.authVersion) !== 1) {
+        const error = new Error("legacy current device is not available for authentication migration");
+        error.status = 409;
+        throw error;
+      }
+      if (!migration || migration.v !== 2 ||
+        migration.action !== "migrate-device-auth" ||
+        migration.protocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+        migration.cryptoUserId !== identity.cryptoUserId ||
+        migration.deviceId !== target.deviceId ||
+        migration.clientId !== target.clientId ||
+        migration.oldRequestPublicKey !== target.requestPublicKey ||
+        migration.newRequestPublicKey !== manifest?.requestPublicKey ||
+        migration.sessionBindingId !== expectedBindingId ||
+        !isFreshIsoDate(migration.createdAt) ||
+        !Number.isFinite(expiresAt) || expiresAt <= Date.now() ||
+        expiresAt > Date.now() + 10 * 60 * 1000 ||
+        !/^[A-Za-z0-9_-]{22,96}$/.test(String(migration.nonce || ""))) {
+        const error = new Error("invalid device authentication migration");
+        error.status = 400;
+        throw error;
+      }
+      decodeBase64Url(migration.newRequestPublicKey, 32, "new request public key");
+      if (!verifyEd25519({
+        publicKey: target.requestPublicKey,
+        signature: oldProof,
+        value: migration,
+        domain: "liotan-device-auth-migration-v2"
+      }) || !verifyEd25519({
+        publicKey: migration.newRequestPublicKey,
+        signature: newProof,
+        value: migration,
+        domain: "liotan-device-auth-migration-v2"
+      })) {
+        const error = new Error("device authentication migration requires old and new key proofs");
+        error.status = 400;
+        throw error;
+      }
+      const manifestExpiresAt = Date.parse(String(manifest?.expiresAt || ""));
+      if (!manifest || manifest.v !== 2 ||
+        manifest.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+        manifest.sessionBindingId !== expectedBindingId ||
+        manifest.cryptoUserId !== target.cryptoUserId ||
+        manifest.username !== target.username ||
+        manifest.deviceId !== target.deviceId ||
+        manifest.clientId !== target.clientId ||
+        manifest.credentialThumbprint !== target.credentialThumbprint ||
+        manifest.requestPublicKey !== migration.newRequestPublicKey ||
+        manifest.createdAt !== target.manifest.createdAt ||
+        !Number.isFinite(manifestExpiresAt) ||
+        manifestExpiresAt < Date.now() + 24 * 60 * 60 * 1000 ||
+        manifestExpiresAt > Date.now() + 400 * 24 * 60 * 60 * 1000 ||
+        !verifyEd25519({
+          publicKey: identity.rootPublicKey,
+          signature: manifestSignature,
+          value: manifest,
+          domain: "liotan-device-manifest-v2"
+        })) {
+        const error = new Error("invalid v2 device manifest");
+        error.status = 400;
+        throw error;
+      }
+
+      const prospectiveTarget = {
+        ...target.toObject(),
+        requestPublicKey: migration.newRequestPublicKey,
+        authVersion: 2,
+        authProtocol: DEVICE_AUTH_PROTOCOL_V2,
+        sessionBindingId: expectedBindingId,
+        authMigrationState: "v2-active",
+        authMigratedAt: new Date(),
+        manifest,
+        manifestSignature,
+        manifestExpiresAt: new Date(manifestExpiresAt)
+      };
+      const prospectiveDevices = devices
+        .filter(item => item.deviceId !== targetDeviceId)
+        .map(item => item.toObject())
+        .concat(prospectiveTarget);
+      const verifiedDirectory = validateDirectoryMutation({
+        identity,
+        devices: prospectiveDevices,
+        update: req.body.directoryUpdate,
+        signature: req.body.directorySignature,
+        action: "migrate-device-auth",
+        targetDeviceId
+      });
+      migrated = await CryptoDevice.findOneAndUpdate(
+        {
+          _id: target._id,
+          status: "active",
+          authVersion: { $ne: 2 },
+          requestPublicKey: target.requestPublicKey,
+          sessionIdHash: hashSessionId(req.user.sid)
+        },
+        {
+          $set: {
+            requestPublicKey: migration.newRequestPublicKey,
+            authVersion: 2,
+            authProtocol: DEVICE_AUTH_PROTOCOL_V2,
+            sessionBindingId: expectedBindingId,
+            authMigrationState: "v2-active",
+            authMigratedAt: new Date(),
+            manifest,
+            manifestSignature,
+            manifestExpiresAt: new Date(manifestExpiresAt),
+            lastSeenAt: new Date()
+          }
+        },
+        { returnDocument: "after", session }
+      );
+      if (!migrated) {
+        const error = new Error("device authentication changed during migration");
+        error.status = 409;
+        throw error;
+      }
+      await persistDirectoryHead(identity, verifiedDirectory, session);
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
+    });
+
+    emitDeviceListUpdate(req, deviceListInvalidation);
+    const updatedIdentity = await CryptoIdentity.findOne({ userId: req.user.userId }).lean();
+    return res.json({
+      ok: true,
+      device: deviceView(migrated),
+      directory: directoryStateView(updatedIdentity)
+    });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    if (err instanceof TypeError) return res.status(400).json({ error: err.message });
+    return next(err);
+  } finally {
+    await session.endSession();
+  }
+}
+
 async function approveDevice(req, res, next) {
   const session = await mongoose.startSession();
   try {
@@ -351,7 +551,21 @@ async function approveDevice(req, res, next) {
         const error = new Error("a pending device cannot approve itself"); error.status = 403; throw error;
       }
       const expiresAt = Date.parse(String(approval?.expiresAt || ""));
-      if (!approval || approval.v !== 1 ||
+      const useV2 = Number(approval?.v) === 2;
+      if (Number(target.authVersion) === 2 && (
+        !useV2 ||
+        Number(req.cryptoDevice.authVersion) !== 2
+      )) {
+        const error = new Error("device authentication v2 approval is required");
+        error.status = 426;
+        throw error;
+      }
+      if (!useV2 && !legacyEnrollmentAllowed(target.createdAt)) {
+        const error = new Error("legacy device approvals are no longer accepted");
+        error.status = 426;
+        throw error;
+      }
+      if (!approval || ![1, 2].includes(Number(approval.v)) ||
         approval.cryptoUserId !== identity.cryptoUserId ||
         approval.newDeviceId !== target.deviceId ||
         approval.newClientId !== target.clientId ||
@@ -359,13 +573,21 @@ async function approveDevice(req, res, next) {
         approval.credentialThumbprint !== target.credentialThumbprint ||
         approval.challenge !== target.approvalChallenge ||
         approval.approverClientId !== req.cryptoDevice.clientId ||
+        (useV2 && (
+          approval.action !== "approve-device" ||
+          approval.protocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+          approval.approverDeviceId !== req.cryptoDevice.deviceId ||
+          approval.approverSessionBindingId !== sessionBindingId(req.user.sid) ||
+          approval.newSessionBindingId !== target.sessionBindingId ||
+          !isFreshIsoDate(approval.createdAt)
+        )) ||
         !/^[A-Za-z0-9_-]{22,96}$/.test(String(approval.nonce || "")) ||
         !Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + 10 * 60 * 1000 ||
         !verifyEd25519({
           publicKey: req.cryptoDevice.requestPublicKey,
           signature: approvalSignature,
           value: approval,
-          domain: "liotan-device-approval-v1"
+          domain: useV2 ? "liotan-device-approval-v2" : "liotan-device-approval-v1"
         })) {
         const error = new Error("invalid cryptographic device approval"); error.status = 400; throw error;
       }
@@ -512,6 +734,143 @@ async function confirmRecoveryBootstrap(req, res, next) {
     return res.json({
       ok: true,
       securityIdentityChanged: true,
+      device: deviceView(activatedDevice),
+      conversationsBlocked: conversations.length,
+      reconcileRequired: conversations.length > 0
+    });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    if (err instanceof TypeError) return res.status(400).json({ error: err.message });
+    return next(err);
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function confirmRecoveryEnrollment(req, res, next) {
+  const session = await mongoose.startSession();
+  try {
+    const targetDeviceId = String(req.params.deviceId || "").toLowerCase();
+    const confirmation = req.body.confirmation;
+    const confirmationSignature = String(req.body.confirmationSignature || "");
+    const expectedBindingId = sessionBindingId(req.user.sid);
+    let activatedDevice;
+    let securityEvent;
+    let conversations = [];
+    let deviceListInvalidation;
+
+    await session.withTransaction(async () => {
+      const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
+      const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
+      const target = devices.find(item => item.deviceId === targetDeviceId);
+      const activeCount = devices.filter(item => item.status === "active").length;
+      const expiresAt = Date.parse(String(confirmation?.expiresAt || ""));
+      if (!identity?.rootPublicKey || !target || target.status !== "pending" ||
+        Number(target.authVersion) !== 2 ||
+        target.sessionBindingId !== expectedBindingId ||
+        target.sessionIdHash !== hashSessionId(req.user.sid)) {
+        const error = new Error("pending v2 device is not available for recovery enrollment");
+        error.status = 409;
+        throw error;
+      }
+      if (!confirmation || confirmation.v !== 2 ||
+        confirmation.action !== "recover-enroll-device" ||
+        confirmation.protocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+        confirmation.cryptoUserId !== identity.cryptoUserId ||
+        confirmation.deviceId !== target.deviceId ||
+        confirmation.clientId !== target.clientId ||
+        confirmation.requestPublicKey !== target.requestPublicKey ||
+        confirmation.sessionBindingId !== expectedBindingId ||
+        confirmation.challenge !== target.approvalChallenge ||
+        confirmation.preserveExistingDevices !== true ||
+        confirmation.visibleSecurityEventAcknowledged !== true ||
+        !isFreshIsoDate(confirmation.createdAt) ||
+        !Number.isFinite(expiresAt) || expiresAt <= Date.now() ||
+        expiresAt > Date.now() + 10 * 60 * 1000 ||
+        !/^[A-Za-z0-9_-]{22,96}$/.test(String(confirmation.nonce || "")) ||
+        !verifyEd25519({
+          publicKey: identity.rootPublicKey,
+          signature: confirmationSignature,
+          value: confirmation,
+          domain: "liotan-recovery-enrollment-v2"
+        })) {
+        const error = new Error("invalid recovery enrollment confirmation");
+        error.status = 400;
+        throw error;
+      }
+      const prospectiveTarget = {
+        ...target.toObject(),
+        status: "active",
+        activationMode: "recovery-enrollment",
+        approval: confirmation,
+        approvalSignature: confirmationSignature,
+        approvedByClientId: "recovery-enrollment",
+        approvedAt: new Date(),
+        approvalChallenge: ""
+      };
+      const prospectiveDevices = devices
+        .filter(item => item.deviceId !== targetDeviceId)
+        .map(item => item.toObject())
+        .concat(prospectiveTarget);
+      const verifiedDirectory = validateDirectoryMutation({
+        identity,
+        devices: prospectiveDevices,
+        update: req.body.directoryUpdate,
+        signature: req.body.directorySignature,
+        action: "recovery-enrollment",
+        targetDeviceId
+      });
+      activatedDevice = await CryptoDevice.findOneAndUpdate(
+        {
+          _id: target._id,
+          status: "pending",
+          approvalChallenge: target.approvalChallenge,
+          sessionIdHash: hashSessionId(req.user.sid)
+        },
+        {
+          $set: {
+            status: "active",
+            activationMode: "recovery-enrollment",
+            approval: confirmation,
+            approvalSignature: confirmationSignature,
+            approvedByClientId: "recovery-enrollment",
+            approvedAt: new Date(),
+            approvalChallenge: ""
+          }
+        },
+        { returnDocument: "after", session }
+      );
+      if (!activatedDevice) {
+        const error = new Error("pending device changed during recovery enrollment");
+        error.status = 409;
+        throw error;
+      }
+      await persistDirectoryHead(identity, verifiedDirectory, session);
+      [securityEvent] = await CryptoDeviceSecurityEvent.create([{
+        eventId: crypto.randomBytes(24).toString("base64url"),
+        userId: req.user.userId,
+        cryptoUserId: identity.cryptoUserId,
+        type: "recovery-enrollment",
+        targetDeviceId: target.deviceId,
+        targetClientId: target.clientId,
+        priorActiveDeviceCount: activeCount,
+        statement: confirmation,
+        statementSignature: confirmationSignature
+      }], { session });
+      conversations = await transitionUserConversations(req.user.userId, {
+        addClientIds: [target.clientId],
+        reason: "recovery enrolled a distinct cryptographic device",
+        session
+      });
+      deviceListInvalidation = await createDeviceListInvalidation(req, session);
+    });
+
+    emitCryptoRosterChanged(req, conversations);
+    emitDeviceListUpdate(req, deviceListInvalidation);
+    return res.json({
+      ok: true,
+      securityIdentityChanged: false,
+      visibleSecurityEvent: securityEventView(securityEvent),
       device: deviceView(activatedDevice),
       conversationsBlocked: conversations.length,
       reconcileRequired: conversations.length > 0
@@ -710,14 +1069,15 @@ async function listDevices(req, res, next) {
       { createdAt: { $gt: cursor.createdAt } },
       { createdAt: cursor.createdAt, _id: { $gt: cursor.id } }
     ];
-    const [identity, page, allDevices, directoryEntries] = await Promise.all([
+    const [identity, page, allDevices, directoryEntries, securityEvents] = await Promise.all([
       CryptoIdentity.findOne({ userId: req.user.userId }).lean(),
       CryptoDevice.find(pageQuery)
         .sort({ createdAt: 1, _id: 1 })
         .limit(limit + 1)
         .lean(),
       CryptoDevice.find({ userId: req.user.userId }).sort({ deviceId: 1 }).lean(),
-      CryptoDirectoryEntry.find({ userId: req.user.userId }).sort({ version: -1 }).limit(DIRECTORY_LOG_WINDOW).lean()
+      CryptoDirectoryEntry.find({ userId: req.user.userId }).sort({ version: -1 }).limit(DIRECTORY_LOG_WINDOW).lean(),
+      CryptoDeviceSecurityEvent.find({ userId: req.user.userId }).sort({ createdAt: -1 }).limit(50).lean()
     ]);
     const hasMore = page.length > limit;
     const devices = page.slice(0, limit);
@@ -726,6 +1086,7 @@ async function listDevices(req, res, next) {
       deviceCommitments: allDevices.map(directoryDeviceCommitment),
       directory: directoryStateView(identity),
       directoryLog: directoryLogView(directoryEntries),
+      securityEvents: securityEvents.map(securityEventView),
       hasMore,
       nextCursor: hasMore ? encodeDeviceCursor(devices.at(-1)) : ""
     });
@@ -762,29 +1123,49 @@ async function renewDevice(req, res, next) {
       const issuedAt = Date.parse(String(renewal?.issuedAt || ""));
       const oldExpiresAt = Date.parse(String(target.manifestExpiresAt || ""));
       const newExpiresAt = Date.parse(String(manifest?.expiresAt || ""));
+      const authVersion = Number(target.authVersion) === 2 ? 2 : 1;
       const expectedPreviousHash = sha256Base64Url(Buffer.from(canonicalJson([
-        "liotan-device-manifest-v1",
+        authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
         target.manifest,
         target.manifestSignature
       ]), "utf8"));
-      if (!renewal || renewal.v !== 1 || renewal.cryptoUserId !== identity.cryptoUserId ||
+      if (!renewal || Number(renewal.v) !== authVersion || renewal.cryptoUserId !== identity.cryptoUserId ||
         renewal.deviceId !== target.deviceId || renewal.clientId !== target.clientId ||
         renewal.previousManifestHash !== expectedPreviousHash ||
+        (authVersion === 2 && (
+          renewal.action !== "renew-device" ||
+          renewal.protocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+          renewal.sessionBindingId !== sessionBindingId(req.user.sid)
+        )) ||
         !Number.isFinite(issuedAt) || Math.abs(Date.now() - issuedAt) > 10 * 60 * 1000 ||
         oldExpiresAt - Date.now() > MANIFEST_RENEWAL_WINDOW_MS ||
         !/^[A-Za-z0-9_-]{22,96}$/.test(String(renewal.nonce || "")) ||
-        !verifyEd25519({ publicKey: target.requestPublicKey, signature: renewalSignature, value: renewal, domain: "liotan-device-renewal-v1" })) {
+        !verifyEd25519({
+          publicKey: target.requestPublicKey,
+          signature: renewalSignature,
+          value: renewal,
+          domain: authVersion === 2 ? "liotan-device-renewal-v2" : "liotan-device-renewal-v1"
+        })) {
         const error = new Error("invalid device manifest renewal"); error.status = 400; throw error;
       }
-      if (!manifest || manifest.v !== 1 || manifest.cryptoUserId !== target.cryptoUserId ||
+      if (!manifest || Number(manifest.v) !== authVersion || manifest.cryptoUserId !== target.cryptoUserId ||
         manifest.username !== target.username || manifest.deviceId !== target.deviceId ||
         manifest.clientId !== target.clientId || manifest.requestPublicKey !== target.requestPublicKey ||
         manifest.credentialThumbprint !== target.credentialThumbprint ||
         manifest.createdAt !== target.manifest.createdAt ||
+        (authVersion === 2 && (
+          manifest.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+          manifest.sessionBindingId !== target.sessionBindingId
+        )) ||
         !Number.isFinite(newExpiresAt) || newExpiresAt < Date.now() + 30 * 24 * 60 * 60 * 1000 ||
         newExpiresAt > Date.now() + 400 * 24 * 60 * 60 * 1000 ||
         renewal.newExpiresAt !== manifest.expiresAt ||
-        !verifyEd25519({ publicKey: identity.rootPublicKey, signature: manifestSignature, value: manifest, domain: "liotan-device-manifest-v1" })) {
+        !verifyEd25519({
+          publicKey: identity.rootPublicKey,
+          signature: manifestSignature,
+          value: manifest,
+          domain: authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1"
+        })) {
         const error = new Error("invalid renewed device manifest"); error.status = 400; throw error;
       }
       const prospectiveTarget = { ...target.toObject(), manifest, manifestSignature, manifestExpiresAt: new Date(newExpiresAt) };
@@ -830,8 +1211,10 @@ module.exports = {
   bootstrap,
   pinIdentity,
   registerDevice,
+  migrateDeviceAuthentication,
   approveDevice,
   confirmRecoveryBootstrap,
+  confirmRecoveryEnrollment,
   publishKeyPackages,
   keyPackageStatus,
   revokeDevice,

@@ -25,6 +25,8 @@ import {
   deleteEncryptedConversationData,
   deleteEncryptedMessageRecord,
   deleteLocalCryptoStore,
+  deleteDeviceRequestSecret,
+  loadOrCreateDeviceRequestSecret,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
   putEncryptedRecord
@@ -1213,16 +1215,43 @@ class LiotanMlsEngine {
 
 function wipeEngineKeys(keys) {
   if (!keys) return;
-  wipe(keys.rootSecretKey);
-  wipe(keys.requestSecretKey);
-  wipe(keys.databaseKey);
-  wipe(keys.cacheKey);
+  const wiped = new Set();
+  for (const value of [
+    keys.rootSecretKey,
+    keys.requestSecretKey,
+    keys.legacyRequestSecretKey,
+    keys.localRequestSecretKey,
+    keys.databaseKey,
+    keys.cacheKey
+  ]) {
+    if (value && !wiped.has(value)) {
+      wiped.add(value);
+      wipe(value);
+    }
+  }
+}
+
+async function deriveKeysForBootstrap({ username, recoveryKey, bootstrap, deviceId }) {
+  const deviceRequestSecretKey = await loadOrCreateDeviceRequestSecret(username, deviceId);
+  try {
+    const authVersion = bootstrap.device
+      ? Number(bootstrap.device.authVersion) || 1
+      : 2;
+    return await deriveAccountKeys(
+      recoveryKey,
+      bootstrap.identity.cryptoUserId,
+      deviceId,
+      { deviceRequestSecretKey, authVersion }
+    );
+  } finally {
+    wipe(deviceRequestSecretKey);
+  }
 }
 
 async function createInitializedEngine({ username, recoveryKey, generation }) {
   const deviceId = getOrCreateDeviceId(username);
   const bootstrap = await cryptoBootstrap(deviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  const keys = await deriveKeysForBootstrap({ username, recoveryKey, bootstrap, deviceId });
   let next = new LiotanMlsEngine({ username, bootstrap, deviceId, keys });
   let automaticRepairAttempted = false;
   try {
@@ -1326,13 +1355,22 @@ export function initializeMlsEngine({ username, recoveryKey }) {
   return engineInitialization;
 }
 
-export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
+export async function confirmPendingRecoveryDevice({
+  username,
+  recoveryKey,
+  allowActiveDevices = false
+}) {
   const cleanUsername = String(username || "").trim();
   if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required");
   if (engine || engineInitialization) throw new Error("Close the active MLS session before recovery bootstrap");
   const deviceId = getOrCreateDeviceId(cleanUsername);
   const bootstrap = await cryptoBootstrap(deviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  const keys = await deriveKeysForBootstrap({
+    username: cleanUsername,
+    recoveryKey,
+    bootstrap,
+    deviceId
+  });
   try {
     const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
     if (!bootstrap.identity.rootPublicKey ||
@@ -1340,8 +1378,12 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       throw new Error("Recovery key does not match the account identity");
     }
     const target = bootstrap.device;
-    if (!target || target.status !== "pending" || target.activationMode !== "recovery-bootstrap") {
-      throw new Error("No pending recovery-bootstrap device is available");
+    const recoveryEnrollment = Number(target?.authVersion) === 2 &&
+      (target?.activationMode === "recovery-bootstrap" ||
+        (allowActiveDevices && target?.activationMode === "device-approval"));
+    if (!target || target.status !== "pending" ||
+      (!recoveryEnrollment && target.activationMode !== "recovery-bootstrap")) {
+      throw new Error("No pending device is available for explicit recovery enrollment");
     }
     const temporaryEngine = {
       username: cleanUsername,
@@ -1354,19 +1396,38 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       deviceCommitments: bootstrap.deviceCommitments || [],
       allDevices: bootstrap.accountDevices || []
     });
-    const confirmation = {
-      v: 1,
-      cryptoUserId: bootstrap.identity.cryptoUserId,
-      deviceId: target.deviceId,
-      clientId: target.clientId,
-      challenge: target.approvalChallenge,
-      warningAcknowledged: true,
-      timestamp: new Date().toISOString(),
-      nonce: randomId(24)
-    };
+    const confirmation = recoveryEnrollment
+      ? {
+          v: 2,
+          action: "recover-enroll-device",
+          protocol: "liotan-device-auth-v2",
+          cryptoUserId: bootstrap.identity.cryptoUserId,
+          deviceId: target.deviceId,
+          clientId: target.clientId,
+          requestPublicKey: target.requestPublicKey,
+          sessionBindingId: bootstrap.sessionBindingId,
+          challenge: target.approvalChallenge,
+          preserveExistingDevices: true,
+          visibleSecurityEventAcknowledged: true,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          nonce: randomId(24)
+        }
+      : {
+          v: 1,
+          cryptoUserId: bootstrap.identity.cryptoUserId,
+          deviceId: target.deviceId,
+          clientId: target.clientId,
+          challenge: target.approvalChallenge,
+          warningAcknowledged: true,
+          timestamp: new Date().toISOString(),
+          nonce: randomId(24)
+        };
     const confirmationSignature = await signCanonical(
       keys.rootSecretKey,
-      "liotan-recovery-bootstrap-v1",
+      recoveryEnrollment
+        ? "liotan-recovery-enrollment-v2"
+        : "liotan-recovery-bootstrap-v1",
       confirmation
     );
     const nextDevice = {
@@ -1374,17 +1435,20 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       status: "active",
       approval: confirmation,
       approvalSignature: confirmationSignature,
-      approvedByClientId: "recovery-bootstrap",
+      activationMode: recoveryEnrollment ? "recovery-enrollment" : target.activationMode,
+      approvedByClientId: recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap",
       approvalChallenge: ""
     };
     const directory = await buildDirectoryMutation(temporaryEngine, {
       devices: bootstrap.accountDevices || [],
       nextDevice,
-      action: "recovery-bootstrap",
+      action: recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap",
       targetDeviceId: target.deviceId
     });
     return await unsignedCryptoPost(
-      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/recovery-bootstrap`,
+      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/${
+        recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap"
+      }`,
       {
         confirmation,
         confirmationSignature,
@@ -1404,14 +1468,24 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
 
   const oldDeviceId = getOrCreateDeviceId(cleanUsername);
   const bootstrap = await cryptoBootstrap(oldDeviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, oldDeviceId);
+  const keys = await deriveKeysForBootstrap({
+    username: cleanUsername,
+    recoveryKey,
+    bootstrap,
+    deviceId: oldDeviceId
+  });
   try {
     const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
     if (!bootstrap.identity.rootPublicKey || !constantTimeTextEqual(bootstrap.identity.rootPublicKey, derivedRoot)) {
       throw new Error("Recovery key does not match the account identity");
     }
     if (bootstrap.device?.status === "active") {
-      configureCryptoSigner({ deviceId: oldDeviceId, requestSecretKey: keys.requestSecretKey });
+      configureCryptoSigner({
+        deviceId: oldDeviceId,
+        requestSecretKey: keys.requestSecretKey,
+        authVersion: Number(bootstrap.device.authVersion) || 1,
+        sessionBindingId: bootstrap.sessionBindingId
+      });
       const temporaryEngine = { username: cleanUsername, bootstrap, keys };
       await verifyAndPinAccountDirectory(temporaryEngine, {
         username: cleanUsername,
@@ -1453,6 +1527,7 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     }
     configureCryptoSigner(null);
     await deleteCoreCryptoDatabase(getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, oldDeviceId));
+    await deleteDeviceRequestSecret(cleanUsername, oldDeviceId);
     removeDeviceId(cleanUsername, oldDeviceId);
   } finally {
     configureCryptoSigner(null);

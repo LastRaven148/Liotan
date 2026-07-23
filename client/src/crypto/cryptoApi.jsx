@@ -56,8 +56,26 @@ export async function signedCryptoRequest(path, {
   const timestamp = Date.now();
   const nonce = randomId(24);
   const bodyHash = sha256Base64Url(canonicalJson(body));
-  const value = { method: normalizedMethod, path, timestamp, nonce, bodyHash };
-  const signature = await signCanonical(signer.requestSecretKey, "liotan-crypto-request-v1", value);
+  const authVersion = Number(signer.authVersion) === 2 ? 2 : 1;
+  const value = authVersion === 2
+    ? {
+        v: 2,
+        action: "crypto-request",
+        protocol: "liotan-device-auth-v2",
+        method: normalizedMethod,
+        path,
+        timestamp,
+        nonce,
+        bodyHash,
+        deviceId: signer.deviceId,
+        sessionBindingId: signer.sessionBindingId
+      }
+    : { method: normalizedMethod, path, timestamp, nonce, bodyHash };
+  const signature = await signCanonical(
+    signer.requestSecretKey,
+    authVersion === 2 ? "liotan-crypto-request-v2" : "liotan-crypto-request-v1",
+    value
+  );
   const headers = new Headers(extraHeaders);
   headers.set("X-Liotan-CSRF", "liotan-browser-request-v1");
   headers.set("X-Liotan-Crypto-Device", signer.deviceId);

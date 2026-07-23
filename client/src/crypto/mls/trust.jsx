@@ -91,11 +91,18 @@ export async function verifyDirectory(engine, conversation) {
       const valid = await verifyCanonical(
         identity.rootPublicKey,
         device.manifestSignature,
-        "liotan-device-manifest-v1",
+        Number(device.manifest?.v) === 2
+          ? "liotan-device-manifest-v2"
+          : "liotan-device-manifest-v1",
         device.manifest
       );
       if (!valid || device.status !== "active" || device.manifest.clientId !== device.clientId ||
-        device.manifest.username !== user.username || device.manifest.credentialThumbprint !== device.credentialThumbprint) {
+        device.manifest.username !== user.username ||
+        device.manifest.credentialThumbprint !== device.credentialThumbprint ||
+        (Number(device.manifest?.v) === 2 && (
+          device.manifest.authProtocol !== "liotan-device-auth-v2" ||
+          device.manifest.sessionBindingId !== device.sessionBindingId
+        ))) {
         throw new Error(`Untrusted MLS device for ${user.username}`);
       }
     }

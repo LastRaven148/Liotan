@@ -85,3 +85,20 @@ test("proxy topology ignores spoofed forwarding headers outside trusted CIDRs", 
     TRUSTED_PROXY_CIDRS: ""
   }), "127.0.0.1");
 });
+
+test("device authentication v2 uses local entropy, dual-proof migration and explicit recovery events", () => {
+  const keys = read("client/src/crypto/accountKeys.jsx");
+  const store = read("client/src/crypto/recoveryStore.jsx");
+  const identity = read("server/controllers/cryptoV4/identityDevices.js");
+  assert.match(keys, /deviceRequestSecretKey/);
+  assert.match(store, /loadOrCreateDeviceRequestSecret/);
+  assert.doesNotMatch(
+    store.slice(store.indexOf("loadOrCreateDeviceRequestSecretInternal")),
+    /localStorage/
+  );
+  assert.match(identity, /oldProof/);
+  assert.match(identity, /newProof/);
+  assert.match(identity, /liotan-device-auth-migration-v2/);
+  assert.match(identity, /CryptoDeviceSecurityEvent/);
+  assert.match(identity, /visibleSecurityEventAcknowledged/);
+});

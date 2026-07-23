@@ -32,6 +32,31 @@ test("recovery key survives concurrent save and full reload in browser IndexedDB
   expect(await page.evaluate(username => window.loadProductionRecoveryKey(username), probe.username)).toBe(probe.key);
 });
 
+test("device request keys are local-only, stable across reload and distinct per device", async ({ page }) => {
+  await page.goto("/test/production/fixture.html");
+  const identity = {
+    username: `device-auth-${crypto.randomUUID()}`,
+    firstDevice: crypto.randomBytes(8).toString("hex"),
+    secondDevice: crypto.randomBytes(8).toString("hex")
+  };
+  const first = await page.evaluate(
+    value => window.loadProductionDeviceRequestSecret(value.username, value.firstDevice),
+    identity
+  );
+  const second = await page.evaluate(
+    value => window.loadProductionDeviceRequestSecret(value.username, value.secondDevice),
+    identity
+  );
+  expect(second).not.toBe(first);
+
+  await page.reload();
+  await expect(page.locator("#status")).toHaveText("production-fixture-loaded");
+  expect(await page.evaluate(
+    value => window.loadProductionDeviceRequestSecret(value.username, value.firstDevice),
+    identity
+  )).toBe(first);
+});
+
 test("passphrase recovery wrapping rejects raw dumps, wrong secrets and resumes interrupted migration", async ({ page }) => {
   await page.goto("/test/production/fixture.html");
   expect(await page.evaluate(() => window.runRecoveryProtectionProbe())).toEqual({

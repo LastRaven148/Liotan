@@ -40,6 +40,7 @@ import {
   getEncryptedHistoryRecord,
   listEncryptedRecords,
   listEncryptedHistoryRecords,
+  loadOrCreateDeviceRequestSecret,
   loadRecoveryKey,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
@@ -148,6 +149,14 @@ window.runColdStartClientIdentityProbe = async function runColdStartClientIdenti
 window.createProductionRecoveryKey = () => createRecoveryKey();
 window.saveProductionRecoveryKey = (username, key) => saveRecoveryKey(username, key);
 window.loadProductionRecoveryKey = username => loadRecoveryKey(username);
+window.loadProductionDeviceRequestSecret = async (username, deviceId) => {
+  const secret = await loadOrCreateDeviceRequestSecret(username, deviceId);
+  try {
+    return bytesToBase64Url(secret);
+  } finally {
+    secret.fill(0);
+  }
+};
 window.runRecoveryProtectionProbe = async function runRecoveryProtectionProbe() {
   const username = `protected-${crypto.randomUUID()}`;
   const recoveryKey = createRecoveryKey();

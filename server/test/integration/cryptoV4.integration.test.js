@@ -45,13 +45,27 @@ function signedHeaders(account, method, path, body = {}, overrides = {}) {
   const timestamp = overrides.timestamp || Date.now();
   const nonce = overrides.nonce || crypto.randomBytes(24).toString("base64url");
   const signedPath = overrides.signedPath || path;
-  const value = {
-    method: method.toUpperCase(),
-    path: signedPath,
-    timestamp,
-    nonce,
-    bodyHash: requestBodyHash(body)
-  };
+  const authVersion = Number(account.authVersion) === 2 ? 2 : 1;
+  const value = authVersion === 2
+    ? {
+        v: 2,
+        action: "crypto-request",
+        protocol: "liotan-device-auth-v2",
+        method: method.toUpperCase(),
+        path: signedPath,
+        timestamp,
+        nonce,
+        bodyHash: requestBodyHash(body),
+        deviceId: account.deviceId,
+        sessionBindingId: account.sessionBindingId
+      }
+    : {
+        method: method.toUpperCase(),
+        path: signedPath,
+        timestamp,
+        nonce,
+        bodyHash: requestBodyHash(body)
+      };
   return {
     "X-Liotan-CSRF": CSRF_HEADER,
     "X-Liotan-Crypto-Device": account.deviceId,
@@ -59,7 +73,7 @@ function signedHeaders(account, method, path, body = {}, overrides = {}) {
     "X-Liotan-Crypto-Nonce": nonce,
     "X-Liotan-Crypto-Signature": signCanonical(
       account.requestKey.privateKey,
-      "liotan-crypto-request-v1",
+      authVersion === 2 ? "liotan-crypto-request-v2" : "liotan-crypto-request-v1",
       value
     )
   };
@@ -290,7 +304,12 @@ async function confirmPendingRecoveryTest(pending) {
   return response.body;
 }
 
-async function registerDevice(account, { rootKey = null, deviceId = null, autoApprove = true } = {}) {
+async function registerDevice(account, {
+  rootKey = null,
+  deviceId = null,
+  autoApprove = true,
+  authVersion = 1
+} = {}) {
   const sessionAccount = account.deviceId ? await createAdditionalSession(account) : account;
   const next = {
     ...sessionAccount,
@@ -326,7 +345,7 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
 
   const now = new Date();
   const manifest = {
-    v: 1,
+    v: authVersion,
     cryptoUserId: next.cryptoUserId,
     username: next.username,
     deviceId: next.deviceId,
@@ -334,11 +353,21 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
     requestPublicKey: rawPublicKey(next.requestKey.publicKey),
     credentialThumbprint: crypto.randomBytes(32).toString("base64url"),
     createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    ...(authVersion === 2 ? {
+      authProtocol: "liotan-device-auth-v2",
+      sessionBindingId: bootstrap.body.sessionBindingId
+    } : {})
   };
   next.clientId = manifest.clientId;
+  next.authVersion = authVersion;
+  next.sessionBindingId = authVersion === 2 ? bootstrap.body.sessionBindingId : "";
   next.manifest = manifest;
-  const manifestSignature = signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest);
+  const manifestSignature = signCanonical(
+    next.rootKey.privateKey,
+    authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
+    manifest
+  );
   const devices = bootstrap.body.accountDevices || [];
   const activeCount = devices.filter(device => device.status === "active").length;
   const status = devices.length === 0 ? "active" : "pending";
@@ -349,6 +378,9 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
     deviceId: next.deviceId,
     clientId: next.clientId,
     requestPublicKey: manifest.requestPublicKey,
+    authVersion,
+    authProtocol: authVersion === 2 ? "liotan-device-auth-v2" : "liotan-device-auth-v1",
+    sessionBindingId: next.sessionBindingId,
     credentialThumbprint: manifest.credentialThumbprint,
     manifest,
     manifestSignature,
@@ -644,6 +676,173 @@ test("durable media byte quotas account for rejected reservations", async () => 
     if (prior == null) delete process.env[envName];
     else process.env[envName] = prior;
   }
+});
+
+test("device authentication v2 migrates with old and new proofs without changing MLS identity", async () => {
+  const account = await createAccount("authv2_migrate");
+  const listed = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === account.deviceId);
+  const bootstrap = await requestFor(
+    account,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${account.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const nextRequestKey = crypto.generateKeyPairSync("ed25519");
+  const nextRequestPublicKey = rawPublicKey(nextRequestKey.publicKey);
+  const migration = {
+    v: 2,
+    action: "migrate-device-auth",
+    protocol: "liotan-device-auth-v2",
+    cryptoUserId: account.cryptoUserId,
+    deviceId: account.deviceId,
+    clientId: account.clientId,
+    oldRequestPublicKey: target.requestPublicKey,
+    newRequestPublicKey: nextRequestPublicKey,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const manifest = {
+    ...target.manifest,
+    v: 2,
+    requestPublicKey: nextRequestPublicKey,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const manifestSignature = signCanonical(
+    account.rootKey.privateKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...target,
+    requestPublicKey: nextRequestPublicKey,
+    authVersion: 2,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    authMigrationState: "v2-active",
+    manifest,
+    manifestSignature
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: account.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "migrate-device-auth",
+    account.deviceId,
+    account.rootKey.privateKey
+  );
+  const path = `/crypto/v4/devices/${account.deviceId}/auth-migration`;
+  const body = {
+    migration,
+    oldProof: signCanonical(
+      account.requestKey.privateKey,
+      "liotan-device-auth-migration-v2",
+      migration
+    ),
+    newProof: signCanonical(
+      nextRequestKey.privateKey,
+      "liotan-device-auth-migration-v2",
+      migration
+    ),
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  };
+  const migrated = await signedJson(account, "POST", path, body);
+  assert.equal(migrated.status, 200, migrated.text);
+  assert.equal(migrated.body.device.clientId, account.clientId);
+  assert.equal(migrated.body.device.credentialThumbprint, target.credentialThumbprint);
+  assert.equal(migrated.body.device.authVersion, 2);
+
+  account.requestKey = nextRequestKey;
+  account.authVersion = 2;
+  account.sessionBindingId = bootstrap.body.sessionBindingId;
+  const authenticated = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(authenticated.status, 200, authenticated.text);
+});
+
+test("recovery enrollment adds a distinct v2 device and records a visible security event", async () => {
+  const owner = await registerDevice(await createAuthenticatedUser("recover_owner"), {
+    authVersion: 2
+  });
+  const pending = await registerDevice(owner, {
+    rootKey: owner.rootKey,
+    authVersion: 2,
+    autoApprove: false
+  });
+  assert.equal(pending.status, "pending");
+  const bootstrap = await requestFor(
+    pending,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${pending.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const target = bootstrap.body.device;
+  const confirmation = {
+    v: 2,
+    action: "recover-enroll-device",
+    protocol: "liotan-device-auth-v2",
+    cryptoUserId: pending.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    requestPublicKey: target.requestPublicKey,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    challenge: target.approvalChallenge,
+    preserveExistingDevices: true,
+    visibleSecurityEventAcknowledged: true,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const confirmationSignature = signCanonical(
+    pending.rootKey.privateKey,
+    "liotan-recovery-enrollment-v2",
+    confirmation
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    activationMode: "recovery-enrollment",
+    approval: confirmation,
+    approvalSignature: confirmationSignature,
+    approvedByClientId: "recovery-enrollment",
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "recovery-enrollment",
+    target.deviceId,
+    pending.rootKey.privateKey
+  );
+  const recovered = await requestFor(
+    pending,
+    "POST",
+    `/crypto/v4/devices/${target.deviceId}/recovery-enrollment`
+  ).set("X-Liotan-CSRF", CSRF_HEADER).send({
+    confirmation,
+    confirmationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+  assert.equal(recovered.status, 200, recovered.text);
+  assert.equal(recovered.body.device.deviceId, pending.deviceId);
+  assert.notEqual(recovered.body.device.deviceId, owner.deviceId);
+  assert.equal(recovered.body.visibleSecurityEvent.type, "recovery-enrollment");
+  assert.equal(recovered.body.visibleSecurityEvent.priorActiveDeviceCount, 1);
+
+  const visible = await signedJson(owner, "GET", "/crypto/v4/devices");
+  assert.equal(visible.status, 200, visible.text);
+  assert(visible.body.securityEvents.some(event =>
+    event.type === "recovery-enrollment" &&
+    event.targetDeviceId === pending.deviceId
+  ));
 });
 
 test("new cryptographic devices remain pending until an existing device signs a bound approval", async () => {

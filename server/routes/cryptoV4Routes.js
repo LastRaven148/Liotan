@@ -20,7 +20,13 @@ router.use("/crypto/v4", authMiddleware, e2eeLimiter);
 router.get("/crypto/v4/bootstrap", controller.bootstrap);
 router.post("/crypto/v4/identity", controller.pinIdentity);
 router.post("/crypto/v4/devices", controller.registerDevice);
+router.post(
+  "/crypto/v4/devices/:deviceId/auth-migration",
+  cryptoDeviceAuth,
+  controller.migrateDeviceAuthentication
+);
 router.post("/crypto/v4/devices/:deviceId/recovery-bootstrap", controller.confirmRecoveryBootstrap);
+router.post("/crypto/v4/devices/:deviceId/recovery-enrollment", controller.confirmRecoveryEnrollment);
 router.get("/crypto/v4/devices", cryptoDeviceAuth, controller.listDevices);
 router.post("/crypto/v4/devices/:deviceId/approve", cryptoDeviceAuth, controller.approveDevice);
 router.post("/crypto/v4/devices/:deviceId/revoke", cryptoDeviceAuth, controller.revokeDevice);
