@@ -314,6 +314,28 @@ assert(!fs.existsSync(path.join(root, "server/sockets/handlers/private/sendPriva
   "dead duplicate legacy private write handler must stay removed");
 assert(!fs.existsSync(path.join(root, "server/sockets/handlers/group/sendGroupMessage.js")),
   "dead duplicate legacy group write handler must stay removed");
+for (const removedUnreachableModule of [
+  "server/routes/proxyRoutes.js",
+  "server/sockets/services/deleteAttachmentFile.js",
+  "server/sockets/services/encryptedContent.js",
+  "server/sockets/services/mediaKeys.js",
+  "server/startup/ensureUploadDirs.js",
+  "server/utils/attachmentSecurity.js",
+  "server/utils/messagePermissions.js",
+  "client/src/components/chat/message/MessagePhoto.jsx",
+  "client/src/components/chat/message/MessageVideo.jsx",
+  "client/src/security/recovery/recoveryFoundation.jsx",
+  "client/src/security/totp/totpFoundation.jsx",
+  "client/src/security/trust/deviceTrustFoundation.jsx",
+  "client/src/security/vault/vaultFoundation.jsx",
+  "client/src/services/callSecurity.jsx",
+  "client/src/services/realtimeCapabilities.jsx",
+  "client/src/services/secureCallFrames.jsx",
+  "client/src/services/secureVoice.jsx"
+]) {
+  assert(!fs.existsSync(path.join(root, removedUnreachableModule)),
+    `transitively unreachable production module must stay removed: ${removedUnreachableModule}`);
+}
 
 assert.match(read("server/config/version.js"), /require\("\.\.\/package\.json"\)/,
   "runtime version must be sourced from server/package.json");

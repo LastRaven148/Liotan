@@ -15,6 +15,7 @@ const IGNORED_DIRS = new Set([
   "artifacts",
   "coverage",
   "test-results",
+  "test",
   "playwright-report"
 ]);
 
@@ -72,7 +73,7 @@ const RULES = [
     id: "direct-storage-signed-upload",
     severity: "high",
     pattern: /apiKey|secretAccessKey/i,
-    allow: /utils[\/]uploadToR2\.js$|utils[\/]attachmentSecurity\.js$|utils[\/]mailer\.js$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
+    allow: /utils[\/]uploadToR2\.js$|utils[\/]mailer\.js$|scripts[\/]privacyAudit\.js$|\.env\.example$/,
     note: "Prefer server-mediated uploads; direct signed upload exposes provider metadata."
   },
   {
@@ -93,7 +94,7 @@ const RULES = [
     id: "raw-ip-risk",
     severity: "medium",
     pattern: /req\.ip|x-forwarded-for|remoteAddress/i,
-    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|controllers[\/]authController\.js$|controllers[\/]auth[\/]securityPages\.js$|scripts[\/]privacyAudit\.js$/,
+    allow: /utils[\/]securityIds\.js$|middleware[\/]requestContext\.js$|config[\/]proxyTrust\.js$|controllers[\/]authController\.js$|controllers[\/]auth[\/]securityPages\.js$|scripts[\/]privacyAudit\.js$/,
     note: "Do not store/log raw IP. Hash only for rate limits; authController may derive masked security-notice hints."
   },
   {

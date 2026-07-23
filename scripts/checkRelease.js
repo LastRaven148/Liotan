@@ -91,6 +91,8 @@ async function testZip() {
 
 async function main() {
   runNpm("executable architecture map", ["run", "audit:architecture"]);
+  runNpm("production import graph and dead-code gate", ["run", "audit:code-health"]);
+  runNpm("workflow permission and provenance gate", ["run", "audit:workflows"]);
   runNpm("CSS architecture and reproducibility gates", ["run", "audit:css"]);
   runNpm("reproducible CSS production build", ["run", "test:css-reproducible"]);
   runNpm("client build", ["run", "check:client"]);
