@@ -7,6 +7,10 @@ const CONFIRM = "DELETE_DETACHED_PUBLIC_AVATARS";
 
 async function main() {
   const apply = process.argv.includes("--yes");
+  if (process.env.NODE_ENV === "production" &&
+      !process.argv.includes("--production-read-only")) {
+    throw new Error("Production reconciliation requires --production-read-only");
+  }
   if (apply && process.env.LIOTAN_AVATAR_ORPHAN_DELETE_CONFIRM !== CONFIRM) {
     throw new Error(`Set LIOTAN_AVATAR_ORPHAN_DELETE_CONFIRM=${CONFIRM} to delete detached avatars`);
   }
@@ -19,7 +23,9 @@ async function main() {
     });
     console.log(JSON.stringify({
       mode: apply ? "apply" : "dry-run",
-      ...result,
+      found: result.found,
+      deleted: result.deleted,
+      containsRawObjectKeys: false,
       confirmation: apply ? "confirmed" : `Re-run with --yes and ${CONFIRM}`
     }, null, 2));
   } finally {
@@ -28,6 +34,11 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error(err.message);
+  console.error(JSON.stringify({
+    error: {
+      name: String(err?.name || "Error").slice(0, 80),
+      code: String(err?.code || "AVATAR_RECONCILIATION_FAILED").slice(0, 80)
+    }
+  }));
   process.exitCode = 1;
 });

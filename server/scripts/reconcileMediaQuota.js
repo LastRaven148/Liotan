@@ -10,6 +10,10 @@ const CONFIRMATION = "RECONCILE_50_3_0_MEDIA_QUOTA";
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  if (process.env.NODE_ENV === "production" &&
+      !process.argv.includes("--production-read-only")) {
+    throw new Error("Production reconciliation requires --production-read-only");
+  }
   if (apply && process.env.LIOTAN_MEDIA_QUOTA_RECONCILE_CONFIRM !== CONFIRMATION) {
     throw new Error(
       `Set LIOTAN_MEDIA_QUOTA_RECONCILE_CONFIRM=${CONFIRMATION} to apply`

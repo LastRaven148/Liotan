@@ -16,6 +16,7 @@
     "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js",
     "audit:data-inventory": "node scripts/auditDataInventory.js",
     "audit:production-read-only": "node scripts/verifyProductionReadOnly.js",
+    "audit:r2-orphans": "node scripts/auditR2OrphanCounts.js",
     "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js",
     "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js",
     "reconcile:avatars": "node scripts/reconcileAvatarStorage.js",

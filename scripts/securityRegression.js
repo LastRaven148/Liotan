@@ -452,6 +452,16 @@ assert.doesNotMatch(productionReadOnlyAudit, /(?:writeFile|appendFile|unlink|rmS
 assert.match(productionReadOnlyAudit, /outputsSecretsOrIdentifiers:\s*false/,
   "production verification output must exclude secret values and raw identifiers");
 
+const r2OrphanAudit = read("server/scripts/auditR2OrphanCounts.js");
+assert.match(r2OrphanAudit, /--production-read-only/,
+  "production R2 orphan inventory must require an explicit read-only flag");
+assert.match(r2OrphanAudit, /containsRawObjectKeys:\s*false/,
+  "production R2 orphan inventory must expose aggregate counts only");
+assert.doesNotMatch(r2OrphanAudit, /deleteFromR2|deleteR2Prefix/,
+  "production R2 orphan inventory must not import deletion capabilities");
+assert.match(read("server/scripts/reconcileAvatarStorage.js"), /containsRawObjectKeys:\s*false/,
+  "avatar reconciliation output must not expose raw R2 keys");
+
 const securityPolicy = read("SECURITY.md");
 assert.match(securityPolicy, /Private\s+Vulnerability Reporting is not currently enabled/,
   "security policy must not promise an unavailable private reporting channel");
