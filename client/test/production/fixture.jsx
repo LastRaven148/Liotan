@@ -48,6 +48,7 @@ import {
   saveRecoveryKey
 } from "../../src/crypto/recoveryStore";
 import React, { useEffect } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import CryptoGate from "../../src/crypto/CryptoGate";
 import SecureTransitionGate from "../../src/crypto/SecureTransitionGate";
@@ -1153,14 +1154,21 @@ window.mountCreateGroupFull = function mountCreateGroupFull() {
   );
 };
 
+let responsiveLayoutRoot = null;
+
 window.mountResponsiveLayout = function mountResponsiveLayout({ mobile = false, activeChat = false, profile = false } = {}) {
-  createRoot(document.querySelector("#root")).render(
-    <div className={["app", mobile ? "app--mobile" : "app--desktop", activeChat ? "has-active-chat" : "", profile ? "has-profile-drawer" : ""].filter(Boolean).join(" ")}>
-      <aside className="sidebar">Sidebar</aside>
-      <main className="chat">Chat</main>
-      <aside className="profile-drawer">Profile</aside>
-    </div>
-  );
+  if (!responsiveLayoutRoot) {
+    responsiveLayoutRoot = createRoot(document.querySelector("#root"));
+  }
+  flushSync(() => {
+    responsiveLayoutRoot.render(
+      <div className={["app", mobile ? "app--mobile" : "app--desktop", activeChat ? "has-active-chat" : "", profile ? "has-profile-drawer" : ""].filter(Boolean).join(" ")}>
+        <aside className="sidebar">Sidebar</aside>
+        <main className="chat">Chat</main>
+        <aside className="profile-drawer">Profile</aside>
+      </div>
+    );
+  });
 };
 
 window.runKeyTransparencyProofProbe = function runKeyTransparencyProofProbe() {
