@@ -2,10 +2,10 @@
 
 ## Review method
 
-The code-and-generated-evidence checkpoint is `db7ee8d`, compared with audited/base commit
+The code-and-generated-evidence checkpoint is `3912eae`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
-- 166 tracked files differ;
+- 175 tracked files differ;
 - every JavaScript/JSX/MJS production module is parsed into the relative-import
   graph;
 - explicit roots are the client entry, server entry and every operational
@@ -19,7 +19,7 @@ The code-and-generated-evidence checkpoint is `db7ee8d`, compared with audited/b
 The canonical review command is:
 
 ```text
-git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..db7ee8d
+git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..3912eae
 ```
 
 ## Risk-focused review
@@ -48,6 +48,8 @@ M  artifacts/sbom/client.cdx.json
 M  artifacts/sbom/root.cdx.json
 M  artifacts/sbom/server.cdx.json
 M  client/.env.example
+M  client/package-lock.json
+M  client/package.json
 D  client/src/components/chat/message/MessagePhoto.jsx
 D  client/src/components/chat/message/MessageVideo.jsx
 M  client/src/components/settings/pages/DevicesPage.jsx
@@ -75,6 +77,9 @@ M  client/src/utils/chatState.jsx
 M  client/test/browser/mls-core.spec.js
 M  client/test/production/fixture.jsx
 M  client/vite.config.js
+M  docs/security/crypto-architecture.md
+M  docs/security/media-lifecycle.md
+M  docs/security/regression-tests.md
  A  docs/security/remediation-2026-07-23/A_REMEDIATION_EXECUTIVE_SUMMARY.md
  A  docs/security/remediation-2026-07-23/B_FINDING_STATUS_MATRIX.md
  A  docs/security/remediation-2026-07-23/C_CRYPTO_V4_POST_REMEDIATION_MAP.md
@@ -87,6 +92,7 @@ M  client/vite.config.js
  A  docs/security/remediation-2026-07-23/J_FULL_CHANGED_FILES_REVIEW.md
  A  docs/security/remediation-2026-07-23/K_RESIDUAL_RISKS.md
  A  docs/security/remediation-2026-07-23/L_CORRECTIONS_TO_PREVIOUS_AUDIT.md
+M  docs/security/threat-model.md
 M  package-lock.json
 M  package.json
 M  scripts/checkRelease.js
@@ -99,6 +105,8 @@ M  scripts/mediaStorageRegression.js
 M  scripts/sbomReproducibility.js
 M  scripts/securityRegression.js
 A  scripts/sourceRevision.js
+A  scripts/versionProduction.js
+A  scripts/versionProductionRegression.js
 A  scripts/workflowSecurityAudit.js
 M  server/.env.example
 M  server/app.js
@@ -142,6 +150,7 @@ A  server/models/MediaQuotaBucket.js
 A  server/models/MediaQuotaState.js
 A  server/models/MediaTransferReservation.js
 M  server/models/User.js
+M  server/package-lock.json
 M  server/package.json
 M  server/routes/attachmentRoutes.js
 M  server/routes/cryptoV4Routes.js

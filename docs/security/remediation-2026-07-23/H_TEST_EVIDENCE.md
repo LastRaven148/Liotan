@@ -172,3 +172,20 @@ The exact final HEAD, timestamps, two PASS records and run order are copied into
 the Draft PR body after execution. Logs stay outside the repository because
 they contain machine-local paths and browser trace locations; they contain no
 production access or production data.
+
+## 2026-07-24 production-version follow-up
+
+- Root, client, server and all three lockfile root records are synchronized at
+  `57.4.0`.
+- `versionProduction.js` performs strict stable-semver parsing, monotonic base
+  comparison and synchronized package/lockfile updates.
+- CI checks the exact PR-head history, package/lockfile synchronization and a
+  version strictly greater than the pull-request base.
+- Clean root/client/server `npm ci`, version regression, workflow audit,
+  security regression, license policy and two reproducible SBOM generations
+  passed before the follow-up commit.
+- The existing four required `main` checks were preserved and aggregate
+  `CodeQL` was added as a fifth required context. Private Vulnerability
+  Reporting was enabled and re-read through the GitHub API.
+- The legacy-data decision is `RETAIN FOR NOW`; no retirement apply or
+  production mutation was executed.
