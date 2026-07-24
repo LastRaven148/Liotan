@@ -2,7 +2,7 @@
 
 ## Review method
 
-The code-and-generated-evidence checkpoint is `3912eae`, compared with audited/base commit
+The code-and-generated-evidence checkpoint is `d43e6e8`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
 - 175 tracked files differ;
@@ -19,7 +19,7 @@ The code-and-generated-evidence checkpoint is `3912eae`, compared with audited/b
 The canonical review command is:
 
 ```text
-git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..3912eae
+git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..d43e6e8
 ```
 
 ## Risk-focused review

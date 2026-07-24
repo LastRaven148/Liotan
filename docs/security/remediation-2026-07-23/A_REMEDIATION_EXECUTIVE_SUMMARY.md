@@ -8,7 +8,7 @@
 - The audit archive was extracted outside the repository and treated as an
   untrusted backlog, not as source of truth.
 - `git ls-files` reported 440 tracked files at the audited commit. The
-  code-and-generated-evidence checkpoint `3912eae` has 460 tracked files after intentional
+  code-and-generated-evidence checkpoint `d43e6e8` has 460 tracked files after intentional
   additions, evidence and proven deletions; the final count must always be obtained from
   `git ls-files`, including these evidence documents.
 - No production database, R2 bucket, Cloudflare, Nginx, DNS, PM2 process, VPS,

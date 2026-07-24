@@ -189,3 +189,16 @@ production access or production data.
   Reporting was enabled and re-read through the GitHub API.
 - The legacy-data decision is `RETAIN FOR NOW`; no retirement apply or
   production mutation was executed.
+
+### Production-version CI container HOME
+
+Draft PR CI run `30078616832` passed synchronized-version validation, then
+failed before the release graph when `git show` read a different global Git
+configuration from the preceding exact-workspace trust step. Git therefore
+rejected the container-mounted checkout as dubious ownership. This was a
+workflow-environment failure, not an application or version mismatch.
+
+Commit `d43e6e8` gives the monotonic version comparison the same `/root` HOME
+used to register the exact `$GITHUB_WORKSPACE`; the workflow regression locks
+that relationship. Focused workflow, version-synchronization, monotonicity and
+diff checks passed locally. The failed CI run is not counted as a clean run.
