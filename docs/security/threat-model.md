@@ -1,5 +1,10 @@
 # Threat model Liotan E2EE
 
+> [!WARNING]
+> Historical document for the pre-remediation architecture.
+> Superseded by `docs/security/remediation-2026-07-23/`.
+> Do not use this document as the current production security specification.
+
 ## Защищаемые свойства
 
 Liotan стремится защищать:

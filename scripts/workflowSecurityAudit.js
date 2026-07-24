@@ -28,6 +28,17 @@ assert.ok(
     && ci.includes("ref: ${{ github.event.pull_request.head.sha || github.sha }}"),
   "CI must check out and attest the exact PR head or push revision"
 );
+assert.match(ci, /ref:\s*\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}\s+fetch-depth:\s*0/,
+  "production version comparison requires complete history for the exact revision");
+assert.match(ci, /name:\s*Verify synchronized release version[\s\S]*?run:\s*npm run version:check/,
+  "CI must reject package and lockfile version drift");
+assert.match(
+  ci,
+  /name:\s*Verify production version increased[\s\S]*?BASE_SHA:\s*\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.before \}\}[\s\S]*?run:\s*node scripts\/versionProduction\.js --check "\$BASE_SHA"/,
+  "CI must compare the production version with its trusted base revision"
+);
+assert.doesNotMatch(ci, /run:[^\n]*\$\{\{\s*github\.event\.(?:pull_request\.base\.sha|before)/,
+  "GitHub revision expressions must not be interpolated directly into shell commands");
 assert.ok(
   ci.includes('git config --global --add safe.directory "$GITHUB_WORKSPACE"'),
   "container CI must trust only the exact checked-out workspace"

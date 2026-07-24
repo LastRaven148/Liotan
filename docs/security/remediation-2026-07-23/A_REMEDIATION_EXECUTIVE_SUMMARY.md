@@ -43,6 +43,8 @@ protocol and storage invariants:
 - CycloneDX evidence is generated from complete lockfiles and is reproducible
   across Windows and Linux instead of reflecting host-specific optional
   packages;
+- root, client and server production versions are synchronized and CI requires
+  every production candidate to increase the version relative to its base SHA;
 - high dependency advisories were removed, workflow permissions were narrowed,
   and production import reachability is enforced;
 - filesystem, Mongo query/property, and release TOCTOU sinks identified during
@@ -53,11 +55,12 @@ protocol and storage invariants:
 The detailed matrix is in `B_FINDING_STATUS_MATRIX.md`. Of 27 original and new
 findings:
 
-- 18 are `FIXED`;
+- 20 are `FIXED`;
 - 1 is `NOT APPLICABLE`;
 - 5 are `RESIDUAL PLATFORM LIMITATION`;
-- 1 is `BLOCKED BY PRODUCTION ACCESS`;
-- 2 are `REQUIRES EXPLICIT PRODUCT DECISION`.
+- 0 are `BLOCKED BY PRODUCTION ACCESS`;
+- 1 is `REQUIRES EXPLICIT PRODUCT DECISION`; the current decision is
+  `RETAIN FOR NOW`, and destructive retirement requires a new decision.
 
 There is intentionally no `DEFERRED` state.
 
@@ -90,10 +93,9 @@ The following cannot be honestly closed by repository code alone:
 - recipients can retain plaintext or old key material after a delete event;
 - exact security properties inside the third-party CoreCrypto/WASM
   implementation are outside this repository;
-- the remediation branch CodeQL scan is green, but `main` protection requires
-  the analysis workflow rather than the aggregate alert gate; changing that
-  repository-platform policy is owner work;
-- physical production legacy deletion and external private-vulnerability intake
-  require explicit owner decisions.
+- 33 historical high CodeQL alerts remain open on `main` and require deliberate
+  baseline triage even though the aggregate `CodeQL` check is now mandatory;
+- physical production legacy deletion requires a new explicit owner decision;
+  the current recorded decision is `RETAIN FOR NOW`.
 
 These boundaries are specified in `K_RESIDUAL_RISKS.md`.

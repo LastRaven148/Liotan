@@ -5,11 +5,9 @@ production credentials or private user content in a report.
 
 Repository maintainers can create a draft security advisory in the repository's
 **Security → Advisories → New draft advisory** page. GitHub Private
-Vulnerability Reporting is not currently enabled for external reporters, so
-this repository does not yet advertise an external private intake channel.
-Enabling that repository setting, or publishing a separately operated security
-address, requires an explicit owner decision before this policy can promise
-external private intake.
+Vulnerability Reporting is enabled for external reporters. Use
+**Security → Advisories → Report a vulnerability** to submit a private report
+without opening a public issue.
 
 A report should include the affected version, reproduction steps, impact, and
 the smallest proof of concept that can be shared safely.

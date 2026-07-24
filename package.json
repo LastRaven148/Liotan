@@ -1,6 +1,6 @@
 {
   "name": "Liotan",
-  "version": "50.1.0",
+  "version": "57.4.0",
   "license": "GPL-3.0-only",
   "type": "commonjs",
   "engines": {
@@ -10,6 +10,9 @@
   "scripts": {
     "server": "node server/server.js",
     "client": "cd client && npm start",
+    "version:prod": "node scripts/versionProduction.js",
+    "version:check": "node scripts/versionProduction.js --check",
+    "test:versioning": "node scripts/versionProductionRegression.js",
     "build-client": "cd client && npm run build",
     "check:client": "cd client && npm run build",
     "check:server": "cd server && npm run check",
@@ -39,7 +42,7 @@
     "test:e2e": "npm run test:browser",
     "test:release": "npm run release:check",
     "test:coverage": "c8 --check-coverage --lines 80 --functions 80 --branches 70 --reporter=text --reporter=json-summary --include=server/utils/canonicalJson.js --include=server/security/cryptoV4.js node --test server/test/unit/cryptoPrimitives.test.js",
-    "test": "npm run audit:css && npm run audit:code-health && npm run audit:workflows && npm run test:crypto-static && npm run test:security && npm run test:media-storage && npm run test:deploy-installer && npm run test:archive-factory && npm run test:server && npm run build-client && npm run test:browser && npm run test:deployment-bundle && npm run test:coverage",
+    "test": "npm run test:versioning && npm run audit:css && npm run audit:code-health && npm run audit:workflows && npm run test:crypto-static && npm run test:security && npm run test:media-storage && npm run test:deploy-installer && npm run test:archive-factory && npm run test:server && npm run build-client && npm run test:browser && npm run test:deployment-bundle && npm run test:coverage",
     "test:all": "npm test && npm run check && npm run supply-chain",
     "licenses:check": "node scripts/checkLicenses.js",
     "sbom:generate": "node scripts/generateSbom.js",

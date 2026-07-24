@@ -1,5 +1,10 @@
 # Crypto/security regression tests
 
+> [!WARNING]
+> Historical document for the pre-remediation architecture.
+> Superseded by `docs/security/remediation-2026-07-23/`.
+> Do not use this document as the current production security specification.
+
 ## Категории команд
 
 | Команда | Уровень | Назначение |

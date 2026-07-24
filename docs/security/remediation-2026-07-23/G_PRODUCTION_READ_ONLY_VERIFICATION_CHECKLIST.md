@@ -134,23 +134,18 @@ In the Draft PR:
 - artifact attestation identifies the exact reviewed SHA.
 
 Read-only inspection of PR #26 confirmed that the remediation-head `analyze`
-and aggregate `CodeQL` checks pass and no alert was dismissed. It also
-confirmed that `main` protection strictly requires `Release gate (Node 22)`,
-`analyze`, `review`, and `semgrep-cloud-platform/scan`, but does not require the
-aggregate `CodeQL` alert check. There are 33 historical high alerts open on
-`main`. Changing the required policy or triaging historical alerts remains
-`BLOCKED BY PRODUCTION ACCESS` and must be performed by the repository owner.
+and aggregate `CodeQL` checks pass and no alert was dismissed. On 2026-07-24
+the aggregate `CodeQL` context was added to strict `main` protection without
+removing `Release gate (Node 22)`, `analyze`, `review`, or
+`semgrep-cloud-platform/scan`. There are 33 historical high alerts open on
+`main`; their deliberate baseline triage remains operational work.
 
 ## 7. External private reporting decision
 
-GitHub Private Vulnerability Reporting is currently disabled. The owner must
-either:
-
-- enable **Settings → Security → Private vulnerability reporting**; or
-- publish and operate another private channel.
-
-Until then, `SECURITY.md` truthfully documents only the private draft-advisory
-channel available to maintainers.
+GitHub Private Vulnerability Reporting was enabled and verified through the
+repository API on 2026-07-24. `SECURITY.md` directs external reporters to
+**Security → Advisories → Report a vulnerability** and retains the private
+draft-advisory workflow for maintainers.
 
 ## Sign-off record
 

@@ -468,10 +468,24 @@ assert.match(read("server/scripts/reconcileAvatarStorage.js"), /containsRawObjec
   "avatar reconciliation output must not expose raw R2 keys");
 
 const securityPolicy = read("SECURITY.md");
-assert.match(securityPolicy, /Private\s+Vulnerability Reporting is not currently enabled/,
-  "security policy must not promise an unavailable private reporting channel");
+assert.match(securityPolicy, /Private\s+Vulnerability Reporting is enabled/,
+  "security policy must describe the enabled private reporting channel");
+assert.match(securityPolicy, /Report a vulnerability/,
+  "security policy must tell external reporters how to use private reporting");
 assert.match(securityPolicy, /New draft advisory/,
   "security policy must name the private channel available to maintainers");
+for (const historicalDocument of [
+  "docs/security/crypto-architecture.md",
+  "docs/security/media-lifecycle.md",
+  "docs/security/threat-model.md",
+  "docs/security/regression-tests.md"
+]) {
+  assert.match(
+    read(historicalDocument),
+    /Historical document for the pre-remediation architecture[\s\S]*Superseded by `docs\/security\/remediation-2026-07-23\/`/,
+    `${historicalDocument} must not be mistaken for the current security specification`
+  );
+}
 
 const group = read("server/controllers/groupController.js");
 const addBlock = group.slice(group.indexOf("async function addGroupMember"), group.indexOf("async function removeGroupMember"));

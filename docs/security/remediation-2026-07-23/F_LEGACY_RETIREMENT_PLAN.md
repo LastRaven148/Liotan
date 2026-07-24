@@ -12,6 +12,13 @@
 
 ## Product decision
 
+Decision recorded on 2026-07-24: **RETAIN FOR NOW**.
+
+Do not run `retireLegacyData.js --apply` and do not enable automatic legacy
+retirement before a new explicit owner decision backed by aggregate inventory
+and verified backup evidence. Existing legacy write routes remain tombstoned
+with `410`; retaining old data does not restore a legacy application path.
+
 Applying retirement is `REQUIRES EXPLICIT PRODUCT DECISION` because it
 irreversibly deletes real data. The owner must choose exactly one outcome after
 reviewing aggregate production counts:

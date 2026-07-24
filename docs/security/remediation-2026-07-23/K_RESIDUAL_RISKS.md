@@ -33,16 +33,6 @@ of the dependency’s cryptographic implementation.
 
 ## BLOCKED BY PRODUCTION ACCESS
 
-### GitHub CodeQL enforcement
-
-Concrete code sinks were fixed, local workflow/static gates pass, and both the
-analysis and aggregate alert checks are green on the remediation head. Read-only
-GitHub inspection found 33 historical high alerts on `main`; strict branch
-protection requires the `analyze` workflow check but not the aggregate `CodeQL`
-alert gate. No alert was changed or silently dismissed. Requiring the accepted
-aggregate code-scanning result and triaging the historical baseline are
-repository-owner operations.
-
 ### Production posture evidence
 
 Deployed SHA, edge rewriting, direct origin exposure, Mongo legacy counts, R2
@@ -57,14 +47,9 @@ scripts and exact instructions are in
 
 Repository code prevents new legacy writes and supplies dry-run, resumable,
 object-first retirement tooling. Real legacy deletion changes user retention
-guarantees and is irreversible without a proven backup. The owner must choose
-retention or deletion.
-
-### External vulnerability reporting
-
-GitHub Private Vulnerability Reporting is disabled. The owner must enable it or
-publish/operate another channel. Until then the policy does not falsely promise
-external private intake.
+guarantees and is irreversible without a proven backup. The decision recorded
+on 2026-07-24 is `RETAIN FOR NOW`; destructive retirement remains disabled and
+requires a new explicit decision.
 
 ## Ongoing operational risks
 
@@ -77,6 +62,9 @@ external private intake.
   upgrade cutoffs until they reconnect;
 - future dependencies, workflows and newly added dynamic imports require the
   same audit gates.
+- 33 historical high CodeQL alerts remain open on `main`; the aggregate
+  `CodeQL` context is now required for new changes, but the baseline still
+  requires deliberate triage without blanket dismissal.
 
 None of these statements means the application is “fully secure.” They define
 the boundary of what the code and current evidence demonstrate.

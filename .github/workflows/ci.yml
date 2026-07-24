@@ -35,6 +35,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Trust the exact container workspace
         env:
@@ -50,6 +51,15 @@ jobs:
             package-lock.json
             client/package-lock.json
             server/package-lock.json
+
+      - name: Verify synchronized release version
+        run: npm run version:check
+
+      - name: Verify production version increased
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/versionProduction.js --check "$BASE_SHA"
 
       - name: Install locked dependencies
         run: |

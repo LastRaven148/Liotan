@@ -35,6 +35,7 @@ path, dynamic property/query, release TOCTOU and insecure-temporary-file sinks
 reproduced in source and adds local workflow/code-health gates. Both CodeQL
 checks pass on the remediation head without dismissing an alert. Read-only
 inspection confirms that 33 historical high alerts remain open on `main` and
-that branch protection requires `analyze`, not the aggregate `CodeQL` alert
-gate. The owner must change that policy if merges are to be blocked at the
-accepted alert severity.
+that branch protection previously required `analyze`, not the aggregate
+`CodeQL` alert gate. On 2026-07-24 the aggregate context was added without
+removing any existing required check. The historical baseline still requires
+deliberate triage; no alert was dismissed to obtain a green check.
