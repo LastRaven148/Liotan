@@ -53,6 +53,7 @@ export default function CryptoGate({
   const [confirmed, setConfirmed] = useState(false);
   const [reprovisionConfirmed, setReprovisionConfirmed] = useState(false);
   const [recoveryBootstrapConfirmed, setRecoveryBootstrapConfirmed] = useState(false);
+  const [recoveryEnrollmentConfirmed, setRecoveryEnrollmentConfirmed] = useState(false);
   const [failure, setFailure] = useState(null);
   const [error, setError] = useState("");
   const cardRef = useRef(null);
@@ -186,8 +187,8 @@ export default function CryptoGate({
     }
   }
 
-  async function confirmRecoveryBootstrap() {
-    if (!recoveryBootstrapConfirmed) return;
+  async function confirmRecoveryBootstrap({ allowActiveDevices = false } = {}) {
+    if (allowActiveDevices ? !recoveryEnrollmentConfirmed : !recoveryBootstrapConfirmed) return;
     setError("");
     setStatus("loading");
     onStageChange?.("opening-storage");
@@ -199,17 +200,22 @@ export default function CryptoGate({
       setLocalPassphrase("");
       const { encoded, bytes } = cryptoServices.normalizeRecoveryKey(candidate);
       bytes.fill(0);
-      await cryptoServices.confirmPendingRecoveryDevice({ username, recoveryKey: encoded });
+      await cryptoServices.confirmPendingRecoveryDevice({
+        username,
+        recoveryKey: encoded,
+        allowActiveDevices
+      });
       await cryptoServices.initializeMlsEngine({ username, recoveryKey: encoded });
       await cryptoServices.saveRecoveryKey(username, encoded);
       setRecoveryInput("");
       setRecoveryBootstrapConfirmed(false);
+      setRecoveryEnrollmentConfirmed(false);
       setStatus("ready");
       onStageChange?.("preparing-messages");
       await onReady?.();
     } catch (caught) {
       setError(caught?.message || "Не удалось подтвердить восстановление криптографического устройства.");
-      setStatus("recovery-bootstrap");
+      setStatus(allowActiveDevices ? "approval-pending" : "recovery-bootstrap");
       await onBlocked?.();
     }
   }
@@ -282,6 +288,26 @@ export default function CryptoGate({
           <button type="button" className="crypto-gate-primary" onClick={() => setAttempt(value => value + 1)}>
             Проверить подтверждение
           </button>
+          <p>Если доверенное устройство недоступно, recovery key может добавить это устройство как новую отдельную криптографическую сущность. Существующие устройства не заменяются, а событие останется в истории безопасности.</p>
+          <input className="crypto-gate-input" type="password" autoComplete="off" spellCheck="false"
+            value={recoveryInput} onChange={event => setRecoveryInput(event.target.value)}
+            placeholder="Recovery key (если его нет в локальном хранилище)"
+            aria-label="Recovery key для добавления устройства" />
+          {localProtectionRequired && !recoveryInput.trim() && <input className="crypto-gate-input"
+            type="password" autoComplete="current-password" value={localPassphrase}
+            onChange={event => setLocalPassphrase(event.target.value)}
+            placeholder="Локальная фраза восстановления" aria-label="Локальная фраза восстановления" />}
+          <label className="crypto-gate-confirm">
+            <input type="checkbox" checked={recoveryEnrollmentConfirmed}
+              onChange={event => setRecoveryEnrollmentConfirmed(event.target.checked)} />
+            <span>Я понимаю, что это отдельное recovery-событие, изменяющее проверяемый каталог устройств</span>
+          </label>
+          <button type="button" className="crypto-gate-secondary"
+            disabled={!recoveryEnrollmentConfirmed ||
+              (localProtectionRequired && !recoveryInput.trim() && localPassphrase.length < 10)}
+            onClick={() => confirmRecoveryBootstrap({ allowActiveDevices: true })}>
+            Добавить новое устройство через recovery
+          </button>
         </>}
 
         {status === "recovery-bootstrap" && <>
@@ -299,7 +325,7 @@ export default function CryptoGate({
           <button type="button" className="crypto-gate-primary"
             disabled={!recoveryBootstrapConfirmed ||
               (localProtectionRequired && !recoveryInput.trim() && localPassphrase.length < 10)}
-            onClick={confirmRecoveryBootstrap}>
+            onClick={() => confirmRecoveryBootstrap()}>
             Подтвердить восстановление
           </button>
         </>}

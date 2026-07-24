@@ -1,5 +1,6 @@
 const UserSecurity = require("../../models/UserSecurity");
 const { hashIp } = require("../../utils/privacy");
+const { getRequestIp } = require("../../utils/securityIds");
 
 const ALLOWED_SECURITY_ACTIONS = new Set([
   "suspicious",
@@ -26,8 +27,7 @@ function getPublicClientUrl() {
 }
 
 function getClientIp(req) {
-  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || String(req.ip || req.socket?.remoteAddress || "").trim();
+  return getRequestIp(req);
 }
 
 function getIpHint(ip) {

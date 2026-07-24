@@ -1,12 +1,10 @@
 const crypto =
   require("crypto");
+const { socketClientIp } = require("../config/proxyTrust");
+const { getRuntimeSecret } = require("../security/secretIsolation");
 
 function getSecret() {
-  return (
-    process.env.PRIVACY_HASH_SECRET ||
-    process.env.JWT_SECRET ||
-    "liotan-local-dev"
-  );
+  return getRuntimeSecret("PRIVACY_HASH_SECRET", "security-identifiers");
 }
 
 function hmac(value) {
@@ -17,15 +15,6 @@ function hmac(value) {
 }
 
 function getRequestIp(req) {
-  const forwarded =
-    req.headers?.["x-forwarded-for"];
-
-  if (forwarded) {
-    return String(forwarded)
-      .split(",")[0]
-      .trim();
-  }
-
   return (
     req.ip ||
     req.socket?.remoteAddress ||
@@ -34,21 +23,7 @@ function getRequestIp(req) {
 }
 
 function getSocketIp(socket) {
-  const forwarded =
-    socket.handshake?.headers?.["x-forwarded-for"];
-
-  if (forwarded) {
-    return String(forwarded)
-      .split(",")[0]
-      .trim();
-  }
-
-  return (
-    socket.handshake?.address ||
-    socket.conn?.remoteAddress ||
-    socket.request?.socket?.remoteAddress ||
-    "unknown"
-  );
+  return socketClientIp(socket);
 }
 
 function hashRequestIp(req) {

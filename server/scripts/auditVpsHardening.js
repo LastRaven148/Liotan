@@ -37,7 +37,7 @@ function main() {
   mustInclude(findings, "server/config/env.js", envJs, "HOST:", "critical", "HOST is not defined in env config.");
   mustInclude(findings, "server/config/env.js", envJs, "127.0.0.1", "critical", "Production localhost bind fallback is missing.");
   mustInclude(findings, "server/config/env.js", envJs, "LIOTAN_ALLOW_PUBLIC_BIND", "medium", "Explicit public bind override flag is missing.");
-  mustInclude(findings, "server/config/env.js", envJs, "TRUST_PROXY_HOPS", "medium", "Trusted proxy hop count is not configured centrally.");
+  mustInclude(findings, "server/config/env.js", envJs, "TRUST_PROXY_CONFIG", "medium", "Trusted proxy CIDR policy is not configured centrally.");
   mustInclude(findings, "server/config/env.js", envJs, "LIOTAN_ENFORCE_PROXY_PROTO", "medium", "Proxy protocol guard toggle is missing.");
 
   mustInclude(findings, "server/server.js", serverJs, "server.listen(env.PORT, env.HOST", "critical", "Server does not bind to env.HOST explicitly.");
@@ -48,15 +48,16 @@ function main() {
   mustInclude(findings, "server/security/vpsRuntimeGuard.js", guardJs, "Unsafe production bind refused", "critical", "Runtime guard does not refuse unsafe production binds.");
   mustInclude(findings, "server/security/httpServerHardening.js", httpHardeningJs, "headersTimeout", "high", "HTTP headers timeout hardening is missing.");
   mustInclude(findings, "server/security/httpServerHardening.js", httpHardeningJs, "requestTimeout", "high", "HTTP request timeout hardening is missing.");
-  mustInclude(findings, "server/security/startupSecurityValidation.js", startupValidationJs, "weak_jwt_secret", "high", "Weak secret startup validation is missing.");
+  mustInclude(findings, "server/security/startupSecurityValidation.js", startupValidationJs, "validateIndependentSecrets", "high", "Independent production secret validation is missing.");
 
-  mustInclude(findings, "server/app.js", appJs, "app.set(\"trust proxy\", env.TRUST_PROXY_HOPS)", "high", "Express trust proxy is not configured through env.");
+  mustInclude(findings, "server/app.js", appJs, "app.set(\"trust proxy\", env.TRUST_PROXY_CONFIG)", "high", "Express trust proxy is not configured through the validated CIDR policy.");
   mustInclude(findings, "server/app.js", appJs, "createProductionHostGuard", "high", "Production Host header guard is not enabled before CORS/routes.");
   mustInclude(findings, "server/app.js", appJs, "createProxyProtocolGuard", "high", "Proxy protocol guard is not enabled before routes.");
   mustInclude(findings, "server/app.js", appJs, "apiNoStore", "low", "No-store middleware for unsafe API responses is missing.");
   mustInclude(findings, "server/app.js", appJs, "allowRequest: createSocketAllowRequest", "high", "Socket.IO production handshake guard is not enabled.");
 
-  if (!hostGuardJs.includes("api.liotan.com") || !hostGuardJs.includes("421")) {
+  if (!/DEFAULT_ALLOWED_API_HOSTS\s*=\s*new Set\(\[[\s\S]*?"api\.liotan\.com"/.test(hostGuardJs) ||
+      !/\.status\(\s*421\s*\)/.test(hostGuardJs)) {
     addFinding(findings, "high", "server/middleware/productionHostGuard.js", "Production Host header guard is missing allowed API hosts or rejection status.");
   }
 

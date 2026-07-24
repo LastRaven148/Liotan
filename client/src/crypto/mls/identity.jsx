@@ -7,6 +7,97 @@ import { buildDirectoryMutation } from "./directory";
 import { verifyAndPinAccountDirectory } from "./trust";
 import { destroyUniffi } from "./uniffiLifecycle";
 
+function configureEngineSigner(engine, authVersion = engine.keys.authVersion) {
+  configureCryptoSigner({
+    deviceId: engine.deviceId,
+    requestSecretKey: engine.keys.requestSecretKey,
+    authVersion,
+    sessionBindingId: engine.bootstrap.sessionBindingId
+  });
+}
+
+async function migrateDeviceAuthentication(engine, existing) {
+  if (Number(existing.authVersion) === 2) return existing;
+  if (!engine.keys.localRequestSecretKey || !engine.keys.localRequestPublicKey) {
+    throw new Error("Local-only device authentication key is unavailable");
+  }
+  configureEngineSigner(engine, 1);
+  const newRequestPublicKey = bytesToBase64Url(engine.keys.localRequestPublicKey);
+  const migration = {
+    v: 2,
+    action: "migrate-device-auth",
+    protocol: "liotan-device-auth-v2",
+    cryptoUserId: engine.bootstrap.identity.cryptoUserId,
+    deviceId: existing.deviceId,
+    clientId: existing.clientId,
+    oldRequestPublicKey: existing.requestPublicKey,
+    newRequestPublicKey,
+    sessionBindingId: engine.bootstrap.sessionBindingId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: randomId(24)
+  };
+  const [oldProof, newProof] = await Promise.all([
+    signCanonical(engine.keys.legacyRequestSecretKey, "liotan-device-auth-migration-v2", migration),
+    signCanonical(engine.keys.localRequestSecretKey, "liotan-device-auth-migration-v2", migration)
+  ]);
+  const manifest = {
+    ...existing.manifest,
+    v: 2,
+    requestPublicKey: newRequestPublicKey,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: engine.bootstrap.sessionBindingId
+  };
+  const manifestSignature = await signCanonical(
+    engine.keys.rootSecretKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...existing,
+    requestPublicKey: newRequestPublicKey,
+    authVersion: 2,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: engine.bootstrap.sessionBindingId,
+    authMigrationState: "v2-active",
+    manifest,
+    manifestSignature
+  };
+  const directory = await buildDirectoryMutation(engine, {
+    devices: engine.bootstrap.accountDevices || [],
+    nextDevice,
+    action: "migrate-device-auth",
+    targetDeviceId: existing.deviceId
+  });
+  const response = await signedCryptoRequest(
+    `/crypto/v4/devices/${encodeURIComponent(existing.deviceId)}/auth-migration`,
+    {
+      method: "POST",
+      body: {
+        migration,
+        oldProof,
+        newProof,
+        manifest,
+        manifestSignature,
+        directoryUpdate: directory.statement,
+        directorySignature: directory.signature
+      }
+    }
+  );
+  engine.keys.requestSecretKey = engine.keys.localRequestSecretKey;
+  engine.keys.requestPublicKey = engine.keys.localRequestPublicKey;
+  engine.keys.authVersion = 2;
+  engine.keys.legacyRequestSecretKey?.fill(0);
+  engine.keys.legacyRequestSecretKey = null;
+  engine.bootstrap.device = response.device;
+  engine.bootstrap.identity.directory = response.directory;
+  engine.bootstrap.accountDevices = directory.prospective.map(device =>
+    device.deviceId === response.device.deviceId ? response.device : device
+  );
+  configureEngineSigner(engine, 2);
+  return response.device;
+}
+
 export async function registerCryptographicIdentity(engine) {
   const cryptoUserId = engine.bootstrap.identity.cryptoUserId;
   const rootPublicKey = bytesToBase64Url(engine.keys.rootPublicKey);
@@ -47,8 +138,10 @@ export async function registerCryptographicIdentity(engine) {
     kty: "OKP",
     x: bytesToBase64Url(credentialPublicKey)
   }));
+  const existing = engine.bootstrap.device;
+  const authVersion = existing ? Number(existing.authVersion) || 1 : 2;
   const manifest = {
-    v: 1,
+    v: authVersion,
     cryptoUserId,
     username: engine.username,
     deviceId: engine.deviceId,
@@ -56,10 +149,17 @@ export async function registerCryptographicIdentity(engine) {
     requestPublicKey: bytesToBase64Url(engine.keys.requestPublicKey),
     credentialThumbprint,
     createdAt: now.toISOString(),
-    expiresAt: expires.toISOString()
+    expiresAt: expires.toISOString(),
+    ...(authVersion === 2 ? {
+      authProtocol: "liotan-device-auth-v2",
+      sessionBindingId: engine.bootstrap.sessionBindingId
+    } : {})
   };
-  const signature = await signCanonical(engine.keys.rootSecretKey, "liotan-device-manifest-v1", manifest);
-  const existing = engine.bootstrap.device;
+  const signature = await signCanonical(
+    engine.keys.rootSecretKey,
+    authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
+    manifest
+  );
   if (existing && (
     existing.clientId !== manifest.clientId ||
     existing.requestPublicKey !== manifest.requestPublicKey ||
@@ -129,7 +229,11 @@ export async function registerCryptographicIdentity(engine) {
       throw error;
     }
   }
-  configureCryptoSigner({ deviceId: engine.deviceId, requestSecretKey: engine.keys.requestSecretKey });
+  if (existing && Number(existing.authVersion || 1) === 1) {
+    await migrateDeviceAuthentication(engine, existing);
+  } else {
+    configureEngineSigner(engine, authVersion);
+  }
 }
 
 export async function publishKeyPackagesIfNeeded(engine) {
@@ -183,7 +287,8 @@ export async function listCryptoDevices(engine) {
   const identity = {
     ...engine.bootstrap.identity,
     directory: response.directory,
-    directoryLog: response.directoryLog || []
+    directoryLog: response.directoryLog || [],
+    transparency: response.transparency || null
   };
   await verifyAndPinAccountDirectory(engine, {
     username: engine.username,
@@ -197,7 +302,8 @@ export async function listCryptoDevices(engine) {
   return {
     currentDeviceId: engine.deviceId,
     devices,
-    directory: response.directory
+    directory: response.directory,
+    securityEvents: response.securityEvents || []
   };
 }
 
@@ -214,22 +320,36 @@ export async function renewCryptoDeviceManifestIfNeeded(engine, { force = false 
     ...target.manifest,
     expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
   };
-  const manifestSignature = await signCanonical(engine.keys.rootSecretKey, "liotan-device-manifest-v1", manifest);
+  const authVersion = Number(target.authVersion) === 2 ? 2 : 1;
+  const manifestSignature = await signCanonical(
+    engine.keys.rootSecretKey,
+    authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
+    manifest
+  );
   const renewal = {
-    v: 1,
+    v: authVersion,
     cryptoUserId: engine.bootstrap.identity.cryptoUserId,
     deviceId: target.deviceId,
     clientId: target.clientId,
     previousManifestHash: sha256Base64Url(canonicalJson([
-      "liotan-device-manifest-v1",
+      authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
       target.manifest,
       target.manifestSignature
     ])),
     newExpiresAt: manifest.expiresAt,
     issuedAt: new Date().toISOString(),
-    nonce: randomId(24)
+    nonce: randomId(24),
+    ...(authVersion === 2 ? {
+      action: "renew-device",
+      protocol: "liotan-device-auth-v2",
+      sessionBindingId: engine.bootstrap.sessionBindingId
+    } : {})
   };
-  const renewalSignature = await signCanonical(engine.keys.requestSecretKey, "liotan-device-renewal-v1", renewal);
+  const renewalSignature = await signCanonical(
+    engine.keys.requestSecretKey,
+    authVersion === 2 ? "liotan-device-renewal-v2" : "liotan-device-renewal-v1",
+    renewal
+  );
   const nextDevice = { ...target, manifest, manifestSignature, manifestExpiresAt: manifest.expiresAt };
   const directory = await buildDirectoryMutation(engine, {
     devices: current.devices,
@@ -263,8 +383,10 @@ export async function approveCryptoDevice(engine, deviceId) {
   if (!target || target.status !== "pending" || target.activationMode !== "device-approval") {
     throw new Error("Pending cryptographic device not found");
   }
+  const useV2 = Number(engine.bootstrap.device?.authVersion) === 2 &&
+    Number(target.authVersion) === 2;
   const approval = {
-    v: 1,
+    v: useV2 ? 2 : 1,
     cryptoUserId: engine.bootstrap.identity.cryptoUserId,
     newDeviceId: target.deviceId,
     newClientId: target.clientId,
@@ -272,12 +394,20 @@ export async function approveCryptoDevice(engine, deviceId) {
     credentialThumbprint: target.credentialThumbprint,
     challenge: target.approvalChallenge,
     approverClientId: engine.clientIdString,
+    ...(useV2 ? {
+      action: "approve-device",
+      protocol: "liotan-device-auth-v2",
+      approverDeviceId: engine.deviceId,
+      approverSessionBindingId: engine.bootstrap.sessionBindingId,
+      newSessionBindingId: target.sessionBindingId,
+      createdAt: new Date().toISOString()
+    } : {}),
     expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     nonce: randomId(24)
   };
   const approvalSignature = await signCanonical(
     engine.keys.requestSecretKey,
-    "liotan-device-approval-v1",
+    useV2 ? "liotan-device-approval-v2" : "liotan-device-approval-v1",
     approval
   );
   const nextDevice = {

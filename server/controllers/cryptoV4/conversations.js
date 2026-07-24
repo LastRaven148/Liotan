@@ -8,6 +8,7 @@ const CryptoConversation = require("../../models/CryptoConversation");
 const CryptoOperation = require("../../models/CryptoOperation");
 const CryptoEvent = require("../../models/CryptoEvent");
 const AttachmentUpload = require("../../models/AttachmentUpload");
+const { promoteMediaUploadQuota } = require("../../services/mediaQuota");
 const { decodeBase64Url, sha256Base64Url, isUuid } = require("../../security/cryptoV4");
 const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
 const {
@@ -530,6 +531,13 @@ async function sendCiphertext(req, res, next) {
         const err = new Error("MLS event cannot commit and delete an attachment together"); err.status = 400; throw err;
       }
       const attachmentDeleteUploadId = String(attachmentDelete?.uploadId || "");
+      const attachmentDeleteBaseSequence = Number(req.body.attachmentDeleteBaseSequence);
+      if (attachmentDelete && (
+        !Number.isSafeInteger(attachmentDeleteBaseSequence) ||
+        attachmentDeleteBaseSequence < 0
+      )) {
+        const err = new Error("invalid MLS attachment deletion sequence guard"); err.status = 400; throw err;
+      }
       idempotencyInput = {
         conversationId: conversation.conversationId,
         clientMessageId,
@@ -549,6 +557,11 @@ async function sendCiphertext(req, res, next) {
         }
         emitted = { duplicate: true, conversation, sequence: existing.sequence, epoch: existing.epoch };
         return;
+      }
+      if (attachmentDelete && attachmentDeleteBaseSequence !== Number(conversation.sequence)) {
+        const err = new Error("MLS attachment deletion raced with another conversation event");
+        err.status = 409;
+        throw err;
       }
       if (epoch !== Number(conversation.epoch)) {
         const err = new Error("invalid MLS message metadata"); err.status = 400; throw err;
@@ -583,6 +596,7 @@ async function sendCiphertext(req, res, next) {
         if (!committedUpload) {
           const err = new Error("MLS attachment commit capability is invalid, expired, or already used"); err.status = 409; throw err;
         }
+        await promoteMediaUploadQuota(committedUpload.uploadId, { session });
       }
       if (attachmentDelete) {
         const scheduled = await AttachmentUpload.findOneAndUpdate(

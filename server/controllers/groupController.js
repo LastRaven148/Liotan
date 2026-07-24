@@ -2,8 +2,11 @@ const Group = require("../models/Group");
 const User = require("../models/User");
 const CryptoDevice = require("../models/CryptoDevice");
 const { uploadToR2 } = require("../utils/uploadToR2");
-const { buildSanitizedAvatarFile } = require("../utils/avatarProcessing");
-const deleteUploadedFile = require("../utils/deleteUploadedFile");
+const {
+  buildSanitizedAvatarFile,
+  assertSafeAvatarDimensions
+} = require("../utils/avatarProcessing");
+const { replaceAvatar } = require("../services/avatarLifecycle");
 const { transitionConversationRoster } = require("../security/cryptoRosterState");
 const {
   normalizeMime,
@@ -236,7 +239,8 @@ async function updateGroup(req, res, next) {
 async function uploadGroupAvatar(req, res, next) {
   try {
     const username = req.user.username;
-    const group = await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
+    const group = req.avatarOwnerDocument ||
+      await Group.findOne({ _id: req.params.id, lifecycleState: { $ne: "deleting" } });
     if (!group) {
       return res.status(404).json({
         error: "group not found"
@@ -262,24 +266,27 @@ async function uploadGroupAvatar(req, res, next) {
       buffer: req.file.buffer,
       mimeType
     });
+    assertSafeAvatarDimensions(req.file.buffer, mimeType);
 
-    const oldAvatar = {
-      url: group.avatar,
-      storageKey: group.avatarStorageKey,
-      storageType: group.avatarStorageType
-    };
     const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
     const result = await uploadToR2(sanitizedAvatar, {
       folder: "liotan/groups",
       mimeType,
       storageClass: "public-avatar"
     });
-    group.avatar = withAvatarCacheBust(result.url);
-    group.avatarStorageKey = result.key;
-    group.avatarStorageType = result.storageType;
-    await group.save();
-    await deleteUploadedFile(oldAvatar);
-    const serialized = await serializeGroup(group);
+    const updated = await replaceAvatar({
+      model: Group,
+      selector: {
+        _id: group._id,
+        lifecycleState: { $ne: "deleting" },
+        $or: [{ owner: username }, { admins: username }]
+      },
+      current: group,
+      ownerType: "group",
+      result,
+      avatarUrl: withAvatarCacheBust(result.url)
+    });
+    const serialized = await serializeGroup(updated);
     emitGroupUpdated(req, serialized);
     res.json(serialized);
   } catch (err) {

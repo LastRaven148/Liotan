@@ -1,5 +1,10 @@
 # Криптографическая архитектура Liotan 50.1.0
 
+> [!WARNING]
+> Historical document for the pre-remediation architecture.
+> Superseded by `docs/security/remediation-2026-07-23/`.
+> Do not use this document as the current production security specification.
+
 ## Статус утверждений
 
 В документах этого каталога используются следующие метки:

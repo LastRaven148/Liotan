@@ -1,41 +1,34 @@
 "use strict";
 
-const fs = require("fs/promises");
 const AttachmentUpload = require("../../models/AttachmentUpload");
 const { uploadToR2, streamFromR2, deleteFromR2 } = require("../../utils/uploadToR2");
 const { registerAttachmentUpload } = require("../../services/attachmentOwnership");
-const { sha256Base64Url, isUuid } = require("../../security/cryptoV4");
+const { sha256Base64Url } = require("../../security/cryptoV4");
 const { randomId } = require("./shared");
-const { authorizedClientIds, clientIdsHash, normalizeClientIds } = require("../../security/cryptoRosterState");
-const { assertConversationAccess } = require("./shared");
+const { MAX_ENCRYPTED_MEDIA_SIZE } = require("../../middleware/uploadSecurity");
+const {
+  reserveMediaTransfer,
+  completeMediaTransfer,
+  releaseMediaTransfer
+} = require("../../services/mediaQuota");
 
-const BINDING_ID_RE = /^[A-Za-z0-9_-]{22,96}$/;
 async function removeTempFile(file) {
-  if (!file?.path) return;
-  try { await fs.unlink(file.path); } catch {}
+  if (typeof file?.removeManagedFile !== "function") return;
+  try { await file.removeManagedFile(); } catch {}
 }
 
 async function uploadMedia(req, res, next) {
   let uploadedObject = null;
+  let createdUpload = null;
+  let quotaCompleted = false;
   try {
-    const signedBody = req.cryptoSignedBody;
-    const conversationId = String(signedBody.conversationId || "");
-    const bindingId = String(signedBody.bindingId || "");
-    const ciphertextHash = String(signedBody.ciphertextHash || "");
-    const clientMessageId = String(signedBody.clientMessageId || "").toLowerCase();
-    const declaredBytes = Number(signedBody.bytes);
-    if (!BINDING_ID_RE.test(bindingId) || !isUuid(clientMessageId) || !/^[A-Za-z0-9_-]{43}$/.test(ciphertextHash) ||
-      !Number.isSafeInteger(declaredBytes) || declaredBytes <= 0) {
-      return res.status(400).json({ error: "invalid encrypted media binding" });
-    }
-    const conversation = await assertConversationAccess(req, conversationId);
-    const activeIds = normalizeClientIds(conversation.activeClientIds);
-    const policyIds = authorizedClientIds(conversation);
-    if (!conversation.initialized || conversation.blockedForEpochChange ||
-      clientIdsHash(activeIds) !== clientIdsHash(policyIds) ||
-      !activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
-      return res.status(409).json({ error: "MLS conversation is not ready for media" });
-    }
+    const {
+      conversationId,
+      bindingId,
+      ciphertextHash,
+      clientMessageId,
+      declaredBytes
+    } = req.cryptoMediaUpload;
     if (!req.file || req.file.mimetype !== "application/octet-stream" || !String(req.file.originalname || "").endsWith(".liotanmedia")) {
       return res.status(415).json({ error: "MLS ciphertext media required" });
     }
@@ -47,9 +40,6 @@ async function uploadMedia(req, res, next) {
       return res.status(400).json({ error: "encrypted media hash unavailable" });
     }
     if (actualHash !== ciphertextHash) return res.status(400).json({ error: "encrypted media hash mismatch" });
-    if (await AttachmentUpload.exists({ cryptoConversationId: conversationId, bindingId })) {
-      return res.status(409).json({ error: "encrypted media binding already used" });
-    }
     const result = await uploadToR2(req.file, {
       folder: `liotan/mls/${sha256Base64Url(Buffer.from(conversationId)).slice(0, 32)}`,
       mimeType: "application/octet-stream",
@@ -65,6 +55,7 @@ async function uploadMedia(req, res, next) {
       type: "file",
       mimeType: "application/octet-stream",
       size: req.file.size,
+      ciphertextBytes: req.file.size,
       encrypted: true,
       protocol: "mls-media-1",
       cryptoConversationId: conversationId,
@@ -76,8 +67,16 @@ async function uploadMedia(req, res, next) {
       deleteTokenHash: sha256Base64Url(Buffer.from(uploadDeleteToken, "utf8")),
       lifecycleState: "temporary"
     });
-    uploadedObject = null;
-    return res.status(201).json({
+    createdUpload = upload;
+    const completed = await completeMediaTransfer(
+      req.mediaQuotaReservation.reservationId,
+      req.file.size,
+      { uploadId: upload.uploadId }
+    );
+    if (!completed) throw new Error("media quota reservation expired before upload completion");
+    quotaCompleted = true;
+    req.settleMediaQuota?.();
+    const response = res.status(201).json({
       uploadId: upload.uploadId,
       uploadCommitToken,
       uploadDeleteToken,
@@ -86,14 +85,23 @@ async function uploadMedia(req, res, next) {
       bytes: req.file.size,
       protocol: "mls-media-1"
     });
+    uploadedObject = null;
+    return response;
   } catch (err) {
-    if (uploadedObject?.key) {
+    if (createdUpload?._id && !quotaCompleted) {
+      await AttachmentUpload.deleteOne({ _id: createdUpload._id }).catch(() => {});
+    }
+    if (uploadedObject?.key && !quotaCompleted) {
       try {
         await deleteFromR2(uploadedObject.key, { storageClass: "private-media" });
       } catch {
         // The scheduled detached-object audit is the final recovery layer when
         // both metadata creation and immediate compensation fail.
       }
+    }
+    if (req.mediaQuotaReservation?.reservationId) {
+      await releaseMediaTransfer(req.mediaQuotaReservation.reservationId).catch(() => {});
+      req.settleMediaQuota?.();
     }
     if (err.status) return res.status(err.status).json({ error: err.message });
     return next(err);
@@ -102,7 +110,28 @@ async function uploadMedia(req, res, next) {
   }
 }
 
+const MAX_RANGE_BYTES = 8 * 1024 * 1024;
+
+function parseRangeForQuota(rangeHeader, totalBytes) {
+  if (!rangeHeader) return { range: "", bytes: totalBytes };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+  if (!match || (!match[1] && !match[2])) return null;
+  if (match[1]) {
+    const start = Number(match[1]);
+    const requestedEnd = match[2] ? Number(match[2]) : Math.min(totalBytes - 1, start + MAX_RANGE_BYTES - 1);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) ||
+      start < 0 || requestedEnd < start || start >= totalBytes) return null;
+    const end = Math.min(requestedEnd, totalBytes - 1);
+    if (end - start + 1 > MAX_RANGE_BYTES) return null;
+    return { range: `bytes=${start}-${end}`, bytes: end - start + 1 };
+  }
+  const suffix = Number(match[2]);
+  if (!Number.isSafeInteger(suffix) || suffix <= 0 || suffix > MAX_RANGE_BYTES) return null;
+  return { range: `bytes=-${Math.min(suffix, totalBytes)}`, bytes: Math.min(suffix, totalBytes) };
+}
+
 async function downloadMedia(req, res, next) {
+  let quota = null;
   try {
     const uploadId = String(req.params.uploadId || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
     const upload = await AttachmentUpload.findOne({
@@ -118,10 +147,22 @@ async function downloadMedia(req, res, next) {
     if (!activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(403).json({ error: "crypto device is not an active MLS member" });
     }
-    const rangeHeader = String(req.headers.range || "").trim();
-    const safeRange = /^bytes=\d*-\d*$/.test(rangeHeader) ? rangeHeader : "";
+    const totalBytes = Number(upload.ciphertextBytes) > 0
+      ? Number(upload.ciphertextBytes)
+      : MAX_ENCRYPTED_MEDIA_SIZE;
+    const parsedRange = parseRangeForQuota(String(req.headers.range || "").trim(), totalBytes);
+    if (!parsedRange) {
+      res.setHeader("Content-Range", `bytes */${totalBytes}`);
+      return res.status(416).json({ error: "invalid or excessive encrypted media range" });
+    }
+    quota = await reserveMediaTransfer(req, {
+      direction: "download",
+      bytes: parsedRange.bytes,
+      conversationId: upload.cryptoConversationId,
+      uploadId: upload.uploadId
+    });
     await streamFromR2(upload.storageKey, res, {
-      range: safeRange,
+      range: parsedRange.range,
       storageClass: "private-media",
       onResponse: object => {
         res.status(object.statusCode === 206 ? 206 : 200);
@@ -134,8 +175,13 @@ async function downloadMedia(req, res, next) {
         if (object.headers?.["content-length"]) res.setHeader("Content-Length", object.headers["content-length"]);
       }
     });
+    await completeMediaTransfer(quota.reservationId, parsedRange.bytes);
+    quota = null;
     return undefined;
   } catch (err) {
+    if (quota?.reservationId) {
+      await releaseMediaTransfer(quota.reservationId).catch(() => {});
+    }
     if (err.status) return res.status(err.status).json({ error: err.message });
     return next(err);
   }

@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const test = require("node:test");
 
 const { validateStartupSecurity } = require("../../security/startupSecurityValidation");
@@ -49,6 +50,12 @@ test("startup validation reads PUBLIC_SECURITY_URL from the supplied environment
     const baseEnv = {
       NODE_ENV: "production",
       JWT_SECRET: "a".repeat(64),
+      PRIVACY_HASH_SECRET: "b".repeat(64),
+      SECURITY_ENCRYPTION_SECRET: "c".repeat(64),
+      CALL_ROUTE_SECRET: "d".repeat(64),
+      KEY_TRANSPARENCY_SIGNING_KEY: crypto.randomBytes(32).toString("base64url"),
+      LIOTAN_PROXY_TOPOLOGY: "trusted-nginx",
+      TRUSTED_PROXY_CIDRS: "127.0.0.1/32,::1/128",
       LIOTAN_ALLOW_PUBLIC_BIND: "false"
     };
 
@@ -64,6 +71,16 @@ test("startup validation reads PUBLIC_SECURITY_URL from the supplied environment
       }, { warn() {} }),
       error => error.code === "STARTUP_SECURITY_VALIDATION_FAILED" &&
         error.findings.some(finding => finding.code === "public_security_url_required")
+    );
+
+    assert.throws(
+      () => validateStartupSecurity({
+        ...baseEnv,
+        PRIVACY_HASH_SECRET: baseEnv.JWT_SECRET,
+        PUBLIC_SECURITY_URL: "https://security.liotan.com"
+      }, { warn() {} }),
+      error => error.code === "STARTUP_SECURITY_VALIDATION_FAILED" &&
+        error.findings.some(finding => finding.code === "shared_application_secret")
     );
 
     assert.throws(

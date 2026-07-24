@@ -10,6 +10,8 @@ const upload =
 const { restrictedSessionGuard } =
   require("../middleware/restrictedSession");
 const { requireReauthentication } = require("../middleware/recentAuth");
+const { uploadLimiter } = require("../middleware/rateLimiters");
+const { guardUserAvatarUpload } = require("../middleware/avatarUploadGuard");
 
 const {
   getProfile,
@@ -37,6 +39,8 @@ router.post(
 router.post(
   "/upload-avatar",
   authMiddleware,
+  uploadLimiter,
+  guardUserAvatarUpload,
   upload.single("avatar"),
   uploadAvatar
 );

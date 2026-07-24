@@ -83,7 +83,7 @@ for (const [name, cwd] of projects) {
   const output = path.join(outputDir, `${name}.cdx.json`);
   execFileSync(process.execPath, [
     cli,
-    "--gather-license-texts",
+    "--package-lock-only",
     "--output-reproducible",
     "--sv", "1.6",
     "--of", "JSON",

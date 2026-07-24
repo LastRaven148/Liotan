@@ -40,6 +40,7 @@ import {
   getEncryptedHistoryRecord,
   listEncryptedRecords,
   listEncryptedHistoryRecords,
+  loadOrCreateDeviceRequestSecret,
   loadRecoveryKey,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
@@ -47,6 +48,7 @@ import {
   saveRecoveryKey
 } from "../../src/crypto/recoveryStore";
 import React, { useEffect } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import CryptoGate from "../../src/crypto/CryptoGate";
 import SecureTransitionGate from "../../src/crypto/SecureTransitionGate";
@@ -65,6 +67,13 @@ import { LanguageProvider } from "../../src/context/LanguageContext";
 import useSecureTransition from "../../src/hooks/useSecureTransition";
 import { shouldAutomaticallyRepairDatabase } from "../../src/crypto/mls/databaseStorage";
 import { computeSafetyNumber } from "../../src/crypto/mlsEngine";
+import {
+  transparencyCheckpointHash,
+  transparencyLeafHash,
+  transparencyNodeHash,
+  verifyTransparencyConsistency,
+  verifyTransparencyInclusion
+} from "../../src/crypto/mls/transparency";
 import "../../src/App.css";
 
 const SUITE = CipherSuite.Mls128Dhkemx25519Aes128gcmSha256Ed25519;
@@ -148,6 +157,14 @@ window.runColdStartClientIdentityProbe = async function runColdStartClientIdenti
 window.createProductionRecoveryKey = () => createRecoveryKey();
 window.saveProductionRecoveryKey = (username, key) => saveRecoveryKey(username, key);
 window.loadProductionRecoveryKey = username => loadRecoveryKey(username);
+window.loadProductionDeviceRequestSecret = async (username, deviceId) => {
+  const secret = await loadOrCreateDeviceRequestSecret(username, deviceId);
+  try {
+    return bytesToBase64Url(secret);
+  } finally {
+    secret.fill(0);
+  }
+};
 window.runRecoveryProtectionProbe = async function runRecoveryProtectionProbe() {
   const username = `protected-${crypto.randomUUID()}`;
   const recoveryKey = createRecoveryKey();
@@ -402,6 +419,44 @@ window.runDirectoryRollbackProbe = async function runDirectoryRollbackProbe() {
       statement: first.statement,
       signature: first.signature
     };
+    const transparencyPublicKey = rootPublicKey;
+    const signingKeyId = sha256Base64Url(keys.rootPublicKey);
+    const transparencyLeafV1 = {
+      v: 1,
+      sequence: 1,
+      cryptoUserId,
+      directoryVersion: 1,
+      directoryHash: firstHash,
+      previousDirectoryHash: genesis,
+      statementHash: firstHash,
+      recordedAt: first.statement.timestamp
+    };
+    const transparencyLeafHashV1 = transparencyLeafHash(transparencyLeafV1);
+    const checkpointV1 = {
+      v: 1,
+      treeSize: 1,
+      rootHash: transparencyLeafHashV1,
+      previousCheckpointHash: "",
+      timestamp: new Date().toISOString(),
+      signingKeyId
+    };
+    const checkpointSignatureV1 = await signCanonical(
+      keys.rootSecretKey,
+      "liotan-key-transparency-checkpoint-v1",
+      checkpointV1
+    );
+    const transparencyV1 = {
+      leaf: transparencyLeafV1,
+      leafHash: transparencyLeafHashV1,
+      inclusionProof: [],
+      checkpoint: {
+        checkpoint: checkpointV1,
+        signature: checkpointSignatureV1,
+        checkpointHash: transparencyCheckpointHash(checkpointV1, checkpointSignatureV1),
+        signingKeyId,
+        signingPublicKey: transparencyPublicKey
+      }
+    };
     const identityV1 = {
       ...baseIdentity,
       directory: {
@@ -411,7 +466,8 @@ window.runDirectoryRollbackProbe = async function runDirectoryRollbackProbe() {
         signature: first.signature,
         firstContact: false
       },
-      directoryLog: [firstEntry]
+      directoryLog: [firstEntry],
+      transparency: transparencyV1
     };
     await verifyAndPinAccountDirectory(engine, {
       username,
@@ -431,6 +487,30 @@ window.runDirectoryRollbackProbe = async function runDirectoryRollbackProbe() {
       second.statement,
       second.signature
     ]));
+    const transparencyLeafV2 = {
+      v: 1,
+      sequence: 2,
+      cryptoUserId,
+      directoryVersion: 2,
+      directoryHash: secondHash,
+      previousDirectoryHash: firstHash,
+      statementHash: secondHash,
+      recordedAt: second.statement.timestamp
+    };
+    const transparencyLeafHashV2 = transparencyLeafHash(transparencyLeafV2);
+    const checkpointV2 = {
+      v: 1,
+      treeSize: 2,
+      rootHash: transparencyNodeHash(transparencyLeafHashV1, transparencyLeafHashV2),
+      previousCheckpointHash: transparencyV1.checkpoint.checkpointHash,
+      timestamp: new Date().toISOString(),
+      signingKeyId
+    };
+    const checkpointSignatureV2 = await signCanonical(
+      keys.rootSecretKey,
+      "liotan-key-transparency-checkpoint-v1",
+      checkpointV2
+    );
     const identityV2 = {
       ...identityV1,
       directory: {
@@ -446,7 +526,19 @@ window.runDirectoryRollbackProbe = async function runDirectoryRollbackProbe() {
         hash: secondHash,
         statement: second.statement,
         signature: second.signature
-      }]
+      }],
+      transparency: {
+        leaf: transparencyLeafV2,
+        leafHash: transparencyLeafHashV2,
+        inclusionProof: [transparencyLeafHashV1],
+        checkpoint: {
+          checkpoint: checkpointV2,
+          signature: checkpointSignatureV2,
+          checkpointHash: transparencyCheckpointHash(checkpointV2, checkpointSignatureV2),
+          signingKeyId,
+          signingPublicKey: transparencyPublicKey
+        }
+      }
     };
     await verifyAndPinAccountDirectory(engine, {
       username,
@@ -1062,14 +1154,62 @@ window.mountCreateGroupFull = function mountCreateGroupFull() {
   );
 };
 
+let responsiveLayoutRoot = null;
+
 window.mountResponsiveLayout = function mountResponsiveLayout({ mobile = false, activeChat = false, profile = false } = {}) {
-  createRoot(document.querySelector("#root")).render(
-    <div className={["app", mobile ? "app--mobile" : "app--desktop", activeChat ? "has-active-chat" : "", profile ? "has-profile-drawer" : ""].filter(Boolean).join(" ")}>
-      <aside className="sidebar">Sidebar</aside>
-      <main className="chat">Chat</main>
-      <aside className="profile-drawer">Profile</aside>
-    </div>
-  );
+  if (!responsiveLayoutRoot) {
+    responsiveLayoutRoot = createRoot(document.querySelector("#root"));
+  }
+  flushSync(() => {
+    responsiveLayoutRoot.render(
+      <div className={["app", mobile ? "app--mobile" : "app--desktop", activeChat ? "has-active-chat" : "", profile ? "has-profile-drawer" : ""].filter(Boolean).join(" ")}>
+        <aside className="sidebar">Sidebar</aside>
+        <main className="chat">Chat</main>
+        <aside className="profile-drawer">Profile</aside>
+      </div>
+    );
+  });
+};
+
+window.runKeyTransparencyProofProbe = function runKeyTransparencyProofProbe() {
+  const leaves = [1, 2, 3, 4].map(sequence => ({
+    v: 1,
+    sequence,
+    cryptoUserId: "00000000-0000-4000-8000-000000000009",
+    directoryVersion: sequence,
+    directoryHash: sha256Base64Url(`directory-${sequence}`)
+  }));
+  const hashes = leaves.map(transparencyLeafHash);
+  const leftRoot = transparencyNodeHash(hashes[0], hashes[1]);
+  const rightRoot = transparencyNodeHash(hashes[2], hashes[3]);
+  const root = transparencyNodeHash(leftRoot, rightRoot);
+  const evidence = {
+    leaf: leaves[2],
+    leafHash: hashes[2],
+    inclusionProof: [hashes[3], leftRoot],
+    checkpoint: { checkpoint: { treeSize: 4, rootHash: root } }
+  };
+  verifyTransparencyInclusion(evidence);
+  verifyTransparencyConsistency({
+    oldSize: 2,
+    oldRoot: leftRoot,
+    newSize: 4,
+    newRoot: root,
+    proof: [rightRoot]
+  });
+  let tamperRejected = false;
+  try {
+    verifyTransparencyConsistency({
+      oldSize: 2,
+      oldRoot: leftRoot,
+      newSize: 4,
+      newRoot: root,
+      proof: [hashes[0]]
+    });
+  } catch {
+    tamperRejected = true;
+  }
+  return { inclusion: true, consistency: true, tamperRejected };
 };
 
 document.querySelector("#mount-settings")?.addEventListener("click", window.mountSettingsFull);

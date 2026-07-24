@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { createArchive } = require("./archiveFactory");
+const { assertCleanTrackedSource, resolveSourceRevision } = require("./sourceRevision");
 
 const root = path.resolve(__dirname, "..");
 const rootPackage = require(path.join(root, "package.json"));
@@ -12,7 +13,7 @@ const version = String(rootPackage.version || "dev");
 const outDir = path.join(root, "release");
 const outFile = path.join(outDir, `Liotan-${version}-clean.zip`);
 const checksumFile = `${outFile}.sha256`;
-const tmpDir = path.join(os.tmpdir(), `liotan-release-${process.pid}-${Date.now()}`);
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "liotan-release-"));
 const stagedRoot = path.join(tmpDir, "Liotan");
 const rootReal = fs.realpathSync.native(root);
 const ARCHIVE_DATE = new Date("2000-01-01T00:00:00.000Z");
@@ -193,12 +194,18 @@ async function createZip() {
 }
 
 async function main() {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  const sourceSha = resolveSourceRevision(root);
+  assertCleanTrackedSource(root);
   fs.mkdirSync(outDir, { recursive: true });
-  if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
-  if (fs.existsSync(checksumFile)) fs.unlinkSync(checksumFile);
+  fs.rmSync(outFile, { force: true });
+  fs.rmSync(checksumFile, { force: true });
 
   copyDirectory(rootReal, stagedRoot);
+  fs.writeFileSync(path.join(stagedRoot, "RELEASE-MANIFEST.json"), `${JSON.stringify({
+    schema: "liotan-clean-release/v1",
+    version,
+    sourceSha
+  }, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
   await createZip();
   const digest = crypto.createHash("sha256").update(fs.readFileSync(outFile)).digest("hex").toUpperCase();
   fs.writeFileSync(checksumFile, `${digest}  ${path.basename(outFile)}\n`, "utf8");

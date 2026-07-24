@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "50.1.0",
+  "version": "57.4.0",
   "description": "",
   "main": "server.js",
   "scripts": {
@@ -15,9 +15,16 @@
     "audit:vps": "node scripts/auditVpsHardening.js",
     "audit:e2ee-replies": "node scripts/auditE2eeReplyPrivacy.js",
     "audit:data-inventory": "node scripts/auditDataInventory.js",
+    "audit:production-read-only": "node scripts/verifyProductionReadOnly.js",
+    "audit:r2-orphans": "node scripts/auditR2OrphanCounts.js",
     "cleanup:r2-prefix": "node scripts/cleanupR2Prefix.js",
     "cleanup:r2-detached": "node scripts/cleanupR2DetachedMedia.js",
-    "migrate:crypto": "node scripts/migrateCryptoState.js"
+    "reconcile:avatars": "node scripts/reconcileAvatarStorage.js",
+    "reconcile:media-quota": "node scripts/reconcileMediaQuota.js",
+    "migrate:crypto": "node scripts/migrateCryptoState.js",
+    "migrate:key-transparency": "node scripts/migrateKeyTransparency.js",
+    "migrate:media-quota": "node scripts/migrateMediaQuotaLifecycle.js",
+    "retire:legacy-data": "node scripts/retireLegacyData.js"
   },
   "keywords": [],
   "author": "",

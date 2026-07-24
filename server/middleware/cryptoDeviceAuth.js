@@ -5,6 +5,11 @@ const CryptoRequestNonce = require("../models/CryptoRequestNonce");
 const { transitionUserConversations } = require("../security/cryptoRosterState");
 const { canonicalJson } = require("../utils/canonicalJson");
 const { decodeBase64Url, sha256Base64Url, verifyEd25519, isDeviceId } = require("../security/cryptoV4");
+const { hashSessionId } = require("../utils/sessionSecurity");
+const {
+  requestSignatureInput,
+  sessionBindingId
+} = require("../security/deviceAuthProtocol");
 
 const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
 const NONCE_RE = /^[A-Za-z0-9_-]{22,96}$/;
@@ -44,6 +49,7 @@ async function cryptoDeviceAuth(req, res, next) {
       userId: req.user.userId,
       username: req.user.username,
       deviceId,
+      sessionIdHash: hashSessionId(req.user.sid),
       status: "active"
     });
 
@@ -61,19 +67,26 @@ async function cryptoDeviceAuth(req, res, next) {
     }
 
     const bodyHash = sha256Base64Url(Buffer.from(canonicalJson(authenticatedBody(req)), "utf8"));
-    const signedValue = {
+    const bindingId = sessionBindingId(req.user.sid);
+    if (Number(device.authVersion) === 2 && device.sessionBindingId !== bindingId) {
+      return res.status(401).json({ error: "cryptographic device session binding changed" });
+    }
+    const signedInput = requestSignatureInput({
       method: String(req.method || "GET").toUpperCase(),
       path: String(req.originalUrl || req.url || ""),
       timestamp,
       nonce,
-      bodyHash
-    };
+      bodyHash,
+      deviceId,
+      bindingId,
+      authVersion: Number(device.authVersion) || 1
+    });
 
     if (!verifyEd25519({
       publicKey: device.requestPublicKey,
       signature,
-      value: signedValue,
-      domain: "liotan-crypto-request-v1"
+      value: signedInput.value,
+      domain: signedInput.domain
     })) {
       return res.status(401).json({ error: "valid crypto device signature required" });
     }

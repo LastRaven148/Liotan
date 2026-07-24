@@ -20,9 +20,16 @@ create_release_payload() {
   printf '{"name":"server","version":"50.1.0"}\n' >"$target/server/package.json"
   printf 'require("http");\n' >"$target/server/server.js"
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateCryptoState.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateKeyTransparency.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMediaQuotaLifecycle.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMessageMutationProtocol.js"
   printf '<!doctype html><script type="module" src="/assets/index-%s.js"></script>\n' "$marker" >"$target/client/build/index.html"
   printf 'console.log("%s");\n' "$marker" >"$target/client/build/assets/index-$marker.js"
   printf '\0asm' >"$target/client/build/assets/core-$marker.wasm"
+  if [[ "$marker" =~ ^[0-9a-f]{40}$ ]]; then
+    printf '{"schema":"liotan-deployment/v1","version":"50.1.0","sourceSha":"%s"}\n' "$marker" >"$target/DEPLOYMENT-MANIFEST.json"
+    printf '{"schema":"liotan-client-build/v1","version":"50.1.0","sourceSha":"%s","keyTransparencyPublicKey":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","keyTransparencyPublicKeyPinned":true}\n' "$marker" >"$target/client/build/build-meta.json"
+  fi
 }
 
 create_archive() {
@@ -31,7 +38,7 @@ create_archive() {
   local archive="$tmp_dir/$revision.tar.gz"
   rm -rf -- "$source"
   create_release_payload "$source" "$revision"
-  tar -czf "$archive" -C "$source" server client
+  tar -czf "$archive" -C "$source" server client DEPLOYMENT-MANIFEST.json
   printf '%s\n' "$archive"
 }
 
@@ -70,6 +77,9 @@ case "$command" in
     ;;
   delete)
     printf 'delete:%s\n' "${1:-}" >>"$MOCK_PM2_LOG"
+    ;;
+  stop)
+    printf 'stop:%s\n' "${1:-}" >>"$MOCK_PM2_LOG"
     ;;
   start)
     script=${1:-}
@@ -153,10 +163,13 @@ MOCK_NPM
   cat >"$bin/node" <<'MOCK_NODE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ "${1:-}" == "scripts/migrateCryptoState.js" && "${2:-}" == "--apply" ]] || {
-  echo "unexpected mock node command" >&2
-  exit 2
-}
+case "${1:-}" in
+  -) cat >/dev/null ;;
+  scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js|scripts/migrateMessageMutationProtocol.js)
+    [[ "${2:-}" == "--apply" ]]
+    ;;
+  *) echo "unexpected mock node command: ${1:-}" >&2; exit 2 ;;
+esac
 MOCK_NODE
 
   chmod +x "$bin/pm2" "$bin/curl" "$bin/node" "$bin/npm"
@@ -266,9 +279,9 @@ test_missing_wasm_fails_before_pm2_restart() {
   local source="$tmp_dir/$name/source"
   deploy_root=$(make_atomic_fixture "$name")
   install_mocks "$name" "$deploy_root"
-  create_release_payload "$source" missing-wasm
-  rm -- "$source/client/build/assets/core-missing-wasm.wasm"
-  tar -czf "$archive" -C "$source" server client
+  create_release_payload "$source" "$failed_revision"
+  rm -- "$source/client/build/assets/core-$failed_revision.wasm"
+  tar -czf "$archive" -C "$source" server client DEPLOYMENT-MANIFEST.json
 
   set +e
   output=$(run_installer "$name" "$deploy_root" "$archive" "$failed_revision" 2>&1)

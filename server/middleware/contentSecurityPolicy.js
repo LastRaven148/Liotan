@@ -52,7 +52,7 @@ const IMAGE_SOURCES = [
 
 const contentSecurityPolicyDirectives = {
   defaultSrc: ["'self'"],
-  baseUri: ["'self'"],
+  baseUri: ["'none'"],
   objectSrc: ["'none'"],
   frameAncestors: ["'none'"],
 

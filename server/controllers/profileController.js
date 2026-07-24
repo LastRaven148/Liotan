@@ -4,11 +4,9 @@ const User =
 const { uploadToR2 } =
   require("../utils/uploadToR2");
 
-const deleteUploadedFile =
-  require("../utils/deleteUploadedFile");
-
-const { buildSanitizedAvatarFile } =
+const { buildSanitizedAvatarFile, assertSafeAvatarDimensions } =
   require("../utils/avatarProcessing");
+const { replaceAvatar } = require("../services/avatarLifecycle");
 
 const {
   assertWorkflowAccess,
@@ -204,23 +202,16 @@ async function uploadAvatar(req, res, next) {
       buffer: req.file.buffer,
       mimeType
     });
+    assertSafeAvatarDimensions(req.file.buffer, mimeType);
 
-    const user =
-      await User.findOne({
-        username
-      });
+    const user = req.avatarOwnerDocument ||
+      await User.findOne({ username, lifecycleState: { $ne: "deleting" } });
 
     if (!user) {
       return res.status(404).json({
         error: "not found"
       });
     }
-
-    const oldAvatar = {
-      url: user.avatar,
-      storageKey: user.avatarStorageKey,
-      storageType: user.avatarStorageType
-    };
 
     const sanitizedAvatar = buildSanitizedAvatarFile(req.file, mimeType);
 
@@ -234,24 +225,24 @@ async function uploadAvatar(req, res, next) {
         }
       );
 
-    user.avatar =
-      withAvatarCacheBust(result.url);
-
-    user.avatarStorageKey =
-      result.key;
-
-    user.avatarStorageType =
-      result.storageType;
-
-    await user.save();
-
-    await deleteUploadedFile(oldAvatar);
+    const updated = await replaceAvatar({
+      model: User,
+      selector: {
+        _id: user._id,
+        username,
+        lifecycleState: { $ne: "deleting" }
+      },
+      current: user,
+      ownerType: "user",
+      result,
+      avatarUrl: withAvatarCacheBust(result.url)
+    });
 
     const profile = {
-      username: user.username,
-      displayName: user.displayName || "",
-      avatar: user.avatar || "",
-      bio: user.bio || ""
+      username: updated.username,
+      displayName: updated.displayName || "",
+      avatar: updated.avatar || "",
+      bio: updated.bio || ""
     };
 
     await emitProfileUpdated(req, profile);

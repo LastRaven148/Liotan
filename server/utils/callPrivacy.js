@@ -1,11 +1,8 @@
 const crypto = require("crypto");
+const { getRuntimeSecret } = require("../security/secretIsolation");
 
 function getCallSecret() {
-  return (
-    process.env.CALL_ROUTE_SECRET ||
-    process.env.JWT_SECRET ||
-    "liotan-dev-call-route-secret"
-  );
+  return getRuntimeSecret("CALL_ROUTE_SECRET", "call-routing");
 }
 
 function normalizeUsername(username) {

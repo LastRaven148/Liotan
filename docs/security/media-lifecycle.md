@@ -1,5 +1,10 @@
 # Жизненный цикл E2EE-медиа
 
+> [!WARNING]
+> Historical document for the pre-remediation architecture.
+> Superseded by `docs/security/remediation-2026-07-23/`.
+> Do not use this document as the current production security specification.
+
 ## Шифрование и upload
 
 1. Клиент создаёт случайный 256-bit media key.

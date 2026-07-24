@@ -1,12 +1,9 @@
 const crypto =
   require("crypto");
+const { getRuntimeSecret } = require("../security/secretIsolation");
 
 function getSecret() {
-  return (
-    process.env.PRIVACY_HASH_SECRET ||
-    process.env.JWT_SECRET ||
-    "liotan-dev-secret"
-  );
+  return getRuntimeSecret("PRIVACY_HASH_SECRET", "privacy-hashes");
 }
 
 function hmac(value) {

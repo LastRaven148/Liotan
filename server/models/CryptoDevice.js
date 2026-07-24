@@ -7,6 +7,16 @@ const cryptoDeviceSchema = new mongoose.Schema({
   deviceId: { type: String, required: true },
   clientId: { type: String, required: true, unique: true, index: true },
   requestPublicKey: { type: String, required: true },
+  authVersion: { type: Number, enum: [1, 2], default: 1, index: true },
+  authProtocol: { type: String, default: "liotan-device-auth-v1" },
+  sessionBindingId: { type: String, default: "" },
+  authMigrationState: {
+    type: String,
+    enum: ["legacy", "v2-active"],
+    default: "legacy",
+    index: true
+  },
+  authMigratedAt: { type: Date, default: null },
   credentialThumbprint: { type: String, required: true },
   sessionIdHash: { type: String, default: "", index: true },
   manifest: { type: mongoose.Schema.Types.Mixed, required: true },
@@ -15,7 +25,7 @@ const cryptoDeviceSchema = new mongoose.Schema({
   status: { type: String, enum: ["pending", "active", "expired", "revoked"], default: "pending", index: true },
   activationMode: {
     type: String,
-    enum: ["initial", "device-approval", "recovery-bootstrap", "legacy-migrated"],
+    enum: ["initial", "device-approval", "recovery-bootstrap", "recovery-enrollment", "legacy-migrated"],
     default: "device-approval"
   },
   approvalChallenge: { type: String, default: "" },

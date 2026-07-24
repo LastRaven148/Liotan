@@ -32,6 +32,11 @@ assert.match(releaseCheck, /require\("yauzl"\)/,
   "release ZIP validation must use a locked cross-platform implementation");
 assert.doesNotMatch(releaseCheck, /execFileSync\("(?:unzip|bsdtar|tar)"/,
   "release validation must not depend on runner-specific ZIP commands");
+const makeRelease = read("scripts/makeRelease.js");
+assert.match(makeRelease, /fs\.mkdtempSync\(path\.join\(os\.tmpdir\(\), "liotan-release-"\)\)/,
+  "release staging must use an atomically-created unpredictable temporary directory");
+assert.doesNotMatch(makeRelease, /liotan-release-\$\{process\.pid\}-\$\{Date\.now\(\)\}/,
+  "release staging must not use a predictable temporary path");
 
 const first = getChatId("abc", "def_ghi");
 const second = getChatId("abc_def", "ghi");
@@ -111,9 +116,24 @@ assert.match(socket, /socket\.use\(async/);
 assert.match(socket, /SOCKET_AUTH_RECHECK_MS/);
 assert.match(read("server/utils/sessionSecurity.js"), /disconnectSessionHashes/);
 
-const attachment = read("server/controllers/attachmentController.js");
-assert.match(attachment, /encrypted attachment required/);
 assert.match(read("server/services/attachmentOwnership.js"), /encrypted: true/);
+const legacyMediaRoutes = read("server/routes/attachmentRoutes.js");
+assert.match(legacyMediaRoutes, /legacyMediaGone/);
+assert.doesNotMatch(legacyMediaRoutes, /controllers\/attachmentController|downloadAttachment|uploadAttachment/);
+const legacyGroupHistory = read("server/routes/groupMessageRoutes.js");
+assert.match(legacyGroupHistory, /legacyGroupHistoryGone/);
+assert.doesNotMatch(legacyGroupHistory, /controllers\/groupMessageController|models\/Messages/);
+for (const removedLegacyRuntime of [
+  "server/controllers/attachmentController.js",
+  "server/controllers/groupMessageController.js",
+  "server/controllers/e2eeController.js",
+  "server/services/attachmentAccess.js",
+  "server/sockets/services/markDeliveredForUser.js",
+  "server/sockets/services/serializeMessage.js"
+]) {
+  assert(!fs.existsSync(path.join(root, removedLegacyRuntime)),
+    `${removedLegacyRuntime} must stay removed after the MLS-only cutover`);
+}
 const cryptoRoutes = read("server/routes/cryptoV4Routes.js");
 assert.match(cryptoRoutes, /cryptoDeviceAuth/);
 const mediaRoute = cryptoRoutes.slice(cryptoRoutes.indexOf('"\/crypto\/v4\/media\/upload"'));
@@ -299,6 +319,28 @@ assert(!fs.existsSync(path.join(root, "server/sockets/handlers/private/sendPriva
   "dead duplicate legacy private write handler must stay removed");
 assert(!fs.existsSync(path.join(root, "server/sockets/handlers/group/sendGroupMessage.js")),
   "dead duplicate legacy group write handler must stay removed");
+for (const removedUnreachableModule of [
+  "server/routes/proxyRoutes.js",
+  "server/sockets/services/deleteAttachmentFile.js",
+  "server/sockets/services/encryptedContent.js",
+  "server/sockets/services/mediaKeys.js",
+  "server/startup/ensureUploadDirs.js",
+  "server/utils/attachmentSecurity.js",
+  "server/utils/messagePermissions.js",
+  "client/src/components/chat/message/MessagePhoto.jsx",
+  "client/src/components/chat/message/MessageVideo.jsx",
+  "client/src/security/recovery/recoveryFoundation.jsx",
+  "client/src/security/totp/totpFoundation.jsx",
+  "client/src/security/trust/deviceTrustFoundation.jsx",
+  "client/src/security/vault/vaultFoundation.jsx",
+  "client/src/services/callSecurity.jsx",
+  "client/src/services/realtimeCapabilities.jsx",
+  "client/src/services/secureCallFrames.jsx",
+  "client/src/services/secureVoice.jsx"
+]) {
+  assert(!fs.existsSync(path.join(root, removedUnreachableModule)),
+    `transitively unreachable production module must stay removed: ${removedUnreachableModule}`);
+}
 
 assert.match(read("server/config/version.js"), /require\("\.\.\/package\.json"\)/,
   "runtime version must be sourced from server/package.json");
@@ -396,6 +438,54 @@ assert.match(fullAccountPurge, /DELETE_ALL_ACCOUNTS_AND_DATA/,
   "full account purge must require an explicit destructive confirmation");
 assert.match(fullAccountPurge, /dry-run/,
   "full account purge must default to a dry-run");
+
+const dataInventory = read("server/scripts/auditDataInventory.js");
+assert.match(dataInventory, /--production-read-only/,
+  "production data inventory must require an explicit read-only flag");
+assert.doesNotMatch(dataInventory, /\.(?:delete|update|replace)(?:One|Many)\(/,
+  "production data inventory must remain read-only");
+assert.match(dataInventory, /outputMode:\s*"aggregate-counts-only"/,
+  "production data inventory must expose only aggregate counts");
+
+const productionReadOnlyAudit = read("server/scripts/verifyProductionReadOnly.js");
+assert.match(productionReadOnlyAudit, /requiredFlag:\s*"--production-read-only"/,
+  "production verification must default to a safe plan");
+assert.match(productionReadOnlyAudit, /mutatesProduction:\s*false/,
+  "production verification must explicitly remain read-only");
+assert.doesNotMatch(productionReadOnlyAudit, /(?:writeFile|appendFile|unlink|rmSync|rmdir|spawn)\s*\(/,
+  "production verification must not contain filesystem or process mutation sinks");
+assert.match(productionReadOnlyAudit, /outputsSecretsOrIdentifiers:\s*false/,
+  "production verification output must exclude secret values and raw identifiers");
+
+const r2OrphanAudit = read("server/scripts/auditR2OrphanCounts.js");
+assert.match(r2OrphanAudit, /--production-read-only/,
+  "production R2 orphan inventory must require an explicit read-only flag");
+assert.match(r2OrphanAudit, /containsRawObjectKeys:\s*false/,
+  "production R2 orphan inventory must expose aggregate counts only");
+assert.doesNotMatch(r2OrphanAudit, /deleteFromR2|deleteR2Prefix/,
+  "production R2 orphan inventory must not import deletion capabilities");
+assert.match(read("server/scripts/reconcileAvatarStorage.js"), /containsRawObjectKeys:\s*false/,
+  "avatar reconciliation output must not expose raw R2 keys");
+
+const securityPolicy = read("SECURITY.md");
+assert.match(securityPolicy, /Private\s+Vulnerability Reporting is enabled/,
+  "security policy must describe the enabled private reporting channel");
+assert.match(securityPolicy, /Report a vulnerability/,
+  "security policy must tell external reporters how to use private reporting");
+assert.match(securityPolicy, /New draft advisory/,
+  "security policy must name the private channel available to maintainers");
+for (const historicalDocument of [
+  "docs/security/crypto-architecture.md",
+  "docs/security/media-lifecycle.md",
+  "docs/security/threat-model.md",
+  "docs/security/regression-tests.md"
+]) {
+  assert.match(
+    read(historicalDocument),
+    /Historical document for the pre-remediation architecture[\s\S]*Superseded by `docs\/security\/remediation-2026-07-23\/`/,
+    `${historicalDocument} must not be mistaken for the current security specification`
+  );
+}
 
 const group = read("server/controllers/groupController.js");
 const addBlock = group.slice(group.indexOf("async function addGroupMember"), group.indexOf("async function removeGroupMember"));
