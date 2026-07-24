@@ -34,8 +34,8 @@ assert.match(ci, /name:\s*Verify synchronized release version[\s\S]*?run:\s*npm 
   "CI must reject package and lockfile version drift");
 assert.match(
   ci,
-  /name:\s*Verify production version increased[\s\S]*?BASE_SHA:\s*\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.before \}\}[\s\S]*?run:\s*node scripts\/versionProduction\.js --check "\$BASE_SHA"/,
-  "CI must compare the production version with its trusted base revision"
+  /name:\s*Verify production version increased[\s\S]*?env:\s+HOME:\s*\/root\s+BASE_SHA:\s*\$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.before \}\}[\s\S]*?run:\s*node scripts\/versionProduction\.js --check "\$BASE_SHA"/,
+  "CI must compare the production version with its trusted base revision using the configured safe-directory home"
 );
 assert.doesNotMatch(ci, /run:[^\n]*\$\{\{\s*github\.event\.(?:pull_request\.base\.sha|before)/,
   "GitHub revision expressions must not be interpolated directly into shell commands");
