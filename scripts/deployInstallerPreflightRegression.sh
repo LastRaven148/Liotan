@@ -73,12 +73,17 @@ command=${1:-}
 shift || true
 case "$command" in
   jlist)
+    if [[ ! -s "$MOCK_PM2_STATE" ]]; then
+      printf '[]\n'
+      exit 0
+    fi
     IFS='|' read -r script cwd version status <"$MOCK_PM2_STATE"
     printf '[{"name":"%s","pm2_env":{"pm_exec_path":"%s","pm_cwd":"%s","version":"%s","status":"%s"}}]\n' \
       "$MOCK_PROCESS_NAME" "$script" "$cwd" "$version" "$status"
     ;;
   delete)
     printf 'delete:%s\n' "${1:-}" >>"$MOCK_PM2_LOG"
+    : >"$MOCK_PM2_STATE"
     ;;
   stop)
     printf 'stop:%s\n' "${1:-}" >>"$MOCK_PM2_LOG"
@@ -329,6 +334,26 @@ test_wrong_pm2_path_fails_before_switch() {
   [[ ! -s "$tmp_dir/$name/pm2.log" ]] || { echo "bad PM2 preflight mutated PM2" >&2; exit 1; }
 }
 
+test_missing_pm2_without_marker_fails_before_switch() {
+  local name=missing-pm2-without-marker
+  local deploy_root
+  local archive="$tmp_dir/$name/placeholder.tar.gz"
+  deploy_root=$(make_atomic_fixture "$name")
+  install_mocks "$name" "$deploy_root"
+  : >"$tmp_dir/$name/pm2.state"
+  touch "$archive"
+
+  set +e
+  output=$(run_installer "$name" "$deploy_root" "$archive" "$failed_revision" 2>&1)
+  status=$?
+  set -e
+
+  [[ "$status" -eq 2 ]] || { echo "expected missing PM2 recovery state exit 2, got $status" >&2; exit 1; }
+  [[ "$output" == *"process is absent without a valid fail-closed recovery marker"* ]] || { echo "missing fail-closed marker diagnostic not emitted" >&2; exit 1; }
+  [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$old_revision" ]] || { echo "missing PM2 preflight changed current" >&2; exit 1; }
+  [[ ! -s "$tmp_dir/$name/pm2.log" ]] || { echo "missing PM2 preflight mutated PM2" >&2; exit 1; }
+}
+
 test_failed_health_rolls_back_verified_release() {
   local name=rollback
   local deploy_root
@@ -407,6 +432,35 @@ test_incompatible_pre_cutover_failure_stops_backend_fail_closed() {
   [[ "$output" == *"candidate backend failed before frontend cutover; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix"* ]] || { echo "missing incompatible pre-cutover rollback diagnostic" >&2; exit 1; }
 }
 
+test_fail_closed_marker_allows_verified_forward_recovery() {
+  local name=fail-closed-forward-recovery
+  local deploy_root
+  local failed_archive
+  local good_archive
+  deploy_root=$(make_atomic_fixture "$name")
+  install_mocks "$name" "$deploy_root"
+  set_previous_protocol_generation "$deploy_root" 1
+  failed_archive=$(create_archive "$failed_revision")
+
+  set +e
+  output=$(run_installer "$name" "$deploy_root" "$failed_archive" "$failed_revision" "$failed_revision" 2>&1)
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || { echo "expected initial fail-closed deployment exit 1, got $status" >&2; exit 1; }
+  [[ -f "$deploy_root/shared/fail-closed-deployment.json" && ! -L "$deploy_root/shared/fail-closed-deployment.json" ]] || { echo "fail-closed marker was not persisted" >&2; exit 1; }
+  [[ ! -s "$tmp_dir/$name/pm2.state" ]] || { echo "fail-closed deployment left a PM2 process registered" >&2; exit 1; }
+
+  good_archive=$(create_archive "$good_revision")
+  output=$(run_installer "$name" "$deploy_root" "$good_archive" "$good_revision" 2>&1)
+
+  [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$good_revision" ]] || { echo "forward recovery did not activate the verified candidate" >&2; exit 1; }
+  [[ ! -e "$deploy_root/shared/fail-closed-deployment.json" ]] || { echo "successful forward recovery did not clear its marker" >&2; exit 1; }
+  grep -Fxq "start:$good_revision" "$tmp_dir/$name/pm2.log" || { echo "forward recovery did not start the verified candidate" >&2; exit 1; }
+  ! grep -Fxq "start:$old_revision" "$tmp_dir/$name/pm2.log" || { echo "forward recovery restarted an incompatible previous backend" >&2; exit 1; }
+  [[ "$output" == *"verified fail-closed state for revision $old_revision; proceeding with forward recovery"* ]] || { echo "missing forward recovery diagnostic" >&2; exit 1; }
+}
+
 test_success_verifies_current_pm2_and_shared_data() {
   local name=success
   local deploy_root
@@ -469,9 +523,11 @@ test_current_outside_releases_fails_before_pm2
 test_invalid_candidate_fails_before_pm2_restart
 test_missing_wasm_fails_before_pm2_restart
 test_wrong_pm2_path_fails_before_switch
+test_missing_pm2_without_marker_fails_before_switch
 test_failed_health_rolls_back_verified_release
 test_incompatible_migration_failure_stops_backend_fail_closed
 test_incompatible_pre_cutover_failure_stops_backend_fail_closed
+test_fail_closed_marker_allows_verified_forward_recovery
 test_incompatible_post_cutover_failure_stays_forward_and_fail_closed
 test_success_verifies_current_pm2_and_shared_data
 test_known_artifact_cleanup_is_bounded
