@@ -98,6 +98,7 @@ jobs:
 
       - name: Build pinned production client
         env:
+          HOME: /root
           VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}
         run: |
           [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]

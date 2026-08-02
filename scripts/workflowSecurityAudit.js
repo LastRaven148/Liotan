@@ -39,11 +39,12 @@ assert.ok(
   "CI must rebuild the production client after browser tests and before creating the deployment bundle"
 );
 assert.ok(
-  pinnedClientStep.includes("VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}")
+  pinnedClientStep.includes("HOME: /root")
+    && pinnedClientStep.includes("VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}")
     && pinnedClientStep.includes('[[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]')
     && pinnedClientStep.includes("npm run check:client")
     && pinnedClientStep.includes(".includes(pin)"),
-  "the final production client must validate, compile and embed the configured Key Transparency public pin"
+  "the final production client must reuse the trusted Git home, validate, compile and embed the configured Key Transparency public pin"
 );
 assert.match(ci, /ref:\s*\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}\s+fetch-depth:\s*0/,
   "production version comparison requires complete history for the exact revision");
