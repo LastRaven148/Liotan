@@ -1197,6 +1197,25 @@ window.runKeyTransparencyProofProbe = function runKeyTransparencyProofProbe() {
     newRoot: root,
     proof: [rightRoot]
   });
+  verifyTransparencyConsistency({
+    oldSize: 4,
+    oldRoot: root,
+    newSize: 4,
+    newRoot: root,
+    proof: []
+  });
+  let sameSizeForkRejected = false;
+  try {
+    verifyTransparencyConsistency({
+      oldSize: 4,
+      oldRoot: root,
+      newSize: 4,
+      newRoot: leftRoot,
+      proof: []
+    });
+  } catch {
+    sameSizeForkRejected = true;
+  }
   let tamperRejected = false;
   try {
     verifyTransparencyConsistency({
@@ -1209,7 +1228,14 @@ window.runKeyTransparencyProofProbe = function runKeyTransparencyProofProbe() {
   } catch {
     tamperRejected = true;
   }
-  return { inclusion: true, consistency: true, tamperRejected };
+  return {
+    inclusion: true,
+    peerSmallerConsistency: true,
+    peerLargerConsistency: true,
+    sameSizeConsistency: true,
+    sameSizeForkRejected,
+    tamperRejected
+  };
 };
 
 document.querySelector("#mount-settings")?.addEventListener("click", window.mountSettingsFull);

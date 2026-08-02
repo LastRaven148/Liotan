@@ -61,7 +61,10 @@ test("key transparency inclusion and consistency proofs reject a forked path", a
   await page.goto("/test/production/fixture.html");
   expect(await page.evaluate(() => window.runKeyTransparencyProofProbe())).toEqual({
     inclusion: true,
-    consistency: true,
+    peerSmallerConsistency: true,
+    peerLargerConsistency: true,
+    sameSizeConsistency: true,
+    sameSizeForkRejected: true,
     tamperRejected: true
   });
 });

@@ -257,6 +257,21 @@ const cryptoIdentityController = read("server/controllers/cryptoV4/identityDevic
 assert.match(cryptoIdentityController, /liotan-device-approval-v1/);
 assert.match(cryptoIdentityController, /a pending device cannot approve itself/);
 assert.match(cryptoIdentityController, /the only active crypto device requires an explicit recovery flow/);
+assert.match(cryptoIdentityController, /liotan-device-session-rebind-v2/,
+  "session rebind must require a local device-key proof");
+assert.match(read("server/security/deviceAuthProtocol.js"), /DEVICE_AUTH_V1_REQUESTS_DISABLED_AT/,
+  "device-auth v1 request retirement must have an independent cutoff");
+assert.doesNotMatch(read("server/models/MediaTransferReservation.js"), /expiresAt:[^\n]*expires:\s*0/,
+  "active media reservations must never be TTL-deleted before settlement");
+assert.match(read("server/models/MediaQuotaState.js"), /reservedObjectCount/,
+  "concurrent media uploads must reserve object slots");
+assert.match(read("server/services/avatarLifecycle.js"), /cleanupStaleUploadedAvatars/,
+  "uploaded avatar state must have crash recovery");
+const transparencyTrust = read("client/src/crypto/mls/trust.jsx");
+assert.match(transparencyTrust, /size < localSize \? evidence : local/,
+  "transparency gossip must orient smaller and larger checkpoints");
+assert.match(transparencyTrust, /verifyTransparencyConsistencyEvidence/,
+  "transparency gossip must bind consistency proof to both signed checkpoints");
 assert.match(read("client/src/crypto/mls/trust.jsx"), /Device directory rollback detected/,
   "highest-seen device directory state must fail closed on rollback");
 assert.match(read("client/src/crypto/mls/directory.jsx"), /history does not continue the local pin/,
@@ -285,6 +300,8 @@ for (const durableModel of [
 }
 assert.match(read("server/deploy/install-release.sh"), /migrateCryptoState\.js --apply[\s\S]*switch_current/,
   "the idempotent crypto migration must finish before current is switched");
+assert.match(read("server/deploy/install-release.sh"), /rollback_is_compatible[\s\S]*post-cutover rollback is incompatible/,
+  "post-cutover rollback must fail closed when protocol compatibility is missing");
 const productionDeployWorkflow = read(".github/workflows/deploy-vps.yml");
 assert.match(productionDeployWorkflow, /workflow_dispatch:/,
   "production deployment must require an explicit manual dispatch");

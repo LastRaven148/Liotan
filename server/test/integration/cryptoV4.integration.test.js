@@ -497,6 +497,8 @@ before(async () => {
   process.env.MONGOMS_MD5_CHECK = "true";
   process.env.PRIVACY_EXPOSE_DEV_EMAIL_CODES = "true";
   process.env.EMAIL_REQUIRE_MX = "false";
+  process.env.DEVICE_AUTH_V2_ENFORCED_AT = "2099-01-01T00:00:00.000Z";
+  process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2099-01-01T00:00:00.000Z";
 
   replSet = await MongoMemoryReplSet.create({
     binary: { version: "8.0.14" },
@@ -678,6 +680,61 @@ test("durable media byte quotas account for rejected reservations", async () => 
   }
 });
 
+test("media reservations reserve object slots and two workers release an expired slot exactly once", async () => {
+  const account = await createAccount("slot_recovery");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const MediaTransferReservation = mongoose.model("MediaTransferReservation");
+  const {
+    reserveMediaTransfer,
+    releaseExpiredMediaTransfers
+  } = require("../../services/mediaQuota");
+  const envName = "MEDIA_QUOTA_ACCOUNT_STORAGE_OBJECTS";
+  const prior = process.env[envName];
+  process.env[envName] = "1";
+  const req = {
+    user: { userId: account.user._id, username: account.username, sid: account.sessionId },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.44" }
+  };
+  try {
+    const reservation = await reserveMediaTransfer(req, {
+      direction: "upload",
+      bytes: 32,
+      conversationId: crypto.randomUUID()
+    });
+    await assert.rejects(
+      reserveMediaTransfer(req, {
+        direction: "upload",
+        bytes: 1,
+        conversationId: crypto.randomUUID()
+      }),
+      error => error?.code === "MEDIA_QUOTA_EXCEEDED"
+    );
+    await MediaTransferReservation.updateOne(
+      { reservationId: reservation.reservationId },
+      { $set: { expiresAt: new Date(Date.now() - 1000) } }
+    );
+    const results = await Promise.all([
+      releaseExpiredMediaTransfers(new Date()),
+      releaseExpiredMediaTransfers(new Date())
+    ]);
+    assert.equal(results.reduce((sum, value) => sum + value, 0), 1);
+    const terminal = await MediaTransferReservation.findOne({ reservationId: reservation.reservationId }).lean();
+    assert.equal(terminal.state, "released");
+    assert.equal(terminal.purgeAt instanceof Date, true);
+    const accountScope = terminal.scopes.find(scope => scope.scope === "account");
+    const state = await MediaQuotaState.findOne({ key: accountScope.key }).lean();
+    assert.equal(state.activeUploads, 0);
+    assert.equal(state.reservedStorageBytes, 0);
+    assert.equal(state.reservedObjectCount, 0);
+    assert.equal(state.objectCount, 0);
+  } finally {
+    if (prior == null) delete process.env[envName];
+    else process.env[envName] = prior;
+  }
+});
+
 test("media storage quota follows temporary, persistent and released object state exactly once", async () => {
   const account = await createAccount("quota_life");
   const AttachmentUpload = mongoose.model("AttachmentUpload");
@@ -843,6 +900,104 @@ test("device authentication v2 migrates with old and new proofs without changing
   account.sessionBindingId = bootstrap.body.sessionBindingId;
   const authenticated = await signedJson(account, "GET", "/crypto/v4/devices");
   assert.equal(authenticated.status, 200, authenticated.text);
+});
+
+test("device authentication v2 safely rebinds the same local key to a new session", async () => {
+  const original = await registerDevice(await createAuthenticatedUser("authv2_rebind"), { authVersion: 2 });
+  const nextSession = await createAdditionalSession(original);
+  const bootstrap = await requestFor(
+    nextSession,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${original.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  assert.notEqual(bootstrap.body.sessionBindingId, original.sessionBindingId);
+
+  const challengePath = `/crypto/v4/devices/${original.deviceId}/session-rebind/challenge`;
+  const challenged = await sessionJson(nextSession, "POST", challengePath, {});
+  assert.equal(challenged.status, 201, challenged.text);
+  const statement = challenged.body.statement;
+  assert.equal(statement.oldSessionBindingId, original.sessionBindingId);
+  assert.equal(statement.newSessionBindingId, bootstrap.body.sessionBindingId);
+
+  const target = bootstrap.body.device;
+  const manifest = { ...target.manifest, sessionBindingId: bootstrap.body.sessionBindingId };
+  const manifestSignature = signCanonical(
+    original.rootKey.privateKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...target,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    manifest,
+    manifestSignature
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "rebind-device-session",
+    original.deviceId,
+    original.rootKey.privateKey
+  );
+  const rebindPath = `/crypto/v4/devices/${original.deviceId}/session-rebind`;
+  const body = {
+    statement,
+    proof: signCanonical(
+      original.requestKey.privateKey,
+      "liotan-device-session-rebind-v2",
+      statement
+    ),
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  };
+
+  const stolenJwtAttempt = await sessionJson(nextSession, "POST", rebindPath, {
+    ...body,
+    proof: signCanonical(
+      crypto.generateKeyPairSync("ed25519").privateKey,
+      "liotan-device-session-rebind-v2",
+      statement
+    )
+  });
+  assert.equal(stolenJwtAttempt.status, 409, stolenJwtAttempt.text);
+
+  const rebound = await sessionJson(nextSession, "POST", rebindPath, body);
+  assert.equal(rebound.status, 200, rebound.text);
+  const active = {
+    ...original,
+    cookie: nextSession.cookie,
+    sessionId: nextSession.sessionId,
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const firstCryptoRequest = await signedJson(active, "GET", "/crypto/v4/devices");
+  assert.equal(firstCryptoRequest.status, 200, firstCryptoRequest.text);
+  const oldSession = await signedJson(original, "GET", "/crypto/v4/devices");
+  assert.equal(oldSession.status, 401, oldSession.text);
+  const replay = await sessionJson(nextSession, "POST", rebindPath, body);
+  assert.equal(replay.status, 409, replay.text);
+});
+
+test("device authentication v1 cutoff blocks normal requests but preserves the narrow migration route", async () => {
+  const account = await createAccount("authv1_cutoff");
+  const prior = process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT;
+  process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2000-01-01T00:00:00.000Z";
+  try {
+    const rejected = await signedJson(account, "GET", "/crypto/v4/devices");
+    assert.equal(rejected.status, 426, rejected.text);
+    const route = await sessionJson(
+      account,
+      "POST",
+      `/crypto/v4/devices/${account.deviceId}/auth-migration`,
+      {}
+    );
+    assert.notEqual(route.status, 426, route.text);
+  } finally {
+    process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = prior;
+  }
 });
 
 test("recovery enrollment adds a distinct v2 device and records a visible security event", async () => {
@@ -1541,6 +1696,73 @@ test("media quota lifecycle migration backfills exact object state and reconcile
   });
   assert.equal(repeated.alreadyApplied, true);
   await AttachmentUpload.deleteOne({ _id: upload._id });
+});
+
+test("media reservation recovery migration removes active TTL and reconciles reserved object slots", async () => {
+  const account = await createAuthenticatedUser("reserve_migrate");
+  const migration = require("../../scripts/migrateMediaReservationRecovery");
+  const MediaTransferReservation = mongoose.model("MediaTransferReservation");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const indexes = await MediaTransferReservation.collection.indexes();
+  const expiresIndex = indexes.find(index => index.key?.expiresAt === 1);
+  if (expiresIndex) await MediaTransferReservation.collection.dropIndex(expiresIndex.name);
+  await MediaTransferReservation.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  const scope = { key: `account:migration-${crypto.randomUUID()}`, scope: "account", scopeIdHash: crypto.randomBytes(32).toString("base64url") };
+  await MediaTransferReservation.collection.insertOne({
+    reservationId: crypto.randomBytes(24).toString("base64url"),
+    direction: "upload",
+    state: "reserved",
+    userId: account.user._id,
+    clientIdHash: crypto.randomBytes(32).toString("base64url"),
+    sessionIdHash: crypto.randomBytes(32).toString("base64url"),
+    ipHash: crypto.randomBytes(32).toString("base64url"),
+    declaredBytes: 17,
+    actualBytes: 0,
+    scopes: [scope],
+    bucketKeys: [],
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+  const applied = await migration.applyMigration();
+  assert.equal(applied.alreadyApplied, false);
+  const afterIndexes = await MediaTransferReservation.collection.indexes();
+  assert.equal(afterIndexes.some(index => index.key?.expiresAt === 1 && index.expireAfterSeconds === 0), false);
+  const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+  assert.equal(state.activeUploads, 1);
+  assert.equal(state.reservedStorageBytes, 17);
+  assert.equal(state.reservedObjectCount, 1);
+  assert.equal((await migration.applyMigration()).alreadyApplied, true);
+});
+
+test("avatar uploaded recovery migration backfills timestamps idempotently", async () => {
+  const account = await createAuthenticatedUser("avatar_migrate");
+  const migration = require("../../scripts/migrateAvatarLifecycleRecovery");
+  const AvatarObject = mongoose.model("AvatarObject");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const createdAt = new Date(Date.now() - 60_000);
+  const storageKey = `liotan/avatars/migration-${crypto.randomUUID()}.png`;
+  await AvatarObject.collection.insertOne({
+    storageKey,
+    url: `https://avatars.invalid/${storageKey}`,
+    storageType: "r2:public-avatar",
+    ownerType: "user",
+    ownerId: account.user._id,
+    avatarVersion: 1,
+    state: "uploaded",
+    attempts: 0,
+    nextAttemptAt: createdAt,
+    createdAt,
+    updatedAt: createdAt
+  });
+  const applied = await migration.applyMigration();
+  assert.equal(applied.alreadyApplied, false);
+  const record = await AvatarObject.findOne({ storageKey }).lean();
+  assert.equal(record.uploadedAt.getTime(), createdAt.getTime());
+  assert.equal((await migration.applyMigration()).alreadyApplied, true);
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {
@@ -2560,6 +2782,58 @@ test("concurrent avatar replacements have one CAS winner and delete the losing o
   assert.deepEqual(new Set(records.map(record => record.state)), new Set(["active", "deleted"]));
   assert.equal(deletedKeys.length, 1);
   assert.notEqual(deletedKeys[0], persisted.avatarStorageKey);
+});
+
+test("stale uploaded avatars recover an owner reference or delete an orphan with one worker winner", async () => {
+  const account = await createAuthenticatedUser("avatar_uploaded_recovery");
+  const AvatarObject = require("../../models/AvatarObject");
+  const { cleanupStaleUploadedAvatars } = require("../../services/avatarLifecycle");
+  const now = new Date();
+  const referencedKey = `liotan/avatars/referenced-${crypto.randomUUID()}.png`;
+  const orphanKey = `liotan/avatars/orphan-${crypto.randomUUID()}.png`;
+  await User.updateOne({ _id: account.user._id }, { $set: {
+    avatar: `https://avatars.invalid/${referencedKey}`,
+    avatarStorageKey: referencedKey,
+    avatarStorageType: "r2:public-avatar",
+    avatarVersion: 1
+  } });
+  await AvatarObject.create([
+    {
+      storageKey: referencedKey,
+      url: `https://avatars.invalid/${referencedKey}`,
+      storageType: "r2:public-avatar",
+      ownerType: "user",
+      ownerId: account.user._id,
+      avatarVersion: 1,
+      uploadedAt: new Date(now.getTime() - 20 * 60 * 1000),
+      nextAttemptAt: new Date(now.getTime() - 1000)
+    },
+    {
+      storageKey: orphanKey,
+      url: `https://avatars.invalid/${orphanKey}`,
+      storageType: "r2:public-avatar",
+      ownerType: "user",
+      ownerId: account.user._id,
+      avatarVersion: 2,
+      uploadedAt: new Date(now.getTime() - 20 * 60 * 1000),
+      nextAttemptAt: new Date(now.getTime() - 1000)
+    }
+  ]);
+  const deleted = [];
+  const options = {
+    now,
+    headObject: async () => ({ status: 200 }),
+    deleteFile: async file => deleted.push(file.storageKey)
+  };
+  const results = await Promise.all([
+    cleanupStaleUploadedAvatars(options),
+    cleanupStaleUploadedAvatars(options)
+  ]);
+  assert.equal(results.reduce((sum, item) => sum + item.activated, 0), 1);
+  assert.equal(results.reduce((sum, item) => sum + item.deleted, 0), 1);
+  assert.deepEqual(deleted, [orphanKey]);
+  assert.equal((await AvatarObject.findOne({ storageKey: referencedKey }).lean()).state, "active");
+  assert.equal((await AvatarObject.findOne({ storageKey: orphanKey }).lean()).state, "deleted");
 });
 
 test("avatar reconciliation is dry-run by default and only selects old detached objects", async () => {
