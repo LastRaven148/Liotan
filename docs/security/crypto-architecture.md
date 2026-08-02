@@ -5,6 +5,14 @@
 > Superseded by `docs/security/remediation-2026-07-23/`.
 > Do not use this document as the current production security specification.
 
+Current 57.4.0 remediation adds device-auth v2 session rebind: the server issues
+a one-time account/device/session-bound challenge and accepts it only with the
+stored local Ed25519 device key. Device-auth v1 normal requests are retired by
+the separate `DEVICE_AUTH_V1_REQUESTS_DISABLED_AT` cutoff; only the proof-bound
+v1-to-v2 migration route remains. Transparency now compares equal checkpoints
+and verifies signed consistency evidence in either tree-size direction. It is
+still server-operated and has no independent witness.
+
 ## Статус утверждений
 
 В документах этого каталога используются следующие метки:

@@ -18,6 +18,10 @@ independently operated witness or globally available gossip channel. A server
 that can isolate all of a target’s devices/peers may sustain a coordinated split
 view.
 
+Gossip now verifies consistency for both peer-smaller and peer-larger tree
+sizes. That closes a client comparison gap but does not change the independent
+witness limitation.
+
 ### Recipient-side erasure
 
 Delete-for-everyone now has authenticated, replay-resistant convergence and

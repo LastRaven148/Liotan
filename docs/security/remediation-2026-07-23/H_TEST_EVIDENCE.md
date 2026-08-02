@@ -202,3 +202,21 @@ Commit `d43e6e8` gives the monotonic version comparison the same `/root` HOME
 used to register the exact `$GITHUB_WORKSPACE`; the workflow regression locks
 that relationship. Focused workflow, version-synchronization, monotonicity and
 diff checks passed locally. The failed CI run is not counted as a clean run.
+
+## 2026-08-02 second remediation pass
+
+At code checkpoint `952f633` the following focused evidence passed locally:
+
+- server syntax: 196 JavaScript files;
+- full Crypto v4 integration suite: 48/48;
+- focused device-auth/media/avatar/transparency selection: 12/12;
+- new lifecycle migration selection: 2/2;
+- deployment installer regression, including incompatible post-cutover
+  fail-closed behavior;
+- security regression, deployment-bundle regression, client production build,
+  production version check and monotonicity regression;
+- synchronized stable version remains `57.4.0`.
+
+The single clean final `npm run release:check` and the independent GitHub CI run
+are recorded against the exact published Draft PR head in the PR comment and
+technical handoff; they are not pre-declared as passing in this source file.

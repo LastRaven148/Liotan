@@ -2,7 +2,7 @@
 
 ## Review method
 
-The code-and-generated-evidence checkpoint is `d43e6e8`, compared with audited/base commit
+The first-pass code-and-generated-evidence checkpoint is `d43e6e8`, compared with audited/base commit
 `558d948`. At that checkpoint:
 
 - 175 tracked files differ;
@@ -20,6 +20,47 @@ The canonical review command is:
 
 ```text
 git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..d43e6e8
+```
+
+## 57.4.0 second-pass review
+
+The second-pass runtime/test checkpoint is `952f633`, starting from
+`c62fcdd858acafa6d836df52965695538bfb24bf`. The exact final documentation
+commit cannot truthfully embed its own Git object ID because that ID hashes the
+document content; the Draft PR head and final technical report are the source
+of truth for final HEAD.
+
+Second-pass changed paths at the runtime/test checkpoint:
+
+```text
+.github/workflows/ci.yml
+client/src/crypto/mls/identity.jsx
+client/src/crypto/mls/transparency.jsx
+client/src/crypto/mls/trust.jsx
+client/test/browser/mls-core.spec.js
+client/test/production/fixture.jsx
+scripts/deployInstallerPreflightRegression.sh
+scripts/deploymentBundleRegression.js
+scripts/securityRegression.js
+server/controllers/cryptoV4/identityDevices.js
+server/deploy/install-release.sh
+server/middleware/cryptoDeviceAuth.js
+server/models/AvatarObject.js
+server/models/CryptoDevice.js
+server/models/CryptoDeviceRebindChallenge.js
+server/models/CryptoDeviceSecurityEvent.js
+server/models/MediaQuotaState.js
+server/models/MediaTransferReservation.js
+server/routes/cryptoV4Routes.js
+server/scripts/auditDeviceAuthV1Inventory.js
+server/scripts/migrateAvatarLifecycleRecovery.js
+server/scripts/migrateMediaReservationRecovery.js
+server/security/deviceAuthProtocol.js
+server/services/avatarLifecycle.js
+server/services/mediaQuota.js
+server/services/mediaQuotaReconciliation.js
+server/startup/scheduleAttachmentCleanup.js
+server/test/integration/cryptoV4.integration.test.js
 ```
 
 ## Risk-focused review

@@ -1,5 +1,19 @@
 # Full security remediation: executive summary
 
+## 57.4.0 second-pass delta
+
+- device-auth v2 can safely rebind the same local device key after a new login;
+- normal device-auth v1 traffic has an independent production cutoff while a
+  proof-bound one-time v1-to-v2 migration remains;
+- media reservations survive process crashes, reserve object slots and settle
+  through lease/CAS workers without decrementing historical usage;
+- stale `uploaded` avatars are recovered through owner/object verification;
+- different-size transparency gossip requires consistency evidence bound to
+  both signed checkpoints;
+- deployment metadata carries protocol/rollback generations, the candidate
+  backend is verified before frontend cutover, and incompatible post-cutover
+  rollback fails closed.
+
 ## Scope and custody
 
 - Audited repository: `LastRaven148/Liotan`.

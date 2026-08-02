@@ -43,9 +43,11 @@ and object counts. Defaults are centralized in
 `server/services/mediaQuota.js`; production overrides use the corresponding
 `MEDIA_QUOTA_<SCOPE>_...` variables and must remain positive integers.
 
-Reservations expire after 15 minutes. Settlement uses actual ciphertext bytes,
-not the client’s plaintext size. Download ranges are capped to 8 MiB per
-response, so range fragmentation cannot bypass egress accounting.
+Reservations become eligible for worker settlement after 15 minutes.
+`expiresAt` is processing time, not TTL deletion; only terminal records receive
+`purgeAt`. Settlement uses actual ciphertext bytes, not the client’s plaintext
+size. Download ranges are capped to 8 MiB per response, so range fragmentation
+cannot bypass egress accounting.
 
 ## Storage lifecycle
 
@@ -62,6 +64,12 @@ untracked -> temporary -> persistent -> released
 The transition and counter deltas occur transactionally with the upload record.
 `MediaTransferReservation` prevents duplicate settlement. Quota scope IDs are
 HMAC-derived, so reports do not expose account/session/IP identifiers.
+
+Each upload reservation increments `reservedObjectCount`; admission checks
+`objectCount + reservedObjectCount + 1`. Completion moves the slot to
+`objectCount`, while abort/expiry releases only the reserved slot. A
+startup/periodic lease/CAS worker settles expired records exactly once and
+never decrements historical minute/hour/day usage buckets.
 
 ## R2 and local temporary data
 
@@ -84,6 +92,15 @@ apply mode requires an exact confirmation and production maintenance mode.
 Avatar reconciliation is separately dry-run by default through
 `reconcileAvatarStorage.js`. It compares owned avatar state with bucket state
 and deletes only with a second explicit confirmation.
+
+The `uploaded` avatar state records `uploadedAt` and a lease. After the grace
+period, workers verify the exact User/Group key+version reference and HEAD the
+expected public-avatar object. A valid reference becomes `active`; an orphan
+enters deletion-pending and the existing retry/dead-letter deletion lifecycle.
+
+The 57.4.0 reservation and avatar migrations remove the unsafe reservation TTL,
+backfill terminal/timestamp state, create lifecycle indexes and reconcile quota
+counters before the candidate backend becomes public.
 
 ## Operational invariants
 

@@ -59,6 +59,23 @@ Safe rollback therefore means:
 4. if the new client is unavailable, show a hard upgrade/re-enrollment path
    rather than plaintext or v1 fallback.
 
+## Session rebind and v1 retirement in 57.4.0
+
+Logout/login does not recreate or recover a device credential. The server
+issues a short-lived one-time rebind challenge for an existing active v2 device;
+the client signs it with the stored local-only request key and separately
+root-signs the updated v2 manifest/directory. A JWT alone is insufficient.
+
+`DEVICE_AUTH_V1_REQUESTS_DISABLED_AT` retires normal v1 requests, registration,
+approval and renewal independently from the old enrollment cutoff. The only
+remaining v1 operation is an atomic v1-to-v2 migration with old-key and fresh
+local v2-key proofs. `auditDeviceAuthV1Inventory.js` is permanently count-only.
+
+Before the v2 frontend is public, candidate failure may restore the verified
+previous backend. After client-facing cutover, rollback requires compatible
+protocol-generation metadata; otherwise deployment stops the backend
+fail-closed for a forward fix.
+
 ## Evidence
 
 - `client/src/crypto/accountKeys.jsx`
@@ -67,6 +84,7 @@ Safe rollback therefore means:
 - `server/security/deviceAuthProtocol.js`
 - `server/middleware/cryptoDeviceAuth.js`
 - `server/models/CryptoDeviceSecurityEvent.js`
+- `server/models/CryptoDeviceRebindChallenge.js`
 - `server/test/unit/securityFoundations.test.js`
 - `server/test/integration/cryptoV4.integration.test.js`
 - `client/test/browser/mls-core.spec.js`

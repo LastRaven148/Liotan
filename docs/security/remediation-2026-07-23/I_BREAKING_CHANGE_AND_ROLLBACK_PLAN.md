@@ -21,6 +21,8 @@
 | 2 | `50.2.0-key-transparency-v1` | Backfill directory leaves/nodes/checkpoint state. | Inspect/dry run unless exact apply confirmation is set. |
 | 3 | `50.3.0-media-quota-lifecycle` | Backfill upload lifecycle/scopes and reconcile durable totals. | Inspect/dry run unless exact apply confirmation is set. |
 | 4 | `50.5.0-message-mutation-chain` | Establish deterministic legacy cutoff sequence. | Inspect/dry run unless exact apply confirmation is set. |
+| 5 | `57.4.0-media-reservation-recovery` | Remove unsafe active-reservation TTL, backfill terminal purge state and reconcile reserved object slots. | Inspect unless exact apply confirmation is set. |
+| 6 | `57.4.0-avatar-uploaded-recovery` | Backfill uploaded timestamps and lifecycle indexes. | Inspect unless exact apply confirmation is set. |
 
 `50.4.0-legacy-data-retirement` is intentionally **not** part of automatic
 deployment. It is destructive and requires the separate product decision in
@@ -52,9 +54,9 @@ The reviewed installer enforces:
 2. validate deployment/client manifests, version and transparency pin;
 3. validate candidate layout and public symlink preconditions;
 4. stop the old PM2 backend;
-5. run migrations 50.1, 50.2, 50.3 and 50.5 with exact confirmations;
-6. atomically switch `current`;
-7. restart PM2, wait for health, validate version/runtime and frontend;
+5. run migrations 50.1, 50.2, 50.3, 50.5 and the two 57.4 lifecycle migrations with exact confirmations;
+6. start and validate the candidate backend by its immutable release path while the old frontend remains public;
+7. atomically switch `current`, then validate version/runtime and frontend;
 8. save PM2 state;
 9. leave legacy retirement untouched.
 
@@ -75,9 +77,11 @@ must remain. Never re-enable v1 device writes or legacy plaintext routes.
 
 ### After switch
 
-Atomically restore the previous release symlink, restart PM2, verify health,
-runtime path, version and frontend. Preserve all new collections/fields and
-pending durable tasks.
+The deployment v2 manifest binds app version, source SHA, protocol generation
+and rollback compatibility generation. Restore a previous release only when
+its bundle manifest satisfies the candidate minimum. Missing or older metadata
+forbids automatic downgrade: leave the forward release selected, stop the
+backend fail-closed and ship a compatible forward fix.
 
 ### Data rollback
 

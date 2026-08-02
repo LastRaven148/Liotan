@@ -1,5 +1,16 @@
 # Crypto/security regression tests
 
+## 57.4.0 second remediation pass
+
+Targeted integration coverage includes local-key session rebind after a new
+login, rejection of the old binding and stolen-key/replay attempts, v1 request
+cutoff with the narrow migration route preserved, reserved media object slots,
+two-worker expired reservation settlement, and stale uploaded avatar
+activation/orphan deletion. Installer regression covers candidate backend
+validation before frontend cutover and fail-closed refusal of an incompatible
+post-cutover rollback. Browser/static gates bind different-size transparency
+gossip to both signed checkpoints and the consistency proof.
+
 > [!WARNING]
 > Historical document for the pre-remediation architecture.
 > Superseded by `docs/security/remediation-2026-07-23/`.

@@ -79,6 +79,20 @@ plaintext size, filename, MIME type, dimensions, waveform, or duration.
 `noncePrefix` and the key are carried in the encrypted MLS descriptor. The
 server stores ciphertext byte count/hash and routing/lifecycle metadata.
 
+## Device-auth and transparency delta in 57.4.0
+
+An active, unexpired v2 device may move to a newly authenticated browser
+session only through a short-lived one-time statement signed by its stored
+local Ed25519 request key. The statement binds account, device/client, request
+public key, old/new server-derived binding IDs, challenge, nonce and expiry;
+the manifest/directory update remains root-signed. Normal v1 traffic is blocked
+after its independent cutoff, while the old+new-key migration remains narrow.
+
+Peer transparency checkpoints at equal sizes must be identical. For unequal
+sizes the client orients older/newer, fetches the matching consistency range,
+verifies all signed checkpoints and binds proof endpoints to both observed
+roots/hashes. This is gossip continuity, not an independent witness.
+
 ## Cryptographic invariant evidence
 
 | # | Invariant | Main automated evidence | Result and boundary |

@@ -57,7 +57,7 @@ Version 2 добавляет локальную passphrase: PBKDF2-SHA-256, 6000
 
 ## Rollback
 
-Directory и recipient cursor имеют локальные encrypted highest-seen records. Это обнаруживает откат сервера для существующего browser profile. Восстановление одновременно старого Mongo snapshot и старого/клонированного browser profile может обойти локальный monotonic pin. Внешний witness, hardware counter или transparency service пока отсутствует.
+Directory и recipient cursor имеют локальные encrypted highest-seen records. Серверный transparency service публикует Ed25519-signed checkpoints, inclusion/consistency proofs и поддерживает peer checkpoint gossip в обе стороны размера дерева. Это обнаруживает откат/несогласованность для существующего browser profile, но не является независимым witness: изолированная группа клиентов всё ещё может получить согласованный split view. Восстановление одновременно старого Mongo snapshot и старого/клонированного browser profile может обойти локальный monotonic pin.
 
 ## FS/PCS
 
