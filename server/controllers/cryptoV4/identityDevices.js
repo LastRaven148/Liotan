@@ -228,8 +228,11 @@ async function registerDevice(req, res, next) {
     const directoryUpdate = req.body.directoryUpdate;
     const directorySignature = String(req.body.directorySignature || "");
     const identity = await getIdentityForUser(req.user);
-    if (!identity.rootPublicKey || !manifest || typeof manifest !== "object") {
+    if (!identity.rootPublicKey) {
       return res.status(409).json({ error: "account root must be pinned first" });
+    }
+    if (!manifest || typeof manifest !== "object") {
+      return res.status(400).json({ error: "invalid device manifest" });
     }
 
     const parsed = parseClientId(manifest.clientId, cryptoDomain());
