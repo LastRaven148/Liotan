@@ -42,6 +42,7 @@ current="$deploy_root/current"
 shared="$deploy_root/shared"
 shared_env="$shared/server.env"
 shared_uploads="$shared/uploads"
+fail_closed_marker="$shared/fail-closed-deployment.json"
 previous=""
 previous_revision=""
 active_target=""
@@ -57,6 +58,7 @@ candidate_transparency_public_key=""
 candidate_protocol_generation=""
 candidate_rollback_generation=""
 frontend_cutover=0
+preflight_fail_closed=0
 
 [[ -d "$shared" && ! -L "$shared" ]] || { echo "shared must be a real directory outside releases" >&2; exit 2; }
 [[ -f "$shared_env" && ! -L "$shared_env" ]] || { echo "shared production environment not found or is a symlink: $shared_env" >&2; exit 2; }
@@ -69,7 +71,9 @@ cleanup() {
   current_target=$(readlink -f -- "$current" 2>/dev/null || true)
   if [[ "$backend_stopped" -eq 1 && -n "$current_target" && -f "$current_target/server/server.js" ]]; then
     pm2 delete "$process_name" >/dev/null 2>&1 || true
-    pm2 start "$current/server/server.js" --name "$process_name" --cwd "$current/server" --time >/dev/null 2>&1 || true
+    if [[ "$preflight_fail_closed" -eq 0 ]]; then
+      pm2 start "$current/server/server.js" --name "$process_name" --cwd "$current/server" --time >/dev/null 2>&1 || true
+    fi
   fi
   if [[ "$candidate_prepared" -eq 1 && "$deployment_succeeded" -ne 1 && -d "$release" && "$release" != "$previous" && "$current_target" != "$release" ]]; then
     rm -rf -- "$release"
@@ -84,6 +88,101 @@ fail_invariant() {
   shift
   echo "$phase invariant failed: $*" >&2
   return 1
+}
+
+pm2_process_state() {
+  local metadata_file="$tmp_dir/pm2-state.json"
+  pm2 jlist >"$metadata_file" || return 1
+  chmod 0600 "$metadata_file"
+  python3 - "$metadata_file" "$process_name" <<'PYTHON'
+import json
+import pathlib
+import sys
+
+processes = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if not isinstance(processes, list):
+    raise SystemExit(2)
+matches = [item for item in processes if item and item.get("name") == sys.argv[2]]
+if len(matches) > 1:
+    raise SystemExit(3)
+sys.stdout.write("absent" if not matches else "present")
+PYTHON
+}
+
+write_fail_closed_marker() {
+  local phase=$1
+  local active=""
+  local active_revision=""
+  local temporary=""
+  active=$(readlink -f -- "$current" 2>/dev/null || true)
+  active_revision=$(basename -- "$active" 2>/dev/null || true)
+  [[ "$active" == "$releases_root/$active_revision" && "$active_revision" =~ ^[0-9a-f]{40}$ ]] || return 1
+  case "$phase" in
+    migration-failure|pre-cutover-failure|post-cutover-failure|same-revision-recovery-failure) ;;
+    *) return 1 ;;
+  esac
+  temporary=$(mktemp "$shared/.fail-closed-deployment.XXXXXX") || return 1
+  chmod 0600 "$temporary"
+  if ! python3 - "$temporary" "$active_revision" "$revision" "$phase" <<'PYTHON'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+path.write_text(json.dumps({
+    "schema": "liotan-fail-closed/v1",
+    "activeRevision": sys.argv[2],
+    "failedRevision": sys.argv[3],
+    "phase": sys.argv[4],
+}, separators=(",", ":")) + "\n", encoding="utf-8")
+PYTHON
+  then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  mv -Tf -- "$temporary" "$fail_closed_marker"
+}
+
+validate_fail_closed_marker() {
+  local expected_revision=$1
+  [[ -f "$fail_closed_marker" && ! -L "$fail_closed_marker" ]] || return 1
+  python3 - "$fail_closed_marker" "$expected_revision" <<'PYTHON'
+import json
+import pathlib
+import re
+import sys
+
+value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+if value.get("schema") != "liotan-fail-closed/v1":
+    raise SystemExit(1)
+if value.get("activeRevision") != sys.argv[2]:
+    raise SystemExit(1)
+if re.fullmatch(r"[0-9a-f]{40}", str(value.get("failedRevision", ""))) is None:
+    raise SystemExit(1)
+if value.get("phase") not in {
+    "migration-failure",
+    "pre-cutover-failure",
+    "post-cutover-failure",
+    "same-revision-recovery-failure",
+}:
+    raise SystemExit(1)
+PYTHON
+}
+
+clear_fail_closed_marker() {
+  if [[ -e "$fail_closed_marker" || -L "$fail_closed_marker" ]]; then
+    [[ -f "$fail_closed_marker" && ! -L "$fail_closed_marker" ]] || return 1
+    rm -f -- "$fail_closed_marker"
+  fi
+}
+
+enter_fail_closed() {
+  local phase=$1
+  if ! write_fail_closed_marker "$phase"; then
+    echo "CRITICAL: failed to persist fail-closed recovery state" >&2
+  fi
+  pm2 delete "$process_name" >/dev/null 2>&1 || true
+  backend_stopped=0
 }
 
 resolve_current() {
@@ -301,6 +400,20 @@ PYTHON
   fi
 }
 
+validate_transparency_signing_key() {
+  local target=$1
+  local expected_public_key=$2
+  (
+    cd "$target/server"
+    node - "$expected_public_key" <<'NODE'
+require("dotenv").config();
+const expected = process.argv[2];
+const actual = require("./security/keyTransparency").signingMaterial().publicKey;
+if (actual !== expected) throw new Error("server Key Transparency key does not match the pinned client key");
+NODE
+  )
+}
+
 validate_frontend() {
   local phase=$1
   local target=$2
@@ -417,14 +530,52 @@ resolve_current "preflight current" || exit 2
 previous=$active_target
 previous_revision=$active_revision
 validate_release_layout "preflight release" "$previous" || exit 2
-validate_pm2_runtime "preflight PM2" "$previous" || exit 2
-health_check_once || { echo "preflight health check failed; current was not changed" >&2; exit 2; }
+pm2_state=$(pm2_process_state) || { echo "preflight PM2 invariant failed: cannot inspect sanitized PM2 process state" >&2; exit 2; }
+if [[ "$pm2_state" == "absent" ]]; then
+  validate_fail_closed_marker "$previous_revision" || {
+    echo "preflight PM2 invariant failed: process is absent without a valid fail-closed recovery marker" >&2
+    exit 2
+  }
+  if health_check_once 2>/dev/null; then
+    echo "preflight health invariant failed: an unmanaged backend responds while PM2 is absent" >&2
+    exit 2
+  fi
+  preflight_fail_closed=1
+  echo "verified fail-closed state for revision $previous_revision; proceeding with forward recovery"
+else
+  validate_pm2_runtime "preflight PM2" "$previous" || exit 2
+  health_check_once || { echo "preflight health check failed; current was not changed" >&2; exit 2; }
+fi
 validate_frontend "preflight frontend" "$previous" "$previous_revision" || exit 2
 
 if [[ "$previous" == "$release" ]]; then
-  deployment_succeeded=1
-  echo "revision $revision is already active and all deployment invariants passed"
-  exit 0
+  if [[ "$preflight_fail_closed" -eq 1 ]]; then
+    validate_candidate_provenance "$previous" "$revision" || exit 2
+    if validate_transparency_signing_key "$previous" "$candidate_transparency_public_key" \
+      && restart_pm2 "$previous" \
+      && wait_for_health \
+      && validate_pm2_runtime "same-revision recovery PM2" "$previous" \
+      && validate_frontend "same-revision recovery frontend" "$previous" "$revision" \
+      && pm2 save \
+      && clear_fail_closed_marker; then
+      deployment_succeeded=1
+      backend_stopped=0
+      echo "recovered and verified fail-closed revision $revision"
+      exit 0
+    fi
+    enter_fail_closed "same-revision-recovery-failure"
+    echo "CRITICAL: same-revision recovery failed; backend remains stopped fail-closed" >&2
+    exit 1
+  else
+    clear_fail_closed_marker || { echo "failed to clear stale fail-closed recovery marker" >&2; exit 2; }
+    deployment_succeeded=1
+    echo "revision $revision is already active and all deployment invariants passed"
+    exit 0
+  fi
+fi
+
+if [[ "$preflight_fail_closed" -eq 0 ]]; then
+  clear_fail_closed_marker || { echo "failed to clear stale fail-closed recovery marker" >&2; exit 2; }
 fi
 
 if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
@@ -469,16 +620,13 @@ validate_frontend_assets "candidate frontend" "$release" || exit 2
 # previous binary remains compatible after a client-facing protocol cutover.
 mkdir -p "$shared/migration-backups"
 chmod 0700 "$shared/migration-backups"
-pm2 stop "$process_name"
+if [[ "$preflight_fail_closed" -eq 0 ]]; then
+  pm2 stop "$process_name"
+fi
 backend_stopped=1
 if ! (
   cd "$release/server"
-  node - "$candidate_transparency_public_key" <<'NODE' &&
-  require("dotenv").config();
-  const expected = process.argv[2];
-  const actual = require("./security/keyTransparency").signingMaterial().publicKey;
-  if (actual !== expected) throw new Error("server Key Transparency key does not match the pinned client key");
-NODE
+  validate_transparency_signing_key "$release" "$candidate_transparency_public_key" &&
   LIOTAN_CRYPTO_MIGRATION_CONFIRM=APPLY_50_1_0_CRYPTO_STATE_MIGRATION \
   LIOTAN_MIGRATION_BACKUP_DIR="$shared/migration-backups" \
     node scripts/migrateCryptoState.js --apply &&
@@ -503,8 +651,7 @@ NODE
     backend_stopped=0
     echo "candidate migration failed; verified previous backend was restored" >&2
   else
-    pm2 delete "$process_name" >/dev/null 2>&1 || true
-    backend_stopped=0
+    enter_fail_closed "migration-failure"
     echo "CRITICAL: candidate migration failed; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
@@ -521,8 +668,7 @@ if ! restart_pm2 "$release" \
     backend_stopped=0
     echo "candidate backend failed before frontend cutover; restored to revision $previous_revision" >&2
   else
-    pm2 delete "$process_name" >/dev/null 2>&1 || true
-    backend_stopped=0
+    enter_fail_closed "pre-cutover-failure"
     echo "CRITICAL: candidate backend failed before frontend cutover; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
@@ -538,13 +684,13 @@ if ! resolve_current "post-switch current" "$revision" \
   if rollback_is_compatible && rollback; then
     echo "deployment failed; current and PM2 were restored to revision $previous_revision" >&2
   else
-    pm2 delete "$process_name" >/dev/null 2>&1 || true
-    backend_stopped=0
+    enter_fail_closed "post-cutover-failure"
     echo "CRITICAL: post-cutover rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
 fi
 
+clear_fail_closed_marker || { echo "failed to clear fail-closed recovery marker after deployment" >&2; exit 1; }
 deployment_succeeded=1
 backend_stopped=0
 
