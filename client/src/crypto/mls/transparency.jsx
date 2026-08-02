@@ -159,6 +159,38 @@ export function verifyTransparencyConsistency({
   return true;
 }
 
+export async function verifyTransparencyConsistencyEvidence({
+  older,
+  newer,
+  evidence,
+  expectedPublicKey = ""
+}) {
+  await Promise.all([
+    verifyTransparencyCheckpoint(older, expectedPublicKey),
+    verifyTransparencyCheckpoint(newer, expectedPublicKey),
+    verifyTransparencyCheckpoint(evidence?.from, expectedPublicKey),
+    verifyTransparencyCheckpoint(evidence?.to, expectedPublicKey)
+  ]);
+  const oldSize = Number(older.checkpoint.treeSize);
+  const newSize = Number(newer.checkpoint.treeSize);
+  if (newSize < oldSize ||
+    evidence.from.checkpointHash !== older.checkpointHash ||
+    evidence.to.checkpointHash !== newer.checkpointHash ||
+    evidence.from.checkpoint.rootHash !== older.checkpoint.rootHash ||
+    evidence.to.checkpoint.rootHash !== newer.checkpoint.rootHash ||
+    evidence.from.signingKeyId !== evidence.to.signingKeyId ||
+    older.signingKeyId !== newer.signingKeyId) {
+    throw new Error("Key transparency consistency evidence is not bound to both checkpoints");
+  }
+  return verifyTransparencyConsistency({
+    oldSize,
+    oldRoot: older.checkpoint.rootHash,
+    newSize,
+    newRoot: newer.checkpoint.rootHash,
+    proof: evidence.proof
+  });
+}
+
 export function transparencyGossipView(evidence) {
   if (!evidence?.checkpoint) return null;
   return {

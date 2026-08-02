@@ -54,6 +54,9 @@ frontend_index=""
 frontend_js_assets=()
 frontend_wasm_assets=()
 candidate_transparency_public_key=""
+candidate_protocol_generation=""
+candidate_rollback_generation=""
+frontend_cutover=0
 
 [[ -d "$shared" && ! -L "$shared" ]] || { echo "shared must be a real directory outside releases" >&2; exit 2; }
 [[ -f "$shared_env" && ! -L "$shared_env" ]] || { echo "shared production environment not found or is a symlink: $shared_env" >&2; exit 2; }
@@ -178,8 +181,15 @@ validate_pm2_runtime() {
   metadata=$(read_pm2_metadata) || fail_invariant "$phase" "cannot read sanitized PM2 metadata" || return 1
   IFS=$'\t' read -r actual_script actual_cwd actual_version actual_status <<<"$metadata"
 
-  [[ "$actual_script" == "$current/server/server.js" ]] || fail_invariant "$phase" "PM2 script path is not $current/server/server.js" || return 1
-  [[ "$actual_cwd" == "$current/server" ]] || fail_invariant "$phase" "PM2 exec cwd is not $current/server" || return 1
+  local expected_script="$target/server/server.js"
+  local expected_cwd="$target/server"
+  if [[ "$target" == "$previous" ]]; then
+    [[ "$actual_script" == "$expected_script" || "$actual_script" == "$current/server/server.js" ]] || fail_invariant "$phase" "PM2 script path is not the expected release" || return 1
+    [[ "$actual_cwd" == "$expected_cwd" || "$actual_cwd" == "$current/server" ]] || fail_invariant "$phase" "PM2 cwd is not the expected release" || return 1
+  else
+    [[ "$actual_script" == "$expected_script" ]] || fail_invariant "$phase" "PM2 script path is not $expected_script" || return 1
+    [[ "$actual_cwd" == "$expected_cwd" ]] || fail_invariant "$phase" "PM2 exec cwd is not $expected_cwd" || return 1
+  fi
   [[ "$actual_version" == "$expected_version" ]] || fail_invariant "$phase" "running version $actual_version does not match package.json $expected_version" || return 1
   [[ "$actual_status" == "online" ]] || fail_invariant "$phase" "PM2 status is $actual_status, expected online" || return 1
 }
@@ -252,7 +262,8 @@ validate_candidate_provenance() {
 
   [[ -f "$deployment_manifest" ]] || fail_invariant "candidate provenance" "DEPLOYMENT-MANIFEST.json is missing" || return 1
   [[ -f "$client_manifest" ]] || fail_invariant "candidate provenance" "client build-meta.json is missing" || return 1
-  candidate_transparency_public_key=$(
+  local manifest_values=""
+  manifest_values=$(
     python3 - "$deployment_manifest" "$client_manifest" "$package_file" "$expected_revision" <<'PYTHON'
 import json
 import pathlib
@@ -265,9 +276,11 @@ package = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))
 revision = sys.argv[4]
 version = package.get("version")
 if deployment != {
-    "schema": "liotan-deployment/v1",
-    "version": version,
+    "schema": "liotan-deployment/v2",
+    "appVersion": version,
     "sourceSha": revision,
+    "protocolGeneration": 2,
+    "rollbackCompatibilityGeneration": 2,
 }:
     raise SystemExit("deployment manifest does not bind the candidate revision and version")
 if client.get("schema") != "liotan-client-build/v1":
@@ -278,9 +291,10 @@ public_key = client.get("keyTransparencyPublicKey")
 if client.get("keyTransparencyPublicKeyPinned") is not True or not isinstance(public_key, str) \
         or re.fullmatch(r"[A-Za-z0-9_-]{43}", public_key) is None:
     raise SystemExit("client build has no valid Key Transparency public-key pin")
-sys.stdout.write(public_key)
+sys.stdout.write("\t".join([public_key, str(deployment["protocolGeneration"]), str(deployment["rollbackCompatibilityGeneration"])]))
 PYTHON
   ) || fail_invariant "candidate provenance" "manifest verification failed" || return 1
+  IFS=$'\t' read -r candidate_transparency_public_key candidate_protocol_generation candidate_rollback_generation <<<"$manifest_values"
   if find "$target/client/build" -type f -name '*.map' -print -quit | grep -q .; then
     fail_invariant "candidate provenance" "public source maps are forbidden"
     return 1
@@ -342,8 +356,9 @@ validate_frontend() {
 }
 
 restart_pm2() {
+  local target=${1:-$current}
   pm2 delete "$process_name" >/dev/null 2>&1 || true
-  pm2 start "$current/server/server.js" --name "$process_name" --cwd "$current/server" --time || return 1
+  pm2 start "$target/server/server.js" --name "$process_name" --cwd "$target/server" --time || return 1
 }
 
 switch_current() {
@@ -363,12 +378,29 @@ rollback() {
   switch_current "$previous" "$deploy_root/current.rollback" || return 1
   resolve_current "rollback current" "$previous_revision" || return 1
   validate_release_layout "rollback release" "$previous" || return 1
-  restart_pm2 || return 1
+  restart_pm2 "$previous" || return 1
   wait_for_health || return 1
   validate_pm2_runtime "rollback PM2" "$previous" || return 1
   validate_frontend "rollback frontend" "$previous" "$previous_revision" || return 1
   pm2 save || return 1
   backend_stopped=0
+}
+
+rollback_is_compatible() {
+  local manifest="$previous/DEPLOYMENT-MANIFEST.json"
+  [[ -f "$manifest" ]] || return 1
+  python3 - "$manifest" "$candidate_rollback_generation" <<'PYTHON'
+import json
+import pathlib
+import sys
+try:
+    manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+    minimum = int(sys.argv[2])
+    previous = int(manifest.get("protocolGeneration"))
+except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    raise SystemExit(1)
+raise SystemExit(0 if previous >= minimum else 1)
+PYTHON
 }
 
 expected_public_target="$current/client/build"
@@ -412,6 +444,8 @@ build="$release/client/build"
 [[ -f "$release/server/scripts/migrateKeyTransparency.js" ]] || { echo "key transparency migration is missing from the candidate release" >&2; exit 2; }
 [[ -f "$release/server/scripts/migrateMediaQuotaLifecycle.js" ]] || { echo "media quota migration is missing from the candidate release" >&2; exit 2; }
 [[ -f "$release/server/scripts/migrateMessageMutationProtocol.js" ]] || { echo "message mutation migration is missing from the candidate release" >&2; exit 2; }
+[[ -f "$release/server/scripts/migrateMediaReservationRecovery.js" ]] || { echo "media reservation recovery migration is missing from the candidate release" >&2; exit 2; }
+[[ -f "$release/server/scripts/migrateAvatarLifecycleRecovery.js" ]] || { echo "avatar lifecycle recovery migration is missing from the candidate release" >&2; exit 2; }
 [[ ! -e "$release/server/.env" && ! -L "$release/server/.env" ]] || { echo "deployment archive must not contain server/.env" >&2; exit 2; }
 validate_candidate_provenance "$release" "$revision" || exit 2
 
@@ -431,10 +465,8 @@ chmod 0600 "$shared_env"
 validate_release_layout "candidate release" "$release" || exit 2
 validate_frontend_assets "candidate frontend" "$release" || exit 2
 
-# The old backend is stopped before forward-compatible migrations so an older
-# binary cannot create untracked directory/media state during backfill. All
-# migrations are additive or preserve old-reader compatibility, so the
-# verified previous binary remains a valid rollback.
+# The old backend is stopped before migrations. This does not imply that the
+# previous binary remains compatible after a client-facing protocol cutover.
 mkdir -p "$shared/migration-backups"
 chmod 0700 "$shared/migration-backups"
 pm2 stop "$process_name"
@@ -458,8 +490,12 @@ NODE
   LIOTAN_MESSAGE_MUTATION_MIGRATION_CONFIRM=APPLY_50_5_0_MESSAGE_MUTATION_CHAIN \
   LIOTAN_MAINTENANCE_MODE=true \
     node scripts/migrateMessageMutationProtocol.js --apply
+  LIOTAN_MEDIA_RESERVATION_MIGRATION_CONFIRM=APPLY_57_4_0_MEDIA_RESERVATION_RECOVERY \
+    node scripts/migrateMediaReservationRecovery.js --apply
+  LIOTAN_AVATAR_LIFECYCLE_MIGRATION_CONFIRM=APPLY_57_4_0_AVATAR_UPLOADED_RECOVERY \
+    node scripts/migrateAvatarLifecycleRecovery.js --apply
 ); then
-  if restart_pm2 && wait_for_health && validate_pm2_runtime "migration rollback PM2" "$previous"; then
+  if restart_pm2 "$previous" && wait_for_health && validate_pm2_runtime "migration rollback PM2" "$previous"; then
     backend_stopped=0
     echo "candidate migration failed; verified previous backend was restored" >&2
   else
@@ -468,18 +504,31 @@ NODE
   exit 1
 fi
 
+if ! restart_pm2 "$release" \
+  || ! wait_for_health \
+  || ! validate_pm2_runtime "candidate backend" "$release"; then
+  if restart_pm2 "$previous" && wait_for_health && validate_pm2_runtime "pre-cutover rollback PM2" "$previous" && pm2 save; then
+    backend_stopped=0
+    echo "candidate backend failed before frontend cutover; restored to revision $previous_revision" >&2
+  else
+    echo "CRITICAL: candidate backend failed and previous backend could not be restored" >&2
+  fi
+  exit 1
+fi
+
 switch_current "$release" "$deploy_root/current.next"
+frontend_cutover=1
 if ! resolve_current "post-switch current" "$revision" \
   || ! validate_release_layout "post-switch release" "$release" \
-  || ! restart_pm2 \
-  || ! wait_for_health \
   || ! validate_pm2_runtime "post-deploy PM2" "$release" \
   || ! validate_frontend "post-deploy frontend" "$release" "$revision" \
   || ! pm2 save; then
-  if rollback; then
+  if rollback_is_compatible && rollback; then
     echo "deployment failed; current and PM2 were restored to revision $previous_revision" >&2
   else
-    echo "CRITICAL: deployment and verified rollback both failed; inspect current and PM2 immediately" >&2
+    pm2 delete "$process_name" >/dev/null 2>&1 || true
+    backend_stopped=0
+    echo "CRITICAL: post-cutover rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
 fi

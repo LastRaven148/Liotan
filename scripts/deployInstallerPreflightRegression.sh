@@ -23,11 +23,13 @@ create_release_payload() {
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateKeyTransparency.js"
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMediaQuotaLifecycle.js"
   printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMessageMutationProtocol.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateMediaReservationRecovery.js"
+  printf 'process.exitCode = 0;\n' >"$target/server/scripts/migrateAvatarLifecycleRecovery.js"
   printf '<!doctype html><script type="module" src="/assets/index-%s.js"></script>\n' "$marker" >"$target/client/build/index.html"
   printf 'console.log("%s");\n' "$marker" >"$target/client/build/assets/index-$marker.js"
   printf '\0asm' >"$target/client/build/assets/core-$marker.wasm"
   if [[ "$marker" =~ ^[0-9a-f]{40}$ ]]; then
-    printf '{"schema":"liotan-deployment/v1","version":"50.1.0","sourceSha":"%s"}\n' "$marker" >"$target/DEPLOYMENT-MANIFEST.json"
+    printf '{"schema":"liotan-deployment/v2","appVersion":"50.1.0","sourceSha":"%s","protocolGeneration":2,"rollbackCompatibilityGeneration":2}\n' "$marker" >"$target/DEPLOYMENT-MANIFEST.json"
     printf '{"schema":"liotan-client-build/v1","version":"50.1.0","sourceSha":"%s","keyTransparencyPublicKey":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","keyTransparencyPublicKeyPinned":true}\n' "$marker" >"$target/client/build/build-meta.json"
   fi
 }
@@ -91,7 +93,7 @@ case "$command" in
         *) shift ;;
       esac
     done
-    target=$(readlink -f -- "$MOCK_DEPLOY_ROOT/current")
+    target=$(dirname -- "$(dirname -- "$script")")
     revision=$(basename -- "$target")
     version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$target/server/package.json")
     printf '%s|%s|%s|online\n' "$script" "$cwd" "$version" >"$MOCK_PM2_STATE"
@@ -101,7 +103,8 @@ case "$command" in
     printf 'save\n' >>"$MOCK_PM2_LOG"
     ;;
   pid)
-    revision=$(basename -- "$(readlink -f -- "$MOCK_DEPLOY_ROOT/current")")
+    IFS='|' read -r script _ _ _ <"$MOCK_PM2_STATE"
+    revision=$(basename -- "$(dirname -- "$(dirname -- "$script")")")
     if [[ -n "${MOCK_FAIL_REVISION:-}" && "$revision" == "$MOCK_FAIL_REVISION" ]]; then
       printf '0\n'
     else
@@ -138,8 +141,13 @@ done
 target=$(readlink -f -- "$MOCK_DEPLOY_ROOT/current")
 revision=$(basename -- "$target")
 if [[ "$url" == *"/health" ]]; then
+  IFS='|' read -r script _ _ _ <"$MOCK_PM2_STATE"
+  revision=$(basename -- "$(dirname -- "$(dirname -- "$script")")")
   [[ -z "${MOCK_FAIL_REVISION:-}" || "$revision" != "$MOCK_FAIL_REVISION" ]]
   exit
+fi
+if [[ -n "${MOCK_FAIL_FRONTEND_REVISION:-}" && "$revision" == "$MOCK_FAIL_FRONTEND_REVISION" ]]; then
+  exit 22
 fi
 
 [[ -n "$output" ]] || { echo "mock frontend curl requires --output" >&2; exit 2; }
@@ -165,7 +173,7 @@ MOCK_NPM
 set -Eeuo pipefail
 case "${1:-}" in
   -) cat >/dev/null ;;
-  scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js|scripts/migrateMessageMutationProtocol.js)
+  scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js|scripts/migrateMessageMutationProtocol.js|scripts/migrateMediaReservationRecovery.js|scripts/migrateAvatarLifecycleRecovery.js)
     [[ "${2:-}" == "--apply" ]]
     ;;
   *) echo "unexpected mock node command: ${1:-}" >&2; exit 2 ;;
@@ -185,12 +193,14 @@ run_installer() {
   local archive=$3
   local revision=$4
   local fail_revision=${5:-}
+  local fail_frontend_revision=${6:-}
   PATH="$tmp_dir/$name/bin:$PATH" \
   MOCK_DEPLOY_ROOT="$deploy_root" \
   MOCK_PROCESS_NAME="$process_name" \
   MOCK_PM2_STATE="$tmp_dir/$name/pm2.state" \
   MOCK_PM2_LOG="$tmp_dir/$name/pm2.log" \
   MOCK_FAIL_REVISION="$fail_revision" \
+  MOCK_FAIL_FRONTEND_REVISION="$fail_frontend_revision" \
     bash "$installer" \
       "$archive" \
       "$deploy_root" \
@@ -301,8 +311,8 @@ test_wrong_pm2_path_fails_before_switch() {
   deploy_root=$(make_atomic_fixture "$name")
   install_mocks "$name" "$deploy_root"
   printf '%s|%s|50.1.0|online\n' \
-    "$deploy_root/releases/$old_revision/server/server.js" \
-    "$deploy_root/releases/$old_revision/server" >"$tmp_dir/$name/pm2.state"
+    "$deploy_root/releases/not-the-active-release/server/server.js" \
+    "$deploy_root/releases/not-the-active-release/server" >"$tmp_dir/$name/pm2.state"
   touch "$archive"
 
   set +e
@@ -311,7 +321,7 @@ test_wrong_pm2_path_fails_before_switch() {
   set -e
 
   [[ "$status" -eq 2 ]] || { echo "expected bad PM2 path exit 2, got $status" >&2; exit 1; }
-  [[ "$output" == *"PM2 script path is not"* ]] || { echo "missing PM2 path diagnostic" >&2; exit 1; }
+  [[ "$output" == *"PM2 script path is not the expected release"* ]] || { echo "missing PM2 path diagnostic" >&2; exit 1; }
   [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$old_revision" ]] || { echo "bad PM2 preflight changed current" >&2; exit 1; }
   [[ ! -s "$tmp_dir/$name/pm2.log" ]] || { echo "bad PM2 preflight mutated PM2" >&2; exit 1; }
 }
@@ -356,6 +366,32 @@ test_success_verifies_current_pm2_and_shared_data() {
   [[ "$output" == *"atomically activated and verified revision $good_revision"* ]] || { echo "missing successful invariant diagnostic" >&2; exit 1; }
 }
 
+test_incompatible_post_cutover_failure_stays_forward_and_fail_closed() {
+  local name=incompatible-post-cutover
+  local deploy_root
+  local archive
+  deploy_root=$(make_atomic_fixture "$name")
+  install_mocks "$name" "$deploy_root"
+  python3 - "$deploy_root/releases/$old_revision/DEPLOYMENT-MANIFEST.json" <<'PYTHON'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+value = json.loads(path.read_text(encoding="utf-8"))
+value["protocolGeneration"] = 1
+path.write_text(json.dumps(value), encoding="utf-8")
+PYTHON
+  archive=$(create_archive "$failed_revision")
+
+  set +e
+  output=$(run_installer "$name" "$deploy_root" "$archive" "$failed_revision" "" "$failed_revision" 2>&1)
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || { echo "expected incompatible post-cutover exit 1, got $status" >&2; exit 1; }
+  [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$failed_revision" ]] || { echo "incompatible rollback silently downgraded current" >&2; exit 1; }
+  grep -Fxq "delete:$process_name" "$tmp_dir/$name/pm2.log" || { echo "fail-closed backend stop was not recorded" >&2; exit 1; }
+  [[ "$output" == *"post-cutover rollback is incompatible or unavailable"* ]] || { echo "missing incompatible rollback diagnostic" >&2; exit 1; }
+}
+
 test_known_artifact_cleanup_is_bounded() {
   local checkout="$tmp_dir/cleanup-checkout"
   mkdir -p "$checkout/server"
@@ -382,6 +418,7 @@ test_invalid_candidate_fails_before_pm2_restart
 test_missing_wasm_fails_before_pm2_restart
 test_wrong_pm2_path_fails_before_switch
 test_failed_health_rolls_back_verified_release
+test_incompatible_post_cutover_failure_stays_forward_and_fail_closed
 test_success_verifies_current_pm2_and_shared_data
 test_known_artifact_cleanup_is_bounded
 

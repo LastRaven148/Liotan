@@ -118,9 +118,11 @@ jobs:
           const [output, version, sourceSha] = process.argv.slice(2);
           if (!/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error("invalid source revision");
           fs.writeFileSync(output, `${JSON.stringify({
-            schema: "liotan-deployment/v1",
-            version,
-            sourceSha
+            schema: "liotan-deployment/v2",
+            appVersion: version,
+            sourceSha,
+            protocolGeneration: 2,
+            rollbackCompatibilityGeneration: 2
           }, null, 2)}\n`);
           NODE
           build_bundle() {

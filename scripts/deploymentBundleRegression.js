@@ -37,5 +37,7 @@ assert.match(ciWorkflow, /build_bundle "\$FIRST_BUNDLE"[\s\S]*build_bundle "\$BU
   "CI must compare two independently generated deployment bundles");
 assert.match(ciWorkflow, /DEPLOYMENT-MANIFEST\.json/,
   "deployment bundle must contain an exact source revision manifest");
+assert.match(ciWorkflow, /liotan-deployment\/v2[\s\S]*protocolGeneration:[\s\S]*rollbackCompatibilityGeneration:/,
+  "deployment manifest must bind protocol and rollback compatibility generations");
 
 console.log("Deployment bundle isolation and reproducibility checks passed.");

@@ -16,6 +16,7 @@ import {
   transparencyGossipView,
   verifyTransparencyCheckpoint,
   verifyTransparencyConsistency,
+  verifyTransparencyConsistencyEvidence,
   verifyTransparencyInclusion
 } from "./transparency";
 
@@ -164,10 +165,44 @@ export async function observeTransparencyGossip(engine, evidence) {
   await verifyTransparencyCheckpoint(evidence, expectedKey);
   if (!prior) return;
   const size = Number(evidence.checkpoint.treeSize);
-  if (size === Number(prior.treeSize) &&
-    (evidence.checkpoint.rootHash !== prior.rootHash ||
-      evidence.checkpointHash !== prior.checkpointHash)) {
-    throw new Error("Peer gossip exposed a key transparency split view");
+  const localSize = Number(prior.treeSize);
+  if (size === localSize) {
+    if (evidence.checkpoint.rootHash !== prior.rootHash ||
+      evidence.checkpointHash !== prior.checkpointHash) {
+      throw new Error("Peer gossip exposed a key transparency split view");
+    }
+    return;
+  }
+  const local = {
+    checkpoint: {
+      v: 1,
+      treeSize: localSize,
+      rootHash: prior.rootHash,
+      signingKeyId: prior.signingKeyId
+    },
+    checkpointHash: prior.checkpointHash,
+    signingKeyId: prior.signingKeyId,
+    signingPublicKey: prior.signingPublicKey
+  };
+  const older = size < localSize ? evidence : local;
+  const newer = size < localSize ? local : evidence;
+  const path = `/crypto/v4/transparency/consistency?from=${older.checkpoint.treeSize}&to=${newer.checkpoint.treeSize}`;
+  const consistency = await signedCryptoRequest(path);
+  try {
+    await verifyTransparencyConsistencyEvidence({
+      older: consistency.from,
+      newer: consistency.to,
+      evidence: consistency,
+      expectedPublicKey: expectedKey
+    });
+    if (consistency.from.checkpointHash !== older.checkpointHash ||
+      consistency.from.checkpoint.rootHash !== older.checkpoint.rootHash ||
+      consistency.to.checkpointHash !== newer.checkpointHash ||
+      consistency.to.checkpoint.rootHash !== newer.checkpoint.rootHash) {
+      throw new Error("consistency endpoints do not match the gossiped checkpoints");
+    }
+  } catch (error) {
+    throw new Error("Peer gossip exposed a key transparency split view", { cause: error });
   }
 }
 
