@@ -8,7 +8,8 @@ const { decodeBase64Url, sha256Base64Url, verifyEd25519, isDeviceId } = require(
 const { hashSessionId } = require("../utils/sessionSecurity");
 const {
   requestSignatureInput,
-  sessionBindingId
+  sessionBindingId,
+  deviceAuthV1RequestsDisabled
 } = require("../security/deviceAuthProtocol");
 
 const MAX_CLOCK_SKEW_MS = 2 * 60 * 1000;
@@ -49,11 +50,19 @@ async function cryptoDeviceAuth(req, res, next) {
       userId: req.user.userId,
       username: req.user.username,
       deviceId,
-      sessionIdHash: hashSessionId(req.user.sid),
       status: "active"
     });
 
     if (!device) return res.status(401).json({ error: "valid crypto device signature required" });
+    if (Number(device.authVersion) !== 2 && deviceAuthV1RequestsDisabled()) {
+      return res.status(426).json({
+        error: "device authentication v2 upgrade required",
+        code: "device-auth-v2-upgrade-required"
+      });
+    }
+    if (device.sessionIdHash !== hashSessionId(req.user.sid)) {
+      return res.status(401).json({ error: "cryptographic device session binding changed" });
+    }
     const manifestExpiresAt = Date.parse(device.manifestExpiresAt || device.manifest?.expiresAt || "");
     if (!Number.isFinite(manifestExpiresAt) || manifestExpiresAt <= Date.now()) {
       await transitionUserConversations(req.user.userId, {

@@ -17,6 +17,7 @@ const cryptoDeviceSchema = new mongoose.Schema({
     index: true
   },
   authMigratedAt: { type: Date, default: null },
+  sessionReboundAt: { type: Date, default: null },
   credentialThumbprint: { type: String, required: true },
   sessionIdHash: { type: String, default: "", index: true },
   manifest: { type: mongoose.Schema.Types.Mixed, required: true },

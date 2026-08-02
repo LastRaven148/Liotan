@@ -22,9 +22,10 @@ router.post("/crypto/v4/identity", controller.pinIdentity);
 router.post("/crypto/v4/devices", controller.registerDevice);
 router.post(
   "/crypto/v4/devices/:deviceId/auth-migration",
-  cryptoDeviceAuth,
   controller.migrateDeviceAuthentication
 );
+router.post("/crypto/v4/devices/:deviceId/session-rebind/challenge", controller.createDeviceSessionRebindChallenge);
+router.post("/crypto/v4/devices/:deviceId/session-rebind", controller.rebindDeviceSession);
 router.post("/crypto/v4/devices/:deviceId/recovery-bootstrap", controller.confirmRecoveryBootstrap);
 router.post("/crypto/v4/devices/:deviceId/recovery-enrollment", controller.confirmRecoveryEnrollment);
 router.get("/crypto/v4/devices", cryptoDeviceAuth, controller.listDevices);

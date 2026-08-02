@@ -16,6 +16,61 @@ function configureEngineSigner(engine, authVersion = engine.keys.authVersion) {
   });
 }
 
+async function rebindDeviceSession(engine, existing) {
+  if (Number(existing.authVersion) !== 2 ||
+    existing.sessionBindingId === engine.bootstrap.sessionBindingId) return existing;
+  if (!engine.keys.localRequestSecretKey) {
+    const error = new Error("Local-only device authentication key is unavailable");
+    error.code = "mls-device-auth-key-unavailable";
+    throw error;
+  }
+  const path = `/crypto/v4/devices/${encodeURIComponent(existing.deviceId)}/session-rebind`;
+  const challenge = await unsignedCryptoPost(`${path}/challenge`, {});
+  if (challenge.duplicate) return challenge.device;
+  const statement = challenge.statement;
+  const proof = await signCanonical(
+    engine.keys.localRequestSecretKey,
+    "liotan-device-session-rebind-v2",
+    statement
+  );
+  const manifest = {
+    ...existing.manifest,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: engine.bootstrap.sessionBindingId
+  };
+  const manifestSignature = await signCanonical(
+    engine.keys.rootSecretKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...existing,
+    sessionBindingId: engine.bootstrap.sessionBindingId,
+    manifest,
+    manifestSignature
+  };
+  const directory = await buildDirectoryMutation(engine, {
+    devices: engine.bootstrap.accountDevices || [],
+    nextDevice,
+    action: "rebind-device-session",
+    targetDeviceId: existing.deviceId
+  });
+  const response = await unsignedCryptoPost(path, {
+    statement,
+    proof,
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+  engine.bootstrap.device = response.device;
+  engine.bootstrap.identity.directory = response.directory;
+  engine.bootstrap.accountDevices = directory.prospective.map(device =>
+    device.deviceId === response.device.deviceId ? response.device : device
+  );
+  return response.device;
+}
+
 async function migrateDeviceAuthentication(engine, existing) {
   if (Number(existing.authVersion) === 2) return existing;
   if (!engine.keys.localRequestSecretKey || !engine.keys.localRequestPublicKey) {
@@ -69,19 +124,16 @@ async function migrateDeviceAuthentication(engine, existing) {
     action: "migrate-device-auth",
     targetDeviceId: existing.deviceId
   });
-  const response = await signedCryptoRequest(
+  const response = await unsignedCryptoPost(
     `/crypto/v4/devices/${encodeURIComponent(existing.deviceId)}/auth-migration`,
     {
-      method: "POST",
-      body: {
-        migration,
-        oldProof,
-        newProof,
-        manifest,
-        manifestSignature,
-        directoryUpdate: directory.statement,
-        directorySignature: directory.signature
-      }
+      migration,
+      oldProof,
+      newProof,
+      manifest,
+      manifestSignature,
+      directoryUpdate: directory.statement,
+      directorySignature: directory.signature
     }
   );
   engine.keys.requestSecretKey = engine.keys.localRequestSecretKey;
@@ -138,7 +190,11 @@ export async function registerCryptographicIdentity(engine) {
     kty: "OKP",
     x: bytesToBase64Url(credentialPublicKey)
   }));
-  const existing = engine.bootstrap.device;
+  let existing = engine.bootstrap.device;
+  if (existing && Number(existing.authVersion) === 2 &&
+    existing.sessionBindingId !== engine.bootstrap.sessionBindingId) {
+    existing = await rebindDeviceSession(engine, existing);
+  }
   const authVersion = existing ? Number(existing.authVersion) || 1 : 2;
   const manifest = {
     v: authVersion,

@@ -8,7 +8,7 @@ const cryptoDeviceSecurityEventSchema = new mongoose.Schema({
   cryptoUserId: { type: String, required: true, index: true },
   type: {
     type: String,
-    enum: ["recovery-enrollment"],
+    enum: ["recovery-enrollment", "session-rebind"],
     required: true,
     index: true
   },

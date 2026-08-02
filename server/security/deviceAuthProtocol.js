@@ -8,6 +8,7 @@ const DEVICE_AUTH_PROTOCOL_V2 = "liotan-device-auth-v2";
 const DEVICE_AUTH_V2_ENFORCED_AT = new Date(
   process.env.DEVICE_AUTH_V2_ENFORCED_AT || "2026-08-01T00:00:00.000Z"
 );
+const DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2026-08-01T00:00:00.000Z";
 
 function sessionBindingId(sessionId) {
   return sha256Base64Url(Buffer.from(canonicalJson([
@@ -56,10 +57,20 @@ function legacyEnrollmentAllowed(createdAt = new Date()) {
     timestamp < DEVICE_AUTH_V2_ENFORCED_AT.getTime();
 }
 
+function deviceAuthV1RequestsDisabled(at = new Date()) {
+  const cutoff = new Date(
+    process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT || DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT
+  ).getTime();
+  const timestamp = new Date(at).getTime();
+  return !Number.isFinite(cutoff) || !Number.isFinite(timestamp) || timestamp >= cutoff;
+}
+
 module.exports = {
   DEVICE_AUTH_PROTOCOL_V2,
   DEVICE_AUTH_V2_ENFORCED_AT,
+  DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT,
   sessionBindingId,
   requestSignatureInput,
-  legacyEnrollmentAllowed
+  legacyEnrollmentAllowed,
+  deviceAuthV1RequestsDisabled
 };

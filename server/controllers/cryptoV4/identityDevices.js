@@ -8,6 +8,7 @@ const CryptoDirectoryEntry = require("../../models/CryptoDirectoryEntry");
 const CryptoKeyPackage = require("../../models/CryptoKeyPackage");
 const ClientInvalidation = require("../../models/ClientInvalidation");
 const CryptoDeviceSecurityEvent = require("../../models/CryptoDeviceSecurityEvent");
+const CryptoDeviceRebindChallenge = require("../../models/CryptoDeviceRebindChallenge");
 const Session = require("../../models/Session");
 const { transitionUserConversations } = require("../../security/cryptoRosterState");
 const {
@@ -27,8 +28,10 @@ const {
 } = require("./shared");
 const {
   DEVICE_AUTH_PROTOCOL_V2,
+  DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT,
   sessionBindingId,
-  legacyEnrollmentAllowed
+  legacyEnrollmentAllowed,
+  deviceAuthV1RequestsDisabled
 } = require("../../security/deviceAuthProtocol");
 const {
   appendDirectoryTransparency,
@@ -152,7 +155,9 @@ async function bootstrap(req, res, next) {
       deviceAuth: {
         currentVersion: 2,
         protocol: DEVICE_AUTH_PROTOCOL_V2,
-        legacyEnrollmentCutoff: process.env.DEVICE_AUTH_V2_ENFORCED_AT || "2026-08-01T00:00:00.000Z"
+        legacyEnrollmentCutoff: process.env.DEVICE_AUTH_V2_ENFORCED_AT || "2026-08-01T00:00:00.000Z",
+        v1RequestsDisabledAt: process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT ||
+          DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT
       }
     });
   } catch (err) {
@@ -237,7 +242,10 @@ async function registerDevice(req, res, next) {
     ) {
       return res.status(400).json({ error: "invalid device manifest" });
     }
-    if (authVersion === 1 && !legacyEnrollmentAllowed(new Date(createdAt))) {
+    if (authVersion === 1 && (
+      deviceAuthV1RequestsDisabled() ||
+      !legacyEnrollmentAllowed(new Date(createdAt))
+    )) {
       return res.status(426).json({ error: "device authentication v2 is required for new enrollment" });
     }
     if (authVersion === 2 && (
@@ -276,6 +284,9 @@ async function registerDevice(req, res, next) {
         existing.credentialThumbprint !== manifest.credentialThumbprint
       )) {
         const error = new Error("device id already bound to different keys"); error.status = 409; throw error;
+      }
+      if (existing && Number(existing.authVersion) === 2 && authVersion !== 2) {
+        const error = new Error("device authentication downgrade is forbidden"); error.status = 426; throw error;
       }
       if (existing?.status === "revoked") {
         const error = new Error("revoked device id cannot be reused"); error.status = 409; throw error;
@@ -383,6 +394,188 @@ async function registerDevice(req, res, next) {
   }
 }
 
+async function createDeviceSessionRebindChallenge(req, res, next) {
+  try {
+    const deviceId = String(req.params.deviceId || "").toLowerCase();
+    const [identity, device] = await Promise.all([
+      CryptoIdentity.findOne({ userId: req.user.userId }).lean(),
+      CryptoDevice.findOne({ userId: req.user.userId, deviceId }).lean()
+    ]);
+    const manifestExpiresAt = Date.parse(device?.manifestExpiresAt || device?.manifest?.expiresAt || "");
+    if (!identity?.rootPublicKey || !device || device.status !== "active" ||
+      Number(device.authVersion) !== 2 || device.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+      !Number.isFinite(manifestExpiresAt) || manifestExpiresAt <= Date.now()) {
+      return res.status(409).json({ error: "active device authentication v2 binding is unavailable" });
+    }
+    const nextBindingId = sessionBindingId(req.user.sid);
+    if (device.sessionBindingId === nextBindingId && device.sessionIdHash === hashSessionId(req.user.sid)) {
+      return res.json({ ok: true, duplicate: true, device: deviceView(device) });
+    }
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+    const statement = {
+      v: 2,
+      action: "rebind-device-session",
+      protocol: DEVICE_AUTH_PROTOCOL_V2,
+      cryptoUserId: identity.cryptoUserId,
+      username: req.user.username,
+      deviceId: device.deviceId,
+      clientId: device.clientId,
+      requestPublicKey: device.requestPublicKey,
+      oldSessionBindingId: device.sessionBindingId,
+      newSessionBindingId: nextBindingId,
+      challengeId: crypto.randomBytes(24).toString("base64url"),
+      nonce: crypto.randomBytes(24).toString("base64url"),
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString()
+    };
+    await CryptoDeviceRebindChallenge.create({
+      challengeId: statement.challengeId,
+      userId: req.user.userId,
+      cryptoUserId: identity.cryptoUserId,
+      deviceId: device.deviceId,
+      clientId: device.clientId,
+      oldSessionBindingId: device.sessionBindingId,
+      newSessionBindingId: nextBindingId,
+      newSessionIdHash: hashSessionId(req.user.sid),
+      statement,
+      expiresAt,
+      purgeAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    });
+    return res.status(201).json({ ok: true, duplicate: false, statement });
+  } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ error: "device session rebind challenge conflict" });
+    return next(err);
+  }
+}
+
+async function rebindDeviceSession(req, res, next) {
+  const session = await mongoose.startSession();
+  try {
+    const deviceId = String(req.params.deviceId || "").toLowerCase();
+    const statement = req.body.statement;
+    const proof = String(req.body.proof || "");
+    const manifest = req.body.manifest;
+    const manifestSignature = String(req.body.manifestSignature || "");
+    let rebound;
+    let invalidation;
+    await session.withTransaction(async () => {
+      const now = new Date();
+      const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
+      const target = await CryptoDevice.findOne({ userId: req.user.userId, deviceId }).session(session);
+      const challenge = await CryptoDeviceRebindChallenge.findOne({
+        challengeId: String(statement?.challengeId || ""),
+        userId: req.user.userId,
+        deviceId,
+        consumedAt: null,
+        expiresAt: { $gt: now }
+      }).session(session);
+      const currentSessionHash = hashSessionId(req.user.sid);
+      const manifestExpiresAt = Date.parse(String(manifest?.expiresAt || ""));
+      if (!identity?.rootPublicKey || !target || target.status !== "active" ||
+        Number(target.authVersion) !== 2 || target.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+        !challenge || challenge.newSessionIdHash !== currentSessionHash ||
+        canonicalJson(challenge.statement) !== canonicalJson(statement) ||
+        statement?.oldSessionBindingId !== target.sessionBindingId ||
+        statement?.newSessionBindingId !== sessionBindingId(req.user.sid) ||
+        statement?.requestPublicKey !== target.requestPublicKey ||
+        !verifyEd25519({
+          publicKey: target.requestPublicKey,
+          signature: proof,
+          value: statement,
+          domain: "liotan-device-session-rebind-v2"
+        })) {
+        const error = new Error("invalid or expired device session rebind proof"); error.status = 409; throw error;
+      }
+      if (!manifest || Number(manifest.v) !== 2 || manifest.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
+        manifest.sessionBindingId !== statement.newSessionBindingId ||
+        manifest.cryptoUserId !== target.cryptoUserId || manifest.username !== target.username ||
+        manifest.deviceId !== target.deviceId || manifest.clientId !== target.clientId ||
+        manifest.requestPublicKey !== target.requestPublicKey ||
+        manifest.credentialThumbprint !== target.credentialThumbprint ||
+        manifest.createdAt !== target.manifest.createdAt ||
+        !Number.isFinite(manifestExpiresAt) || manifestExpiresAt <= Date.now() ||
+        !verifyEd25519({
+          publicKey: identity.rootPublicKey,
+          signature: manifestSignature,
+          value: manifest,
+          domain: "liotan-device-manifest-v2"
+        })) {
+        const error = new Error("invalid rebound device manifest"); error.status = 400; throw error;
+      }
+      const prospectiveTarget = {
+        ...target.toObject(),
+        sessionBindingId: statement.newSessionBindingId,
+        sessionIdHash: currentSessionHash,
+        sessionReboundAt: now,
+        manifest,
+        manifestSignature,
+        manifestExpiresAt: new Date(manifestExpiresAt)
+      };
+      const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
+      const verifiedDirectory = validateDirectoryMutation({
+        identity,
+        devices: devices.filter(item => item.deviceId !== deviceId).map(item => item.toObject()).concat(prospectiveTarget),
+        update: req.body.directoryUpdate,
+        signature: req.body.directorySignature,
+        action: "rebind-device-session",
+        targetDeviceId: deviceId
+      });
+      const consumed = await CryptoDeviceRebindChallenge.updateOne({
+        _id: challenge._id,
+        consumedAt: null,
+        expiresAt: { $gt: now },
+        newSessionIdHash: currentSessionHash
+      }, { $set: { consumedAt: now } }, { session });
+      if (consumed.modifiedCount !== 1) {
+        const error = new Error("device session rebind challenge was already consumed"); error.status = 409; throw error;
+      }
+      rebound = await CryptoDevice.findOneAndUpdate({
+        _id: target._id,
+        status: "active",
+        authVersion: 2,
+        sessionBindingId: statement.oldSessionBindingId,
+        sessionIdHash: target.sessionIdHash,
+        manifestExpiresAt: target.manifestExpiresAt
+      }, { $set: {
+        sessionBindingId: statement.newSessionBindingId,
+        sessionIdHash: currentSessionHash,
+        sessionReboundAt: now,
+        manifest,
+        manifestSignature,
+        manifestExpiresAt: new Date(manifestExpiresAt),
+        lastSeenAt: now
+      } }, { returnDocument: "after", session });
+      if (!rebound) {
+        const error = new Error("device session binding changed concurrently"); error.status = 409; throw error;
+      }
+      await persistDirectoryHead(identity, verifiedDirectory, session);
+      const activeCount = await CryptoDevice.countDocuments({ userId: req.user.userId, status: "active" }).session(session);
+      await CryptoDeviceSecurityEvent.create([{
+        eventId: crypto.randomBytes(24).toString("base64url"),
+        userId: req.user.userId,
+        cryptoUserId: identity.cryptoUserId,
+        type: "session-rebind",
+        targetDeviceId: target.deviceId,
+        targetClientId: target.clientId,
+        priorActiveDeviceCount: activeCount,
+        statement,
+        statementSignature: proof
+      }], { session });
+      invalidation = await createDeviceListInvalidation(req, session);
+    });
+    emitDeviceListUpdate(req, invalidation);
+    const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).lean();
+    return res.json({ ok: true, device: deviceView(rebound), directory: directoryStateView(identity) });
+  } catch (err) {
+    if (err?.status) return res.status(err.status).json({ error: err.message });
+    if (err instanceof TypeError) return res.status(400).json({ error: err.message });
+    return next(err);
+  } finally {
+    await session.endSession();
+  }
+}
+
 async function migrateDeviceAuthentication(req, res, next) {
   const session = await mongoose.startSession();
   try {
@@ -402,7 +595,7 @@ async function migrateDeviceAuthentication(req, res, next) {
       const target = devices.find(item => item.deviceId === targetDeviceId);
       const expiresAt = Date.parse(String(migration?.expiresAt || ""));
       if (!identity?.rootPublicKey || !target || target.status !== "active" ||
-        target.clientId !== req.cryptoDevice.clientId ||
+        target.sessionIdHash !== hashSessionId(req.user.sid) ||
         Number(target.authVersion) !== 1) {
         const error = new Error("legacy current device is not available for authentication migration");
         error.status = 409;
@@ -561,6 +754,9 @@ async function approveDevice(req, res, next) {
       }
       const expiresAt = Date.parse(String(approval?.expiresAt || ""));
       const useV2 = Number(approval?.v) === 2;
+      if (!useV2 && deviceAuthV1RequestsDisabled()) {
+        const error = new Error("device authentication v2 upgrade required"); error.status = 426; throw error;
+      }
       if (Number(target.authVersion) === 2 && (
         !useV2 ||
         Number(req.cryptoDevice.authVersion) !== 2
@@ -678,6 +874,9 @@ async function confirmRecoveryBootstrap(req, res, next) {
       if (!identity?.rootPublicKey || !target || target.status !== "pending" ||
         target.activationMode !== "recovery-bootstrap" || activeCount !== 0) {
         const error = new Error("recovery bootstrap is not available for this device"); error.status = 409; throw error;
+      }
+      if (Number(target.authVersion) !== 2 && deviceAuthV1RequestsDisabled()) {
+        const error = new Error("device authentication v2 upgrade required"); error.status = 426; throw error;
       }
       if (!confirmation || confirmation.v !== 1 || confirmation.warningAcknowledged !== true ||
         confirmation.cryptoUserId !== identity.cryptoUserId ||
@@ -1125,6 +1324,9 @@ async function renewDevice(req, res, next) {
         req.cryptoDevice.clientId !== target.clientId) {
         const error = new Error("active current device not found"); error.status = 404; throw error;
       }
+      if (Number(target.authVersion) !== 2 && deviceAuthV1RequestsDisabled()) {
+        const error = new Error("device authentication v2 upgrade required"); error.status = 426; throw error;
+      }
       if (canonicalJson(target.manifest) === canonicalJson(manifest) && target.manifestSignature === manifestSignature) {
         renewed = target;
         duplicate = true;
@@ -1221,6 +1423,8 @@ module.exports = {
   bootstrap,
   pinIdentity,
   registerDevice,
+  createDeviceSessionRebindChallenge,
+  rebindDeviceSession,
   migrateDeviceAuthentication,
   approveDevice,
   confirmRecoveryBootstrap,
