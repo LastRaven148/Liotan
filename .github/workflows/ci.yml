@@ -29,7 +29,6 @@ jobs:
       MONGOMS_VERSION: "8.0.14"
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       LIOTAN_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}
     steps:
       - name: Check out exact revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -100,6 +99,7 @@ jobs:
       - name: Build immutable deployment bundle
         env:
           HOME: /root
+          VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
             [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]

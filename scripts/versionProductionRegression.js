@@ -23,6 +23,6 @@ assert.throws(
   ]),
   /Version mismatch/
 );
-assert.equal(verifySynchronization(), "57.4.0");
+assert.equal(verifySynchronization(), "57.4.1");
 
 console.log("Production version synchronization and monotonicity checks passed.");
