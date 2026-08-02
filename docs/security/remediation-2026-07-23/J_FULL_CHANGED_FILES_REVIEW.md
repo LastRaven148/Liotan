@@ -24,7 +24,7 @@ git diff --name-status 558d9484a4c72885ed2332471f8672736cd141d2..d43e6e8
 
 ## 57.4.0 second-pass review
 
-The second-pass runtime/test checkpoint is `952f633`, starting from
+The second-pass runtime/test checkpoint was `952f633`, starting from
 `c62fcdd858acafa6d836df52965695538bfb24bf`. The exact final documentation
 commit cannot truthfully embed its own Git object ID because that ID hashes the
 document content; the Draft PR head and final technical report are the source
@@ -62,6 +62,57 @@ server/services/mediaQuotaReconciliation.js
 server/startup/scheduleAttachmentCleanup.js
 server/test/integration/cryptoV4.integration.test.js
 ```
+
+## Final six-point follow-up review
+
+The published checkpoint reviewed at the start of this bounded follow-up was
+`6093c954b446eb1284c8629077bf6d0a39ebe3ad`. The code, test, dependency and
+generated-evidence checkpoint before this documentation update is
+`3dd786b276b59ed838c92a9b736ba7d0096b899d`.
+
+The canonical comparison is:
+
+```text
+git diff --name-status 6093c954b446eb1284c8629077bf6d0a39ebe3ad..3dd786b276b59ed838c92a9b736ba7d0096b899d
+```
+
+It contains exactly these tracked paths:
+
+```text
+M  artifacts/sbom/root.cdx.json
+M  package-lock.json
+M  scripts/deployInstallerPreflightRegression.sh
+M  server/.env.example
+M  server/controllers/cryptoV4/identityDevices.js
+M  server/deploy/install-release.sh
+M  server/scripts/auditVpsHardening.js
+M  server/scripts/migrateAvatarLifecycleRecovery.js
+M  server/scripts/migrateMediaReservationRecovery.js
+M  server/security/deviceAuthProtocol.js
+M  server/security/startupSecurityValidation.js
+M  server/test/integration/cryptoV4.integration.test.js
+M  server/test/unit/startupSecurityValidation.test.js
+```
+
+The two commits in that range are:
+
+```text
+6d02794 security: close final rollout and rollback gaps
+3dd786b build: refresh audited transitive dependencies
+```
+
+The changes make both 57.4 migrations leased, batch-bounded, checkpointed and
+resumable; remove the expired implicit v1 cutoff; require an explicit valid
+production rollout configuration; allow proof-bound v1-to-v2 migration after a
+new login; guard every rollback after forward migrations with the compatibility
+generation; stop the backend fail-closed when downgrade is unsafe; synchronize
+the VPS audit with those invariants; and update the root lockfile/SBOM for the
+two reported dependency advisories.
+
+This documentation commit is necessarily outside the immutable comparison
+above. Its exact SHA, the final clean release result and the published Draft PR
+head are recorded in the PR evidence and technical handoff rather than through
+a false self-reference here.
 
 ## Risk-focused review
 

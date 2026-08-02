@@ -14,9 +14,9 @@ Lockfile SHA-256 values used before and after every clean run:
 
 | Lockfile | SHA-256 |
 |---|---|
-| `package-lock.json` | `58F24F57ADA2DDE67B60455B7F985542E7E23D00B04262B93B89B6BE14484124` |
-| `client/package-lock.json` | `0DAB0198B82FF5EA45E7874FB24FDE4DA924A3EB6DAD1BEEF66564416D658F38` |
-| `server/package-lock.json` | `39608DB1DF95BB502B32233F0109906E29AD2349EEF5A79C57C60A14DC36A249` |
+| `package-lock.json` | `B87AEC904C6A69741DBC51D3D38567550C2079F07331F2AAEF030B8AB76AEB32` |
+| `client/package-lock.json` | `C9F09C9752C9704BE3CA5DEE53546005DE4F8C9B3D333EE2CF089CA33FF0FE66` |
+| `server/package-lock.json` | `A2D24C0BC1863AE7382391A6A0C3F55459E8761F93763B620DB58940B86D34A8` |
 
 ## Baseline evidence
 
@@ -220,3 +220,32 @@ At code checkpoint `952f633` the following focused evidence passed locally:
 The single clean final `npm run release:check` and the independent GitHub CI run
 are recorded against the exact published Draft PR head in the PR comment and
 technical handoff; they are not pre-declared as passing in this source file.
+
+## 2026-08-02 final six-point follow-up
+
+Starting from published checkpoint
+`6093c954b446eb1284c8629077bf6d0a39ebe3ad`, focused verification at code and
+dependency checkpoint `3dd786b276b59ed838c92a9b736ba7d0096b899d` produced:
+
+- Crypto v4 integration: 48/48 passed, including bounded one-record batches,
+  simulated interruption/checkpoint/resume and parallel-lease rejection for
+  both 57.4 migrations;
+- device-auth migration from a newly authenticated session: passed, with the
+  old session rejected after the binding moves;
+- startup rollout validation: 2/2 passed, covering absent, malformed and
+  incorrectly ordered production cutoffs plus no implicit non-production date;
+- deployment installer regression: passed for compatible rollback and
+  incompatible fail-closed behavior after migration failure, candidate backend
+  failure before cutover and post-cutover failure;
+- VPS hardening audit: zero findings;
+- root, root-production, client-production and server-production npm audits:
+  zero vulnerabilities;
+- installed dependency graph: `brace-expansion` 2.1.4/5.0.9 and `tar` 7.5.22;
+- reproducible CycloneDX SBOM hashes:
+  root `e71a37e3a964f52e29eff6cc340e1615031a5f7d3f7595679903cd72e155e84e`,
+  client `acac9149eedd7c514dbce2a8daa03bb325ea29ffd393f0f688534424adda896f`,
+  server `e294009d6a4a312e3625be90ca2e338de20a3fd457c050177d25a22e82248830`.
+
+The full clean-tree release gate and GitHub Release Gate remain acceptance
+steps on the final published documentation SHA; this section does not
+pre-declare either result.

@@ -31,6 +31,8 @@ deployment. It is destructive and requires the separate product decision in
 All migrations use `server/utils/durableMigration.js` for leases,
 checkpoints/resume and failure state. The installer stops the old backend before
 forward migrations so it cannot write an incompatible old format concurrently.
+Each migration command is explicitly success-chained; an intermediate failure
+cannot be hidden by a later successful migration.
 
 ## Required pre-deployment review
 
@@ -40,11 +42,15 @@ forward migrations so it cannot write an incompatible old format concurrently.
 4. Set a canonical 32-byte Ed25519 transparency seed and expose the matching
    public key to the client build without publishing the seed.
 5. Provide all independent secrets and separate R2 credentials/buckets.
-6. Back up Mongo and confirm restore evidence.
-7. Run every migration in inspect/dry-run mode against an authorized staging
+6. Set explicit canonical `DEVICE_AUTH_V2_ENFORCED_AT` and
+   `DEVICE_AUTH_V1_REQUESTS_DISABLED_AT` values after inventorying remaining v1
+   devices. The request-disable timestamp cannot precede the enrollment cutoff;
+   production startup rejects missing, malformed or reversed values.
+7. Back up Mongo and confirm restore evidence.
+8. Run every migration in inspect/dry-run mode against an authorized staging
    clone.
-8. Run the production read-only checklist.
-9. Schedule maintenance; do not combine legacy retirement with the release.
+9. Run the production read-only checklist.
+10. Schedule maintenance; do not combine legacy retirement with the release.
 
 ## Forward deployment order
 
@@ -72,7 +78,11 @@ process. No state rollback is needed.
 ### After compatible migration, before switch
 
 Restart the old release only if its code can safely read the migrated schemas.
-The installer performs verified rollback, but v2 rejection/tombstone invariants
+The installer checks the previous release protocol generation after forward
+migrations both when a migration fails and when the candidate backend fails
+before frontend cutover. If the previous release is incompatible or cannot be
+verified and restarted, PM2 is deleted and the backend remains stopped
+fail-closed for a compatible forward fix. V2 rejection/tombstone invariants
 must remain. Never re-enable v1 device writes or legacy plaintext routes.
 
 ### After switch
