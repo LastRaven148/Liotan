@@ -28,7 +28,7 @@ const {
 } = require("./shared");
 const {
   DEVICE_AUTH_PROTOCOL_V2,
-  DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT,
+  deviceAuthRolloutConfig,
   sessionBindingId,
   legacyEnrollmentAllowed,
   deviceAuthV1RequestsDisabled
@@ -155,9 +155,7 @@ async function bootstrap(req, res, next) {
       deviceAuth: {
         currentVersion: 2,
         protocol: DEVICE_AUTH_PROTOCOL_V2,
-        legacyEnrollmentCutoff: process.env.DEVICE_AUTH_V2_ENFORCED_AT || "2026-08-01T00:00:00.000Z",
-        v1RequestsDisabledAt: process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT ||
-          DEFAULT_DEVICE_AUTH_V1_REQUESTS_DISABLED_AT
+        ...deviceAuthRolloutConfig()
       }
     });
   } catch (err) {
@@ -598,9 +596,10 @@ async function migrateDeviceAuthentication(req, res, next) {
       const identity = await CryptoIdentity.findOne({ userId: req.user.userId }).session(session);
       const devices = await CryptoDevice.find({ userId: req.user.userId }).session(session);
       const target = devices.find(item => item.deviceId === targetDeviceId);
+      const currentSessionHash = hashSessionId(req.user.sid);
       const expiresAt = Date.parse(String(migration?.expiresAt || ""));
       if (!identity?.rootPublicKey || !target || target.status !== "active" ||
-        target.sessionIdHash !== hashSessionId(req.user.sid) ||
+        !target.sessionIdHash ||
         Number(target.authVersion) !== 1) {
         const error = new Error("legacy current device is not available for authentication migration");
         error.status = 409;
@@ -670,6 +669,7 @@ async function migrateDeviceAuthentication(req, res, next) {
         authVersion: 2,
         authProtocol: DEVICE_AUTH_PROTOCOL_V2,
         sessionBindingId: expectedBindingId,
+        sessionIdHash: currentSessionHash,
         authMigrationState: "v2-active",
         authMigratedAt: new Date(),
         manifest,
@@ -694,7 +694,7 @@ async function migrateDeviceAuthentication(req, res, next) {
           status: "active",
           authVersion: { $ne: 2 },
           requestPublicKey: target.requestPublicKey,
-          sessionIdHash: hashSessionId(req.user.sid)
+          sessionIdHash: target.sessionIdHash
         },
         {
           $set: {
@@ -702,6 +702,7 @@ async function migrateDeviceAuthentication(req, res, next) {
             authVersion: 2,
             authProtocol: DEVICE_AUTH_PROTOCOL_V2,
             sessionBindingId: expectedBindingId,
+            sessionIdHash: currentSessionHash,
             authMigrationState: "v2-active",
             authMigratedAt: new Date(),
             manifest,

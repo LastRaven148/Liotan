@@ -816,11 +816,12 @@ test("media storage quota follows temporary, persistent and released object stat
 
 test("device authentication v2 migrates with old and new proofs without changing MLS identity", async () => {
   const account = await createAccount("authv2_migrate");
+  const nextSession = await createAdditionalSession(account);
   const listed = await signedJson(account, "GET", "/crypto/v4/devices");
   assert.equal(listed.status, 200, listed.text);
   const target = listed.body.devices.find(device => device.deviceId === account.deviceId);
   const bootstrap = await requestFor(
-    account,
+    nextSession,
     "GET",
     `/crypto/v4/bootstrap?deviceId=${account.deviceId}`
   );
@@ -889,17 +890,22 @@ test("device authentication v2 migrates with old and new proofs without changing
     directoryUpdate: directory.statement,
     directorySignature: directory.signature
   };
-  const migrated = await signedJson(account, "POST", path, body);
+  const migrated = await sessionJson(nextSession, "POST", path, body);
   assert.equal(migrated.status, 200, migrated.text);
   assert.equal(migrated.body.device.clientId, account.clientId);
   assert.equal(migrated.body.device.credentialThumbprint, target.credentialThumbprint);
   assert.equal(migrated.body.device.authVersion, 2);
 
-  account.requestKey = nextRequestKey;
-  account.authVersion = 2;
-  account.sessionBindingId = bootstrap.body.sessionBindingId;
-  const authenticated = await signedJson(account, "GET", "/crypto/v4/devices");
+  const active = {
+    ...nextSession,
+    requestKey: nextRequestKey,
+    authVersion: 2,
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const authenticated = await signedJson(active, "GET", "/crypto/v4/devices");
   assert.equal(authenticated.status, 200, authenticated.text);
+  const oldSession = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(oldSession.status, 401, oldSession.text);
 });
 
 test("device authentication v2 safely rebinds the same local key to a new session", async () => {
@@ -1698,9 +1704,10 @@ test("media quota lifecycle migration backfills exact object state and reconcile
   await AttachmentUpload.deleteOne({ _id: upload._id });
 });
 
-test("media reservation recovery migration removes active TTL and reconciles reserved object slots", async () => {
+test("media reservation recovery migration resumes bounded batches and rejects a parallel lease", async () => {
   const account = await createAuthenticatedUser("reserve_migrate");
   const migration = require("../../scripts/migrateMediaReservationRecovery");
+  const { acquireLease } = require("../../utils/durableMigration");
   const MediaTransferReservation = mongoose.model("MediaTransferReservation");
   const MediaQuotaState = mongoose.model("MediaQuotaState");
   const migrations = mongoose.connection.collection("system_migrations");
@@ -1710,42 +1717,106 @@ test("media reservation recovery migration removes active TTL and reconciles res
   if (expiresIndex) await MediaTransferReservation.collection.dropIndex(expiresIndex.name);
   await MediaTransferReservation.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   const scope = { key: `account:migration-${crypto.randomUUID()}`, scope: "account", scopeIdHash: crypto.randomBytes(32).toString("base64url") };
-  await MediaTransferReservation.collection.insertOne({
-    reservationId: crypto.randomBytes(24).toString("base64url"),
-    direction: "upload",
-    state: "reserved",
+  const common = {
     userId: account.user._id,
     clientIdHash: crypto.randomBytes(32).toString("base64url"),
     sessionIdHash: crypto.randomBytes(32).toString("base64url"),
     ipHash: crypto.randomBytes(32).toString("base64url"),
-    declaredBytes: 17,
-    actualBytes: 0,
     scopes: [scope],
     bucketKeys: [],
     expiresAt: new Date(Date.now() + 60_000),
     createdAt: new Date(),
     updatedAt: new Date()
+  };
+  await MediaTransferReservation.collection.insertOne({
+    reservationId: crypto.randomBytes(24).toString("base64url"),
+    direction: "upload",
+    state: "reserved",
+    declaredBytes: 17,
+    actualBytes: 0,
+    purgeAt: new Date(Date.now() + 60_000),
+    ...common
   });
-  const applied = await migration.applyMigration();
+  const insertedTerminal = await MediaTransferReservation.collection.insertMany([0, 1].map(index => ({
+    reservationId: crypto.randomBytes(24).toString("base64url"),
+    direction: "upload",
+    state: index ? "released" : "completed",
+    declaredBytes: 10 + index,
+    actualBytes: 10 + index,
+    purgeAt: null,
+    ...common,
+    updatedAt: new Date(Date.now() - ((index + 1) * 60_000))
+  })));
+  const batchSizes = [];
+  let interrupted = false;
+  await assert.rejects(
+    migration.applyMigration({
+      batchSize: 1,
+      hooks: {
+        afterBatch: ({ count }) => {
+          batchSizes.push(count);
+          if (interrupted) return;
+          interrupted = true;
+          const error = new Error("simulated process stop");
+          error.code = "MIGRATION_INTERRUPTED";
+          throw error;
+        }
+      }
+    }),
+    error => error.code === "MIGRATION_INTERRUPTED"
+  );
+  const paused = await migrations.findOne({ _id: migration.MIGRATION_ID });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.phase, "terminal-records");
+  assert.ok(paused.cursor);
+  assert.equal(paused.counters.terminalBackfilled, 1);
+  const applied = await migration.applyMigration({ batchSize: 1, hooks: {
+    afterBatch: ({ count }) => batchSizes.push(count)
+  } });
   assert.equal(applied.alreadyApplied, false);
+  assert.equal(applied.terminalBackfilled >= 2, true);
+  assert.equal(batchSizes.length, applied.terminalBackfilled);
+  assert.equal(batchSizes.every(count => count === 1), true);
   const afterIndexes = await MediaTransferReservation.collection.indexes();
   assert.equal(afterIndexes.some(index => index.key?.expiresAt === 1 && index.expireAfterSeconds === 0), false);
+  assert.equal(await MediaTransferReservation.countDocuments({
+    state: { $in: ["reserving", "reserved"] },
+    purgeAt: { $type: "date" }
+  }), 0);
+  assert.equal(await MediaTransferReservation.countDocuments({
+    _id: { $in: Object.values(insertedTerminal.insertedIds) },
+    purgeAt: { $type: "date" }
+  }), 2);
   const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
   assert.equal(state.activeUploads, 1);
   assert.equal(state.reservedStorageBytes, 17);
   assert.equal(state.reservedObjectCount, 1);
   assert.equal((await migration.applyMigration()).alreadyApplied, true);
+
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await acquireLease(migrations, migration.MIGRATION_ID, {
+    owner: "media-reservation-owner-a",
+    version: 1,
+    leaseMs: 60_000
+  });
+  await assert.rejects(
+    migration.applyMigration({ owner: "media-reservation-owner-b" }),
+    error => error.code === "MIGRATION_LEASE_BUSY"
+  );
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
 });
 
-test("avatar uploaded recovery migration backfills timestamps idempotently", async () => {
+test("avatar uploaded recovery migration resumes bounded batches and rejects a parallel lease", async () => {
   const account = await createAuthenticatedUser("avatar_migrate");
   const migration = require("../../scripts/migrateAvatarLifecycleRecovery");
+  const { acquireLease } = require("../../utils/durableMigration");
   const AvatarObject = mongoose.model("AvatarObject");
   const migrations = mongoose.connection.collection("system_migrations");
   await migrations.deleteOne({ _id: migration.MIGRATION_ID });
   const createdAt = new Date(Date.now() - 60_000);
-  const storageKey = `liotan/avatars/migration-${crypto.randomUUID()}.png`;
-  await AvatarObject.collection.insertOne({
+  const storageKeys = Array.from({ length: 3 }, () =>
+    `liotan/avatars/migration-${crypto.randomUUID()}.png`);
+  await AvatarObject.collection.insertMany(storageKeys.map(storageKey => ({
     storageKey,
     url: `https://avatars.invalid/${storageKey}`,
     storageType: "r2:public-avatar",
@@ -1757,12 +1828,52 @@ test("avatar uploaded recovery migration backfills timestamps idempotently", asy
     nextAttemptAt: createdAt,
     createdAt,
     updatedAt: createdAt
-  });
-  const applied = await migration.applyMigration();
+  })));
+  const batchSizes = [];
+  let interrupted = false;
+  await assert.rejects(
+    migration.applyMigration({
+      batchSize: 1,
+      hooks: {
+        afterBatch: ({ count }) => {
+          batchSizes.push(count);
+          if (interrupted) return;
+          interrupted = true;
+          const error = new Error("simulated process stop");
+          error.code = "MIGRATION_INTERRUPTED";
+          throw error;
+        }
+      }
+    }),
+    error => error.code === "MIGRATION_INTERRUPTED"
+  );
+  const paused = await migrations.findOne({ _id: migration.MIGRATION_ID });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.phase, "uploaded-records");
+  assert.ok(paused.cursor);
+  assert.equal(paused.counters.uploadedTimestampsBackfilled, 1);
+  const applied = await migration.applyMigration({ batchSize: 1, hooks: {
+    afterBatch: ({ count }) => batchSizes.push(count)
+  } });
   assert.equal(applied.alreadyApplied, false);
-  const record = await AvatarObject.findOne({ storageKey }).lean();
-  assert.equal(record.uploadedAt.getTime(), createdAt.getTime());
+  assert.equal(applied.uploadedTimestampsBackfilled, 3);
+  assert.deepEqual(batchSizes, [1, 1, 1]);
+  const records = await AvatarObject.find({ storageKey: { $in: storageKeys } }).lean();
+  assert.equal(records.length, 3);
+  for (const record of records) assert.equal(record.uploadedAt.getTime(), createdAt.getTime());
   assert.equal((await migration.applyMigration()).alreadyApplied, true);
+
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await acquireLease(migrations, migration.MIGRATION_ID, {
+    owner: "avatar-lifecycle-owner-a",
+    version: 1,
+    leaseMs: 60_000
+  });
+  await assert.rejects(
+    migration.applyMigration({ owner: "avatar-lifecycle-owner-b" }),
+    error => error.code === "MIGRATION_LEASE_BUSY"
+  );
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {

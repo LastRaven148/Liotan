@@ -27,6 +27,24 @@ function validateStartupSecurity(env, logger = console) {
   const runtimeEnv = { ...process.env, ...env };
 
   if (env.NODE_ENV === "production") {
+    const deviceAuthV2EnforcedAt = String(runtimeEnv.DEVICE_AUTH_V2_ENFORCED_AT || "").trim();
+    const deviceAuthV1DisabledAt = String(runtimeEnv.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT || "").trim();
+    const parseCanonicalCutoff = value => {
+      const date = new Date(value);
+      return value && Number.isFinite(date.getTime()) && date.toISOString() === value
+        ? date.getTime()
+        : null;
+    };
+    const v2Cutoff = parseCanonicalCutoff(deviceAuthV2EnforcedAt);
+    const v1DisabledCutoff = parseCanonicalCutoff(deviceAuthV1DisabledAt);
+    if (v2Cutoff === null || v1DisabledCutoff === null || v1DisabledCutoff < v2Cutoff) {
+      findings.push({
+        severity: "critical",
+        code: "device_auth_rollout_configuration_required",
+        message: "DEVICE_AUTH_V2_ENFORCED_AT and DEVICE_AUTH_V1_REQUESTS_DISABLED_AT must be explicit canonical ISO timestamps, with v1 request disablement no earlier than the v2 enrollment cutoff."
+      });
+    }
+
     let publicSecurityUrl;
     try {
       publicSecurityUrl = new URL(String(env.PUBLIC_SECURITY_URL || ""));

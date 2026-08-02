@@ -473,7 +473,7 @@ pm2 stop "$process_name"
 backend_stopped=1
 if ! (
   cd "$release/server"
-  node - "$candidate_transparency_public_key" <<'NODE'
+  node - "$candidate_transparency_public_key" <<'NODE' &&
   require("dotenv").config();
   const expected = process.argv[2];
   const actual = require("./security/keyTransparency").signingMaterial().publicKey;
@@ -481,25 +481,31 @@ if ! (
 NODE
   LIOTAN_CRYPTO_MIGRATION_CONFIRM=APPLY_50_1_0_CRYPTO_STATE_MIGRATION \
   LIOTAN_MIGRATION_BACKUP_DIR="$shared/migration-backups" \
-    node scripts/migrateCryptoState.js --apply
+    node scripts/migrateCryptoState.js --apply &&
   LIOTAN_KEY_TRANSPARENCY_MIGRATION_CONFIRM=APPLY_50_2_0_KEY_TRANSPARENCY_MIGRATION \
-    node scripts/migrateKeyTransparency.js --apply
+    node scripts/migrateKeyTransparency.js --apply &&
   LIOTAN_MEDIA_QUOTA_MIGRATION_CONFIRM=APPLY_50_3_0_MEDIA_QUOTA_LIFECYCLE \
   LIOTAN_MAINTENANCE_MODE=true \
-    node scripts/migrateMediaQuotaLifecycle.js --apply
+    node scripts/migrateMediaQuotaLifecycle.js --apply &&
   LIOTAN_MESSAGE_MUTATION_MIGRATION_CONFIRM=APPLY_50_5_0_MESSAGE_MUTATION_CHAIN \
   LIOTAN_MAINTENANCE_MODE=true \
-    node scripts/migrateMessageMutationProtocol.js --apply
+    node scripts/migrateMessageMutationProtocol.js --apply &&
   LIOTAN_MEDIA_RESERVATION_MIGRATION_CONFIRM=APPLY_57_4_0_MEDIA_RESERVATION_RECOVERY \
-    node scripts/migrateMediaReservationRecovery.js --apply
+    node scripts/migrateMediaReservationRecovery.js --apply &&
   LIOTAN_AVATAR_LIFECYCLE_MIGRATION_CONFIRM=APPLY_57_4_0_AVATAR_UPLOADED_RECOVERY \
     node scripts/migrateAvatarLifecycleRecovery.js --apply
 ); then
-  if restart_pm2 "$previous" && wait_for_health && validate_pm2_runtime "migration rollback PM2" "$previous"; then
+  if rollback_is_compatible \
+    && restart_pm2 "$previous" \
+    && wait_for_health \
+    && validate_pm2_runtime "migration rollback PM2" "$previous" \
+    && pm2 save; then
     backend_stopped=0
     echo "candidate migration failed; verified previous backend was restored" >&2
   else
-    echo "CRITICAL: candidate migration failed and previous backend could not be restored" >&2
+    pm2 delete "$process_name" >/dev/null 2>&1 || true
+    backend_stopped=0
+    echo "CRITICAL: candidate migration failed; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
 fi
@@ -507,11 +513,17 @@ fi
 if ! restart_pm2 "$release" \
   || ! wait_for_health \
   || ! validate_pm2_runtime "candidate backend" "$release"; then
-  if restart_pm2 "$previous" && wait_for_health && validate_pm2_runtime "pre-cutover rollback PM2" "$previous" && pm2 save; then
+  if rollback_is_compatible \
+    && restart_pm2 "$previous" \
+    && wait_for_health \
+    && validate_pm2_runtime "pre-cutover rollback PM2" "$previous" \
+    && pm2 save; then
     backend_stopped=0
     echo "candidate backend failed before frontend cutover; restored to revision $previous_revision" >&2
   else
-    echo "CRITICAL: candidate backend failed and previous backend could not be restored" >&2
+    pm2 delete "$process_name" >/dev/null 2>&1 || true
+    backend_stopped=0
+    echo "CRITICAL: candidate backend failed before frontend cutover; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix" >&2
   fi
   exit 1
 fi

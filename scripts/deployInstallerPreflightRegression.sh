@@ -175,6 +175,7 @@ case "${1:-}" in
   -) cat >/dev/null ;;
   scripts/migrateCryptoState.js|scripts/migrateKeyTransparency.js|scripts/migrateMediaQuotaLifecycle.js|scripts/migrateMessageMutationProtocol.js|scripts/migrateMediaReservationRecovery.js|scripts/migrateAvatarLifecycleRecovery.js)
     [[ "${2:-}" == "--apply" ]]
+    [[ -z "${MOCK_FAIL_MIGRATION:-}" || "${1:-}" != "$MOCK_FAIL_MIGRATION" ]]
     ;;
   *) echo "unexpected mock node command: ${1:-}" >&2; exit 2 ;;
 esac
@@ -194,6 +195,7 @@ run_installer() {
   local revision=$4
   local fail_revision=${5:-}
   local fail_frontend_revision=${6:-}
+  local fail_migration=${7:-}
   PATH="$tmp_dir/$name/bin:$PATH" \
   MOCK_DEPLOY_ROOT="$deploy_root" \
   MOCK_PROCESS_NAME="$process_name" \
@@ -201,6 +203,7 @@ run_installer() {
   MOCK_PM2_LOG="$tmp_dir/$name/pm2.log" \
   MOCK_FAIL_REVISION="$fail_revision" \
   MOCK_FAIL_FRONTEND_REVISION="$fail_frontend_revision" \
+  MOCK_FAIL_MIGRATION="$fail_migration" \
     bash "$installer" \
       "$archive" \
       "$deploy_root" \
@@ -349,6 +352,61 @@ test_failed_health_rolls_back_verified_release() {
   [[ "$output" == *"restored to revision $old_revision"* ]] || { echo "missing verified rollback diagnostic" >&2; exit 1; }
 }
 
+set_previous_protocol_generation() {
+  local deploy_root=$1
+  local generation=$2
+  python3 - "$deploy_root/releases/$old_revision/DEPLOYMENT-MANIFEST.json" "$generation" <<'PYTHON'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+value = json.loads(path.read_text(encoding="utf-8"))
+value["protocolGeneration"] = int(sys.argv[2])
+path.write_text(json.dumps(value), encoding="utf-8")
+PYTHON
+}
+
+test_incompatible_migration_failure_stops_backend_fail_closed() {
+  local name=incompatible-migration
+  local deploy_root
+  local archive
+  deploy_root=$(make_atomic_fixture "$name")
+  install_mocks "$name" "$deploy_root"
+  set_previous_protocol_generation "$deploy_root" 1
+  archive=$(create_archive "$failed_revision")
+
+  set +e
+  output=$(run_installer "$name" "$deploy_root" "$archive" "$failed_revision" "" "" "scripts/migrateMediaReservationRecovery.js" 2>&1)
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || { echo "expected incompatible migration rollback exit 1, got $status" >&2; exit 1; }
+  [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$old_revision" ]] || { echo "migration failure changed current before cutover" >&2; exit 1; }
+  ! grep -Fxq "start:$old_revision" "$tmp_dir/$name/pm2.log" || { echo "incompatible previous backend was started after migration failure" >&2; exit 1; }
+  grep -Fxq "delete:$process_name" "$tmp_dir/$name/pm2.log" || { echo "migration failure did not stop backend fail-closed" >&2; exit 1; }
+  [[ "$output" == *"candidate migration failed; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix"* ]] || { echo "missing incompatible migration rollback diagnostic" >&2; exit 1; }
+}
+
+test_incompatible_pre_cutover_failure_stops_backend_fail_closed() {
+  local name=incompatible-pre-cutover
+  local deploy_root
+  local archive
+  deploy_root=$(make_atomic_fixture "$name")
+  install_mocks "$name" "$deploy_root"
+  set_previous_protocol_generation "$deploy_root" 1
+  archive=$(create_archive "$failed_revision")
+
+  set +e
+  output=$(run_installer "$name" "$deploy_root" "$archive" "$failed_revision" "$failed_revision" 2>&1)
+  status=$?
+  set -e
+
+  [[ "$status" -eq 1 ]] || { echo "expected incompatible pre-cutover rollback exit 1, got $status" >&2; exit 1; }
+  [[ "$(readlink -f -- "$deploy_root/current")" == "$deploy_root/releases/$old_revision" ]] || { echo "pre-cutover failure changed current" >&2; exit 1; }
+  grep -Fxq "start:$failed_revision" "$tmp_dir/$name/pm2.log" || { echo "candidate backend start was not recorded" >&2; exit 1; }
+  ! grep -Fxq "start:$old_revision" "$tmp_dir/$name/pm2.log" || { echo "incompatible previous backend was started before cutover" >&2; exit 1; }
+  grep -Fxq "delete:$process_name" "$tmp_dir/$name/pm2.log" || { echo "pre-cutover failure did not stop backend fail-closed" >&2; exit 1; }
+  [[ "$output" == *"candidate backend failed before frontend cutover; rollback is incompatible or unavailable; backend stopped fail-closed for a forward fix"* ]] || { echo "missing incompatible pre-cutover rollback diagnostic" >&2; exit 1; }
+}
+
 test_success_verifies_current_pm2_and_shared_data() {
   local name=success
   local deploy_root
@@ -372,13 +430,7 @@ test_incompatible_post_cutover_failure_stays_forward_and_fail_closed() {
   local archive
   deploy_root=$(make_atomic_fixture "$name")
   install_mocks "$name" "$deploy_root"
-  python3 - "$deploy_root/releases/$old_revision/DEPLOYMENT-MANIFEST.json" <<'PYTHON'
-import json, pathlib, sys
-path = pathlib.Path(sys.argv[1])
-value = json.loads(path.read_text(encoding="utf-8"))
-value["protocolGeneration"] = 1
-path.write_text(json.dumps(value), encoding="utf-8")
-PYTHON
+  set_previous_protocol_generation "$deploy_root" 1
   archive=$(create_archive "$failed_revision")
 
   set +e
@@ -418,6 +470,8 @@ test_invalid_candidate_fails_before_pm2_restart
 test_missing_wasm_fails_before_pm2_restart
 test_wrong_pm2_path_fails_before_switch
 test_failed_health_rolls_back_verified_release
+test_incompatible_migration_failure_stops_backend_fail_closed
+test_incompatible_pre_cutover_failure_stops_backend_fail_closed
 test_incompatible_post_cutover_failure_stays_forward_and_fail_closed
 test_success_verifies_current_pm2_and_shared_data
 test_known_artifact_cleanup_is_bounded

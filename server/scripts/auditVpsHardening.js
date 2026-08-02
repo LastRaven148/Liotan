@@ -91,7 +91,10 @@ function main() {
     ["running version", "Running PM2 version is not compared with package.json."],
     ["preflight health check failed; current was not changed", "Preflight health validation is missing."],
     ["rollback PM2", "Rollback PM2 validation is missing."],
-    ["verified rollback both failed", "Critical rollback failure diagnostic is missing."],
+    ["candidate migration failed; rollback is incompatible or unavailable", "Post-migration rollback is not fail-closed on an incompatible previous release."],
+    ["candidate backend failed before frontend cutover; rollback is incompatible or unavailable", "Pre-cutover rollback is not fail-closed on an incompatible previous release."],
+    ["post-cutover rollback is incompatible or unavailable", "Post-cutover rollback is not fail-closed on an incompatible previous release."],
+    ["backend stopped fail-closed for a forward fix", "Critical incompatible-rollback diagnostic is missing."],
     ["shared runtime data and secrets", "Release rotation does not document shared-data isolation."]
   ]) {
     mustInclude(findings, "server/deploy/install-release.sh", deployScript, token, "high", message);
