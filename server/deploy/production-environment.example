@@ -12,6 +12,12 @@ LIOTAN_ALLOW_PUBLIC_BIND=false
 # Immutable after the first MLS device is registered.
 LIOTAN_CRYPTO_DOMAIN=crypto.liotan.com
 
+# Required explicit device-auth rollout decisions. Use canonical UTC timestamps
+# such as 2026-09-01T00:00:00.000Z after inventorying remaining v1 devices.
+# V1 request disablement must be the same as or later than the v2 enrollment cutoff.
+DEVICE_AUTH_V2_ENFORCED_AT=REPLACE_WITH_CANONICAL_UTC_TIMESTAMP
+DEVICE_AUTH_V1_REQUESTS_DISABLED_AT=REPLACE_WITH_SAME_OR_LATER_CANONICAL_UTC_TIMESTAMP
+
 # MongoDB must be a replica set. Use TLS and a least-privilege database user.
 MONGO_URI=mongodb+srv://USER:PASSWORD@CLUSTER/liotan?retryWrites=true&w=majority
 
