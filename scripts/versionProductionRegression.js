@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { version: manifestVersion } = require("../package.json");
 const {
   compareVersions,
   parseVersion,
@@ -23,6 +24,6 @@ assert.throws(
   ]),
   /Version mismatch/
 );
-assert.equal(verifySynchronization(), "57.4.1");
+assert.equal(verifySynchronization(), manifestVersion);
 
 console.log("Production version synchronization and monotonicity checks passed.");
