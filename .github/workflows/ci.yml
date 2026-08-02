@@ -96,14 +96,30 @@ jobs:
           HOME: /root
         run: npm run release:check
 
-      - name: Build immutable deployment bundle
+      - name: Build pinned production client
         env:
           HOME: /root
           VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
-            [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]
-          fi
+          [[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]
+          npm run check:client
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const pin = process.env.VITE_KEY_TRANSPARENCY_PUBLIC_KEY;
+          const assetsDirectory = path.join("client", "build", "assets");
+          const hasConfiguredPin = fs.readdirSync(assetsDirectory)
+            .filter(name => name.endsWith(".js"))
+            .some(name => fs.readFileSync(path.join(assetsDirectory, name), "utf8").includes(pin));
+          if (!hasConfiguredPin) {
+            throw new Error("production client build is missing the configured Key Transparency public pin");
+          }
+          NODE
+
+      - name: Build immutable deployment bundle
+        env:
+          HOME: /root
+        run: |
           VERSION=$(node -p "require('./package.json').version")
           npm run test:deployment-bundle
           test -f client/build/index.html
