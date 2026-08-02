@@ -193,21 +193,27 @@ async function pinIdentity(req, res, next) {
       return res.status(400).json({ error: "invalid identity proof" });
     }
 
-    if (identity.rootPublicKey && identity.rootPublicKey !== rootPublicKey) {
-      return res.status(409).json({
-        error: "account root already pinned; verified recovery reset required",
-        rootFingerprint: identity.rootFingerprint
-      });
+    if (identity.rootPublicKey) {
+      if (identity.rootPublicKey !== rootPublicKey) {
+        return res.status(409).json({
+          error: "account root already pinned; verified recovery reset required",
+          rootFingerprint: identity.rootFingerprint
+        });
+      }
+      return res.json({ ok: true, identity: identityView(identity) });
     }
 
     const fingerprint = sha256Base64Url(decodeBase64Url(rootPublicKey, 32, "root public key"));
     const updated = await CryptoIdentity.findOneAndUpdate(
-      { _id: identity._id, $or: [{ rootPublicKey: "" }, { rootPublicKey }] },
+      {
+        _id: identity._id,
+        $or: [{ rootPublicKey: "" }, { rootPublicKey: null }, { rootPublicKey: { $exists: false } }]
+      },
       { $set: { rootPublicKey, rootFingerprint: fingerprint, rootCreatedAt: new Date(proof.createdAt) } },
       { returnDocument: "after" }
     );
     if (!updated) return res.status(409).json({ error: "account root pin race rejected" });
-    return res.status(identity.rootPublicKey ? 200 : 201).json({ ok: true, identity: identityView(updated) });
+    return res.status(201).json({ ok: true, identity: identityView(updated) });
   } catch (err) {
     if (err instanceof TypeError) return res.status(400).json({ error: err.message });
     return next(err);
@@ -488,7 +494,7 @@ async function rebindDeviceSession(req, res, next) {
         const error = new Error("invalid or expired device session rebind proof"); error.status = 409; throw error;
       }
       if (!manifest || Number(manifest.v) !== 2 || manifest.authProtocol !== DEVICE_AUTH_PROTOCOL_V2 ||
-        manifest.sessionBindingId !== statement.newSessionBindingId ||
+        manifest.sessionBindingId !== challenge.newSessionBindingId ||
         manifest.cryptoUserId !== target.cryptoUserId || manifest.username !== target.username ||
         manifest.deviceId !== target.deviceId || manifest.clientId !== target.clientId ||
         manifest.requestPublicKey !== target.requestPublicKey ||
@@ -505,7 +511,7 @@ async function rebindDeviceSession(req, res, next) {
       }
       const prospectiveTarget = {
         ...target.toObject(),
-        sessionBindingId: statement.newSessionBindingId,
+        sessionBindingId: challenge.newSessionBindingId,
         sessionIdHash: currentSessionHash,
         sessionReboundAt: now,
         manifest,
@@ -534,11 +540,11 @@ async function rebindDeviceSession(req, res, next) {
         _id: target._id,
         status: "active",
         authVersion: 2,
-        sessionBindingId: statement.oldSessionBindingId,
+        sessionBindingId: target.sessionBindingId,
         sessionIdHash: target.sessionIdHash,
         manifestExpiresAt: target.manifestExpiresAt
       }, { $set: {
-        sessionBindingId: statement.newSessionBindingId,
+        sessionBindingId: challenge.newSessionBindingId,
         sessionIdHash: currentSessionHash,
         sessionReboundAt: now,
         manifest,
