@@ -223,7 +223,7 @@ async function pinIdentity(req, res, next) {
 async function registerDevice(req, res, next) {
   const session = await mongoose.startSession();
   try {
-    const manifest = req.body.manifest;
+    const manifest = { ...req.body.manifest };
     const signature = String(req.body.signature || "");
     const directoryUpdate = req.body.directoryUpdate;
     const directorySignature = String(req.body.directorySignature || "");
@@ -231,10 +231,6 @@ async function registerDevice(req, res, next) {
     if (!identity.rootPublicKey) {
       return res.status(409).json({ error: "account root must be pinned first" });
     }
-    if (!manifest || typeof manifest !== "object") {
-      return res.status(400).json({ error: "invalid device manifest" });
-    }
-
     const parsed = parseClientId(manifest.clientId, cryptoDomain());
     const expiresAt = Date.parse(String(manifest.expiresAt || ""));
     const createdAt = Date.parse(String(manifest.createdAt || ""));
