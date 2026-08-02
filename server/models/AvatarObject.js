@@ -16,6 +16,9 @@ const avatarObjectSchema = new mongoose.Schema({
     index: true
   },
   attempts: { type: Number, default: 0, min: 0 },
+  uploadedAt: { type: Date, default: Date.now, index: true },
+  leaseOwner: { type: String, default: "", index: true },
+  leaseExpiresAt: { type: Date, default: null, index: true },
   nextAttemptAt: { type: Date, default: Date.now, index: true },
   lastErrorCode: { type: String, default: "" },
   activatedAt: { type: Date, default: null },
@@ -23,6 +26,7 @@ const avatarObjectSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 avatarObjectSchema.index({ state: 1, nextAttemptAt: 1 });
+avatarObjectSchema.index({ state: 1, uploadedAt: 1, leaseExpiresAt: 1 });
 
 module.exports = mongoose.models.AvatarObject ||
   mongoose.model("AvatarObject", avatarObjectSchema);

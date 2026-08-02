@@ -8,6 +8,7 @@ const COUNTER_FIELDS = [
   "activeUploads",
   "activeDownloads",
   "reservedStorageBytes",
+  "reservedObjectCount",
   "temporaryStorageBytes",
   "persistentStorageBytes",
   "objectCount"
@@ -20,6 +21,7 @@ function emptyExpected(scope) {
     activeUploads: 0,
     activeDownloads: 0,
     reservedStorageBytes: 0,
+    reservedObjectCount: 0,
     temporaryStorageBytes: 0,
     persistentStorageBytes: 0,
     objectCount: 0
@@ -42,6 +44,7 @@ async function collectExpected() {
       if (reservation.direction === "upload") {
         value.activeUploads += 1;
         value.reservedStorageBytes += Number(reservation.declaredBytes) || 0;
+        value.reservedObjectCount += 1;
       } else {
         value.activeDownloads += 1;
       }

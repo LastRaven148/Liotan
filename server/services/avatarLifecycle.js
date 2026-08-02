@@ -4,10 +4,13 @@ const AvatarObject = require("../models/AvatarObject");
 const User = require("../models/User");
 const Group = require("../models/Group");
 const deleteUploadedFile = require("../utils/deleteUploadedFile");
-const { listR2Objects, deleteFromR2 } = require("../utils/uploadToR2");
+const { listR2Objects, deleteFromR2, headFromR2 } = require("../utils/uploadToR2");
+const crypto = require("node:crypto");
 
 const MAX_DELETE_ATTEMPTS = 12;
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+const UPLOADED_GRACE_MS = 10 * 60 * 1000;
+const LEASE_MS = 60 * 1000;
 
 function avatarFile(value) {
   return {
@@ -40,32 +43,52 @@ async function markForDeletion(file, metadata) {
 }
 
 async function deleteTrackedAvatar(record, { deleteFile = deleteUploadedFile } = {}) {
+  const now = new Date();
+  const owner = `${process.pid}:${crypto.randomBytes(12).toString("base64url")}`;
+  const claimed = await AvatarObject.findOneAndUpdate({
+    _id: record._id,
+    state: "deletion-pending",
+    nextAttemptAt: { $lte: now },
+    $or: [
+      { leaseExpiresAt: null },
+      { leaseExpiresAt: { $exists: false } },
+      { leaseExpiresAt: { $lte: now } }
+    ]
+  }, { $set: {
+    leaseOwner: owner,
+    leaseExpiresAt: new Date(now.getTime() + LEASE_MS)
+  } }, { returnDocument: "after" });
+  if (!claimed) return false;
   try {
     await deleteFile({
-      url: record.url,
-      storageKey: record.storageKey,
-      storageType: record.storageType
+      url: claimed.url,
+      storageKey: claimed.storageKey,
+      storageType: claimed.storageType
     }, { strict: true });
-    await AvatarObject.updateOne(
-      { _id: record._id, state: "deletion-pending" },
+    const deleted = await AvatarObject.updateOne(
+      { _id: claimed._id, state: "deletion-pending", leaseOwner: owner },
       {
         $set: {
           state: "deleted",
           deletedAt: new Date(),
-          lastErrorCode: ""
+          lastErrorCode: "",
+          leaseOwner: "",
+          leaseExpiresAt: null
         }
       }
     );
-    return true;
+    return deleted.modifiedCount === 1;
   } catch (err) {
-    const attempts = Number(record.attempts || 0) + 1;
+    const attempts = Number(claimed.attempts || 0) + 1;
     await AvatarObject.updateOne(
-      { _id: record._id, state: "deletion-pending" },
+      { _id: claimed._id, state: "deletion-pending", leaseOwner: owner },
       {
         $set: {
           state: attempts >= MAX_DELETE_ATTEMPTS ? "dead-letter" : "deletion-pending",
           nextAttemptAt: new Date(Date.now() + Math.min(24 * 60 * 60 * 1000, 1000 * (2 ** attempts))),
-          lastErrorCode: String(err.code || "avatar_delete_failed").slice(0, 80)
+          lastErrorCode: String(err.code || "avatar_delete_failed").slice(0, 80),
+          leaseOwner: "",
+          leaseExpiresAt: null
         },
         $inc: { attempts: 1 }
       }
@@ -163,6 +186,93 @@ async function cleanupPendingAvatars(now = new Date()) {
   return results.filter(Boolean).length;
 }
 
+async function ownerReferences(record) {
+  const model = record.ownerType === "group" ? Group : User;
+  return model.exists({
+    _id: record.ownerId,
+    avatarStorageKey: record.storageKey,
+    avatarVersion: record.avatarVersion
+  });
+}
+
+async function cleanupStaleUploadedAvatars({
+  now = new Date(),
+  headObject = headFromR2,
+  deleteFile = deleteUploadedFile,
+  limit = 200
+} = {}) {
+  const owner = `${process.pid}:${crypto.randomBytes(12).toString("base64url")}`;
+  let activated = 0;
+  let deleted = 0;
+  let retried = 0;
+  for (let index = 0; index < limit; index += 1) {
+    const claimed = await AvatarObject.findOneAndUpdate({
+      state: "uploaded",
+      uploadedAt: { $lte: new Date(now.getTime() - UPLOADED_GRACE_MS) },
+      nextAttemptAt: { $lte: now },
+      $or: [
+        { leaseExpiresAt: null },
+        { leaseExpiresAt: { $exists: false } },
+        { leaseExpiresAt: { $lte: now } }
+      ]
+    }, { $set: {
+      leaseOwner: owner,
+      leaseExpiresAt: new Date(now.getTime() + LEASE_MS)
+    } }, { returnDocument: "after", sort: { uploadedAt: 1 } });
+    if (!claimed) break;
+
+    let objectExists = false;
+    try {
+      await headObject(claimed.storageKey, { storageClass: "public-avatar" });
+      objectExists = true;
+    } catch (error) {
+      if (![404].includes(Number(error?.upstreamStatus || error?.status))) {
+        const attempts = Number(claimed.attempts || 0) + 1;
+        await AvatarObject.updateOne(
+          { _id: claimed._id, state: "uploaded", leaseOwner: owner },
+          { $set: {
+            state: attempts >= MAX_DELETE_ATTEMPTS ? "dead-letter" : "uploaded",
+            nextAttemptAt: new Date(now.getTime() + Math.min(24 * 60 * 60 * 1000, 1000 * (2 ** attempts))),
+            lastErrorCode: String(error.code || "avatar_head_failed").slice(0, 80),
+            leaseOwner: "",
+            leaseExpiresAt: null
+          }, $inc: { attempts: 1 } }
+        );
+        retried += 1;
+        continue;
+      }
+    }
+
+    if (objectExists && await ownerReferences(claimed)) {
+      const result = await AvatarObject.updateOne(
+        { _id: claimed._id, state: "uploaded", leaseOwner: owner },
+        { $set: {
+          state: "active",
+          activatedAt: now,
+          lastErrorCode: "",
+          leaseOwner: "",
+          leaseExpiresAt: null
+        } }
+      );
+      activated += result.modifiedCount;
+      continue;
+    }
+
+    const pending = await AvatarObject.findOneAndUpdate(
+      { _id: claimed._id, state: "uploaded", leaseOwner: owner },
+      { $set: {
+        state: "deletion-pending",
+        nextAttemptAt: now,
+        leaseOwner: "",
+        leaseExpiresAt: null
+      } },
+      { returnDocument: "after" }
+    );
+    if (pending && await deleteTrackedAvatar(pending, { deleteFile })) deleted += 1;
+  }
+  return { activated, deleted, retried };
+}
+
 async function referencedAvatarKeys() {
   const [users, groups] = await Promise.all([
     User.find({ avatarStorageKey: { $ne: "" } }, "avatarStorageKey").lean(),
@@ -226,6 +336,7 @@ async function cleanupDetachedAvatars(options = {}) {
 module.exports = {
   replaceAvatar,
   cleanupPendingAvatars,
+  cleanupStaleUploadedAvatars,
   inspectDetachedAvatars,
   cleanupDetachedAvatars,
   deleteTrackedAvatar

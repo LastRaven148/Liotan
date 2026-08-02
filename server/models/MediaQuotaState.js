@@ -13,6 +13,7 @@ const mediaQuotaStateSchema = new mongoose.Schema({
   activeUploads: { type: Number, default: 0, min: 0 },
   activeDownloads: { type: Number, default: 0, min: 0 },
   reservedStorageBytes: { type: Number, default: 0, min: 0 },
+  reservedObjectCount: { type: Number, default: 0, min: 0 },
   temporaryStorageBytes: { type: Number, default: 0, min: 0 },
   persistentStorageBytes: { type: Number, default: 0, min: 0 },
   objectCount: { type: Number, default: 0, min: 0 },

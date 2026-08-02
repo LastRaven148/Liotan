@@ -12,6 +12,8 @@ const { runMongoTransaction } = require("../utils/mongoTransaction");
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 const RESERVATION_TTL_MS = 15 * 60 * 1000;
+const RESERVATION_LEASE_MS = 60 * 1000;
+const TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const WINDOWS = {
   minute: 60 * 1000,
   hour: 60 * 60 * 1000,
@@ -181,11 +183,16 @@ async function incrementState(scope, direction, bytes, { session = null } = {}) 
     });
     expressions.push({
       $lte: [
-        { $add: [{ $ifNull: ["$objectCount", 0] }, 1] },
+        { $add: [
+          { $ifNull: ["$objectCount", 0] },
+          { $ifNull: ["$reservedObjectCount", 0] },
+          1
+        ] },
         limits.objects
       ]
     });
     increment.reservedStorageBytes = bytes;
+    increment.reservedObjectCount = 1;
   }
 
   try {
@@ -312,12 +319,18 @@ async function reserveMediaTransfer(req, {
 async function settleReservation(reservationId, {
   completed,
   actualBytes = 0,
-  uploadId = ""
+  uploadId = "",
+  leaseOwner = ""
 }) {
   return runMongoTransaction(async session => {
+    const now = new Date();
+    const leaseQuery = leaseOwner
+      ? { leaseOwner, leaseExpiresAt: { $gt: now } }
+      : {};
     const reservation = await MediaTransferReservation.findOne({
       reservationId,
-      state: "reserved"
+      state: "reserved",
+      ...leaseQuery
     }).session(session).lean();
     if (!reservation) return false;
     if (completed && actualBytes > reservation.declaredBytes) {
@@ -349,12 +362,15 @@ async function settleReservation(reservationId, {
     }
 
     const transition = await MediaTransferReservation.updateOne(
-      { _id: reservation._id, state: "reserved" },
+      { _id: reservation._id, state: "reserved", ...leaseQuery },
       {
         $set: {
           state: completed ? "completed" : "released",
           actualBytes: completed ? actualBytes : 0,
-          ...(completed ? { completedAt: new Date() } : { releasedAt: new Date() })
+          purgeAt: new Date(now.getTime() + TERMINAL_RETENTION_MS),
+          leaseOwner: "",
+          leaseExpiresAt: null,
+          ...(completed ? { completedAt: now } : { releasedAt: now })
         }
       },
       { session }
@@ -367,16 +383,30 @@ async function settleReservation(reservationId, {
       const increment = { [activeField]: -1 };
       if (direction === "upload") {
         increment.reservedStorageBytes = -reservation.declaredBytes;
+        increment.reservedObjectCount = -1;
         if (completed) {
           increment.temporaryStorageBytes = actualBytes;
           increment.objectCount = 1;
         }
       }
       await MediaQuotaState.updateOne(
-        { key: scope.key },
+        {
+          key: scope.key,
+          [activeField]: { $gte: 1 },
+          ...(direction === "upload" ? {
+            reservedStorageBytes: { $gte: reservation.declaredBytes },
+            reservedObjectCount: { $gte: 1 }
+          } : {})
+        },
         { $inc: increment },
         { session }
-      );
+      ).then(result => {
+        if (result.modifiedCount !== 1) {
+          const error = new Error("media quota counters cannot be settled safely");
+          error.code = "MEDIA_QUOTA_COUNTER_INVARIANT";
+          throw error;
+        }
+      });
     }
     return true;
   });
@@ -394,14 +424,27 @@ async function releaseMediaTransfer(reservationId) {
 }
 
 async function releaseExpiredMediaTransfers(now = new Date()) {
-  const expired = await MediaTransferReservation.find({
-    state: "reserved",
-    expiresAt: { $lte: now }
-  }).select("reservationId").limit(1000).lean();
-  const settled = await Promise.allSettled(
-    expired.map(item => releaseMediaTransfer(item.reservationId))
-  );
-  return settled.filter(item => item.status === "fulfilled" && item.value).length;
+  const owner = `${process.pid}:${crypto.randomBytes(12).toString("base64url")}`;
+  let released = 0;
+  for (let index = 0; index < 1000; index += 1) {
+    const claimed = await MediaTransferReservation.findOneAndUpdate({
+      state: "reserved",
+      expiresAt: { $lte: now },
+      $or: [
+        { leaseExpiresAt: null },
+        { leaseExpiresAt: { $exists: false } },
+        { leaseExpiresAt: { $lte: now } }
+      ]
+    }, { $set: {
+      leaseOwner: owner,
+      leaseExpiresAt: new Date(now.getTime() + RESERVATION_LEASE_MS)
+    } }, { returnDocument: "after", sort: { expiresAt: 1 } }).lean();
+    if (!claimed) break;
+    if (await settleReservation(claimed.reservationId, { completed: false, leaseOwner: owner })) {
+      released += 1;
+    }
+  }
+  return released;
 }
 
 function storageIncrement(from, to, bytes) {

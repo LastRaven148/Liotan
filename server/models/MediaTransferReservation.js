@@ -25,12 +25,19 @@ const mediaTransferReservationSchema = new mongoose.Schema({
     scopeIdHash: { type: String, required: true }
   }],
   bucketKeys: [{ type: String }],
+  leaseOwner: { type: String, default: "", index: true },
+  leaseExpiresAt: { type: Date, default: null, index: true },
   completedAt: { type: Date, default: null },
   releasedAt: { type: Date, default: null },
-  expiresAt: { type: Date, required: true, index: { expires: 0 } }
+  expiresAt: { type: Date, required: true, index: true },
+  purgeAt: { type: Date, default: null }
 }, { timestamps: true });
 
 mediaTransferReservationSchema.index({ state: 1, expiresAt: 1 });
+mediaTransferReservationSchema.index({ purgeAt: 1 }, {
+  expireAfterSeconds: 0,
+  partialFilterExpression: { purgeAt: { $type: "date" } }
+});
 
 module.exports = mongoose.models.MediaTransferReservation ||
   mongoose.model("MediaTransferReservation", mediaTransferReservationSchema);
