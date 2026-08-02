@@ -66,20 +66,25 @@ server/test/integration/cryptoV4.integration.test.js
 ## Final six-point follow-up review
 
 The published checkpoint reviewed at the start of this bounded follow-up was
-`6093c954b446eb1284c8629077bf6d0a39ebe3ad`. The code, test, dependency and
-generated-evidence checkpoint before this documentation update is
-`3dd786b276b59ed838c92a9b736ba7d0096b899d`.
+`6093c954b446eb1284c8629077bf6d0a39ebe3ad`. The code, test, dependency,
+documentation and generated-evidence checkpoint before this final manifest
+update is `2263b035e83dfd3c5b9aafeae6d8b6eea70e4404`.
 
 The canonical comparison is:
 
 ```text
-git diff --name-status 6093c954b446eb1284c8629077bf6d0a39ebe3ad..3dd786b276b59ed838c92a9b736ba7d0096b899d
+git diff --name-status 6093c954b446eb1284c8629077bf6d0a39ebe3ad..2263b035e83dfd3c5b9aafeae6d8b6eea70e4404
 ```
 
 It contains exactly these tracked paths:
 
 ```text
+M  artifacts/licenses/license-inventory.json
 M  artifacts/sbom/root.cdx.json
+M  docs/security/remediation-2026-07-23/D_DEVICE_RECOVERY_MIGRATION.md
+M  docs/security/remediation-2026-07-23/H_TEST_EVIDENCE.md
+M  docs/security/remediation-2026-07-23/I_BREAKING_CHANGE_AND_ROLLBACK_PLAN.md
+M  docs/security/remediation-2026-07-23/J_FULL_CHANGED_FILES_REVIEW.md
 M  package-lock.json
 M  scripts/deployInstallerPreflightRegression.sh
 M  server/.env.example
@@ -94,11 +99,13 @@ M  server/test/integration/cryptoV4.integration.test.js
 M  server/test/unit/startupSecurityValidation.test.js
 ```
 
-The two commits in that range are:
+The four commits in that range are:
 
 ```text
 6d02794 security: close final rollout and rollback gaps
 3dd786b build: refresh audited transitive dependencies
+c35c506 docs: record final remediation evidence
+2263b03 build: synchronize dependency license evidence
 ```
 
 The changes make both 57.4 migrations leased, batch-bounded, checkpointed and
@@ -106,8 +113,8 @@ resumable; remove the expired implicit v1 cutoff; require an explicit valid
 production rollout configuration; allow proof-bound v1-to-v2 migration after a
 new login; guard every rollback after forward migrations with the compatibility
 generation; stop the backend fail-closed when downgrade is unsafe; synchronize
-the VPS audit with those invariants; and update the root lockfile/SBOM for the
-two reported dependency advisories.
+the VPS audit with those invariants; and update the root lockfile, license
+inventory and SBOM for the two reported dependency advisories.
 
 This documentation commit is necessarily outside the immutable comparison
 above. Its exact SHA, the final clean release result and the published Draft PR

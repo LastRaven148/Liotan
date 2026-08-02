@@ -249,3 +249,16 @@ dependency checkpoint `3dd786b276b59ed838c92a9b736ba7d0096b899d` produced:
 The full clean-tree release gate and GitHub Release Gate remain acceptance
 steps on the final published documentation SHA; this section does not
 pre-declare either result.
+
+### Final follow-up license-evidence synchronization
+
+The first full follow-up release run on `c35c506` passed architecture, CSS and
+build reproducibility, server syntax, all unit/integration/browser tests,
+coverage, deployment/security/privacy/VPS gates, license policy, reproducible
+SBOM and all dependency audits. The final clean-source guard then correctly
+rejected release archive creation because license generation had updated the
+tracked inventory from `brace-expansion` 2.1.2/5.0.7 and `tar` 7.5.19 to the
+audited 2.1.4/5.0.9 and 7.5.22 versions.
+
+Checkpoint `2263b035e83dfd3c5b9aafeae6d8b6eea70e4404` synchronizes that generated
+license evidence. The rejected run is not counted as a clean release pass.
