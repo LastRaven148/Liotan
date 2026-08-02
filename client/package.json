@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "57.4.2",
+  "version": "57.4.3",
   "license": "GPL-3.0-only",
   "private": true,
   "dependencies": {

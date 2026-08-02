@@ -14,6 +14,10 @@ const all = fs.readdirSync(workflows)
   .filter(name => /\.ya?ml$/.test(name))
   .map(name => fs.readFileSync(path.join(workflows, name), "utf8"))
   .join("\n");
+const releaseGateIndex = ci.indexOf("name: Run complete release gate");
+const pinnedClientIndex = ci.indexOf("name: Build pinned production client");
+const deploymentBundleIndex = ci.indexOf("name: Build immutable deployment bundle");
+const pinnedClientStep = ci.slice(pinnedClientIndex, deploymentBundleIndex);
 
 for (const match of all.matchAll(/^\s*uses:\s*([^#\s]+)(?:\s*#.*)?$/gm)) {
   const reference = match[1];
@@ -27,6 +31,19 @@ assert.ok(
   ci.includes("LIOTAN_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}")
     && ci.includes("ref: ${{ github.event.pull_request.head.sha || github.sha }}"),
   "CI must check out and attest the exact PR head or push revision"
+);
+assert.ok(
+  releaseGateIndex >= 0
+    && pinnedClientIndex > releaseGateIndex
+    && deploymentBundleIndex > pinnedClientIndex,
+  "CI must rebuild the production client after browser tests and before creating the deployment bundle"
+);
+assert.ok(
+  pinnedClientStep.includes("VITE_KEY_TRANSPARENCY_PUBLIC_KEY: ${{ vars.KEY_TRANSPARENCY_PUBLIC_KEY }}")
+    && pinnedClientStep.includes('[[ "$VITE_KEY_TRANSPARENCY_PUBLIC_KEY" =~ ^[A-Za-z0-9_-]{43}$ ]]')
+    && pinnedClientStep.includes("npm run check:client")
+    && pinnedClientStep.includes(".includes(pin)"),
+  "the final production client must validate, compile and embed the configured Key Transparency public pin"
 );
 assert.match(ci, /ref:\s*\$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}\s+fetch-depth:\s*0/,
   "production version comparison requires complete history for the exact revision");
