@@ -10,6 +10,92 @@ import {
   verifySignedDirectory
 } from "./directory";
 import { destroyUniffi, destroyUniffiAll } from "./uniffiLifecycle";
+import { signedCryptoRequest } from "../cryptoApi";
+import {
+  configuredTransparencyPublicKey,
+  transparencyGossipView,
+  verifyTransparencyCheckpoint,
+  verifyTransparencyConsistency,
+  verifyTransparencyConsistencyEvidence,
+  verifyTransparencyInclusion
+} from "./transparency";
+
+const TRANSPARENCY_PIN_KEY = "key-transparency-pin:global-v1";
+
+async function verifyAndPinTransparency(engine, identity) {
+  const evidence = identity?.transparency;
+  if (!evidence) {
+    if (Number(identity?.directory?.version || 0) > 0) {
+      throw new Error("Key transparency evidence is unavailable");
+    }
+    return { status: "empty", checkpoint: null };
+  }
+  const configuredKey = configuredTransparencyPublicKey();
+  const prior = await getEncryptedRecord(TRANSPARENCY_PIN_KEY, engine.keys.cacheKey);
+  const expectedKey = configuredKey || String(prior?.signingPublicKey || "");
+  await verifyTransparencyCheckpoint(evidence.checkpoint, expectedKey);
+  verifyTransparencyInclusion(evidence);
+  if (evidence.leaf.cryptoUserId !== identity.cryptoUserId ||
+    Number(evidence.leaf.directoryVersion) !== Number(identity.directory?.version) ||
+    evidence.leaf.directoryHash !== identity.directory?.hash) {
+    throw new Error("Key transparency leaf does not bind the device directory");
+  }
+
+  const current = evidence.checkpoint;
+  const currentSize = Number(current.checkpoint.treeSize);
+  const currentRoot = current.checkpoint.rootHash;
+  let consistencyVerified = !prior;
+  if (prior) {
+    const priorSize = Number(prior.treeSize);
+    if (currentSize < priorSize) throw new Error("Key transparency rollback detected");
+    if (currentSize === priorSize) {
+      if (currentRoot !== prior.rootHash || current.checkpointHash !== prior.checkpointHash) {
+        throw new Error("Key transparency fork detected");
+      }
+      consistencyVerified = true;
+    } else {
+      try {
+        const path = `/crypto/v4/transparency/consistency?from=${priorSize}&to=${currentSize}`;
+        const response = await signedCryptoRequest(path);
+        await Promise.all([
+          verifyTransparencyCheckpoint(response.from, expectedKey),
+          verifyTransparencyCheckpoint(response.to, expectedKey)
+        ]);
+        if (response.from.checkpointHash !== prior.checkpointHash ||
+          response.to.checkpointHash !== current.checkpointHash) {
+          throw new Error("Key transparency consistency endpoints changed checkpoint identity");
+        }
+        verifyTransparencyConsistency({
+          oldSize: priorSize,
+          oldRoot: prior.rootHash,
+          newSize: currentSize,
+          newRoot: currentRoot,
+          proof: response.proof
+        });
+        consistencyVerified = true;
+      } catch (err) {
+        if (err?.message !== "Crypto device is locked") throw err;
+      }
+    }
+  }
+  if (!prior || consistencyVerified) {
+    await putEncryptedRecord(TRANSPARENCY_PIN_KEY, {
+      v: 1,
+      treeSize: currentSize,
+      rootHash: currentRoot,
+      checkpointHash: current.checkpointHash,
+      signingKeyId: current.signingKeyId,
+      signingPublicKey: current.signingPublicKey,
+      verifiedAt: new Date().toISOString()
+    }, engine.keys.cacheKey);
+  }
+  return {
+    status: configuredKey
+      ? (consistencyVerified ? "pinned-log" : "consistency-pending")
+      : (consistencyVerified ? "local-continuity" : "consistency-pending"),
+    checkpoint: transparencyGossipView(current)
+  };
+}
 
 export async function verifyAndPinAccountDirectory(engine, {
   username,
@@ -32,6 +118,7 @@ export async function verifyAndPinAccountDirectory(engine, {
       identity.directoryLog || [],
       pinned ? pinRecord : null
     );
+    const transparency = await verifyAndPinTransparency(engine, identity);
     if (Array.isArray(allDevices) &&
       directoryDevicesHash(allDevices) !== directoryCommitmentsHash(deviceCommitments)) {
       throw new Error(`Device directory details do not match commitments for ${username}`);
@@ -64,8 +151,59 @@ export async function verifyAndPinAccountDirectory(engine, {
       verifiedAt: verificationStatus === "verified" ? pinRecord?.verifiedAt || null : null,
       directoryVersion: currentVersion,
       directoryHash: identity.directory?.hash || "",
-      firstContact: !pinned
+      firstContact: !pinned,
+      transparencyStatus: transparency.status,
+      transparencyCheckpoint: transparency.checkpoint
     };
+}
+
+export async function observeTransparencyGossip(engine, evidence) {
+  if (!evidence) return;
+  const configuredKey = configuredTransparencyPublicKey();
+  const prior = await getEncryptedRecord(TRANSPARENCY_PIN_KEY, engine.keys.cacheKey);
+  const expectedKey = configuredKey || String(prior?.signingPublicKey || "");
+  await verifyTransparencyCheckpoint(evidence, expectedKey);
+  if (!prior) return;
+  const size = Number(evidence.checkpoint.treeSize);
+  const localSize = Number(prior.treeSize);
+  if (size === localSize) {
+    if (evidence.checkpoint.rootHash !== prior.rootHash ||
+      evidence.checkpointHash !== prior.checkpointHash) {
+      throw new Error("Peer gossip exposed a key transparency split view");
+    }
+    return;
+  }
+  const local = {
+    checkpoint: {
+      v: 1,
+      treeSize: localSize,
+      rootHash: prior.rootHash,
+      signingKeyId: prior.signingKeyId
+    },
+    checkpointHash: prior.checkpointHash,
+    signingKeyId: prior.signingKeyId,
+    signingPublicKey: prior.signingPublicKey
+  };
+  const older = size < localSize ? evidence : local;
+  const newer = size < localSize ? local : evidence;
+  const path = `/crypto/v4/transparency/consistency?from=${older.checkpoint.treeSize}&to=${newer.checkpoint.treeSize}`;
+  const consistency = await signedCryptoRequest(path);
+  try {
+    await verifyTransparencyConsistencyEvidence({
+      older: consistency.from,
+      newer: consistency.to,
+      evidence: consistency,
+      expectedPublicKey: expectedKey
+    });
+    if (consistency.from.checkpointHash !== older.checkpointHash ||
+      consistency.from.checkpoint.rootHash !== older.checkpoint.rootHash ||
+      consistency.to.checkpointHash !== newer.checkpointHash ||
+      consistency.to.checkpoint.rootHash !== newer.checkpoint.rootHash) {
+      throw new Error("consistency endpoints do not match the gossiped checkpoints");
+    }
+  } catch (error) {
+    throw new Error("Peer gossip exposed a key transparency split view", { cause: error });
+  }
 }
 
 export async function verifyDirectory(engine, conversation) {
@@ -91,11 +229,18 @@ export async function verifyDirectory(engine, conversation) {
       const valid = await verifyCanonical(
         identity.rootPublicKey,
         device.manifestSignature,
-        "liotan-device-manifest-v1",
+        Number(device.manifest?.v) === 2
+          ? "liotan-device-manifest-v2"
+          : "liotan-device-manifest-v1",
         device.manifest
       );
       if (!valid || device.status !== "active" || device.manifest.clientId !== device.clientId ||
-        device.manifest.username !== user.username || device.manifest.credentialThumbprint !== device.credentialThumbprint) {
+        device.manifest.username !== user.username ||
+        device.manifest.credentialThumbprint !== device.credentialThumbprint ||
+        (Number(device.manifest?.v) === 2 && (
+          device.manifest.authProtocol !== "liotan-device-auth-v2" ||
+          device.manifest.sessionBindingId !== device.sessionBindingId
+        ))) {
         throw new Error(`Untrusted MLS device for ${user.username}`);
       }
     }

@@ -9,40 +9,36 @@ const {
   mediaDownloadLimiter
 } = require("../middleware/rateLimiters");
 
-const attachmentUpload =
-  require("../config/attachmentUpload");
-
-const {
-  uploadAttachment,
-  downloadAttachment,
-  signAttachmentUpload
-} = require("../controllers/attachmentController");
-
 const router =
   express.Router();
+
+function legacyMediaGone(_req, res) {
+  return res.status(410).json({
+    error: "legacy media retired; signed MLS media required",
+    endpoint: "/crypto/v4/media/upload",
+    protocol: "mls-1.0"
+  });
+}
 
 router.post(
   "/attachments/sign",
   authMiddleware,
   uploadLimiter,
-  signAttachmentUpload
+  legacyMediaGone
 );
 
 router.post(
   "/attachments/upload",
   authMiddleware,
   uploadLimiter,
-  (_req, res) => res.status(410).json({
-    error: "legacy media upload disabled; signed MLS media upload required",
-    endpoint: "/crypto/v4/media/upload"
-  })
+  legacyMediaGone
 );
 
 router.get(
   "/attachments/:uploadId/download",
   authMiddleware,
   mediaDownloadLimiter,
-  downloadAttachment
+  legacyMediaGone
 );
 
 module.exports =

@@ -1,13 +1,21 @@
 # Жизненный цикл E2EE-медиа
 
+> [!WARNING]
+> Historical document for the pre-remediation architecture.
+> Superseded by `docs/security/remediation-2026-07-23/`.
+> Do not use this document as the current production security specification.
+
 ## Шифрование и upload
 
 1. Клиент создаёт случайный 256-bit media key.
 2. Файл делится на адаптивные chunks.
-3. Каждый chunk шифруется AES-256-GCM со случайным 12-byte IV и AAD, связывающим conversation, binding, chunk index/count, plaintext size и тип.
+3. Файл получает случайный 8-byte `noncePrefix`; IV каждого AES-256-GCM chunk равен `noncePrefix || uint32be(chunkIndex)`. AAD связывает protocol label, conversation, client message, binding и chunk index/count. Plaintext size находится в зашифрованном descriptor, а не в AAD.
 4. Media key и authenticated manifest включаются в MLS-encrypted message envelope; отдельно на сервер они не отправляются.
 5. Сервер принимает multipart только с ciphertext-файлом. Binding metadata существует в единственном canonical `X-Liotan-Crypto-Body`, входит в device signature и проверяется до Multer; любые дублирующие multipart-поля отклоняются.
 6. Сервер проверяет формат `LIOTANMLS1`, framing, размеры, ciphertext hash и conversation membership.
+
+Bare R2 framing содержит magic `LIOTANMLS1` и ciphertext/tag blocks; media key и
+`noncePrefix` находятся только в MLS-зашифрованном descriptor.
 
 При наличии OPFS клиент пишет временный ciphertext в локальный файл, не удерживая все encrypted chunks в памяти. В fallback используется Blob. Параллелизм ограничен двумя chunks.
 
@@ -38,6 +46,14 @@ Cleanup обрабатывает только доказуемые состоя�
 `committed` и `legacy-unverified` автоматически не удаляются. Неоднозначные старые MLS uploads migration переводит в quarantine `legacy-unverified` и снимает expiry.
 
 **Подтверждено тестом:** failed message оставляет temporary upload для cleanup; успешный message commit сохраняет attachment; cleanup повторяем; migration удаляет старый опасный TTL index и идемпотентна.
+
+В 57.4.0 активная quota reservation больше не имеет TTL deletion. `expiresAt`
+задаёт время обработки worker-ом, а `purgeAt` появляется только после terminal
+settlement. Lease/CAS worker освобождает active bytes и `reservedObjectCount`
+ровно один раз; historical minute/hour/day usage не уменьшается. Stale
+`uploaded` avatar после grace либо активируется по точной owner reference и
+наличию объекта в public-avatar storage, либо переводится в retryable
+deletion/dead-letter lifecycle.
 
 ## URL и access control
 

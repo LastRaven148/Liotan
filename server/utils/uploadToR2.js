@@ -1,6 +1,4 @@
 const crypto = require("crypto");
-const fs = require("fs");
-const fsp = require("fs/promises");
 const https = require("https");
 const { URL } = require("url");
 const { sanitizeAttachmentName } = require("./attachmentSafety");
@@ -121,7 +119,7 @@ function getFileSize(file) {
 function getRequestBody(file, method) {
   if (method === "DELETE" || method === "GET" || method === "HEAD") return null;
   if (file?.buffer) return file.buffer;
-  if (file?.path) return fs.createReadStream(file.path);
+  if (typeof file?.openReadStream === "function") return file.openReadStream();
   return Buffer.alloc(0);
 }
 
@@ -220,6 +218,8 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
 
         const err = new Error(`R2 ${method} failed with ${res.statusCode}`);
         err.status = 502;
+        err.upstreamStatus = res.statusCode;
+        err.code = res.statusCode === 404 ? "R2_OBJECT_NOT_FOUND" : "R2_REQUEST_FAILED";
         err.details = responseBody.slice(0, 500);
         reject(err);
       });
@@ -248,12 +248,9 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
   });
 }
 
-async function getUploadFileMeta(file) {
+function getUploadFileMeta(file) {
   if (file?.buffer) return { size: file.buffer.length };
-  if (file?.path) {
-    const stat = await fsp.stat(file.path);
-    return { size: stat.size };
-  }
+  if (Number.isSafeInteger(file?.size) && file.size >= 0) return { size: file.size };
   return { size: 0 };
 }
 
@@ -262,7 +259,12 @@ async function uploadToR2(file, options = {}) {
   const config = getR2Config(storageClass);
   const key = buildObjectKey(file, options);
   const contentType = String(file?.mimetype || options.mimeType || "application/octet-stream");
-  const meta = await getUploadFileMeta(file);
+  const meta = getUploadFileMeta(file);
+  if (meta.size <= 0 || (!file?.buffer && typeof file?.openReadStream !== "function")) {
+    const error = new Error("Upload payload is unavailable");
+    error.status = 400;
+    throw error;
+  }
   const uploadFile = {
     ...file,
     size: meta.size
@@ -289,6 +291,19 @@ async function getFromR2(key, options = {}) {
   return requestR2({ method: "GET", key, range: options.range || "", storageClass: options.storageClass || "private-media" });
 }
 
+async function headFromR2(key, options = {}) {
+  if (!key) {
+    const err = new Error("R2 key is required");
+    err.status = 404;
+    throw err;
+  }
+  return requestR2({
+    method: "HEAD",
+    key,
+    storageClass: options.storageClass || "private-media"
+  });
+}
+
 async function streamFromR2(key, responseTarget, options = {}) {
   if (!key || !responseTarget) {
     const err = new Error("R2 streaming target and key are required");
@@ -307,7 +322,12 @@ async function streamFromR2(key, responseTarget, options = {}) {
 
 async function deleteFromR2(key, options = {}) {
   if (!key) return;
-  await requestR2({ method: "DELETE", key, storageClass: options.storageClass || "private-media" });
+  try {
+    await requestR2({ method: "DELETE", key, storageClass: options.storageClass || "private-media" });
+  } catch (error) {
+    if (error?.upstreamStatus === 404) return;
+    throw error;
+  }
 }
 
 function decodeXmlEntities(value = "") {
@@ -334,6 +354,19 @@ function readXmlTags(xml, tag) {
   return result;
 }
 
+function readR2ObjectEntries(xml) {
+  const entries = [];
+  const re = /<Contents>([\s\S]*?)<\/Contents>/g;
+  let match;
+  while ((match = re.exec(String(xml || "")))) {
+    entries.push({
+      key: decodeXmlEntities(readXmlTag(match[1], "Key")),
+      lastModified: readXmlTag(match[1], "LastModified")
+    });
+  }
+  return entries.filter(entry => entry.key);
+}
+
 async function listR2Objects({
   prefix = "",
   continuationToken = "",
@@ -351,6 +384,7 @@ async function listR2Objects({
 
   return {
     keys: readXmlTags(body, "Key"),
+    objects: readR2ObjectEntries(body),
     isTruncated: readXmlTag(body, "IsTruncated") === "true",
     nextContinuationToken: readXmlTag(body, "NextContinuationToken")
   };
@@ -398,6 +432,7 @@ async function deleteR2Prefix(prefix, options = {}) {
 module.exports = {
   uploadToR2,
   getFromR2,
+  headFromR2,
   streamFromR2,
   deleteFromR2,
   listR2Objects,

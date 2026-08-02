@@ -108,6 +108,11 @@ function setupSocket(io) {
 
   io.on("connection", async (socket) => {
     attachSocketRateLimit(socket);
+    const expiresInMs = Math.max(0, Number(socket.user.exp) * 1000 - Date.now());
+    const tokenExpiryTimer = setTimeout(() => {
+      socket.disconnect(true);
+    }, expiresInMs);
+    tokenExpiryTimer.unref?.();
 
     const validateLiveAuthorization = async () => {
       if (socket.user?.exp && Date.now() >= Number(socket.user.exp) * 1000) return false;
@@ -178,6 +183,7 @@ function setupSocket(io) {
     }
 
     socket.on("disconnect", () => {
+      clearTimeout(tokenExpiryTimer);
       clearInterval(authorizationTimer);
       handleConnectionEnd({
         io,

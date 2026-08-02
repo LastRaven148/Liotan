@@ -34,6 +34,12 @@ const groupSchema =
         default: ""
       },
 
+      avatarVersion: {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+
       owner: {
         type: String,
         required: true

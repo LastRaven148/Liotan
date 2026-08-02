@@ -4,16 +4,13 @@ const ALGORITHM = "aes-256-gcm";
 const VERSION = "v1";
 const IV_LENGTH_BYTES = 12;
 const AUTH_TAG_LENGTH_BYTES = 16;
+const { getRuntimeSecret } = require("../secretIsolation");
 
 function getRootKey() {
-  const securitySecret = String(process.env.SECURITY_ENCRYPTION_SECRET || "");
-  const fallbackSecret = String(process.env.JWT_SECRET || "");
-  const isProduction = process.env.NODE_ENV === "production";
-  const secret = securitySecret || (!isProduction ? fallbackSecret : "");
-
-  if (isProduction && !securitySecret) {
-    throw new Error("SECURITY_ENCRYPTION_SECRET is required in production");
-  }
+  const secret = getRuntimeSecret(
+    "SECURITY_ENCRYPTION_SECRET",
+    "security-envelopes"
+  );
 
   if (secret.length < 32) {
     throw new Error("SECURITY_ENCRYPTION_SECRET must be at least 32 characters");

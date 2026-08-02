@@ -18,6 +18,7 @@ const {
 } = require("../../security/cryptoRosterState");
 const { userRoom } = require("../../sockets/sessionRegistry");
 const { assertPrivateInteractionAllowed } = require("../../services/blockPolicy");
+const { transparencyBundle } = require("../../security/keyTransparency");
 
 const DIRECTORY_LOG_WINDOW = 1024;
 
@@ -70,6 +71,11 @@ function deviceView(device) {
     deviceId: device.deviceId,
     clientId: device.clientId,
     requestPublicKey: device.requestPublicKey,
+    authVersion: Number(device.authVersion) || 1,
+    authProtocol: device.authProtocol || "liotan-device-auth-v1",
+    sessionBindingId: device.sessionBindingId || "",
+    authMigrationState: device.authMigrationState || "legacy",
+    authMigratedAt: device.authMigratedAt || null,
     credentialThumbprint: device.credentialThumbprint,
     manifest: device.manifest,
     manifestSignature: device.manifestSignature,
@@ -144,7 +150,7 @@ async function conversationDirectory(conversation) {
     ? await CryptoDirectoryEntry.find({ $or: directoryWindows }).sort({ userId: 1, version: 1 }).lean()
     : [];
   const identityByUser = new Map(identities.map(item => [idString(item.userId), item]));
-  return conversation.participantUserIds.map((userId, index) => {
+  return Promise.all(conversation.participantUserIds.map(async (userId, index) => {
     const identity = identityByUser.get(idString(userId));
     const userDevices = devices.filter(device => idString(device.userId) === idString(userId));
     return {
@@ -154,14 +160,15 @@ async function conversationDirectory(conversation) {
         ...identityView(identity),
         directoryLog: directoryLogView(
           directoryEntries.filter(entry => idString(entry.userId) === idString(userId))
-        )
+        ),
+        transparency: await transparencyBundle(identity)
       } : null,
       deviceCommitments: userDevices.map(directoryDeviceCommitment),
       devices: userDevices
         .filter(device => device.status === "active" && Date.parse(device.manifestExpiresAt || "") > Date.now())
         .map(deviceView)
     };
-  });
+  }));
 }
 
 function conversationView(conversation, directory) {
@@ -174,6 +181,7 @@ function conversationView(conversation, directory) {
     blockedForEpochChange: conversation.blockedForEpochChange,
     epoch: conversation.epoch,
     sequence: conversation.sequence,
+    legacyMutationCutoffSequence: Number(conversation.legacyMutationCutoffSequence) || 0,
     creatorClientId: conversation.createdByClientId,
     activeClientIds: conversation.activeClientIds,
     authorizedClientIds: authorizedClientIds(conversation),

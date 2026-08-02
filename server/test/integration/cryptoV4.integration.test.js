@@ -45,13 +45,27 @@ function signedHeaders(account, method, path, body = {}, overrides = {}) {
   const timestamp = overrides.timestamp || Date.now();
   const nonce = overrides.nonce || crypto.randomBytes(24).toString("base64url");
   const signedPath = overrides.signedPath || path;
-  const value = {
-    method: method.toUpperCase(),
-    path: signedPath,
-    timestamp,
-    nonce,
-    bodyHash: requestBodyHash(body)
-  };
+  const authVersion = Number(account.authVersion) === 2 ? 2 : 1;
+  const value = authVersion === 2
+    ? {
+        v: 2,
+        action: "crypto-request",
+        protocol: "liotan-device-auth-v2",
+        method: method.toUpperCase(),
+        path: signedPath,
+        timestamp,
+        nonce,
+        bodyHash: requestBodyHash(body),
+        deviceId: account.deviceId,
+        sessionBindingId: account.sessionBindingId
+      }
+    : {
+        method: method.toUpperCase(),
+        path: signedPath,
+        timestamp,
+        nonce,
+        bodyHash: requestBodyHash(body)
+      };
   return {
     "X-Liotan-CSRF": CSRF_HEADER,
     "X-Liotan-Crypto-Device": account.deviceId,
@@ -59,7 +73,7 @@ function signedHeaders(account, method, path, body = {}, overrides = {}) {
     "X-Liotan-Crypto-Nonce": nonce,
     "X-Liotan-Crypto-Signature": signCanonical(
       account.requestKey.privateKey,
-      "liotan-crypto-request-v1",
+      authVersion === 2 ? "liotan-crypto-request-v2" : "liotan-crypto-request-v1",
       value
     )
   };
@@ -290,7 +304,12 @@ async function confirmPendingRecoveryTest(pending) {
   return response.body;
 }
 
-async function registerDevice(account, { rootKey = null, deviceId = null, autoApprove = true } = {}) {
+async function registerDevice(account, {
+  rootKey = null,
+  deviceId = null,
+  autoApprove = true,
+  authVersion = 1
+} = {}) {
   const sessionAccount = account.deviceId ? await createAdditionalSession(account) : account;
   const next = {
     ...sessionAccount,
@@ -326,7 +345,7 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
 
   const now = new Date();
   const manifest = {
-    v: 1,
+    v: authVersion,
     cryptoUserId: next.cryptoUserId,
     username: next.username,
     deviceId: next.deviceId,
@@ -334,11 +353,21 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
     requestPublicKey: rawPublicKey(next.requestKey.publicKey),
     credentialThumbprint: crypto.randomBytes(32).toString("base64url"),
     createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    ...(authVersion === 2 ? {
+      authProtocol: "liotan-device-auth-v2",
+      sessionBindingId: bootstrap.body.sessionBindingId
+    } : {})
   };
   next.clientId = manifest.clientId;
+  next.authVersion = authVersion;
+  next.sessionBindingId = authVersion === 2 ? bootstrap.body.sessionBindingId : "";
   next.manifest = manifest;
-  const manifestSignature = signCanonical(next.rootKey.privateKey, "liotan-device-manifest-v1", manifest);
+  const manifestSignature = signCanonical(
+    next.rootKey.privateKey,
+    authVersion === 2 ? "liotan-device-manifest-v2" : "liotan-device-manifest-v1",
+    manifest
+  );
   const devices = bootstrap.body.accountDevices || [];
   const activeCount = devices.filter(device => device.status === "active").length;
   const status = devices.length === 0 ? "active" : "pending";
@@ -349,6 +378,9 @@ async function registerDevice(account, { rootKey = null, deviceId = null, autoAp
     deviceId: next.deviceId,
     clientId: next.clientId,
     requestPublicKey: manifest.requestPublicKey,
+    authVersion,
+    authProtocol: authVersion === 2 ? "liotan-device-auth-v2" : "liotan-device-auth-v1",
+    sessionBindingId: next.sessionBindingId,
     credentialThumbprint: manifest.credentialThumbprint,
     manifest,
     manifestSignature,
@@ -465,6 +497,8 @@ before(async () => {
   process.env.MONGOMS_MD5_CHECK = "true";
   process.env.PRIVACY_EXPOSE_DEV_EMAIL_CODES = "true";
   process.env.EMAIL_REQUIRE_MX = "false";
+  process.env.DEVICE_AUTH_V2_ENFORCED_AT = "2099-01-01T00:00:00.000Z";
+  process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2099-01-01T00:00:00.000Z";
 
   replSet = await MongoMemoryReplSet.create({
     binary: { version: "8.0.14" },
@@ -592,6 +626,463 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
 
   const conversation = await CryptoConversation.findOne({ conversationId }).lean();
   assert.equal(conversation.blockedForEpochChange, false);
+});
+
+test("a cryptographic device signature cannot cross its bound browser session", async () => {
+  const account = await createAccount("bound_device");
+  const otherSession = await createAdditionalSession(account);
+  const crossed = await signedJson(otherSession, "GET", "/crypto/v4/devices");
+  assert.equal(crossed.status, 401, crossed.text);
+
+  const original = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(original.status, 200, original.text);
+});
+
+test("durable media byte quotas account for rejected reservations", async () => {
+  const account = await createAccount("media_quota");
+  const {
+    reserveMediaTransfer,
+    releaseMediaTransfer
+  } = require("../../services/mediaQuota");
+  const envName = "MEDIA_QUOTA_ACCOUNT_UPLOAD_MINUTE_BYTES";
+  const prior = process.env[envName];
+  process.env[envName] = "64";
+  const req = {
+    user: {
+      userId: account.user._id,
+      username: account.username,
+      sid: account.sessionId
+    },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.42" }
+  };
+
+  let reservation;
+  try {
+    reservation = await reserveMediaTransfer(req, {
+      direction: "upload",
+      bytes: 40,
+      conversationId: crypto.randomUUID()
+    });
+    await assert.rejects(
+      reserveMediaTransfer(req, {
+        direction: "upload",
+        bytes: 40,
+        conversationId: crypto.randomUUID()
+      }),
+      err => err?.status === 429 && err?.code === "MEDIA_QUOTA_EXCEEDED"
+    );
+  } finally {
+    if (reservation) await releaseMediaTransfer(reservation.reservationId);
+    if (prior == null) delete process.env[envName];
+    else process.env[envName] = prior;
+  }
+});
+
+test("media reservations reserve object slots and two workers release an expired slot exactly once", async () => {
+  const account = await createAccount("slot_recovery");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const MediaTransferReservation = mongoose.model("MediaTransferReservation");
+  const {
+    reserveMediaTransfer,
+    releaseExpiredMediaTransfers
+  } = require("../../services/mediaQuota");
+  const envName = "MEDIA_QUOTA_ACCOUNT_STORAGE_OBJECTS";
+  const prior = process.env[envName];
+  process.env[envName] = "1";
+  const req = {
+    user: { userId: account.user._id, username: account.username, sid: account.sessionId },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.44" }
+  };
+  try {
+    const reservation = await reserveMediaTransfer(req, {
+      direction: "upload",
+      bytes: 32,
+      conversationId: crypto.randomUUID()
+    });
+    await assert.rejects(
+      reserveMediaTransfer(req, {
+        direction: "upload",
+        bytes: 1,
+        conversationId: crypto.randomUUID()
+      }),
+      error => error?.code === "MEDIA_QUOTA_EXCEEDED"
+    );
+    await MediaTransferReservation.updateOne(
+      { reservationId: reservation.reservationId },
+      { $set: { expiresAt: new Date(Date.now() - 1000) } }
+    );
+    const results = await Promise.all([
+      releaseExpiredMediaTransfers(new Date()),
+      releaseExpiredMediaTransfers(new Date())
+    ]);
+    assert.equal(results.reduce((sum, value) => sum + value, 0), 1);
+    const terminal = await MediaTransferReservation.findOne({ reservationId: reservation.reservationId }).lean();
+    assert.equal(terminal.state, "released");
+    assert.equal(terminal.purgeAt instanceof Date, true);
+    const accountScope = terminal.scopes.find(scope => scope.scope === "account");
+    const state = await MediaQuotaState.findOne({ key: accountScope.key }).lean();
+    assert.equal(state.activeUploads, 0);
+    assert.equal(state.reservedStorageBytes, 0);
+    assert.equal(state.reservedObjectCount, 0);
+    assert.equal(state.objectCount, 0);
+  } finally {
+    if (prior == null) delete process.env[envName];
+    else process.env[envName] = prior;
+  }
+});
+
+test("media storage quota follows temporary, persistent and released object state exactly once", async () => {
+  const account = await createAccount("quota_life");
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const {
+    completeMediaTransfer,
+    promoteMediaUploadQuota,
+    releaseMediaUploadQuota,
+    reserveMediaTransfer
+  } = require("../../services/mediaQuota");
+  const req = {
+    user: {
+      userId: account.user._id,
+      username: account.username,
+      sid: account.sessionId
+    },
+    cryptoDevice: { clientId: account.clientId },
+    headers: {},
+    socket: { remoteAddress: "127.0.0.43" }
+  };
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: account.clientId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    lifecycleState: "temporary",
+    storageKey: "integration/quota-lifecycle",
+    storageType: "r2:private-media",
+    expiresAt: new Date(Date.now() + 60_000)
+  });
+  const reservation = await reserveMediaTransfer(req, {
+    direction: "upload",
+    bytes: 32,
+    conversationId: upload.cryptoConversationId
+  });
+  assert.equal(await completeMediaTransfer(
+    reservation.reservationId,
+    32,
+    { uploadId: upload.uploadId }
+  ), true);
+  let tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "temporary");
+  assert.equal(tracked.quotaBytes, 32);
+  assert.equal(tracked.quotaScopes.length, 5);
+
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 32);
+    assert.equal(state.persistentStorageBytes, 0);
+    assert.equal(state.objectCount, 1);
+  }
+
+  assert.equal(await promoteMediaUploadQuota(upload.uploadId), true);
+  tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "persistent");
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 0);
+    assert.equal(state.persistentStorageBytes, 32);
+    assert.equal(state.objectCount, 1);
+  }
+
+  assert.equal(await releaseMediaUploadQuota(upload.uploadId), true);
+  assert.equal(await releaseMediaUploadQuota(upload.uploadId), false);
+  tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.quotaStorageState, "released");
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.temporaryStorageBytes, 0);
+    assert.equal(state.persistentStorageBytes, 0);
+    assert.equal(state.objectCount, 0);
+  }
+  await AttachmentUpload.deleteOne({ _id: upload._id });
+});
+
+test("device authentication v2 migrates with old and new proofs without changing MLS identity", async () => {
+  const account = await createAccount("authv2_migrate");
+  const nextSession = await createAdditionalSession(account);
+  const listed = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(listed.status, 200, listed.text);
+  const target = listed.body.devices.find(device => device.deviceId === account.deviceId);
+  const bootstrap = await requestFor(
+    nextSession,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${account.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const nextRequestKey = crypto.generateKeyPairSync("ed25519");
+  const nextRequestPublicKey = rawPublicKey(nextRequestKey.publicKey);
+  const migration = {
+    v: 2,
+    action: "migrate-device-auth",
+    protocol: "liotan-device-auth-v2",
+    cryptoUserId: account.cryptoUserId,
+    deviceId: account.deviceId,
+    clientId: account.clientId,
+    oldRequestPublicKey: target.requestPublicKey,
+    newRequestPublicKey: nextRequestPublicKey,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const manifest = {
+    ...target.manifest,
+    v: 2,
+    requestPublicKey: nextRequestPublicKey,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const manifestSignature = signCanonical(
+    account.rootKey.privateKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...target,
+    requestPublicKey: nextRequestPublicKey,
+    authVersion: 2,
+    authProtocol: "liotan-device-auth-v2",
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    authMigrationState: "v2-active",
+    manifest,
+    manifestSignature
+  };
+  const directory = buildDirectoryUpdate(
+    { cryptoUserId: account.cryptoUserId, directory: listed.body.directory },
+    listed.body.devices,
+    nextDevice,
+    "migrate-device-auth",
+    account.deviceId,
+    account.rootKey.privateKey
+  );
+  const path = `/crypto/v4/devices/${account.deviceId}/auth-migration`;
+  const body = {
+    migration,
+    oldProof: signCanonical(
+      account.requestKey.privateKey,
+      "liotan-device-auth-migration-v2",
+      migration
+    ),
+    newProof: signCanonical(
+      nextRequestKey.privateKey,
+      "liotan-device-auth-migration-v2",
+      migration
+    ),
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  };
+  const migrated = await sessionJson(nextSession, "POST", path, body);
+  assert.equal(migrated.status, 200, migrated.text);
+  assert.equal(migrated.body.device.clientId, account.clientId);
+  assert.equal(migrated.body.device.credentialThumbprint, target.credentialThumbprint);
+  assert.equal(migrated.body.device.authVersion, 2);
+
+  const active = {
+    ...nextSession,
+    requestKey: nextRequestKey,
+    authVersion: 2,
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const authenticated = await signedJson(active, "GET", "/crypto/v4/devices");
+  assert.equal(authenticated.status, 200, authenticated.text);
+  const oldSession = await signedJson(account, "GET", "/crypto/v4/devices");
+  assert.equal(oldSession.status, 401, oldSession.text);
+});
+
+test("device authentication v2 safely rebinds the same local key to a new session", async () => {
+  const original = await registerDevice(await createAuthenticatedUser("authv2_rebind"), { authVersion: 2 });
+  const nextSession = await createAdditionalSession(original);
+  const bootstrap = await requestFor(
+    nextSession,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${original.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  assert.notEqual(bootstrap.body.sessionBindingId, original.sessionBindingId);
+
+  const challengePath = `/crypto/v4/devices/${original.deviceId}/session-rebind/challenge`;
+  const challenged = await sessionJson(nextSession, "POST", challengePath, {});
+  assert.equal(challenged.status, 201, challenged.text);
+  const statement = challenged.body.statement;
+  assert.equal(statement.oldSessionBindingId, original.sessionBindingId);
+  assert.equal(statement.newSessionBindingId, bootstrap.body.sessionBindingId);
+
+  const target = bootstrap.body.device;
+  const manifest = { ...target.manifest, sessionBindingId: bootstrap.body.sessionBindingId };
+  const manifestSignature = signCanonical(
+    original.rootKey.privateKey,
+    "liotan-device-manifest-v2",
+    manifest
+  );
+  const nextDevice = {
+    ...target,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    manifest,
+    manifestSignature
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "rebind-device-session",
+    original.deviceId,
+    original.rootKey.privateKey
+  );
+  const rebindPath = `/crypto/v4/devices/${original.deviceId}/session-rebind`;
+  const body = {
+    statement,
+    proof: signCanonical(
+      original.requestKey.privateKey,
+      "liotan-device-session-rebind-v2",
+      statement
+    ),
+    manifest,
+    manifestSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  };
+
+  const stolenJwtAttempt = await sessionJson(nextSession, "POST", rebindPath, {
+    ...body,
+    proof: signCanonical(
+      crypto.generateKeyPairSync("ed25519").privateKey,
+      "liotan-device-session-rebind-v2",
+      statement
+    )
+  });
+  assert.equal(stolenJwtAttempt.status, 409, stolenJwtAttempt.text);
+
+  const rebound = await sessionJson(nextSession, "POST", rebindPath, body);
+  assert.equal(rebound.status, 200, rebound.text);
+  const active = {
+    ...original,
+    cookie: nextSession.cookie,
+    sessionId: nextSession.sessionId,
+    sessionBindingId: bootstrap.body.sessionBindingId
+  };
+  const firstCryptoRequest = await signedJson(active, "GET", "/crypto/v4/devices");
+  assert.equal(firstCryptoRequest.status, 200, firstCryptoRequest.text);
+  const oldSession = await signedJson(original, "GET", "/crypto/v4/devices");
+  assert.equal(oldSession.status, 401, oldSession.text);
+  const replay = await sessionJson(nextSession, "POST", rebindPath, body);
+  assert.equal(replay.status, 409, replay.text);
+});
+
+test("device authentication v1 cutoff blocks normal requests but preserves the narrow migration route", async () => {
+  const account = await createAccount("authv1_cutoff");
+  const prior = process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT;
+  process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2000-01-01T00:00:00.000Z";
+  try {
+    const rejected = await signedJson(account, "GET", "/crypto/v4/devices");
+    assert.equal(rejected.status, 426, rejected.text);
+    const route = await sessionJson(
+      account,
+      "POST",
+      `/crypto/v4/devices/${account.deviceId}/auth-migration`,
+      {}
+    );
+    assert.notEqual(route.status, 426, route.text);
+  } finally {
+    process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = prior;
+  }
+});
+
+test("recovery enrollment adds a distinct v2 device and records a visible security event", async () => {
+  const owner = await registerDevice(await createAuthenticatedUser("recover_owner"), {
+    authVersion: 2
+  });
+  const pending = await registerDevice(owner, {
+    rootKey: owner.rootKey,
+    authVersion: 2,
+    autoApprove: false
+  });
+  assert.equal(pending.status, "pending");
+  const bootstrap = await requestFor(
+    pending,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${pending.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const target = bootstrap.body.device;
+  const confirmation = {
+    v: 2,
+    action: "recover-enroll-device",
+    protocol: "liotan-device-auth-v2",
+    cryptoUserId: pending.cryptoUserId,
+    deviceId: target.deviceId,
+    clientId: target.clientId,
+    requestPublicKey: target.requestPublicKey,
+    sessionBindingId: bootstrap.body.sessionBindingId,
+    challenge: target.approvalChallenge,
+    preserveExistingDevices: true,
+    visibleSecurityEventAcknowledged: true,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const confirmationSignature = signCanonical(
+    pending.rootKey.privateKey,
+    "liotan-recovery-enrollment-v2",
+    confirmation
+  );
+  const nextDevice = {
+    ...target,
+    status: "active",
+    activationMode: "recovery-enrollment",
+    approval: confirmation,
+    approvalSignature: confirmationSignature,
+    approvedByClientId: "recovery-enrollment",
+    approvalChallenge: ""
+  };
+  const directory = buildDirectoryUpdate(
+    bootstrap.body.identity,
+    bootstrap.body.accountDevices,
+    nextDevice,
+    "recovery-enrollment",
+    target.deviceId,
+    pending.rootKey.privateKey
+  );
+  const recovered = await requestFor(
+    pending,
+    "POST",
+    `/crypto/v4/devices/${target.deviceId}/recovery-enrollment`
+  ).set("X-Liotan-CSRF", CSRF_HEADER).send({
+    confirmation,
+    confirmationSignature,
+    directoryUpdate: directory.statement,
+    directorySignature: directory.signature
+  });
+  assert.equal(recovered.status, 200, recovered.text);
+  assert.equal(recovered.body.device.deviceId, pending.deviceId);
+  assert.notEqual(recovered.body.device.deviceId, owner.deviceId);
+  assert.equal(recovered.body.visibleSecurityEvent.type, "recovery-enrollment");
+  assert.equal(recovered.body.visibleSecurityEvent.priorActiveDeviceCount, 1);
+
+  const visible = await signedJson(owner, "GET", "/crypto/v4/devices");
+  assert.equal(visible.status, 200, visible.text);
+  assert(visible.body.securityEvents.some(event =>
+    event.type === "recovery-enrollment" &&
+    event.targetDeviceId === pending.deviceId
+  ));
 });
 
 test("new cryptographic devices remain pending until an existing device signs a bound approval", async () => {
@@ -959,8 +1450,12 @@ test("MLS media capability commits atomically with its message and leaves failur
     clientMessageId: crypto.randomUUID(),
     epoch: 1,
     ciphertext: crypto.randomBytes(160).toString("base64url"),
-    attachmentDelete: { uploadId: upload.uploadId, token: deleteToken }
+    attachmentDelete: { uploadId: upload.uploadId, token: deleteToken },
+    attachmentDeleteBaseSequence: sent.body.sequence - 1
   };
+  const staleDelete = await signedJson(alice, "POST", messagePath, deleteBody);
+  assert.equal(staleDelete.status, 409, staleDelete.text);
+  deleteBody.attachmentDeleteBaseSequence = sent.body.sequence;
   const scheduledDelete = await signedJson(alice, "POST", messagePath, deleteBody);
   assert.equal(scheduledDelete.status, 201, scheduledDelete.text);
   const deletionPending = await AttachmentUpload.findOne({ uploadId: upload.uploadId }).lean();
@@ -1159,6 +1654,226 @@ test("crypto state migration resumes from a durable batch cursor and rejects a p
   );
   await migrations.deleteOne({ _id: migration.MIGRATION_ID });
   await AttachmentUpload.collection.deleteMany({ _id: { $in: Object.values(inserted.insertedIds) } });
+});
+
+test("media quota lifecycle migration backfills exact object state and reconciles counters idempotently", async () => {
+  const account = await createAuthenticatedUser("quota_migration_test");
+  const AttachmentUpload = mongoose.model("AttachmentUpload");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const migration = require("../../scripts/migrateMediaQuotaLifecycle");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "mls-media-1",
+    cryptoConversationId: crypto.randomUUID(),
+    cryptoClientId: `${crypto.randomUUID()}:${crypto.randomBytes(8).toString("hex")}@${CRYPTO_DOMAIN}`,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+    lifecycleState: "committed",
+    quotaStorageState: "untracked",
+    storageKey: "integration/quota-migration",
+    storageType: "r2:private-media",
+    expiresAt: null
+  });
+  const migrated = await migration.applyMigration({
+    batchSize: 1,
+    headObject: async () => ({ headers: { "content-length": "47" } })
+  });
+  assert.equal(migrated.objectsBackfilled >= 1, true);
+  const tracked = await AttachmentUpload.findById(upload._id).lean();
+  assert.equal(tracked.ciphertextBytes, 47);
+  assert.equal(tracked.quotaBytes, 47);
+  assert.equal(tracked.quotaStorageState, "persistent");
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "global"), true);
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "account"), true);
+  assert.equal(tracked.quotaScopes.some(scope => scope.scope === "device"), true);
+  for (const scope of tracked.quotaScopes) {
+    const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+    assert.equal(state.persistentStorageBytes >= 47, true);
+    assert.equal(state.objectCount >= 1, true);
+  }
+  const repeated = await migration.applyMigration({
+    headObject: async () => {
+      throw new Error("completed migration must not re-read object storage");
+    }
+  });
+  assert.equal(repeated.alreadyApplied, true);
+  await AttachmentUpload.deleteOne({ _id: upload._id });
+});
+
+test("media reservation recovery migration resumes bounded batches and rejects a parallel lease", async () => {
+  const account = await createAuthenticatedUser("reserve_migrate");
+  const migration = require("../../scripts/migrateMediaReservationRecovery");
+  const { acquireLease } = require("../../utils/durableMigration");
+  const MediaTransferReservation = mongoose.model("MediaTransferReservation");
+  const MediaQuotaState = mongoose.model("MediaQuotaState");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const indexes = await MediaTransferReservation.collection.indexes();
+  const expiresIndex = indexes.find(index => index.key?.expiresAt === 1);
+  if (expiresIndex) await MediaTransferReservation.collection.dropIndex(expiresIndex.name);
+  await MediaTransferReservation.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  const scope = { key: `account:migration-${crypto.randomUUID()}`, scope: "account", scopeIdHash: crypto.randomBytes(32).toString("base64url") };
+  const common = {
+    userId: account.user._id,
+    clientIdHash: crypto.randomBytes(32).toString("base64url"),
+    sessionIdHash: crypto.randomBytes(32).toString("base64url"),
+    ipHash: crypto.randomBytes(32).toString("base64url"),
+    scopes: [scope],
+    bucketKeys: [],
+    expiresAt: new Date(Date.now() + 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  await MediaTransferReservation.collection.insertOne({
+    reservationId: crypto.randomBytes(24).toString("base64url"),
+    direction: "upload",
+    state: "reserved",
+    declaredBytes: 17,
+    actualBytes: 0,
+    purgeAt: new Date(Date.now() + 60_000),
+    ...common
+  });
+  const insertedTerminal = await MediaTransferReservation.collection.insertMany([0, 1].map(index => ({
+    reservationId: crypto.randomBytes(24).toString("base64url"),
+    direction: "upload",
+    state: index ? "released" : "completed",
+    declaredBytes: 10 + index,
+    actualBytes: 10 + index,
+    purgeAt: null,
+    ...common,
+    updatedAt: new Date(Date.now() - ((index + 1) * 60_000))
+  })));
+  const batchSizes = [];
+  let interrupted = false;
+  await assert.rejects(
+    migration.applyMigration({
+      batchSize: 1,
+      hooks: {
+        afterBatch: ({ count }) => {
+          batchSizes.push(count);
+          if (interrupted) return;
+          interrupted = true;
+          const error = new Error("simulated process stop");
+          error.code = "MIGRATION_INTERRUPTED";
+          throw error;
+        }
+      }
+    }),
+    error => error.code === "MIGRATION_INTERRUPTED"
+  );
+  const paused = await migrations.findOne({ _id: migration.MIGRATION_ID });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.phase, "terminal-records");
+  assert.ok(paused.cursor);
+  assert.equal(paused.counters.terminalBackfilled, 1);
+  const applied = await migration.applyMigration({ batchSize: 1, hooks: {
+    afterBatch: ({ count }) => batchSizes.push(count)
+  } });
+  assert.equal(applied.alreadyApplied, false);
+  assert.equal(applied.terminalBackfilled >= 2, true);
+  assert.equal(batchSizes.length, applied.terminalBackfilled);
+  assert.equal(batchSizes.every(count => count === 1), true);
+  const afterIndexes = await MediaTransferReservation.collection.indexes();
+  assert.equal(afterIndexes.some(index => index.key?.expiresAt === 1 && index.expireAfterSeconds === 0), false);
+  assert.equal(await MediaTransferReservation.countDocuments({
+    state: { $in: ["reserving", "reserved"] },
+    purgeAt: { $type: "date" }
+  }), 0);
+  assert.equal(await MediaTransferReservation.countDocuments({
+    _id: { $in: Object.values(insertedTerminal.insertedIds) },
+    purgeAt: { $type: "date" }
+  }), 2);
+  const state = await MediaQuotaState.findOne({ key: scope.key }).lean();
+  assert.equal(state.activeUploads, 1);
+  assert.equal(state.reservedStorageBytes, 17);
+  assert.equal(state.reservedObjectCount, 1);
+  assert.equal((await migration.applyMigration()).alreadyApplied, true);
+
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await acquireLease(migrations, migration.MIGRATION_ID, {
+    owner: "media-reservation-owner-a",
+    version: 1,
+    leaseMs: 60_000
+  });
+  await assert.rejects(
+    migration.applyMigration({ owner: "media-reservation-owner-b" }),
+    error => error.code === "MIGRATION_LEASE_BUSY"
+  );
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+});
+
+test("avatar uploaded recovery migration resumes bounded batches and rejects a parallel lease", async () => {
+  const account = await createAuthenticatedUser("avatar_migrate");
+  const migration = require("../../scripts/migrateAvatarLifecycleRecovery");
+  const { acquireLease } = require("../../utils/durableMigration");
+  const AvatarObject = mongoose.model("AvatarObject");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const createdAt = new Date(Date.now() - 60_000);
+  const storageKeys = Array.from({ length: 3 }, () =>
+    `liotan/avatars/migration-${crypto.randomUUID()}.png`);
+  await AvatarObject.collection.insertMany(storageKeys.map(storageKey => ({
+    storageKey,
+    url: `https://avatars.invalid/${storageKey}`,
+    storageType: "r2:public-avatar",
+    ownerType: "user",
+    ownerId: account.user._id,
+    avatarVersion: 1,
+    state: "uploaded",
+    attempts: 0,
+    nextAttemptAt: createdAt,
+    createdAt,
+    updatedAt: createdAt
+  })));
+  const batchSizes = [];
+  let interrupted = false;
+  await assert.rejects(
+    migration.applyMigration({
+      batchSize: 1,
+      hooks: {
+        afterBatch: ({ count }) => {
+          batchSizes.push(count);
+          if (interrupted) return;
+          interrupted = true;
+          const error = new Error("simulated process stop");
+          error.code = "MIGRATION_INTERRUPTED";
+          throw error;
+        }
+      }
+    }),
+    error => error.code === "MIGRATION_INTERRUPTED"
+  );
+  const paused = await migrations.findOne({ _id: migration.MIGRATION_ID });
+  assert.equal(paused.status, "paused");
+  assert.equal(paused.phase, "uploaded-records");
+  assert.ok(paused.cursor);
+  assert.equal(paused.counters.uploadedTimestampsBackfilled, 1);
+  const applied = await migration.applyMigration({ batchSize: 1, hooks: {
+    afterBatch: ({ count }) => batchSizes.push(count)
+  } });
+  assert.equal(applied.alreadyApplied, false);
+  assert.equal(applied.uploadedTimestampsBackfilled, 3);
+  assert.deepEqual(batchSizes, [1, 1, 1]);
+  const records = await AvatarObject.find({ storageKey: { $in: storageKeys } }).lean();
+  assert.equal(records.length, 3);
+  for (const record of records) assert.equal(record.uploadedAt.getTime(), createdAt.getTime());
+  assert.equal((await migration.applyMigration()).alreadyApplied, true);
+
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await acquireLease(migrations, migration.MIGRATION_ID, {
+    owner: "avatar-lifecycle-owner-a",
+    version: 1,
+    leaseMs: 60_000
+  });
+  await assert.rejects(
+    migration.applyMigration({ owner: "avatar-lifecycle-owner-b" }),
+    error => error.code === "MIGRATION_LEASE_BUSY"
+  );
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
 });
 
 test("expired device is rejected and blocks every affected conversation", async () => {
@@ -2131,4 +2846,417 @@ test("account deletion without conversations has a single multi-instance worker 
   assert.equal(results.filter(Boolean).length, 1);
   assert.equal(results.find(Boolean).state, "completed");
   assert.equal(await User.countDocuments({ _id: account.user._id }), 0);
+});
+
+test("concurrent avatar replacements have one CAS winner and delete the losing object", async () => {
+  const account = await createAuthenticatedUser("avatar_cas_owner");
+  const AvatarObject = require("../../models/AvatarObject");
+  const { replaceAvatar } = require("../../services/avatarLifecycle");
+  const current = await User.findById(account.user._id);
+  const deletedKeys = [];
+  const deleteFile = async file => {
+    deletedKeys.push(file.storageKey);
+  };
+  const createResult = suffix => ({
+    url: `https://avatars.invalid/${suffix}`,
+    key: `liotan/avatars/${suffix}`,
+    storageType: "r2:public-avatar"
+  });
+  const replacements = await Promise.allSettled([
+    replaceAvatar({
+      model: User,
+      selector: { _id: current._id },
+      current,
+      ownerType: "user",
+      result: createResult("cas-left.png"),
+      avatarUrl: "https://avatars.invalid/cas-left.png?v=1",
+      deleteFile
+    }),
+    replaceAvatar({
+      model: User,
+      selector: { _id: current._id },
+      current,
+      ownerType: "user",
+      result: createResult("cas-right.png"),
+      avatarUrl: "https://avatars.invalid/cas-right.png?v=1",
+      deleteFile
+    })
+  ]);
+  assert.equal(replacements.filter(result => result.status === "fulfilled").length, 1);
+  const rejected = replacements.find(result => result.status === "rejected");
+  assert.equal(rejected.reason.status, 409);
+  const persisted = await User.findById(current._id).lean();
+  assert.equal(persisted.avatarVersion, 1);
+  const records = await AvatarObject.find({
+    storageKey: { $in: ["liotan/avatars/cas-left.png", "liotan/avatars/cas-right.png"] }
+  }).lean();
+  assert.deepEqual(new Set(records.map(record => record.state)), new Set(["active", "deleted"]));
+  assert.equal(deletedKeys.length, 1);
+  assert.notEqual(deletedKeys[0], persisted.avatarStorageKey);
+});
+
+test("stale uploaded avatars recover an owner reference or delete an orphan with one worker winner", async () => {
+  const account = await createAuthenticatedUser("avatar_uploaded_recovery");
+  const AvatarObject = require("../../models/AvatarObject");
+  const { cleanupStaleUploadedAvatars } = require("../../services/avatarLifecycle");
+  const now = new Date();
+  const referencedKey = `liotan/avatars/referenced-${crypto.randomUUID()}.png`;
+  const orphanKey = `liotan/avatars/orphan-${crypto.randomUUID()}.png`;
+  await User.updateOne({ _id: account.user._id }, { $set: {
+    avatar: `https://avatars.invalid/${referencedKey}`,
+    avatarStorageKey: referencedKey,
+    avatarStorageType: "r2:public-avatar",
+    avatarVersion: 1
+  } });
+  await AvatarObject.create([
+    {
+      storageKey: referencedKey,
+      url: `https://avatars.invalid/${referencedKey}`,
+      storageType: "r2:public-avatar",
+      ownerType: "user",
+      ownerId: account.user._id,
+      avatarVersion: 1,
+      uploadedAt: new Date(now.getTime() - 20 * 60 * 1000),
+      nextAttemptAt: new Date(now.getTime() - 1000)
+    },
+    {
+      storageKey: orphanKey,
+      url: `https://avatars.invalid/${orphanKey}`,
+      storageType: "r2:public-avatar",
+      ownerType: "user",
+      ownerId: account.user._id,
+      avatarVersion: 2,
+      uploadedAt: new Date(now.getTime() - 20 * 60 * 1000),
+      nextAttemptAt: new Date(now.getTime() - 1000)
+    }
+  ]);
+  const deleted = [];
+  const options = {
+    now,
+    headObject: async () => ({ status: 200 }),
+    deleteFile: async file => deleted.push(file.storageKey)
+  };
+  const results = await Promise.all([
+    cleanupStaleUploadedAvatars(options),
+    cleanupStaleUploadedAvatars(options)
+  ]);
+  assert.equal(results.reduce((sum, item) => sum + item.activated, 0), 1);
+  assert.equal(results.reduce((sum, item) => sum + item.deleted, 0), 1);
+  assert.deepEqual(deleted, [orphanKey]);
+  assert.equal((await AvatarObject.findOne({ storageKey: referencedKey }).lean()).state, "active");
+  assert.equal((await AvatarObject.findOne({ storageKey: orphanKey }).lean()).state, "deleted");
+});
+
+test("avatar reconciliation is dry-run by default and only selects old detached objects", async () => {
+  const { cleanupDetachedAvatars } = require("../../services/avatarLifecycle");
+  const oldKey = `liotan/avatars/detached-${crypto.randomUUID()}.png`;
+  const freshKey = `liotan/avatars/fresh-${crypto.randomUUID()}.png`;
+  const page = {
+    objects: [
+      { key: oldKey, lastModified: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString() },
+      { key: freshKey, lastModified: new Date().toISOString() }
+    ],
+    isTruncated: false,
+    nextContinuationToken: ""
+  };
+  const deleted = [];
+  const dryRun = await cleanupDetachedAvatars({
+    dryRun: true,
+    listObjects: async () => page,
+    deleteObject: async key => deleted.push(key)
+  });
+  assert.deepEqual(dryRun.keys, [oldKey]);
+  assert.deepEqual(deleted, []);
+
+  const applied = await cleanupDetachedAvatars({
+    listObjects: async () => page,
+    deleteObject: async key => deleted.push(key)
+  });
+  assert.deepEqual(applied.keys, [oldKey]);
+  assert.deepEqual(deleted, [oldKey]);
+});
+
+test("key transparency checkpoints prove inclusion, append-only consistency and reject tampering", async () => {
+  const account = await createAccount("kt_owner");
+  const {
+    CHECKPOINT_DOMAIN,
+    leafHash,
+    nodeHash
+  } = require("../../security/keyTransparency");
+  const { verifyEd25519, sha256Base64Url } = require("../../security/cryptoV4");
+
+  const checkpointResponse = await signedJson(
+    account,
+    "GET",
+    "/crypto/v4/transparency/checkpoint"
+  );
+  assert.equal(checkpointResponse.status, 200, checkpointResponse.text);
+  const before = checkpointResponse.body.checkpoint;
+  assert(verifyEd25519({
+    publicKey: before.signingPublicKey,
+    signature: before.signature,
+    value: before.checkpoint,
+    domain: CHECKPOINT_DOMAIN
+  }));
+  assert.equal(
+    before.signingKeyId,
+    sha256Base64Url(Buffer.from(before.signingPublicKey, "base64url"))
+  );
+
+  await registerDevice(account, { rootKey: account.rootKey });
+  const bootstrap = await requestFor(
+    account,
+    "GET",
+    `/crypto/v4/bootstrap?deviceId=${account.deviceId}`
+  );
+  assert.equal(bootstrap.status, 200, bootstrap.text);
+  const evidence = bootstrap.body.identity.transparency;
+  assert(evidence);
+  assert.equal(evidence.leaf.directoryHash, bootstrap.body.identity.directory.hash);
+  assert.equal(evidence.leafHash, leafHash(evidence.leaf));
+
+  function verifyInclusion(bundle) {
+    let hash = bundle.leafHash;
+    let index = Number(bundle.leaf.sequence) - 1;
+    let last = Number(bundle.checkpoint.checkpoint.treeSize) - 1;
+    for (const sibling of bundle.inclusionProof) {
+      if (index === last || (index & 1) === 1) {
+        hash = nodeHash(sibling, hash);
+        while (index !== 0 && (index & 1) === 0) {
+          index >>= 1;
+          last >>= 1;
+        }
+      } else {
+        hash = nodeHash(hash, sibling);
+      }
+      index >>= 1;
+      last >>= 1;
+    }
+    return last === 0 && hash === bundle.checkpoint.checkpoint.rootHash;
+  }
+  assert.equal(verifyInclusion(evidence), true);
+
+  const afterSize = Number(evidence.checkpoint.checkpoint.treeSize);
+  const consistencyResponse = await signedJson(
+    account,
+    "GET",
+    `/crypto/v4/transparency/consistency?from=${before.checkpoint.treeSize}&to=${afterSize}`
+  );
+  assert.equal(consistencyResponse.status, 200, consistencyResponse.text);
+
+  function verifyConsistency(oldSize, oldRoot, newSize, newRoot, proof) {
+    let oldIndex = oldSize - 1;
+    let newIndex = newSize - 1;
+    while ((oldIndex & 1) === 1) {
+      oldIndex >>= 1;
+      newIndex >>= 1;
+    }
+    let offset = 0;
+    let oldHash;
+    let newHash;
+    if ((oldSize & (oldSize - 1)) === 0) {
+      oldHash = oldRoot;
+      newHash = oldRoot;
+    } else {
+      oldHash = proof[offset];
+      newHash = proof[offset];
+      offset += 1;
+    }
+    while (offset < proof.length) {
+      const sibling = proof[offset];
+      offset += 1;
+      if (newIndex === 0) return false;
+      if ((oldIndex & 1) === 1 || oldIndex === newIndex) {
+        oldHash = nodeHash(sibling, oldHash);
+        newHash = nodeHash(sibling, newHash);
+        while (oldIndex !== 0 && (oldIndex & 1) === 0) {
+          oldIndex >>= 1;
+          newIndex >>= 1;
+        }
+      } else {
+        newHash = nodeHash(newHash, sibling);
+      }
+      oldIndex >>= 1;
+      newIndex >>= 1;
+    }
+    return newIndex === 0 && oldHash === oldRoot && newHash === newRoot;
+  }
+
+  const consistency = consistencyResponse.body;
+  assert.equal(verifyConsistency(
+    Number(consistency.from.checkpoint.treeSize),
+    consistency.from.checkpoint.rootHash,
+    Number(consistency.to.checkpoint.treeSize),
+    consistency.to.checkpoint.rootHash,
+    consistency.proof
+  ), true);
+  const tampered = [...consistency.proof];
+  tampered[0] = `${tampered[0][0] === "A" ? "B" : "A"}${tampered[0].slice(1)}`;
+  assert.equal(verifyConsistency(
+    Number(consistency.from.checkpoint.treeSize),
+    consistency.from.checkpoint.rootHash,
+    Number(consistency.to.checkpoint.treeSize),
+    consistency.to.checkpoint.rootHash,
+    tampered
+  ), false);
+});
+
+test("key transparency backfill migration is resumable, idempotent and preserves durableMigration", async () => {
+  const account = await createAuthenticatedUser("kt_legacy");
+  const CryptoIdentityModel = require("../../models/CryptoIdentity");
+  const CryptoDirectoryEntry = require("../../models/CryptoDirectoryEntry");
+  const CryptoTransparencyLeaf = require("../../models/CryptoTransparencyLeaf");
+  const migration = require("../../scripts/migrateKeyTransparency");
+  const cryptoUserId = crypto.randomUUID();
+  const root = crypto.generateKeyPairSync("ed25519");
+  const rootPublicKey = rawPublicKey(root.publicKey);
+  const identity = await CryptoIdentityModel.create({
+    userId: account.user._id,
+    username: account.username,
+    cryptoUserId,
+    rootPublicKey,
+    rootFingerprint: crypto.createHash("sha256")
+      .update(Buffer.from(rootPublicKey, "base64url"))
+      .digest("base64url")
+  });
+  const statement = {
+    v: 1,
+    cryptoUserId,
+    version: 1,
+    previousHash: crypto.randomBytes(32).toString("base64url"),
+    devicesHash: crypto.randomBytes(32).toString("base64url"),
+    action: "register-device",
+    targetDeviceId: crypto.randomBytes(8).toString("hex"),
+    timestamp: new Date().toISOString(),
+    nonce: crypto.randomBytes(24).toString("base64url")
+  };
+  const signature = signCanonical(root.privateKey, "liotan-device-directory-v1", statement);
+  const hash = crypto.createHash("sha256")
+    .update(canonicalJson(["liotan-device-directory-v1", statement, signature]))
+    .digest("base64url");
+  await CryptoDirectoryEntry.create({
+    userId: identity.userId,
+    cryptoUserId,
+    version: 1,
+    previousHash: statement.previousHash,
+    hash,
+    statement,
+    signature
+  });
+
+  const before = await migration.inspect();
+  assert.equal(before.missingLeaves, 1);
+  const applied = await migration.applyMigration({ batchSize: 7 });
+  assert.equal(applied.alreadyApplied, false);
+  assert(await CryptoTransparencyLeaf.exists({ cryptoUserId, directoryVersion: 1 }));
+  const repeated = await migration.applyMigration({ batchSize: 7 });
+  assert.equal(repeated.alreadyApplied, true);
+  assert.equal((await migration.inspect()).missingLeaves, 0);
+  assert.equal(typeof require("../../utils/durableMigration").acquireLease, "function");
+});
+
+test("legacy retirement is count-only in dry-run and deletes objects before metadata idempotently", async () => {
+  const account = await createAuthenticatedUser("legacy_retirement_test");
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const E2EEConversation = require("../../models/E2EEConversation");
+  const E2EEKey = require("../../models/E2EEKey");
+  const LegacyRetirementObjectTask = require("../../models/LegacyRetirementObjectTask");
+  const Message = require("../../models/Messages");
+  const migration = require("../../scripts/retireLegacyData");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  await LegacyRetirementObjectTask.deleteMany({ migrationId: migration.MIGRATION_ID });
+  await User.updateOne(
+    { _id: account.user._id },
+    { $set: { e2eePublicKey: { legacy: true } } }
+  );
+  const conversationId = crypto.randomUUID();
+  await E2EEConversation.create({
+    conversationId,
+    commitId: crypto.randomUUID(),
+    participants: [account.username],
+    createdBy: account.username
+  });
+  await E2EEKey.create({
+    conversationId,
+    user: account.username,
+    sender: account.username,
+    commitId: crypto.randomUUID(),
+    wrappedKey: crypto.randomBytes(32).toString("base64url"),
+    iv: crypto.randomBytes(12).toString("base64url")
+  });
+  const storageKey = "liotan/u/integration/legacy-retirement.bin";
+  const upload = await AttachmentUpload.create({
+    uploadId: crypto.randomBytes(24).toString("base64url"),
+    owner: account.username,
+    encrypted: true,
+    protocol: "legacy-v3",
+    storageKey,
+    storageType: "r2:private-media"
+  });
+  await Message.create({
+    chatType: "private",
+    from: account.username,
+    to: account.username,
+    contentMode: "plain",
+    text: "legacy plaintext",
+    attachment: {
+      uploadId: upload.uploadId,
+      storageKey,
+      url: `/attachments/${upload.uploadId}/download`
+    }
+  });
+
+  const dryRun = await migration.inspect();
+  assert.equal(dryRun.outputMode, "aggregate-counts-only");
+  assert.equal(dryRun.containsRawIdentifiers, false);
+  assert.equal(dryRun.legacy.messages >= 1, true);
+  assert.equal(dryRun.objects.exclusiveObjectCandidates >= 1, true);
+  const deletedObjects = [];
+  const applied = await migration.applyMigration({
+    adapters: {
+      deleteR2: async key => deletedObjects.push(key),
+      deleteLocal: async locator => deletedObjects.push(locator)
+    }
+  });
+  assert.equal(applied.alreadyApplied, false);
+  assert.equal(deletedObjects.includes(storageKey), true);
+  assert.equal(await Message.countDocuments({}), 0);
+  assert.equal(await E2EEKey.countDocuments({}), 0);
+  assert.equal(await E2EEConversation.countDocuments({}), 0);
+  assert.equal(await AttachmentUpload.countDocuments({ protocol: { $ne: "mls-media-1" } }), 0);
+  assert.equal((await User.findById(account.user._id).lean()).e2eePublicKey, null);
+  const repeated = await migration.applyMigration({
+    adapters: {
+      deleteR2: async () => {
+        throw new Error("completed retirement must not delete objects twice");
+      }
+    }
+  });
+  assert.equal(repeated.alreadyApplied, true);
+});
+
+test("message mutation migration freezes the exact legacy sequence cutoff idempotently", async () => {
+  const migration = require("../../scripts/migrateMessageMutationProtocol");
+  const migrations = mongoose.connection.collection("system_migrations");
+  await migrations.deleteOne({ _id: migration.MIGRATION_ID });
+  const rawConversation = await CryptoConversation.collection.findOne({});
+  assert.ok(rawConversation);
+  await CryptoConversation.collection.updateOne(
+    { _id: rawConversation._id },
+    {
+      $unset: { legacyMutationCutoffSequence: "" },
+      $set: { sequence: 37 }
+    }
+  );
+  const dryRun = await migration.inspect();
+  assert.equal(dryRun.conversationsWithoutCutoff >= 1, true);
+  assert.equal(dryRun.containsRawIdentifiers, false);
+  const first = await migration.applyMigration({ batchSize: 1 });
+  assert.equal(first.alreadyApplied, false);
+  const migrated = await CryptoConversation.collection.findOne({ _id: rawConversation._id });
+  assert.equal(migrated.legacyMutationCutoffSequence, 37);
+  const second = await migration.applyMigration({ batchSize: 1 });
+  assert.equal(second.alreadyApplied, true);
+  assert.equal((await migration.inspect()).conversationsWithoutCutoff, 0);
 });

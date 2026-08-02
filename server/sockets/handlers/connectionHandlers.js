@@ -6,7 +6,6 @@ const {
   removeOnlineUser,
   getOnlineUsers
 } = require("../state/onlineUsers");
-const markDeliveredForUser = require("../services/markDeliveredForUser");
 const { getRelatedUsernames } = require("../../utils/userRelations");
 
 async function getVisibleOnlineUsers(username) {
@@ -47,11 +46,6 @@ async function handleConnectionStart({ io, socket }) {
   const related = await getRelatedUsernames(username);
   await emitPresenceLists(io, [username, ...related]);
 
-  try {
-    await markDeliveredForUser({ io, username });
-  } catch (err) {
-    logger.error("mark delivered failed", err);
-  }
 }
 
 async function handleConnectionEnd({ io, socket, clearUserTyping }) {

@@ -21,6 +21,9 @@ const cryptoConversationSchema = new mongoose.Schema({
   blockedForEpochChange: { type: Boolean, default: true, index: true },
   epoch: { type: Number, default: 0 },
   sequence: { type: Number, default: 0 },
+  // Events at or below this sequence may contain the legacy, unchained edit
+  // format. Every later edit/delete must carry the client-verified v2 chain.
+  legacyMutationCutoffSequence: { type: Number, default: 0, min: 0 },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, required: true },
   createdByClientId: { type: String, required: true },
   lastCommitAt: { type: Date, default: null },

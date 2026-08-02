@@ -76,6 +76,20 @@ export function assertEnvelopeSchema(envelope) {
     typeof envelope.text !== "string" || envelope.text.length > 20000) {
     throw new Error("Invalid authenticated MLS envelope schema");
   }
+  if (envelope.transparencyCheckpoint !== null &&
+    envelope.transparencyCheckpoint !== undefined) {
+    const evidence = envelope.transparencyCheckpoint;
+    if (!evidence || typeof evidence !== "object" ||
+      evidence.checkpoint?.v !== 1 ||
+      !Number.isSafeInteger(Number(evidence.checkpoint?.treeSize)) ||
+      Number(evidence.checkpoint.treeSize) < 1 ||
+      !/^[A-Za-z0-9_-]{43}$/.test(String(evidence.checkpoint?.rootHash || "")) ||
+      !/^[A-Za-z0-9_-]{43}$/.test(String(evidence.checkpointHash || "")) ||
+      !/^[A-Za-z0-9_-]{86}$/.test(String(evidence.signature || "")) ||
+      !/^[A-Za-z0-9_-]{43}$/.test(String(evidence.signingPublicKey || ""))) {
+      throw new Error("Invalid key transparency gossip evidence");
+    }
+  }
   if (envelope.kind === "message") {
     if (envelope.targetMessageId !== undefined ||
       (envelope.replyTo !== null && envelope.replyTo !== undefined &&
@@ -92,6 +106,19 @@ export function assertEnvelopeSchema(envelope) {
     envelope.attachment !== undefined || envelope.replyTo !== undefined ||
     (envelope.kind !== "edit" && envelope.text !== "")) {
     throw new Error("Invalid authenticated MLS control event");
+  }
+  if (["edit", "delete"].includes(envelope.kind) && envelope.mutation !== undefined) {
+    const mutation = envelope.mutation;
+    if (!mutation || mutation.v !== 2 ||
+      typeof mutation.targetSenderUsername !== "string" || !mutation.targetSenderUsername ||
+      typeof mutation.targetSenderClientId !== "string" || !mutation.targetSenderClientId ||
+      !Number.isFinite(Date.parse(String(mutation.targetSentAt || ""))) ||
+      !Number.isSafeInteger(mutation.revision) || mutation.revision < 1 ||
+      !MESSAGE_REFERENCE_RE.test(String(mutation.previousMutationId || ""))) {
+      throw new Error("Invalid authenticated MLS mutation chain");
+    }
+  } else if (envelope.kind === "pin" && envelope.mutation !== undefined) {
+    throw new Error("Invalid authenticated MLS pin event");
   }
 }
 
@@ -125,7 +152,12 @@ export function envelopeToUiMessage(state, envelope, username, eventCreatedAt = 
     replyTo: envelope.replyTo || null,
     createdAt: eventCreatedAt || envelope.sentAt,
     status: "sent",
-    mls: { conversationId: state.conversationId, senderClientId: envelope.senderClientId }
+    mls: {
+      conversationId: state.conversationId,
+      senderClientId: envelope.senderClientId,
+      mutationRevision: 0,
+      lastMutationId: envelope.clientMessageId
+    }
   };
 }
 

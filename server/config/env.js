@@ -1,4 +1,5 @@
 const path = require("path");
+const { expressTrustProxy, proxyConfigFromEnv } = require("./proxyTrust");
 
 require("dotenv").config({
   path: path.join(__dirname, "..", ".env")
@@ -12,6 +13,8 @@ function requireEnv(name) {
   return process.env[name];
 }
 
+const proxy = proxyConfigFromEnv(process.env);
+
 const env = {
   PORT: process.env.PORT || 3001,
   HOST: process.env.HOST || (process.env.NODE_ENV === "production" ? "127.0.0.1" : "0.0.0.0"),
@@ -23,7 +26,9 @@ const env = {
   LIOTAN_KEEP_LEGACY_ACCOUNTS: process.env.LIOTAN_KEEP_LEGACY_ACCOUNTS || "false",
   LIOTAN_ALLOW_PUBLIC_BIND: process.env.LIOTAN_ALLOW_PUBLIC_BIND || "false",
   LIOTAN_ENFORCE_PROXY_PROTO: process.env.LIOTAN_ENFORCE_PROXY_PROTO || "true",
-  TRUST_PROXY_HOPS: Number(process.env.TRUST_PROXY_HOPS || 1)
+  LIOTAN_PROXY_TOPOLOGY: proxy.topology,
+  TRUSTED_PROXY_CIDRS: process.env.TRUSTED_PROXY_CIDRS || "",
+  TRUST_PROXY_CONFIG: expressTrustProxy(process.env)
 };
 
 module.exports = env;

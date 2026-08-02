@@ -25,8 +25,11 @@ import {
   deleteEncryptedConversationData,
   deleteEncryptedMessageRecord,
   deleteLocalCryptoStore,
+  deleteDeviceRequestSecret,
+  loadOrCreateDeviceRequestSecret,
   migrateEncryptedHistoryRecords,
   putEncryptedHistoryRecord,
+  putEncryptedHistoryRecords,
   putEncryptedRecord
 } from "./recoveryStore";
 import { clearOfflineMedia, deleteOfflineBlobs } from "../components/chat/message/messageStorage";
@@ -36,6 +39,12 @@ import {
   SELF_UPDATE_INTERVAL_MS
 } from "./mls/constants";
 import { assertEnvelopeSchema, dispatchCryptoMessage, envelopeToUiMessage } from "./mls/envelope";
+import {
+  applyMessageMutation,
+  initialMessageMutationState,
+  mutationUiMetadata,
+  nextMutationBinding
+} from "./mls/messageMutations.mjs";
 import {
   bytesToHex,
   clientIdText,
@@ -64,6 +73,7 @@ import {
 import { decryptMlsMediaBlob, downloadMlsCiphertext, encryptAndUploadMedia } from "./mls/media";
 import {
   markDirectoryVerified,
+  observeTransparencyGossip,
   validateLocalRoster,
   verifyAndPinAccountDirectory,
   verifyDirectory
@@ -119,6 +129,7 @@ class LiotanMlsEngine {
     this.resolving = new Map();
     this.ensuring = new Map();
     this.sendQueues = new Map();
+    this.mutationQueues = new Map();
     this.historyMigrations = new Map();
     this.deletionRequests = new Map();
     this.purgingConversations = new Set();
@@ -674,12 +685,49 @@ class LiotanMlsEngine {
   }
 
   async cacheEnvelope(state, sequence, envelope) {
-    const record = { sequence, envelope };
+    const record = {
+      sequence,
+      envelope,
+      ...(envelope.kind === "message" ? {
+        mutationState: initialMessageMutationState(envelope),
+        materialized: { text: envelope.text, deleted: false }
+      } : {})
+    };
     await putEncryptedHistoryRecord({
       conversationId: state.conversationId,
       sequence,
       clientMessageId: envelope.clientMessageId
     }, record, this.keys.cacheKey);
+  }
+
+  async acceptMessageMutation(state, event, envelope, { requireV2 = true } = {}) {
+    const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
+    const updatedTarget = applyMessageMutation(targetRecord, envelope, { requireV2 });
+    await putEncryptedHistoryRecords([
+      {
+        meta: {
+          conversationId: state.conversationId,
+          sequence: event.sequence,
+          clientMessageId: envelope.clientMessageId
+        },
+        value: { sequence: event.sequence, envelope }
+      },
+      {
+        meta: {
+          conversationId: state.conversationId,
+          sequence: targetRecord.sequence,
+          clientMessageId: targetRecord.envelope.clientMessageId
+        },
+        value: updatedTarget
+      }
+    ], this.keys.cacheKey);
+    if (updatedTarget.mutationState.deleted) {
+      const offlineKeys = this.attachmentOfflineKeys(
+        this.envelopeToUiMessage(state, targetRecord.envelope).attachment
+      );
+      if (offlineKeys.length) await deleteOfflineBlobs(offlineKeys);
+    }
+    return updatedTarget.mutationState;
   }
 
   syncCheckpointKey(conversationId) {
@@ -760,7 +808,8 @@ class LiotanMlsEngine {
       ).chatId,
       messageId: envelope.targetMessageId,
       text: envelope.text || "",
-      from: envelope.senderUsername
+      from: envelope.senderUsername,
+      ...mutationUiMetadata(envelope)
     });
   }
 
@@ -819,8 +868,21 @@ class LiotanMlsEngine {
       if (!envelope) continue;
       if (hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId))) continue;
       if (envelope.kind === "message") {
-        messages.push(this.envelopeToUiMessage(state, envelope, "", record.sequence));
+        if (record.materialized?.deleted || record.mutationState?.deleted) continue;
+        const message = this.envelopeToUiMessage(
+          state,
+          { ...envelope, text: record.materialized?.text ?? envelope.text },
+          "",
+          record.sequence
+        );
+        message.mls = {
+          ...message.mls,
+          mutationRevision: Number(record.mutationState?.revision || 0),
+          lastMutationId: String(record.mutationState?.lastMutationId || envelope.clientMessageId)
+        };
+        messages.push(message);
       } else {
+        if (envelope.mutation?.v === 2) continue;
         controls.push({
           type: envelope.kind,
           chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, "", record.sequence).chatId,
@@ -871,6 +933,16 @@ class LiotanMlsEngine {
     };
   }
 
+  transparencyGossip(state) {
+    const checkpoints = Object.values(state?.trustStates || {})
+      .map(item => item?.transparencyCheckpoint)
+      .filter(Boolean)
+      .sort((left, right) =>
+        Number(right.checkpoint?.treeSize || 0) - Number(left.checkpoint?.treeSize || 0)
+      );
+    return checkpoints[0] || null;
+  }
+
   validateEnvelope(state, event, decrypted, envelope) {
     assertEnvelopeSchema(envelope);
     const actualSender = decrypted.senderClientId ? clientIdText(decrypted.senderClientId) : "";
@@ -894,23 +966,23 @@ class LiotanMlsEngine {
       if (!decrypted.message) return;
       const envelope = JSON.parse(textDecoder.decode(decrypted.message));
       this.validateEnvelope(state, event, decrypted, envelope);
+      await observeTransparencyGossip(this, envelope.transparencyCheckpoint);
       const hidden = await this.hiddenMessages(state.conversationId);
       const isHidden = hidden.has(String(envelope.clientMessageId)) || hidden.has(String(envelope.targetMessageId));
+      if (isHidden) return;
+      let mutationState = null;
       if (["edit", "delete"].includes(envelope.kind)) {
-        const targetRecord = await this.findCachedEnvelope(state.conversationId, envelope.targetMessageId);
-        const target = targetRecord?.envelope;
-        if (!target || target.kind !== "message" || target.senderUsername !== envelope.senderUsername) {
-          throw new Error("Unauthorized MLS message mutation rejected");
-        }
-      }
-      if (!isHidden) {
+        const cutoff = Number(state.legacyMutationCutoffSequence || 0);
+        mutationState = await this.acceptMessageMutation(state, event, envelope, {
+          requireV2: Number(event.sequence) > cutoff
+        });
+      } else {
         try {
           await this.cacheEnvelope(state, event.sequence, envelope);
         } catch (error) {
           if (import.meta.env.DEV) console.warn("MLS local cache write failed", error);
         }
       }
-      if (isHidden) return;
       if (envelope.kind === "message") {
         dispatchCryptoMessage({ type: "message", message: this.envelopeToUiMessage(state, envelope, event.createdAt, event.sequence) });
       } else {
@@ -919,7 +991,9 @@ class LiotanMlsEngine {
           chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }, event.createdAt, event.sequence).chatId,
           messageId: envelope.targetMessageId,
           text: envelope.text || "",
-          from: envelope.senderUsername
+          from: envelope.senderUsername,
+          mutationRevision: Number(mutationState?.revision || 0),
+          lastMutationId: String(mutationState?.lastMutationId || "")
         });
       }
     } finally {
@@ -958,6 +1032,10 @@ class LiotanMlsEngine {
           throw err;
         }
         const recipientHead = Math.max(0, Number(response.recipientHead) || 0);
+        state.sequence = Math.max(Number(state.sequence) || 0, Number(response.conversation?.sequence) || recipientHead);
+        state.legacyMutationCutoffSequence = Number(
+          response.conversation?.legacyMutationCutoffSequence ?? state.legacyMutationCutoffSequence ?? 0
+        );
         try {
           reconcileSyncCursor({ checkpoint, localHint: after, recipientHead });
           validateRecipientEventPage({ after, recipientHead, events: response.events });
@@ -1142,12 +1220,18 @@ class LiotanMlsEngine {
           epoch,
           ciphertext: bytesToBase64Url(ciphertext),
           ...(transport.attachmentCommit ? { attachmentCommit: transport.attachmentCommit } : {}),
-          ...(transport.attachmentDelete ? { attachmentDelete: transport.attachmentDelete } : {})
+          ...(transport.attachmentDelete ? {
+            attachmentDelete: transport.attachmentDelete,
+            attachmentDeleteBaseSequence: transport.attachmentDeleteBaseSequence
+          } : {})
         }
       }
     );
+    state.sequence = Math.max(Number(state.sequence) || 0, Number(response.sequence) || 0);
     try {
-      await this.cacheEnvelope(state, response.sequence, envelope);
+      if (!transport.deferLocalMutation) {
+        await this.cacheEnvelope(state, response.sequence, envelope);
+      }
     } catch (error) {
       // Delivery already committed. Never retry as a second message merely
       // because the encrypted local cache is full/unavailable.
@@ -1171,6 +1255,7 @@ class LiotanMlsEngine {
       senderUsername: this.username,
       senderClientId: this.clientIdString,
       sentAt: new Date().toISOString(),
+      transparencyCheckpoint: this.transparencyGossip(state),
       text: String(text || "").slice(0, 20000),
       attachment,
       replyTo: replyTo ? { messageId: String(replyTo._id || replyTo.messageId || "") } : null
@@ -1186,6 +1271,53 @@ class LiotanMlsEngine {
   async sendControl({ chatKey, dialog, kind, targetMessageId, text = "", attachmentDelete = null }) {
     if (!["edit", "delete", "pin"].includes(kind)) throw new Error("Invalid MLS control event");
     const state = await this.ensureConversation(chatKey, dialog);
+    if (["edit", "delete"].includes(kind)) {
+      const mutationKey = `${state.conversationId}:${String(targetMessageId || "")}`;
+      const previous = this.mutationQueues.get(mutationKey) || Promise.resolve();
+      const queued = previous.catch(() => {}).then(async () => {
+        await this.syncConversation(state);
+        const targetRecord = await this.findCachedEnvelope(state.conversationId, targetMessageId);
+        const target = targetRecord?.envelope;
+        if (!target || target.kind !== "message" || target.senderUsername !== this.username) {
+          throw new Error("Only the authenticated sender can mutate this MLS message");
+        }
+        const envelope = {
+          v: 1,
+          kind,
+          conversationId: state.conversationId,
+          clientMessageId: crypto.randomUUID(),
+          senderUsername: this.username,
+          senderClientId: this.clientIdString,
+          sentAt: new Date().toISOString(),
+          transparencyCheckpoint: this.transparencyGossip(state),
+          targetMessageId: String(targetMessageId || ""),
+          text: kind === "edit" ? String(text || "").slice(0, 20000) : "",
+          mutation: nextMutationBinding(target, targetRecord.mutationState)
+        };
+        const response = await this.enqueueEnvelope(state, envelope, {
+          attachmentDelete: kind === "delete" ? attachmentDelete : null,
+          attachmentDeleteBaseSequence: Number(state.sequence) || 0,
+          deferLocalMutation: true
+        });
+        const mutationState = await this.acceptMessageMutation(state, response, envelope, { requireV2: true });
+        dispatchCryptoMessage({
+          type: kind,
+          chatId: this.envelopeToUiMessage(state, { ...envelope, attachment: null }).chatId,
+          messageId: envelope.targetMessageId,
+          text: envelope.text,
+          from: this.username,
+          mutationRevision: mutationState.revision,
+          lastMutationId: mutationState.lastMutationId
+        });
+        return { ok: true };
+      });
+      this.mutationQueues.set(mutationKey, queued);
+      try {
+        return await queued;
+      } finally {
+        if (this.mutationQueues.get(mutationKey) === queued) this.mutationQueues.delete(mutationKey);
+      }
+    }
     const envelope = {
       v: 1,
       kind,
@@ -1194,6 +1326,7 @@ class LiotanMlsEngine {
       senderUsername: this.username,
       senderClientId: this.clientIdString,
       sentAt: new Date().toISOString(),
+      transparencyCheckpoint: this.transparencyGossip(state),
       targetMessageId: String(targetMessageId || ""),
       text: kind === "edit" ? String(text || "").slice(0, 20000) : ""
     };
@@ -1213,16 +1346,43 @@ class LiotanMlsEngine {
 
 function wipeEngineKeys(keys) {
   if (!keys) return;
-  wipe(keys.rootSecretKey);
-  wipe(keys.requestSecretKey);
-  wipe(keys.databaseKey);
-  wipe(keys.cacheKey);
+  const wiped = new Set();
+  for (const value of [
+    keys.rootSecretKey,
+    keys.requestSecretKey,
+    keys.legacyRequestSecretKey,
+    keys.localRequestSecretKey,
+    keys.databaseKey,
+    keys.cacheKey
+  ]) {
+    if (value && !wiped.has(value)) {
+      wiped.add(value);
+      wipe(value);
+    }
+  }
+}
+
+async function deriveKeysForBootstrap({ username, recoveryKey, bootstrap, deviceId }) {
+  const deviceRequestSecretKey = await loadOrCreateDeviceRequestSecret(username, deviceId);
+  try {
+    const authVersion = bootstrap.device
+      ? Number(bootstrap.device.authVersion) || 1
+      : 2;
+    return await deriveAccountKeys(
+      recoveryKey,
+      bootstrap.identity.cryptoUserId,
+      deviceId,
+      { deviceRequestSecretKey, authVersion }
+    );
+  } finally {
+    wipe(deviceRequestSecretKey);
+  }
 }
 
 async function createInitializedEngine({ username, recoveryKey, generation }) {
   const deviceId = getOrCreateDeviceId(username);
   const bootstrap = await cryptoBootstrap(deviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  const keys = await deriveKeysForBootstrap({ username, recoveryKey, bootstrap, deviceId });
   let next = new LiotanMlsEngine({ username, bootstrap, deviceId, keys });
   let automaticRepairAttempted = false;
   try {
@@ -1326,13 +1486,22 @@ export function initializeMlsEngine({ username, recoveryKey }) {
   return engineInitialization;
 }
 
-export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
+export async function confirmPendingRecoveryDevice({
+  username,
+  recoveryKey,
+  allowActiveDevices = false
+}) {
   const cleanUsername = String(username || "").trim();
   if (!cleanUsername || !recoveryKey) throw new TypeError("Recovery key is required");
   if (engine || engineInitialization) throw new Error("Close the active MLS session before recovery bootstrap");
   const deviceId = getOrCreateDeviceId(cleanUsername);
   const bootstrap = await cryptoBootstrap(deviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, deviceId);
+  const keys = await deriveKeysForBootstrap({
+    username: cleanUsername,
+    recoveryKey,
+    bootstrap,
+    deviceId
+  });
   try {
     const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
     if (!bootstrap.identity.rootPublicKey ||
@@ -1340,8 +1509,12 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       throw new Error("Recovery key does not match the account identity");
     }
     const target = bootstrap.device;
-    if (!target || target.status !== "pending" || target.activationMode !== "recovery-bootstrap") {
-      throw new Error("No pending recovery-bootstrap device is available");
+    const recoveryEnrollment = Number(target?.authVersion) === 2 &&
+      (target?.activationMode === "recovery-bootstrap" ||
+        (allowActiveDevices && target?.activationMode === "device-approval"));
+    if (!target || target.status !== "pending" ||
+      (!recoveryEnrollment && target.activationMode !== "recovery-bootstrap")) {
+      throw new Error("No pending device is available for explicit recovery enrollment");
     }
     const temporaryEngine = {
       username: cleanUsername,
@@ -1354,19 +1527,38 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       deviceCommitments: bootstrap.deviceCommitments || [],
       allDevices: bootstrap.accountDevices || []
     });
-    const confirmation = {
-      v: 1,
-      cryptoUserId: bootstrap.identity.cryptoUserId,
-      deviceId: target.deviceId,
-      clientId: target.clientId,
-      challenge: target.approvalChallenge,
-      warningAcknowledged: true,
-      timestamp: new Date().toISOString(),
-      nonce: randomId(24)
-    };
+    const confirmation = recoveryEnrollment
+      ? {
+          v: 2,
+          action: "recover-enroll-device",
+          protocol: "liotan-device-auth-v2",
+          cryptoUserId: bootstrap.identity.cryptoUserId,
+          deviceId: target.deviceId,
+          clientId: target.clientId,
+          requestPublicKey: target.requestPublicKey,
+          sessionBindingId: bootstrap.sessionBindingId,
+          challenge: target.approvalChallenge,
+          preserveExistingDevices: true,
+          visibleSecurityEventAcknowledged: true,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          nonce: randomId(24)
+        }
+      : {
+          v: 1,
+          cryptoUserId: bootstrap.identity.cryptoUserId,
+          deviceId: target.deviceId,
+          clientId: target.clientId,
+          challenge: target.approvalChallenge,
+          warningAcknowledged: true,
+          timestamp: new Date().toISOString(),
+          nonce: randomId(24)
+        };
     const confirmationSignature = await signCanonical(
       keys.rootSecretKey,
-      "liotan-recovery-bootstrap-v1",
+      recoveryEnrollment
+        ? "liotan-recovery-enrollment-v2"
+        : "liotan-recovery-bootstrap-v1",
       confirmation
     );
     const nextDevice = {
@@ -1374,17 +1566,20 @@ export async function confirmPendingRecoveryDevice({ username, recoveryKey }) {
       status: "active",
       approval: confirmation,
       approvalSignature: confirmationSignature,
-      approvedByClientId: "recovery-bootstrap",
+      activationMode: recoveryEnrollment ? "recovery-enrollment" : target.activationMode,
+      approvedByClientId: recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap",
       approvalChallenge: ""
     };
     const directory = await buildDirectoryMutation(temporaryEngine, {
       devices: bootstrap.accountDevices || [],
       nextDevice,
-      action: "recovery-bootstrap",
+      action: recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap",
       targetDeviceId: target.deviceId
     });
     return await unsignedCryptoPost(
-      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/recovery-bootstrap`,
+      `/crypto/v4/devices/${encodeURIComponent(target.deviceId)}/${
+        recoveryEnrollment ? "recovery-enrollment" : "recovery-bootstrap"
+      }`,
       {
         confirmation,
         confirmationSignature,
@@ -1404,14 +1599,24 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
 
   const oldDeviceId = getOrCreateDeviceId(cleanUsername);
   const bootstrap = await cryptoBootstrap(oldDeviceId);
-  const keys = await deriveAccountKeys(recoveryKey, bootstrap.identity.cryptoUserId, oldDeviceId);
+  const keys = await deriveKeysForBootstrap({
+    username: cleanUsername,
+    recoveryKey,
+    bootstrap,
+    deviceId: oldDeviceId
+  });
   try {
     const derivedRoot = bytesToBase64Url(keys.rootPublicKey);
     if (!bootstrap.identity.rootPublicKey || !constantTimeTextEqual(bootstrap.identity.rootPublicKey, derivedRoot)) {
       throw new Error("Recovery key does not match the account identity");
     }
     if (bootstrap.device?.status === "active") {
-      configureCryptoSigner({ deviceId: oldDeviceId, requestSecretKey: keys.requestSecretKey });
+      configureCryptoSigner({
+        deviceId: oldDeviceId,
+        requestSecretKey: keys.requestSecretKey,
+        authVersion: Number(bootstrap.device.authVersion) || 1,
+        sessionBindingId: bootstrap.sessionBindingId
+      });
       const temporaryEngine = { username: cleanUsername, bootstrap, keys };
       await verifyAndPinAccountDirectory(temporaryEngine, {
         username: cleanUsername,
@@ -1453,6 +1658,7 @@ export async function reprovisionMlsDevice({ username, recoveryKey }) {
     }
     configureCryptoSigner(null);
     await deleteCoreCryptoDatabase(getCoreCryptoDatabaseName(bootstrap.identity.cryptoUserId, oldDeviceId));
+    await deleteDeviceRequestSecret(cleanUsername, oldDeviceId);
     removeDeviceId(cleanUsername, oldDeviceId);
   } finally {
     configureCryptoSigner(null);

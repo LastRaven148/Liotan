@@ -1,4 +1,6 @@
 const crypto = require("crypto");
+const { proxyConfigFromEnv } = require("../config/proxyTrust");
+const { validateIndependentSecrets } = require("./secretIsolation");
 
 const DEFAULT_SECRET_PATTERNS = [
   "secret",
@@ -22,8 +24,27 @@ function looksLikeWeakSecret(value) {
 
 function validateStartupSecurity(env, logger = console) {
   const findings = [];
+  const runtimeEnv = { ...process.env, ...env };
 
   if (env.NODE_ENV === "production") {
+    const deviceAuthV2EnforcedAt = String(runtimeEnv.DEVICE_AUTH_V2_ENFORCED_AT || "").trim();
+    const deviceAuthV1DisabledAt = String(runtimeEnv.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT || "").trim();
+    const parseCanonicalCutoff = value => {
+      const date = new Date(value);
+      return value && Number.isFinite(date.getTime()) && date.toISOString() === value
+        ? date.getTime()
+        : null;
+    };
+    const v2Cutoff = parseCanonicalCutoff(deviceAuthV2EnforcedAt);
+    const v1DisabledCutoff = parseCanonicalCutoff(deviceAuthV1DisabledAt);
+    if (v2Cutoff === null || v1DisabledCutoff === null || v1DisabledCutoff < v2Cutoff) {
+      findings.push({
+        severity: "critical",
+        code: "device_auth_rollout_configuration_required",
+        message: "DEVICE_AUTH_V2_ENFORCED_AT and DEVICE_AUTH_V1_REQUESTS_DISABLED_AT must be explicit canonical ISO timestamps, with v1 request disablement no earlier than the v2 enrollment cutoff."
+      });
+    }
+
     let publicSecurityUrl;
     try {
       publicSecurityUrl = new URL(String(env.PUBLIC_SECURITY_URL || ""));
@@ -60,11 +81,36 @@ function validateStartupSecurity(env, logger = console) {
         message: "LIOTAN_CRYPTO_DOMAIN must be a stable production domain used in MLS ClientIds."
       });
     }
-    if (looksLikeWeakSecret(env.JWT_SECRET)) {
+    findings.push(...validateIndependentSecrets(runtimeEnv, looksLikeWeakSecret));
+    try {
+      const signingSeed = Buffer.from(
+        String(runtimeEnv.KEY_TRANSPARENCY_SIGNING_KEY || ""),
+        "base64url"
+      );
+      if (signingSeed.length !== 32 ||
+        signingSeed.toString("base64url") !== String(runtimeEnv.KEY_TRANSPARENCY_SIGNING_KEY || "")) {
+        throw new TypeError("invalid signing seed");
+      }
+    } catch {
       findings.push({
         severity: "critical",
-        code: "weak_jwt_secret",
-        message: "JWT_SECRET must be a strong production secret of at least 32 characters."
+        code: "invalid_key_transparency_signing_key",
+        message: "KEY_TRANSPARENCY_SIGNING_KEY must be a canonical base64url-encoded 32-byte Ed25519 seed."
+      });
+    }
+    try {
+      const proxy = proxyConfigFromEnv(runtimeEnv);
+      if (!runtimeEnv.LIOTAN_PROXY_TOPOLOGY) {
+        throw new TypeError("explicit production topology required");
+      }
+      if (proxy.topology !== "direct" && proxy.trustedCidrs.length === 0) {
+        throw new TypeError("trusted proxy CIDRs required");
+      }
+    } catch {
+      findings.push({
+        severity: "critical",
+        code: "invalid_proxy_trust_topology",
+        message: "LIOTAN_PROXY_TOPOLOGY and TRUSTED_PROXY_CIDRS must describe the exact production edge path."
       });
     }
 

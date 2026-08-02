@@ -319,43 +319,6 @@ export async function getDeviceSessionsApi() {
 }
 
 
-function getAttachmentType(file) {
-  const mimeType =
-    file.type || "";
-
-  if (mimeType.startsWith("image/")) {
-    return "photo";
-  }
-
-  if (mimeType.startsWith("video/")) {
-    return "video";
-  }
-
-  if (mimeType.startsWith("audio/")) {
-    return "audio";
-  }
-
-  return "file";
-}
-
-export async function uploadAttachmentApi(file) {
-  if (!file) {
-    throw new Error("Файл не выбран");
-  }
-
-  if (file.size <= 0) {
-    throw new Error("Файл пустой");
-  }
-
-  const form = new FormData();
-  form.append("attachment", file);
-
-  return apiRequest(`${API}/attachments/upload`, {
-    method: "POST",
-    body: form
-  });
-}
-
 export async function updateBioApi(
   username,
   bio,

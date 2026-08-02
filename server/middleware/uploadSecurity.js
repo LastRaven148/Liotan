@@ -18,6 +18,13 @@ const IMAGE_MIME_BY_EXT = {
   ".gif": ["image/gif"]
 };
 
+const AVATAR_MIME_BY_EXT = {
+  ".jpg": ["image/jpeg"],
+  ".jpeg": ["image/jpeg"],
+  ".png": ["image/png"],
+  ".webp": ["image/webp"]
+};
+
 const VIDEO_MIME_BY_EXT = {
   ".mp4": ["video/mp4"],
   ".webm": ["video/webm"],
@@ -125,7 +132,7 @@ function isAllowedAvatar({ mimeType = "", fileName = "", size = 0 }) {
   const fileSize = Number(size);
   if (!Number.isFinite(fileSize) || fileSize < 0 || fileSize > MAX_AVATAR_SIZE) return false;
   if (hasBlockedExtension(fileName)) return false;
-  return mimeMatchesExtension(mimeType, fileName, IMAGE_MIME_BY_EXT);
+  return mimeMatchesExtension(mimeType, fileName, AVATAR_MIME_BY_EXT);
 }
 
 function bufferStartsWith(buffer, bytes) {

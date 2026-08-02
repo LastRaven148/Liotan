@@ -75,7 +75,8 @@ export function editMessageInChat(
         String(item._id) === String(msg._id)
           ? {
               ...item,
-              ...msg
+              ...msg,
+              mls: msg.mls ? { ...item.mls, ...msg.mls } : item.mls
             }
           : item
       )

@@ -41,6 +41,12 @@ const userSchema = new mongoose.Schema({
     default: "image"
   },
 
+  avatarVersion: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
   bio: {
     type: String,
     default: ""

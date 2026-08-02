@@ -11,11 +11,26 @@ function derive(recoveryBytes, cryptoUserId, label, deviceId = "") {
   return hkdf(sha256, recoveryBytes, salt, textEncoder.encode(`${label}:${deviceId}`), 32);
 }
 
-export async function deriveAccountKeys(encodedRecoveryKey, cryptoUserId, deviceId) {
+export async function deriveAccountKeys(
+  encodedRecoveryKey,
+  cryptoUserId,
+  deviceId,
+  { deviceRequestSecretKey = null, authVersion = 1 } = {}
+) {
   const recoveryBytes = base64UrlToBytes(encodedRecoveryKey, 32);
   try {
     const rootSecretKey = derive(recoveryBytes, cryptoUserId, "account-root");
-    const requestSecretKey = derive(recoveryBytes, cryptoUserId, "device-request", deviceId);
+    const legacyRequestSecretKey = derive(recoveryBytes, cryptoUserId, "device-request", deviceId);
+    const localRequestSecretKey = deviceRequestSecretKey
+      ? new Uint8Array(deviceRequestSecretKey)
+      : null;
+    if (localRequestSecretKey && localRequestSecretKey.length !== 32) {
+      localRequestSecretKey.fill(0);
+      throw new TypeError("Local device request secret must contain 32 bytes");
+    }
+    const requestSecretKey = authVersion === 2 && localRequestSecretKey
+      ? localRequestSecretKey
+      : legacyRequestSecretKey;
     const databaseKey = derive(recoveryBytes, cryptoUserId, "corecrypto-database", deviceId);
     const cacheKey = derive(recoveryBytes, cryptoUserId, "local-message-cache", deviceId);
     return {
@@ -23,6 +38,12 @@ export async function deriveAccountKeys(encodedRecoveryKey, cryptoUserId, device
       rootPublicKey: await ed.getPublicKeyAsync(rootSecretKey),
       requestSecretKey,
       requestPublicKey: await ed.getPublicKeyAsync(requestSecretKey),
+      legacyRequestSecretKey,
+      localRequestSecretKey,
+      localRequestPublicKey: localRequestSecretKey
+        ? await ed.getPublicKeyAsync(localRequestSecretKey)
+        : null,
+      authVersion,
       databaseKey,
       cacheKey
     };

@@ -32,6 +32,7 @@ const deleteUploadedFile = require("../utils/deleteUploadedFile");
 const getChatId = require("../utils/getChatId");
 const { runMongoTransaction } = require("../utils/mongoTransaction");
 const { deleteFromR2 } = require("../utils/uploadToR2");
+const { releaseMediaUploadQuota } = require("./mediaQuota");
 
 const LEASE_MS = Math.max(15_000, Number(process.env.DELETION_WORKFLOW_LEASE_MS) || 60_000);
 const MAX_ATTEMPTS = Math.max(3, Number(process.env.DELETION_WORKFLOW_MAX_ATTEMPTS) || 12);
@@ -690,17 +691,25 @@ async function deleteMongoData(workflow, owner) {
     const cryptoClients = current.type === "account"
       ? await CryptoDevice.find({ userId: current.accountUserId }, "clientId").session(session).lean()
       : [];
+    const attachmentQuery = {
+      $or: [
+        { cryptoConversationId: { $in: current.conversationIds } },
+        ...(current.type === "account" ? [{ owner: current.accountUsername }] : [])
+      ]
+    };
+    const quotaUploads = await AttachmentUpload.find(
+      attachmentQuery,
+      "uploadId"
+    ).session(session).lean();
+    for (const upload of quotaUploads) {
+      await releaseMediaUploadQuota(upload.uploadId, { session });
+    }
     const pinnedKeys = [...new Set([
       ...current.participantUsernames,
       ...current.groupIds.map(id => `group:${id}`)
     ])];
     await Promise.all([
-      AttachmentUpload.deleteMany({
-        $or: [
-          { cryptoConversationId: { $in: current.conversationIds } },
-          ...(current.type === "account" ? [{ owner: current.accountUsername }] : [])
-        ]
-      }, { session }),
+      AttachmentUpload.deleteMany(attachmentQuery, { session }),
       CryptoEvent.deleteMany({ conversationId: { $in: current.conversationIds } }, { session }),
       CryptoOperation.deleteMany({
         $or: [

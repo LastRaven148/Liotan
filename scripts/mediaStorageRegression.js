@@ -25,6 +25,14 @@ function remove(result) {
   }));
 }
 
+async function readManaged(result) {
+  assert.strictEqual(typeof result?.openReadStream, "function",
+    "managed media storage must expose a trusted read-stream closure");
+  const chunks = [];
+  for await (const chunk of result.openReadStream()) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 async function main() {
   const before = new Set(fs.readdirSync(temporaryDirectory));
   const rejected = await store(Buffer.from("this is plaintext"));
@@ -36,14 +44,19 @@ async function main() {
   ]);
   const accepted = await store(framedBytes);
   assert.ifError(accepted.error);
-  assert.strictEqual(accepted.result.size, framedBytes.length);
-  assert.strictEqual(
-    accepted.result.ciphertextHash,
-    crypto.createHash("sha256").update(framedBytes).digest("base64url"),
-    "the upload stream must expose the exact hash without rereading the temporary file"
-  );
-  assert.deepStrictEqual(fs.readFileSync(accepted.result.path), framedBytes);
-  await remove(accepted.result);
+  try {
+    assert.strictEqual(accepted.result.size, framedBytes.length);
+    assert.strictEqual(
+      accepted.result.ciphertextHash,
+      crypto.createHash("sha256").update(framedBytes).digest("base64url"),
+      "the upload stream must expose the exact hash without rereading the temporary file"
+    );
+    assert.deepStrictEqual(await readManaged(accepted.result), framedBytes);
+    assert.strictEqual("path" in accepted.result, false,
+      "managed media storage must not expose a filesystem path");
+  } finally {
+    await remove(accepted.result);
+  }
 
   const leaked = fs.readdirSync(temporaryDirectory).filter(name => !before.has(name));
   assert.deepStrictEqual(leaked, [], "media storage regression test must not leak temporary files");

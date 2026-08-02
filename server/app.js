@@ -7,7 +7,7 @@ const { Server } = require("socket.io");
 
 const env = require("./config/env");
 const { corsOptions } = require("./config/corsOptions");
-const { apiLimiter } = require("./middleware/rateLimiters");
+const { strictIpLimiter, apiLimiter } = require("./middleware/rateLimiters");
 const mongoSanitize = require("./middleware/mongoSanitize");
 const requestContext = require("./middleware/requestContext");
 const securityHeaders = require("./middleware/securityHeaders");
@@ -39,7 +39,7 @@ const { createSocketAllowRequest } = require("./security/socketHandshakeGuard");
 const app = express(); // nosemgrep: express-check-csurf-middleware-usage - stateChangingRequestGuard enforces x-liotan-csrf for unsafe methods.
 
 app.disable("x-powered-by");
-app.set("trust proxy", env.TRUST_PROXY_HOPS);
+app.set("trust proxy", env.TRUST_PROXY_CONFIG);
 
 const server = http.createServer(app); // nosemgrep: using-http-server - TLS terminates at Cloudflare/Render/Nginx, Node listens behind the trusted proxy.
 const io = new Server(server, {
@@ -80,6 +80,9 @@ app.use(createProxyProtocolGuard({ nodeEnv: env.NODE_ENV }));
 app.use(apiNoStore);
 app.use(cors(corsOptions));
 app.use(securityHeaders);
+// This coarse IP-only safety net must run before body parsers so oversized or
+// abusive requests cannot consume parsing resources before being rejected.
+app.use(strictIpLimiter);
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use(apiLimiter);

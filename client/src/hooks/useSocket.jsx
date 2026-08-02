@@ -158,7 +158,11 @@ export default function useSocket({
           _id: detail.messageId,
           text: detail.text || "",
           edited: true,
-          editedAt: new Date().toISOString()
+          editedAt: new Date().toISOString(),
+          mls: {
+            mutationRevision: Number(detail.mutationRevision || 0),
+            lastMutationId: String(detail.lastMutationId || "")
+          }
         }));
       } else if (detail.type === "delete") {
         setChats(previous => deleteMessageFromChat(previous, {

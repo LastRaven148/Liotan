@@ -1,4 +1,3 @@
-const Message = require("../models/Messages");
 const Group = require("../models/Group");
 const CryptoConversation = require("../models/CryptoConversation");
 
@@ -7,30 +6,13 @@ function unique(list) {
 }
 
 async function getPrivateDialogUsernames(username) {
-  const [rows, mlsConversations] = await Promise.all([Message.aggregate([
-    {
-      $match: {
-        chatType: { $ne: "group" },
-        $or: [{ from: username }, { to: username }]
-      }
-    },
-    {
-      $project: {
-        otherUser: {
-          $cond: [{ $eq: ["$from", username] }, "$to", "$from"]
-        }
-      }
-    },
-    { $match: { otherUser: { $nin: ["", username] } } },
-    { $group: { _id: "$otherUser" } }
-  ]), CryptoConversation.find({
+  const mlsConversations = await CryptoConversation.find({
     chatType: "private",
     lifecycleState: "active",
     participantUsernames: username
-  }, "participantUsernames").lean()]);
+  }, "participantUsernames").lean();
 
   return unique([
-    ...rows.map(row => row._id),
     ...mlsConversations.flatMap(item => item.participantUsernames || []).filter(item => item !== username)
   ]);
 }
@@ -59,14 +41,7 @@ async function usersAreRelated(userA, userB) {
     return userA === userB;
   }
 
-  const [privateExists, groupExists, mlsExists] = await Promise.all([
-    Message.exists({
-      chatType: { $ne: "group" },
-      $or: [
-        { from: userA, to: userB },
-        { from: userB, to: userA }
-      ]
-    }),
+  const [groupExists, mlsExists] = await Promise.all([
     Group.exists({
       members: { $all: [userA, userB] }
     }),
@@ -76,7 +51,7 @@ async function usersAreRelated(userA, userB) {
     })
   ]);
 
-  return Boolean(privateExists || groupExists || mlsExists);
+  return Boolean(groupExists || mlsExists);
 }
 
 module.exports = {

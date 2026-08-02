@@ -28,6 +28,7 @@ export default function DevicesPage({
   const [sessionError, setSessionError] = useState("");
   const [sessionAction, setSessionAction] = useState("");
   const [cryptoDevices, setCryptoDevices] = useState([]);
+  const [cryptoSecurityEvents, setCryptoSecurityEvents] = useState([]);
   const [cryptoLoading, setCryptoLoading] = useState(true);
   const [cryptoAction, setCryptoAction] = useState("");
   const [cryptoError, setCryptoError] = useState("");
@@ -48,6 +49,7 @@ export default function DevicesPage({
     try {
       const result = await cryptoServices.listDevices();
       setCryptoDevices(result.devices || []);
+      setCryptoSecurityEvents(result.securityEvents || []);
     } catch (error) {
       setCryptoError(error?.message || "Не удалось проверить ключи устройств");
     } finally {
@@ -164,6 +166,15 @@ export default function DevicesPage({
           onApprove={() => runCryptoAction(device, "approve")}
           onRevoke={() => runCryptoAction(device, "revoke")}
         />)}
+        {cryptoSecurityEvents.map(event => <div
+          className="settings-action-notice"
+          key={event.eventId}
+          role="status"
+        >
+          Recovery-событие: устройство {shortId(event.targetDeviceId)} добавлено как отдельное
+          криптографическое устройство {formatSessionTime(event.createdAt)}.
+          Ранее активных устройств: {Number(event.priorActiveDeviceCount) || 0}.
+        </div>)}
         {cryptoNotice && <div className="settings-action-notice" role="status">{cryptoNotice}</div>}
         {cryptoError && <div className="settings-action-error" role="alert">{cryptoError}</div>}
       </SettingsSection>
@@ -216,6 +227,11 @@ function CryptoDeviceRow({ device, current, activeCount, busy, confirming, onAsk
         <div className="settings-device-meta">Создано: {formatSessionTime(device.createdAt || device.manifest?.createdAt)}</div>
         <div className="settings-device-meta">Последняя активность: {formatSessionTime(device.lastSeenAt)}</div>
         <div className="settings-device-meta">Ключ: {shortFingerprint(device.credentialThumbprint)}</div>
+        <div className="settings-device-meta">
+          Аутентификация запросов: {Number(device.authVersion) === 2
+            ? "локальный ключ v2 · сессия привязана"
+            : "legacy v1 · требуется миграция"}
+        </div>
       </div>
       {pending && device.activationMode === "device-approval" && !current &&
         <button type="button" className="settings-mini-safe" disabled={busy} onClick={onApprove}>Подтвердить</button>}

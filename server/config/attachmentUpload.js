@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const fsp = require("fs/promises");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
@@ -21,12 +22,17 @@ for (const entry of fs.readdirSync(uploadTmpDir, { withFileTypes: true })) {
   } catch {}
 }
 
-function ciphertextFramingValidator(onDigest) {
+function ciphertextFramingValidator(onDigest, maximumBytes = MAX_ENCRYPTED_MEDIA_SIZE) {
   let prefix = Buffer.alloc(0);
   let validated = false;
+  let bytes = 0;
   const hash = crypto.createHash("sha256");
   return new Transform({
     transform(chunk, _encoding, callback) {
+      bytes += chunk.length;
+      if (bytes > maximumBytes) {
+        return callback(new Error("encrypted media exceeded its signed byte reservation"));
+      }
       hash.update(chunk);
       if (validated) return callback(null, chunk);
       prefix = Buffer.concat([prefix, chunk]);
@@ -48,12 +54,18 @@ function ciphertextFramingValidator(onDigest) {
 }
 
 const ciphertextDiskStorage = {
-  _handleFile(_req, file, callback) {
+  _handleFile(req, file, callback) {
     const filename = `${Date.now()}-${crypto.randomBytes(16).toString("hex")}.upload`;
     const filePath = path.join(uploadTmpDir, filename);
     const output = fs.createWriteStream(filePath, { flags: "wx", mode: 0o600 });
     let ciphertextHash = "";
-    const validator = ciphertextFramingValidator(value => { ciphertextHash = value; });
+    const maximumBytes = Number(req.cryptoMediaUpload?.declaredBytes);
+    const validator = ciphertextFramingValidator(
+      value => { ciphertextHash = value; },
+      Number.isSafeInteger(maximumBytes) && maximumBytes > 0
+        ? maximumBytes
+        : MAX_ENCRYPTED_MEDIA_SIZE
+    );
     pipeline(file.stream, validator, output, err => {
       if (err) {
         fs.unlink(filePath, () => callback(err));
@@ -62,15 +74,22 @@ const ciphertextDiskStorage = {
       callback(null, {
         destination: uploadTmpDir,
         filename,
-        path: filePath,
         size: output.bytesWritten,
-        ciphertextHash
+        ciphertextHash,
+        openReadStream: () => fs.createReadStream(filePath, { flags: "r" }),
+        removeManagedFile: async () => {
+          try {
+            await fsp.unlink(filePath);
+          } catch (error) {
+            if (error?.code !== "ENOENT") throw error;
+          }
+        }
       });
     });
   },
   _removeFile(_req, file, callback) {
-    if (!file?.path) return callback();
-    fs.unlink(file.path, err => callback(err?.code === "ENOENT" ? null : err));
+    if (typeof file?.removeManagedFile !== "function") return callback();
+    file.removeManagedFile().then(() => callback(), callback);
   }
 };
 

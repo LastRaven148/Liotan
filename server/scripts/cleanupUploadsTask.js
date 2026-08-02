@@ -18,6 +18,14 @@ const AttachmentUpload =
 
 const { deleteFromR2 } =
   require("../utils/uploadToR2");
+const {
+  cleanupPendingAvatars,
+  cleanupDetachedAvatars
+} = require("../services/avatarLifecycle");
+const {
+  releaseAndDeleteMediaUpload,
+  releaseExpiredMediaTransfers
+} = require("../services/mediaQuota");
 
 const uploadsDir =
   path.resolve(
@@ -135,7 +143,7 @@ async function cleanupR2OrphanUploads({ deleteObject = deleteFromR2, now = new D
   for (const upload of orphanUploads) {
     try {
       await deleteObject(upload.storageKey, { storageClass: "private-media" });
-      await AttachmentUpload.deleteOne({ _id: upload._id, lifecycleState: upload.lifecycleState });
+      await releaseAndDeleteMediaUpload(upload.uploadId);
       deleted += 1;
     } catch (err) {
       await AttachmentUpload.updateOne(
@@ -228,15 +236,23 @@ async function cleanupUploads() {
 
   const deletedR2Orphans =
     await cleanupR2OrphanUploads();
+  const deletedTrackedAvatars = await cleanupPendingAvatars();
+  const detachedAvatarResult = process.env.AVATAR_ORPHAN_CLEANUP_ENABLED === "true"
+    ? await cleanupDetachedAvatars()
+    : { found: 0, deleted: 0 };
+  const expiredMediaReservations = await releaseExpiredMediaTransfers();
 
   console.log(
-    `Cleanup finished. Deleted local files: ${deleted}. Deleted R2 orphan uploads: ${deletedR2Orphans}`
+    `Cleanup finished. Deleted local files: ${deleted}. Deleted R2 orphan uploads: ${deletedR2Orphans}. Deleted tracked avatars: ${deletedTrackedAvatars}. Deleted detached avatars: ${detachedAvatarResult.deleted}. Released media reservations: ${expiredMediaReservations}`
   );
 
   return {
     ok: true,
     deleted,
-    deletedR2Orphans
+    deletedR2Orphans,
+    deletedTrackedAvatars,
+    detachedAvatars: detachedAvatarResult,
+    expiredMediaReservations
   };
 
 }

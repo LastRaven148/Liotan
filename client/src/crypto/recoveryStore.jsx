@@ -4,6 +4,7 @@ const DB_NAME = "liotan-local-crypto-v4";
 const DB_VERSION = 2;
 const wrappingKeyPromises = new Map();
 const recoveryUnlockPromises = new Map();
+const deviceRequestKeyPromises = new Map();
 const RECOVERY_PBKDF2_ITERATIONS = 600000;
 
 function openDb() {
@@ -208,6 +209,26 @@ async function loadOrCreateWrappingKey(username) {
   }
 }
 
+async function loadOrCreateDeviceWrappingKey(username, deviceId) {
+  const keyId = `device-auth-wrap:${username}:${deviceId}`;
+  let key = await idbGet("keys", keyId);
+  if (key) return key;
+  const candidate = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+  try {
+    await idbAdd("keys", keyId, candidate);
+    return candidate;
+  } catch (error) {
+    if (error?.name !== "ConstraintError") throw error;
+    key = await idbGet("keys", keyId);
+    if (!key) throw new Error("Unable to load the winning device wrapping key");
+    return key;
+  }
+}
+
 function wrappingKey(username) {
   const keyId = String(username || "");
   if (!wrappingKeyPromises.has(keyId)) {
@@ -217,6 +238,78 @@ function wrappingKey(username) {
     );
   }
   return wrappingKeyPromises.get(keyId);
+}
+
+async function loadOrCreateDeviceRequestSecretInternal(username, deviceId) {
+  const recordKey = `device-auth-v2:${username}:${deviceId}`;
+  const additionalData = textEncoder.encode(`liotan-device-auth-wrap-v2:${username}:${deviceId}`);
+  const wrapping = await loadOrCreateDeviceWrappingKey(username, deviceId);
+  let record = await idbGet("records", recordKey);
+  if (!record) {
+    const secret = randomBytes(32);
+    const iv = randomBytes(12);
+    let ciphertext;
+    let keepSecret = false;
+    try {
+      ciphertext = new Uint8Array(await crypto.subtle.encrypt({
+        name: "AES-GCM",
+        iv,
+        additionalData
+      }, wrapping, secret));
+      const candidate = {
+        v: 2,
+        algorithm: "AES-GCM",
+        iv: bytesToBase64Url(iv),
+        ciphertext: bytesToBase64Url(ciphertext)
+      };
+      try {
+        await idbAdd("records", recordKey, candidate);
+        keepSecret = true;
+        return secret;
+      } catch (error) {
+        if (error?.name !== "ConstraintError") throw error;
+        record = await idbGet("records", recordKey);
+      }
+    } finally {
+      iv.fill(0);
+      ciphertext?.fill(0);
+      if (!keepSecret) secret.fill(0);
+    }
+  }
+  if (record?.v !== 2 || record.algorithm !== "AES-GCM") {
+    throw new Error("Unsupported local device authentication record");
+  }
+  const plaintext = new Uint8Array(await crypto.subtle.decrypt({
+    name: "AES-GCM",
+    iv: base64UrlToBytes(record.iv, 12),
+    additionalData
+  }, wrapping, base64UrlToBytes(record.ciphertext)));
+  if (plaintext.length !== 32) {
+    plaintext.fill(0);
+    throw new Error("Local device authentication record is damaged");
+  }
+  return plaintext;
+}
+
+export function loadOrCreateDeviceRequestSecret(username, deviceId) {
+  const key = `${String(username || "")}:${String(deviceId || "")}`;
+  if (!deviceRequestKeyPromises.has(key)) {
+    deviceRequestKeyPromises.set(
+      key,
+      loadOrCreateDeviceRequestSecretInternal(username, deviceId)
+        .finally(() => deviceRequestKeyPromises.delete(key))
+    );
+  }
+  return deviceRequestKeyPromises.get(key);
+}
+
+export async function deleteDeviceRequestSecret(username, deviceId) {
+  const key = `${String(username || "")}:${String(deviceId || "")}`;
+  deviceRequestKeyPromises.delete(key);
+  await Promise.all([
+    idbDelete("records", `device-auth-v2:${username}:${deviceId}`),
+    idbDelete("keys", `device-auth-wrap:${username}:${deviceId}`)
+  ]);
 }
 
 export function normalizeRecoveryKey(value) {
@@ -794,6 +887,7 @@ export async function deleteEncryptedConversationData(conversationId) {
 export async function deleteLocalCryptoStore() {
   wrappingKeyPromises.clear();
   recoveryUnlockPromises.clear();
+  deviceRequestKeyPromises.clear();
   if (!globalThis.indexedDB) return;
   await new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase(DB_NAME);
