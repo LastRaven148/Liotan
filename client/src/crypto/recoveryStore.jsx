@@ -2,12 +2,14 @@ import { base64UrlToBytes, bytesToBase64Url, randomBytes, textDecoder, textEncod
 
 const DB_NAME = "liotan-local-crypto-v4";
 const DB_VERSION = 2;
+let databaseInitializationPromise = null;
 const wrappingKeyPromises = new Map();
 const recoveryUnlockPromises = new Map();
+const recoveryMutationPromises = new Map();
 const deviceRequestKeyPromises = new Map();
 const RECOVERY_PBKDF2_ITERATIONS = 600000;
 
-function openDb() {
+function openDatabaseConnection() {
   return new Promise((resolve, reject) => {
     if (!globalThis.indexedDB) {
       reject(new Error("IndexedDB is not available"));
@@ -30,6 +32,33 @@ function openDb() {
     };
     request.onerror = () => reject(request.error || new Error("Unable to open local crypto store"));
     request.onblocked = () => reject(new Error("Local crypto store is blocked by another tab"));
+  });
+}
+
+function ensureDatabaseInitialized() {
+  if (!databaseInitializationPromise) {
+    databaseInitializationPromise = openDatabaseConnection()
+      .then(db => db.close())
+      .catch(error => {
+        databaseInitializationPromise = null;
+        throw error;
+      });
+  }
+  return databaseInitializationPromise;
+}
+
+async function openDb() {
+  await ensureDatabaseInitialized();
+  return openDatabaseConnection();
+}
+
+function serializeRecoveryMutation(username, operation) {
+  const key = String(username || "");
+  const previous = recoveryMutationPromises.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  recoveryMutationPromises.set(key, current);
+  return current.finally(() => {
+    if (recoveryMutationPromises.get(key) === current) recoveryMutationPromises.delete(key);
   });
 }
 
@@ -452,21 +481,23 @@ async function decryptPassphraseRecoveryRecord(username, record, passphrase) {
   }
 }
 
-export async function saveRecoveryKey(username, encodedRecoveryKey, options = {}) {
-  const { encoded, bytes } = normalizeRecoveryKey(encodedRecoveryKey);
-  try {
-    if (options.passphrase) {
-      const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, options.passphrase);
-      await idbPut("records", `recovery:${username}`, protectedRecord);
+export function saveRecoveryKey(username, encodedRecoveryKey, options = {}) {
+  return serializeRecoveryMutation(username, async () => {
+    const { encoded, bytes } = normalizeRecoveryKey(encodedRecoveryKey);
+    try {
+      if (options.passphrase) {
+        const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, options.passphrase);
+        await idbPut("records", `recovery:${username}`, protectedRecord);
+        return encoded;
+      }
+      const current = await idbGet("records", `recovery:${username}`);
+      if (current?.v === 2) throw recoveryPresenceError("Passphrase-protected recovery storage cannot be overwritten silently");
+      await idbPut("records", `recovery:${username}`, await createWrappingRecoveryRecord(username, bytes));
       return encoded;
+    } finally {
+      bytes.fill(0);
     }
-    const current = await idbGet("records", `recovery:${username}`);
-    if (current?.v === 2) throw recoveryPresenceError("Passphrase-protected recovery storage cannot be overwritten silently");
-    await idbPut("records", `recovery:${username}`, await createWrappingRecoveryRecord(username, bytes));
-    return encoded;
-  } finally {
-    bytes.fill(0);
-  }
+  });
 }
 
 async function loadRecoveryKeyInternal(username, options = {}) {
@@ -523,36 +554,40 @@ export async function getRecoveryProtectionStatus(username) {
   };
 }
 
-export async function enableRecoveryProtection(username, passphrase) {
-  const current = await loadRecoveryKey(username);
-  if (!current) throw new Error("Recovery key is not stored on this device");
-  const { bytes } = normalizeRecoveryKey(current);
-  try {
-    const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, passphrase);
-    const migrationKey = `recovery-migration:${username}`;
-    await idbPut("records", migrationKey, protectedRecord);
-    await idbPut("records", `recovery:${username}`, protectedRecord);
-    await idbDelete("records", migrationKey);
-    return { requiresUserPresence: true };
-  } finally {
-    bytes.fill(0);
-  }
+export function enableRecoveryProtection(username, passphrase) {
+  return serializeRecoveryMutation(username, async () => {
+    const current = await loadRecoveryKey(username);
+    if (!current) throw new Error("Recovery key is not stored on this device");
+    const { bytes } = normalizeRecoveryKey(current);
+    try {
+      const protectedRecord = await createPassphraseRecoveryRecord(username, bytes, passphrase);
+      const migrationKey = `recovery-migration:${username}`;
+      await idbPut("records", migrationKey, protectedRecord);
+      await idbPut("records", `recovery:${username}`, protectedRecord);
+      await idbDelete("records", migrationKey);
+      return { requiresUserPresence: true };
+    } finally {
+      bytes.fill(0);
+    }
+  });
 }
 
-export async function disableRecoveryProtection(username, passphrase) {
-  const current = await loadRecoveryKey(username, { passphrase });
-  if (!current) throw new Error("Recovery key is not stored on this device");
-  const { bytes } = normalizeRecoveryKey(current);
-  try {
-    const unprotectedRecord = await createWrappingRecoveryRecord(username, bytes);
-    const migrationKey = `recovery-migration:${username}`;
-    await idbPut("records", migrationKey, unprotectedRecord);
-    await idbPut("records", `recovery:${username}`, unprotectedRecord);
-    await idbDelete("records", migrationKey);
-  } finally {
-    bytes.fill(0);
-  }
-  return { requiresUserPresence: false };
+export function disableRecoveryProtection(username, passphrase) {
+  return serializeRecoveryMutation(username, async () => {
+    const current = await loadRecoveryKey(username, { passphrase });
+    if (!current) throw new Error("Recovery key is not stored on this device");
+    const { bytes } = normalizeRecoveryKey(current);
+    try {
+      const unprotectedRecord = await createWrappingRecoveryRecord(username, bytes);
+      const migrationKey = `recovery-migration:${username}`;
+      await idbPut("records", migrationKey, unprotectedRecord);
+      await idbPut("records", `recovery:${username}`, unprotectedRecord);
+      await idbDelete("records", migrationKey);
+    } finally {
+      bytes.fill(0);
+    }
+    return { requiresUserPresence: false };
+  });
 }
 
 async function encryptStoredRecord(recordKey, value, cryptoKey) {
@@ -885,8 +920,10 @@ export async function deleteEncryptedConversationData(conversationId) {
 }
 
 export async function deleteLocalCryptoStore() {
+  databaseInitializationPromise = null;
   wrappingKeyPromises.clear();
   recoveryUnlockPromises.clear();
+  recoveryMutationPromises.clear();
   deviceRequestKeyPromises.clear();
   if (!globalThis.indexedDB) return;
   await new Promise((resolve, reject) => {
