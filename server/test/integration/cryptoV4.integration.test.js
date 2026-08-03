@@ -24,6 +24,46 @@ let CryptoConversation;
 let canonicalJson;
 let signAuthToken;
 let hashSessionId;
+let r2Module;
+let originalStreamFromR2;
+let mediaStreamBehavior;
+let mediaStreamInvocation;
+
+function mockMediaStream(ciphertext, { error = null } = {}) {
+  const source = Buffer.from(ciphertext);
+  mediaStreamBehavior = async (key, responseTarget, options = {}) => {
+    mediaStreamInvocation = { key, options };
+    if (error) throw error;
+
+    let body = source;
+    let statusCode = 200;
+    const headers = {};
+    const range = String(options.range || "");
+    if (range) {
+      statusCode = 206;
+      const explicit = /^bytes=(\d+)-(\d+)$/.exec(range);
+      const suffix = /^bytes=-(\d+)$/.exec(range);
+      let start;
+      let end;
+      if (explicit) {
+        start = Number(explicit[1]);
+        end = Number(explicit[2]);
+      } else if (suffix) {
+        const bytes = Number(suffix[1]);
+        start = Math.max(0, source.length - bytes);
+        end = source.length - 1;
+      } else {
+        throw new Error(`test received unexpected normalized range: ${range}`);
+      }
+      body = source.subarray(start, end + 1);
+      headers["content-range"] = `bytes ${start}-${end}/${source.length}`;
+    }
+    headers["content-length"] = String(body.length);
+    options.onResponse?.({ statusCode, headers });
+    responseTarget.end(body);
+    return { statusCode, headers, key };
+  };
+}
 
 function rawPublicKey(publicKey) {
   return publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
@@ -500,6 +540,15 @@ before(async () => {
   process.env.DEVICE_AUTH_V2_ENFORCED_AT = "2099-01-01T00:00:00.000Z";
   process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2099-01-01T00:00:00.000Z";
 
+  r2Module = require("../../utils/uploadToR2");
+  originalStreamFromR2 = r2Module.streamFromR2;
+  r2Module.streamFromR2 = (...args) => {
+    if (typeof mediaStreamBehavior !== "function") {
+      throw new Error("unexpected R2 media stream in integration test");
+    }
+    return mediaStreamBehavior(...args);
+  };
+
   replSet = await MongoMemoryReplSet.create({
     binary: { version: "8.0.14" },
     replSet: { count: 1, storageEngine: "wiredTiger" }
@@ -525,6 +574,7 @@ after(async () => {
   if (server?.listening) await new Promise(resolve => server.close(resolve));
   if (mongoose) await mongoose.disconnect();
   if (replSet) await replSet.stop();
+  if (r2Module && originalStreamFromR2) r2Module.streamFromR2 = originalStreamFromR2;
 });
 
 test("MLS delivery service enforces identity, device, replay, epochs and membership", async () => {
@@ -626,6 +676,156 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
 
   const conversation = await CryptoConversation.findOne({ conversationId }).lean();
   assert.equal(conversation.blockedForEpochChange, false);
+});
+
+test("authorized MLS media download enforces roster, lifecycle, ranges, quota and private R2 streaming", async () => {
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const MediaTransferReservation = require("../../models/MediaTransferReservation");
+  const ciphertext = Buffer.from("liotan-mls-ciphertext");
+  const alice = await createAccount("media_alice");
+  const bob = await createAccount("media_bob");
+  const outsider = await createAccount("media_out");
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const uploadId = `media-${crypto.randomBytes(12).toString("base64url")}`;
+  const storageKey = "liotan/mls/private-route-test.liotanmedia";
+
+  async function createUpload(overrides = {}) {
+    return AttachmentUpload.create({
+      uploadId: overrides.uploadId || uploadId,
+      owner: alice.username,
+      name: "encrypted.liotanmedia",
+      type: "file",
+      mimeType: "application/octet-stream",
+      size: overrides.ciphertextBytes || ciphertext.length,
+      ciphertextBytes: overrides.ciphertextBytes || ciphertext.length,
+      encrypted: true,
+      protocol: "mls-media-1",
+      cryptoConversationId: overrides.cryptoConversationId || conversationId,
+      cryptoClientId: alice.clientId,
+      bindingId: overrides.bindingId || crypto.randomBytes(24).toString("base64url"),
+      ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+      boundClientMessageId: crypto.randomUUID(),
+      lifecycleState: overrides.lifecycleState || "committed",
+      committedAt: overrides.lifecycleState && overrides.lifecycleState !== "committed" ? null : new Date(),
+      storageKey: overrides.storageKey || storageKey,
+      storageType: "r2:private-media"
+    });
+  }
+
+  function download(account, id, range = "") {
+    const path = `/crypto/v4/media/${encodeURIComponent(id)}`;
+    let request = requestFor(account, "GET", path).set(signedHeaders(account, "GET", path));
+    if (range) request = request.set("Range", range);
+    return request;
+  }
+
+  await createUpload();
+  mockMediaStream(ciphertext);
+  const full = await download(alice, uploadId);
+  assert.equal(full.status, 200, full.text);
+  assert.equal(full.headers["content-type"], "application/octet-stream");
+  assert.match(full.headers["cache-control"] || "", /private/);
+  assert.match(full.headers["cache-control"] || "", /no-store/);
+  assert.equal(full.headers["content-disposition"], "attachment; filename=liotan-encrypted-media.bin");
+  assert.deepEqual(full.body, ciphertext);
+  assert.equal(mediaStreamInvocation.key, storageKey);
+  assert.equal(mediaStreamInvocation.options.storageClass, "private-media");
+
+  mockMediaStream(ciphertext);
+  const partial = await download(alice, uploadId, "bytes=2-7");
+  assert.equal(partial.status, 206, partial.text);
+  assert.equal(partial.headers["content-range"], `bytes 2-7/${ciphertext.length}`);
+  assert.equal(partial.headers["content-length"], "6");
+  assert.deepEqual(partial.body, ciphertext.subarray(2, 8));
+
+  const invalidRange = await download(alice, uploadId, "bytes=999-1000");
+  assert.equal(invalidRange.status, 416, invalidRange.text);
+  assert.equal(invalidRange.headers["content-range"], `bytes */${ciphertext.length}`);
+
+  const oversizedUploadId = `${uploadId}-oversized`;
+  const oversizedBytes = 8 * 1024 * 1024 + 1;
+  await createUpload({
+    uploadId: oversizedUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextBytes: oversizedBytes
+  });
+  const excessiveRange = await download(alice, oversizedUploadId, `bytes=0-${oversizedBytes - 1}`);
+  assert.equal(excessiveRange.status, 416, excessiveRange.text);
+  assert.equal(excessiveRange.headers["content-range"], `bytes */${oversizedBytes}`);
+
+  const unknown = await download(alice, "unknown-media-upload");
+  assert.equal(unknown.status, 404, unknown.text);
+
+  const inaccessible = await download(outsider, uploadId);
+  assert.equal(inaccessible.status, 404, inaccessible.text);
+  assert.doesNotMatch(inaccessible.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const lifecycleUploadIds = [];
+  for (const lifecycleState of ["temporary", "deletion-pending"]) {
+    const lifecycleUploadId = `${uploadId}-${lifecycleState}`;
+    lifecycleUploadIds.push(lifecycleUploadId);
+    await createUpload({
+      uploadId: lifecycleUploadId,
+      bindingId: crypto.randomBytes(24).toString("base64url"),
+      lifecycleState
+    });
+    const rejected = await download(alice, lifecycleUploadId);
+    assert.equal(rejected.status, 404, rejected.text);
+  }
+  await AttachmentUpload.deleteMany({ uploadId: { $in: lifecycleUploadIds } });
+
+  const missingError = new Error("mocked R2 object is missing");
+  missingError.status = 502;
+  missingError.code = "R2_OBJECT_NOT_FOUND";
+  mockMediaStream(ciphertext, { error: missingError });
+  const missing = await download(alice, uploadId);
+  assert.equal(missing.status, 502, missing.text);
+  assert.equal(missing.body.error, "server error");
+  assert.doesNotMatch(missing.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  let reservation = await MediaTransferReservation.findOne({
+    userId: alice.user._id,
+    direction: "download"
+  }).sort({ createdAt: -1 }).lean();
+  assert.equal(reservation.state, "released");
+
+  mockMediaStream(ciphertext, { error: new Error("mocked R2 timeout") });
+  const timeout = await download(alice, uploadId);
+  assert.equal(timeout.status, 500, timeout.text);
+  assert.equal(timeout.body.error, "server error");
+  assert.doesNotMatch(timeout.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  reservation = await MediaTransferReservation.findOne({
+    userId: alice.user._id,
+    direction: "download"
+  }).sort({ createdAt: -1 }).lean();
+  assert.equal(reservation.state, "released");
+
+  const revoked = await createAccount("media_revoked");
+  await CryptoDevice.updateOne({ clientId: revoked.clientId }, { $set: { status: "revoked" } });
+  const revokedResponse = await download(revoked, uploadId);
+  assert.equal(revokedResponse.status, 401, revokedResponse.text);
+
+  const expired = await createAccount("media_expired");
+  const resolved = await signedJson(expired, "POST", "/crypto/v4/conversations/resolve", {
+    chatType: "private",
+    targetUsername: expired.username
+  });
+  assert.equal(resolved.status, 200, resolved.text);
+  const expiredUploadId = `${uploadId}-expired`;
+  await createUpload({
+    uploadId: expiredUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    cryptoConversationId: resolved.body.conversationId
+  });
+  await CryptoDevice.updateOne({ clientId: expired.clientId }, {
+    $set: { manifestExpiresAt: new Date(Date.now() - 1000) }
+  });
+  const expiredResponse = await download(expired, expiredUploadId);
+  assert.equal(expiredResponse.status, 401, expiredResponse.text);
+  assert.match(expiredResponse.body.error, /expired/i);
+  const expiredConversation = await CryptoConversation.findOne({
+    conversationId: resolved.body.conversationId
+  }).lean();
+  assert.equal(expiredConversation.blockedForEpochChange, true);
 });
 
 test("a cryptographic device signature cannot cross its bound browser session", async () => {

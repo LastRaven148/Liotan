@@ -21,3 +21,19 @@ This file records concise, reproducible local evidence. Production systems and s
 - Result: no whitespace errors.
 - Repository evidence: `git status --short` reported only the new `docs/security/remediation-2026-08-03/` directory. The four historical security documents enforced by `scripts/securityRegression.js` and the complete `remediation-2026-07-23` directory remain present.
 - Skipped: Markdown link validation because no link-checker is configured in package scripts, workflows, dependencies, or repository scripts.
+
+## SEC-2026-08-001 — MLS encrypted-media download
+
+- Date/time: 2026-08-03T03:18–03:22+03:00.
+- Minimal pre-fix command: inline Node invocation of `downloadMedia` with a valid mocked upload lookup.
+- Exit code: 0 for the proof harness; captured result `ReferenceError: assertConversationAccess is not defined`.
+- First route-test command: `npm run test:integration --prefix server`.
+- Exit code: 1; 48 passed, 1 failed. The first draft fixture used usernames longer than the existing auth policy and was corrected before evaluating the production finding.
+- Second pre-fix route-test command: `npm run test:integration --prefix server`.
+- Exit code: 1; 48 passed, 1 failed. The new authenticated media route returned 500 instead of 200 and the structured server log identified `ReferenceError`.
+- Post-fix route-test command: `npm run test:integration --prefix server`.
+- Exit code: 0; 49 passed, 0 failed, 0 skipped. Covered full ciphertext, valid/invalid/excessive ranges, unknown and inaccessible uploads, temporary/deletion-pending lifecycle rejection, revoked and expired devices, R2 missing/timeout errors, sanitized responses, private storage class, quota completion/release, and fail-closed conversation state.
+- Additional command: `node --test server/test/unit/attachmentUpload.test.js`.
+- Exit code: 0; 2 passed, 0 failed, 0 skipped.
+- Additional commands: `npm run test:media-storage`; `npm run test:crypto-static`; `node --check server/controllers/cryptoV4/media.js`; `git diff --check`.
+- Exit codes: all 0. Media-storage and crypto-static regressions passed; syntax and whitespace checks were clean.

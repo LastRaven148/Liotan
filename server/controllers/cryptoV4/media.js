@@ -4,7 +4,11 @@ const AttachmentUpload = require("../../models/AttachmentUpload");
 const { uploadToR2, streamFromR2, deleteFromR2 } = require("../../utils/uploadToR2");
 const { registerAttachmentUpload } = require("../../services/attachmentOwnership");
 const { sha256Base64Url } = require("../../security/cryptoV4");
-const { randomId } = require("./shared");
+const {
+  authorizedClientIds,
+  normalizeClientIds
+} = require("../../security/cryptoRosterState");
+const { assertConversationAccess, randomId } = require("./shared");
 const { MAX_ENCRYPTED_MEDIA_SIZE } = require("../../middleware/uploadSecurity");
 const {
   reserveMediaTransfer,
@@ -182,7 +186,7 @@ async function downloadMedia(req, res, next) {
     if (quota?.reservationId) {
       await releaseMediaTransfer(quota.reservationId).catch(() => {});
     }
-    if (err.status) return res.status(err.status).json({ error: err.message });
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
     return next(err);
   }
 }

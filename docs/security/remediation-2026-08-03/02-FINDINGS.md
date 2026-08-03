@@ -5,7 +5,7 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 ## SEC-2026-08-001 — Broken MLS encrypted media download runtime path
 
 - Severity: High (feature availability and error-path integrity).
-- Status: **OPEN**.
+- Status: **FIXED**.
 - Affected files: `server/controllers/cryptoV4/media.js`; route, R2, quota, roster, and integration-test dependencies.
 - Current behavior: `downloadMedia` calls `assertConversationAccess`, `normalizeClientIds`, and `authorizedClientIds` without importing them. An otherwise valid committed media download reaches an undefined identifier and fails before authorization can complete.
 - Preconditions: an authenticated crypto device requests a valid committed MLS media upload ID.
@@ -15,7 +15,9 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Exploitability: easy to trigger for a user who can reach the route; no privilege escalation is required.
 - Proposed fix: import the existing shared access and roster primitives without weakening lifecycle, membership, device, range, quota, no-store, or private-R2 requirements.
 - Required evidence: full/range route tests, invalid/excessive range, unknown/inaccessible/revoked/expired/lifecycle cases, missing/erroring R2, quota release, and no undefined identifier.
-- Baseline evidence: `media.js` imports end at media quota helpers, while lines 144–146 reference the three missing bindings.
+- Baseline evidence: `media.js` imported no access/roster helpers, while the download path referenced all three. A pre-fix route-level run returned 500 and logged `ReferenceError` before streaming.
+- Remediation: imported the existing shared access and roster primitives; routed 5xx R2 errors through the common sanitized error handler; added a real authenticated route test with mocked private R2 and the real Mongo-backed quota, conversation, device-auth, and session layers.
+- Verification: 49/49 server integration tests, 2/2 attachment unit tests, media-storage regression, crypto static analysis, syntax check, and `git diff --check` passed. Revoked devices retain the existing generic 401 device-auth response rather than disclosing that a known device is revoked.
 
 ## SEC-2026-08-002 — Non-atomic email code attempts, consumption, replacement, and expiry
 
