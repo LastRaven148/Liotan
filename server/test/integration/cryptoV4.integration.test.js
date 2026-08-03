@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const http = require("node:http");
 const { after, before, test } = require("node:test");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const supertest = require("supertest");
@@ -29,7 +30,12 @@ let originalStreamFromR2;
 let mediaStreamBehavior;
 let mediaStreamInvocation;
 
-function mockMediaStream(ciphertext, { error = null } = {}) {
+function mockMediaStream(ciphertext, {
+  error = null,
+  responseStatus = null,
+  responseHeaders = null,
+  beforeEnd = null
+} = {}) {
   const source = Buffer.from(ciphertext);
   mediaStreamBehavior = async (key, responseTarget, options = {}) => {
     mediaStreamInvocation = { key, options };
@@ -59,10 +65,89 @@ function mockMediaStream(ciphertext, { error = null } = {}) {
       headers["content-range"] = `bytes ${start}-${end}/${source.length}`;
     }
     headers["content-length"] = String(body.length);
-    options.onResponse?.({ statusCode, headers });
-    responseTarget.end(body);
-    return { statusCode, headers, key };
+    for (const [name, value] of Object.entries(responseHeaders || {})) {
+      if (value === null || value === undefined) delete headers[name];
+      else headers[name] = String(value);
+    }
+    options.onResponse?.({ statusCode: responseStatus ?? statusCode, headers });
+    if (beforeEnd) await beforeEnd({ key, options, responseTarget });
+    const leadingBody = body.subarray(0, Math.max(0, body.length - 1));
+    const finalBody = body.subarray(Math.max(0, body.length - 1));
+    if (leadingBody.length) responseTarget.write(leadingBody);
+    return {
+      statusCode: responseStatus ?? statusCode,
+      headers,
+      key,
+      bytes: body.length,
+      finalize: () => new Promise((resolve, reject) => {
+        responseTarget.write(finalBody, error => error ? reject(error) : resolve());
+      })
+    };
   };
+}
+
+async function createMediaFixture(prefix, { includeOutsider = false, ciphertext = null } = {}) {
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const body = ciphertext || Buffer.from(`liotan-${prefix}-ciphertext`);
+  const alice = await createAccount(`${prefix}_a`);
+  const bob = await createAccount(`${prefix}_b`);
+  const outsider = includeOutsider ? await createAccount(`${prefix}_o`) : null;
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const uploadId = `${prefix}-${crypto.randomBytes(12).toString("base64url")}`;
+  const storageKey = `liotan/mls/${prefix}-private.liotanmedia`;
+
+  async function createUpload(overrides = {}) {
+    const ciphertextBytes = overrides.ciphertextBytes ?? body.length;
+    return AttachmentUpload.create({
+      uploadId: overrides.uploadId || uploadId,
+      owner: alice.username,
+      name: "encrypted.liotanmedia",
+      type: "file",
+      mimeType: "application/octet-stream",
+      size: ciphertextBytes,
+      ciphertextBytes,
+      encrypted: true,
+      protocol: "mls-media-1",
+      cryptoConversationId: overrides.cryptoConversationId || conversationId,
+      cryptoClientId: alice.clientId,
+      bindingId: overrides.bindingId || crypto.randomBytes(24).toString("base64url"),
+      ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+      boundClientMessageId: crypto.randomUUID(),
+      lifecycleState: overrides.lifecycleState || "committed",
+      committedAt: overrides.lifecycleState && overrides.lifecycleState !== "committed" ? null : new Date(),
+      storageKey: overrides.storageKey || storageKey,
+      storageType: "r2:private-media"
+    });
+  }
+
+  function download(account, id = uploadId, range = "") {
+    const path = `/crypto/v4/media/${encodeURIComponent(id)}`;
+    let request = requestFor(account, "GET", path).set(signedHeaders(account, "GET", path));
+    if (range) request = request.set("Range", range);
+    return request;
+  }
+
+  await createUpload();
+  return { alice, bob, outsider, conversationId, uploadId, storageKey, ciphertext: body, createUpload, download };
+}
+
+async function latestMediaReservation(userId) {
+  const MediaTransferReservation = require("../../models/MediaTransferReservation");
+  return MediaTransferReservation.findOne({ userId, direction: "download" })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+async function waitForMediaReservationState(userId, state) {
+  const deadline = Date.now() + 3000;
+  do {
+    const reservation = await latestMediaReservation(userId);
+    if (reservation?.state === state) return reservation;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  } while (Date.now() < deadline);
+  const reservation = await latestMediaReservation(userId);
+  assert.equal(reservation?.state, state);
+  return reservation;
 }
 
 function rawPublicKey(publicKey) {
@@ -713,140 +798,116 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
   assert.equal(conversation.blockedForEpochChange, false);
 });
 
-test("authorized MLS media download enforces roster, lifecycle, ranges, quota and private R2 streaming", async () => {
-  const AttachmentUpload = require("../../models/AttachmentUpload");
-  const MediaTransferReservation = require("../../models/MediaTransferReservation");
-  const ciphertext = Buffer.from("liotan-mls-ciphertext");
-  const alice = await createAccount("media_alice");
-  const bob = await createAccount("media_bob");
-  const outsider = await createAccount("media_out");
-  const { conversationId } = await initializePrivateConversation(alice, bob);
-  const uploadId = `media-${crypto.randomBytes(12).toString("base64url")}`;
-  const storageKey = "liotan/mls/private-route-test.liotanmedia";
-
-  async function createUpload(overrides = {}) {
-    return AttachmentUpload.create({
-      uploadId: overrides.uploadId || uploadId,
-      owner: alice.username,
-      name: "encrypted.liotanmedia",
-      type: "file",
-      mimeType: "application/octet-stream",
-      size: overrides.ciphertextBytes || ciphertext.length,
-      ciphertextBytes: overrides.ciphertextBytes || ciphertext.length,
-      encrypted: true,
-      protocol: "mls-media-1",
-      cryptoConversationId: overrides.cryptoConversationId || conversationId,
-      cryptoClientId: alice.clientId,
-      bindingId: overrides.bindingId || crypto.randomBytes(24).toString("base64url"),
-      ciphertextHash: crypto.randomBytes(32).toString("base64url"),
-      boundClientMessageId: crypto.randomUUID(),
-      lifecycleState: overrides.lifecycleState || "committed",
-      committedAt: overrides.lifecycleState && overrides.lifecycleState !== "committed" ? null : new Date(),
-      storageKey: overrides.storageKey || storageKey,
-      storageType: "r2:private-media"
-    });
-  }
-
-  function download(account, id, range = "") {
-    const path = `/crypto/v4/media/${encodeURIComponent(id)}`;
-    let request = requestFor(account, "GET", path).set(signedHeaders(account, "GET", path));
-    if (range) request = request.set("Range", range);
-    return request;
-  }
-
-  await createUpload();
-  mockMediaStream(ciphertext);
-  const full = await download(alice, uploadId);
+test("MLS media download streams exact full and partial ciphertext with matching quota", async () => {
+  const fixture = await createMediaFixture("med_ok");
+  mockMediaStream(fixture.ciphertext);
+  const full = await fixture.download(fixture.alice);
   assert.equal(full.status, 200, full.text);
   assert.equal(full.headers["content-type"], "application/octet-stream");
   assert.match(full.headers["cache-control"] || "", /private/);
   assert.match(full.headers["cache-control"] || "", /no-store/);
   assert.equal(full.headers["content-disposition"], "attachment; filename=liotan-encrypted-media.bin");
-  assert.deepEqual(full.body, ciphertext);
-  assert.equal(mediaStreamInvocation.key, storageKey);
+  assert.equal(full.headers["content-length"], String(fixture.ciphertext.length));
+  assert.deepEqual(full.body, fixture.ciphertext);
+  assert.equal(mediaStreamInvocation.key, fixture.storageKey);
   assert.equal(mediaStreamInvocation.options.storageClass, "private-media");
+  assert.equal(mediaStreamInvocation.options.expectedBytes, fixture.ciphertext.length);
+  let reservation = await latestMediaReservation(fixture.alice.user._id);
+  assert.equal(reservation.state, "completed");
+  assert.equal(reservation.declaredBytes, fixture.ciphertext.length);
+  assert.equal(reservation.actualBytes, fixture.ciphertext.length);
 
-  mockMediaStream(ciphertext);
-  const partial = await download(alice, uploadId, "bytes=2-7");
+  mockMediaStream(fixture.ciphertext);
+  const partial = await fixture.download(fixture.alice, fixture.uploadId, "bytes=2-7");
   assert.equal(partial.status, 206, partial.text);
-  assert.equal(partial.headers["content-range"], `bytes 2-7/${ciphertext.length}`);
+  assert.equal(partial.headers["content-range"], `bytes 2-7/${fixture.ciphertext.length}`);
   assert.equal(partial.headers["content-length"], "6");
-  assert.deepEqual(partial.body, ciphertext.subarray(2, 8));
+  assert.deepEqual(partial.body, fixture.ciphertext.subarray(2, 8));
+  assert.equal(mediaStreamInvocation.options.expectedBytes, 6);
+  reservation = await latestMediaReservation(fixture.alice.user._id);
+  assert.equal(reservation.state, "completed");
+  assert.equal(reservation.declaredBytes, 6);
+  assert.equal(reservation.actualBytes, 6);
+});
 
-  const invalidRange = await download(alice, uploadId, "bytes=999-1000");
+test("MLS media download rejects invalid client ranges and inconsistent R2 responses", async () => {
+  const fixture = await createMediaFixture("med_rng");
+  const invalidRange = await fixture.download(fixture.alice, fixture.uploadId, "bytes=999-1000");
   assert.equal(invalidRange.status, 416, invalidRange.text);
-  assert.equal(invalidRange.headers["content-range"], `bytes */${ciphertext.length}`);
+  assert.equal(invalidRange.headers["content-range"], `bytes */${fixture.ciphertext.length}`);
 
-  const oversizedUploadId = `${uploadId}-oversized`;
+  const oversizedUploadId = `${fixture.uploadId}-oversized`;
   const oversizedBytes = 8 * 1024 * 1024 + 1;
-  await createUpload({
+  await fixture.createUpload({
     uploadId: oversizedUploadId,
     bindingId: crypto.randomBytes(24).toString("base64url"),
     ciphertextBytes: oversizedBytes
   });
-  const excessiveRange = await download(alice, oversizedUploadId, `bytes=0-${oversizedBytes - 1}`);
+  const excessiveRange = await fixture.download(fixture.alice, oversizedUploadId, `bytes=0-${oversizedBytes - 1}`);
   assert.equal(excessiveRange.status, 416, excessiveRange.text);
   assert.equal(excessiveRange.headers["content-range"], `bytes */${oversizedBytes}`);
 
-  const unknown = await download(alice, "unknown-media-upload");
+  mockMediaStream(fixture.ciphertext, { responseStatus: 206 });
+  const wrongStatus = await fixture.download(fixture.alice);
+  assert.equal(wrongStatus.status, 502, wrongStatus.text);
+  assert.equal(wrongStatus.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, {
+    responseHeaders: { "content-range": `bytes 3-8/${fixture.ciphertext.length}` }
+  });
+  const wrongRange = await fixture.download(fixture.alice, fixture.uploadId, "bytes=2-7");
+  assert.equal(wrongRange.status, 502, wrongRange.text);
+  assert.equal(wrongRange.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, {
+    responseHeaders: { "content-length": String(fixture.ciphertext.length + 1) }
+  });
+  const wrongLength = await fixture.download(fixture.alice);
+  assert.equal(wrongLength.status, 502, wrongLength.text);
+  assert.equal(wrongLength.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+});
+
+test("MLS media download hides object state and enforces lifecycle and device policy", async () => {
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const fixture = await createMediaFixture("med_auth", { includeOutsider: true });
+  const unknown = await fixture.download(fixture.alice, "unknown-media-upload");
   assert.equal(unknown.status, 404, unknown.text);
 
-  const inaccessible = await download(outsider, uploadId);
+  const inaccessible = await fixture.download(fixture.outsider);
   assert.equal(inaccessible.status, 404, inaccessible.text);
-  assert.doesNotMatch(inaccessible.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(inaccessible.text, new RegExp(fixture.storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   const lifecycleUploadIds = [];
   for (const lifecycleState of ["temporary", "deletion-pending"]) {
-    const lifecycleUploadId = `${uploadId}-${lifecycleState}`;
+    const lifecycleUploadId = `${fixture.uploadId}-${lifecycleState}`;
     lifecycleUploadIds.push(lifecycleUploadId);
-    await createUpload({
+    await fixture.createUpload({
       uploadId: lifecycleUploadId,
       bindingId: crypto.randomBytes(24).toString("base64url"),
       lifecycleState
     });
-    const rejected = await download(alice, lifecycleUploadId);
+    const rejected = await fixture.download(fixture.alice, lifecycleUploadId);
     assert.equal(rejected.status, 404, rejected.text);
   }
   await AttachmentUpload.deleteMany({ uploadId: { $in: lifecycleUploadIds } });
 
-  const missingError = new Error("mocked R2 object is missing");
-  missingError.status = 502;
-  missingError.code = "R2_OBJECT_NOT_FOUND";
-  mockMediaStream(ciphertext, { error: missingError });
-  const missing = await download(alice, uploadId);
-  assert.equal(missing.status, 502, missing.text);
-  assert.equal(missing.body.error, "server error");
-  assert.doesNotMatch(missing.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  let reservation = await MediaTransferReservation.findOne({
-    userId: alice.user._id,
-    direction: "download"
-  }).sort({ createdAt: -1 }).lean();
-  assert.equal(reservation.state, "released");
-
-  mockMediaStream(ciphertext, { error: new Error("mocked R2 timeout") });
-  const timeout = await download(alice, uploadId);
-  assert.equal(timeout.status, 500, timeout.text);
-  assert.equal(timeout.body.error, "server error");
-  assert.doesNotMatch(timeout.text, new RegExp(storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  reservation = await MediaTransferReservation.findOne({
-    userId: alice.user._id,
-    direction: "download"
-  }).sort({ createdAt: -1 }).lean();
-  assert.equal(reservation.state, "released");
-
-  const revoked = await createAccount("media_revoked");
+  const revoked = await createAccount("med_auth_rev");
   await CryptoDevice.updateOne({ clientId: revoked.clientId }, { $set: { status: "revoked" } });
-  const revokedResponse = await download(revoked, uploadId);
+  const revokedResponse = await fixture.download(revoked);
   assert.equal(revokedResponse.status, 401, revokedResponse.text);
+  assert.equal(revokedResponse.body.error, "valid crypto device signature required");
 
-  const expired = await createAccount("media_expired");
+  const expired = await createAccount("med_auth_exp");
   const resolved = await signedJson(expired, "POST", "/crypto/v4/conversations/resolve", {
     chatType: "private",
     targetUsername: expired.username
   });
   assert.equal(resolved.status, 200, resolved.text);
-  const expiredUploadId = `${uploadId}-expired`;
-  await createUpload({
+  const expiredUploadId = `${fixture.uploadId}-expired`;
+  await fixture.createUpload({
     uploadId: expiredUploadId,
     bindingId: crypto.randomBytes(24).toString("base64url"),
     cryptoConversationId: resolved.body.conversationId
@@ -854,13 +915,99 @@ test("authorized MLS media download enforces roster, lifecycle, ranges, quota an
   await CryptoDevice.updateOne({ clientId: expired.clientId }, {
     $set: { manifestExpiresAt: new Date(Date.now() - 1000) }
   });
-  const expiredResponse = await download(expired, expiredUploadId);
+  const expiredResponse = await fixture.download(expired, expiredUploadId);
   assert.equal(expiredResponse.status, 401, expiredResponse.text);
-  assert.match(expiredResponse.body.error, /expired/i);
+  assert.equal(expiredResponse.body.error, "crypto device manifest expired");
   const expiredConversation = await CryptoConversation.findOne({
     conversationId: resolved.body.conversationId
   }).lean();
   assert.equal(expiredConversation.blockedForEpochChange, true);
+});
+
+test("MLS media download releases quota after upstream failure and client abort", async () => {
+  const fixture = await createMediaFixture("med_err");
+  const missingError = new Error("mocked R2 object is missing");
+  missingError.status = 502;
+  missingError.code = "R2_OBJECT_NOT_FOUND";
+  mockMediaStream(fixture.ciphertext, { error: missingError });
+  const missing = await fixture.download(fixture.alice);
+  assert.equal(missing.status, 502, missing.text);
+  assert.equal(missing.body.error, "server error");
+  assert.doesNotMatch(missing.text, new RegExp(fixture.storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, { error: new Error("mocked R2 timeout") });
+  const timeout = await fixture.download(fixture.alice);
+  assert.equal(timeout.status, 500, timeout.text);
+  assert.equal(timeout.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mediaStreamBehavior = async (key, responseTarget, options = {}) => {
+    mediaStreamInvocation = { key, options };
+    options.onResponse?.({
+      statusCode: 200,
+      headers: { "content-length": String(fixture.ciphertext.length) }
+    });
+    responseTarget.write(fixture.ciphertext.subarray(0, 1));
+    await new Promise(resolve => responseTarget.once("close", resolve));
+    const error = new Error("mocked client disconnected");
+    error.code = "ERR_STREAM_PREMATURE_CLOSE";
+    throw error;
+  };
+
+  const path = `/crypto/v4/media/${encodeURIComponent(fixture.uploadId)}`;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve();
+    };
+    const request = http.request({
+      hostname: "127.0.0.1",
+      port: server.address().port,
+      method: "GET",
+      path,
+      headers: {
+        Cookie: fixture.alice.cookie,
+        ...signedHeaders(fixture.alice, "GET", path)
+      }
+    }, response => {
+      response.once("data", () => {
+        response.destroy();
+        request.destroy();
+        finish();
+      });
+      response.once("error", error => {
+        if (error?.code === "ECONNRESET") finish();
+        else finish(error);
+      });
+    });
+    request.once("error", error => {
+      if (error?.code === "ECONNRESET") finish();
+      else finish(error);
+    });
+    request.end();
+  });
+  await waitForMediaReservationState(fixture.alice.user._id, "released");
+});
+
+test("MLS media download treats a lost post-stream quota reservation as a server failure", async () => {
+  const { releaseMediaTransfer } = require("../../services/mediaQuota");
+  const fixture = await createMediaFixture("med_settle");
+  mockMediaStream(fixture.ciphertext, {
+    beforeEnd: async () => {
+      const reservation = await latestMediaReservation(fixture.alice.user._id);
+      assert.equal(reservation.state, "reserved");
+      assert.equal(await releaseMediaTransfer(reservation.reservationId), true);
+    }
+  });
+  await assert.rejects(
+    fixture.download(fixture.alice),
+    error => ["ECONNRESET", "ECONNABORTED"].includes(error?.code) || /aborted|socket hang up/i.test(String(error?.message || ""))
+  );
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
 });
 
 test("email codes enforce atomic attempts, expiry, replacement and one-time consumption", async () => {

@@ -1,5 +1,7 @@
 const crypto = require("crypto");
 const https = require("https");
+const { Transform } = require("stream");
+const { pipeline } = require("stream/promises");
 const { URL } = require("url");
 const { sanitizeAttachmentName } = require("./attachmentSafety");
 
@@ -123,7 +125,14 @@ function getRequestBody(file, method) {
   return Buffer.alloc(0);
 }
 
-function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "", storageClass = "private-media", responseTarget = null, onResponse = null }) {
+function streamLengthError(message) {
+  const error = new Error(message);
+  error.status = 502;
+  error.code = "R2_STREAM_LENGTH_MISMATCH";
+  return error;
+}
+
+function requestR2({ method, key, file, contentType = "application/octet-stream", range = "", query = "", storageClass = "private-media", responseTarget = null, onResponse = null, expectedBytes = null }) {
   const config = getR2Config(storageClass);
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
@@ -196,10 +205,45 @@ function requestR2({ method, key, file, contentType = "application/octet-stream"
           reject(err);
           return;
         }
-        res.on("error", err => responseTarget.destroy(err));
-        responseTarget.on("error", reject);
-        responseTarget.on("finish", () => resolve({ statusCode: res.statusCode, headers: res.headers }));
-        res.pipe(responseTarget);
+        let streamedBytes = 0;
+        let finalChunk = null;
+        const byteCounter = new Transform({
+          transform(chunk, encoding, callback) {
+            streamedBytes += chunk.length;
+            if (Number.isSafeInteger(expectedBytes) && expectedBytes > 0 && streamedBytes > expectedBytes) {
+              callback(streamLengthError("R2 encrypted media stream exceeded the reserved length"));
+              return;
+            }
+            if (finalChunk) this.push(finalChunk);
+            finalChunk = Buffer.from(chunk);
+            callback();
+          }
+        });
+        pipeline(res, byteCounter, responseTarget, { end: false })
+          .then(() => {
+            if (Number.isSafeInteger(expectedBytes) && expectedBytes > 0 && streamedBytes !== expectedBytes) {
+              reject(streamLengthError("R2 encrypted media stream did not match the reserved length"));
+              return;
+            }
+            let finalized = false;
+            const finalize = () => new Promise((finalizeResolve, finalizeReject) => {
+              if (finalized) {
+                finalizeReject(new Error("R2 encrypted media stream was already finalized"));
+                return;
+              }
+              finalized = true;
+              if (!finalChunk || responseTarget.destroyed) {
+                finalizeReject(new Error("R2 encrypted media response target closed before finalization"));
+                return;
+              }
+              responseTarget.write(finalChunk, error => {
+                if (error) finalizeReject(error);
+                else finalizeResolve();
+              });
+            });
+            resolve({ statusCode: res.statusCode, headers: res.headers, bytes: streamedBytes, finalize });
+          })
+          .catch(reject);
         return;
       }
       const chunks = [];
@@ -316,7 +360,8 @@ async function streamFromR2(key, responseTarget, options = {}) {
     range: options.range || "",
     storageClass: options.storageClass || "private-media",
     responseTarget,
-    onResponse: options.onResponse
+    onResponse: options.onResponse,
+    expectedBytes: options.expectedBytes
   });
 }
 
