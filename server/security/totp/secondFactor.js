@@ -2,6 +2,7 @@ const UserSecurity = require("../../models/UserSecurity");
 const { decryptJson } = require("../crypto/secureEnvelope");
 const { findBackupCodeHash, generateBackupCodes } = require("../recovery/backupCodes");
 const { verifyTotp } = require("./totp");
+const { isValidatedSecondFactor } = require("./secondFactorInput");
 
 function envelopeQuery(path, envelope) {
   return {
@@ -28,62 +29,77 @@ async function enabledState(userId) {
     .lean();
 }
 
-async function consumeSecondFactor({ userId, code, backupCode }) {
+function verifyFactorAgainstState({ state, userId, factor }) {
+  if (!isValidatedSecondFactor(factor)) return { ok: false };
+
+  let totpVerification = { ok: false };
+  try {
+    const { secret } = decryptJson(state.totp.secretEnvelope, `totp:${userId}`);
+    totpVerification = verifyTotp(secret, factor.totpCode, {
+      lastUsedStep: state.totp.lastUsedStep
+    });
+  } catch {
+    totpVerification = { ok: false };
+  }
+
+  const matchingBackupHash = findBackupCodeHash(
+    state.totp.backupCodeHashes || [],
+    factor.backupCode
+  );
+  if (totpVerification.ok && matchingBackupHash) return { ok: false };
+  if (totpVerification.ok) {
+    return { ok: true, method: "totp", step: totpVerification.step };
+  }
+  if (matchingBackupHash) {
+    return { ok: true, method: "backup-code", matchingBackupHash };
+  }
+  return { ok: false };
+}
+
+async function consumeSecondFactor({ userId, factor }) {
   const state = await enabledState(userId);
   if (!state?.totp?.enabled) {
     return { ok: true, required: false, method: "none" };
   }
 
-  if (code) {
-    let verified;
-    try {
-      const { secret } = decryptJson(state.totp.secretEnvelope, `totp:${userId}`);
-      verified = verifyTotp(secret, code, { lastUsedStep: state.totp.lastUsedStep });
-    } catch {
-      return { ok: false, required: true, method: "totp" };
-    }
-
-    if (verified.ok) {
-      const result = await UserSecurity.updateOne({
-        _id: state._id,
-        userId,
-        "totp.enabled": true,
-        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
-        ...newerStepQuery(verified.step)
-      }, {
-        $set: { "totp.lastUsedStep": verified.step }
-      });
-      return {
-        ok: result.modifiedCount === 1,
-        required: true,
-        method: "totp",
-        stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
-      };
-    }
+  const verification = verifyFactorAgainstState({ state, userId, factor });
+  if (!verification.ok) {
+    return { ok: false, required: true, method: "none" };
   }
 
-  if (backupCode) {
-    const matchingHash = findBackupCodeHash(state.totp.backupCodeHashes || [], backupCode);
-    if (matchingHash) {
-      const result = await UserSecurity.updateOne({
-        _id: state._id,
-        userId,
-        "totp.enabled": true,
-        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
-        "totp.backupCodeHashes": matchingHash
-      }, {
-        $pull: { "totp.backupCodeHashes": matchingHash }
-      });
-      return {
-        ok: result.modifiedCount === 1,
-        required: true,
-        method: "backup-code",
-        stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
-      };
-    }
+  if (verification.method === "totp") {
+    const result = await UserSecurity.updateOne({
+      _id: state._id,
+      userId,
+      "totp.enabled": true,
+      ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
+      ...newerStepQuery(verification.step)
+    }, {
+      $set: { "totp.lastUsedStep": verification.step }
+    });
+    return {
+      ok: result.modifiedCount === 1,
+      required: true,
+      method: "totp",
+      stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
+    };
   }
 
-  return { ok: false, required: true, method: "none" };
+  const result = await UserSecurity.updateOne({
+    _id: state._id,
+    userId,
+    "totp.enabled": true,
+    ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
+    "totp.backupCodeHashes": verification.matchingBackupHash
+  }, {
+    $pull: { "totp.backupCodeHashes": verification.matchingBackupHash }
+  });
+  return {
+    ok: result.modifiedCount === 1,
+    required: true,
+    method: "backup-code",
+    stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
+  };
 }
 
 async function activateTotp({ userId, code }) {
@@ -146,45 +162,32 @@ async function disableTotpAfterConsumedFactor({ userId, stateBinding }) {
   return result.modifiedCount === 1;
 }
 
-async function disableTotpWithSecondFactor({ userId, code, backupCode }) {
+async function disableTotpWithSecondFactor({ userId, factor }) {
   const state = await enabledState(userId);
   if (!state?.totp?.enabled) return { ok: true, alreadyDisabled: true };
 
-  if (code) {
-    let verified;
-    try {
-      const { secret } = decryptJson(state.totp.secretEnvelope, `totp:${userId}`);
-      verified = verifyTotp(secret, code, { lastUsedStep: state.totp.lastUsedStep });
-    } catch {
-      return { ok: false };
-    }
-    if (verified.ok) {
-      const result = await UserSecurity.updateOne({
-        _id: state._id,
-        userId,
-        "totp.enabled": true,
-        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
-        ...newerStepQuery(verified.step)
-      }, disableTotpUpdate());
-      return { ok: result.modifiedCount === 1 };
-    }
+  const verification = verifyFactorAgainstState({ state, userId, factor });
+  if (!verification.ok) return { ok: false };
+
+  if (verification.method === "totp") {
+    const result = await UserSecurity.updateOne({
+      _id: state._id,
+      userId,
+      "totp.enabled": true,
+      ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
+      ...newerStepQuery(verification.step)
+    }, disableTotpUpdate());
+    return { ok: result.modifiedCount === 1 };
   }
 
-  if (backupCode) {
-    const matchingHash = findBackupCodeHash(state.totp.backupCodeHashes || [], backupCode);
-    if (matchingHash) {
-      const result = await UserSecurity.updateOne({
-        _id: state._id,
-        userId,
-        "totp.enabled": true,
-        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
-        "totp.backupCodeHashes": matchingHash
-      }, disableTotpUpdate());
-      return { ok: result.modifiedCount === 1 };
-    }
-  }
-
-  return { ok: false };
+  const result = await UserSecurity.updateOne({
+    _id: state._id,
+    userId,
+    "totp.enabled": true,
+    ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
+    "totp.backupCodeHashes": verification.matchingBackupHash
+  }, disableTotpUpdate());
+  return { ok: result.modifiedCount === 1 };
 }
 
 module.exports = {

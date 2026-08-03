@@ -11,6 +11,7 @@ const {
   disableTotpAfterConsumedFactor,
   disableTotpWithSecondFactor
 } = require("../security/totp/secondFactor");
+const { normalizeSecondFactorInput } = require("../security/totp/secondFactorInput");
 const { getSessionRestrictionState } = require("../utils/sessionSecurity");
 
 async function getCurrentUser(req) {
@@ -132,8 +133,11 @@ async function disableTotp(req, res, next) {
         }) }
       : await disableTotpWithSecondFactor({
           userId: user._id,
-          code: req.body?.code,
-          backupCode: req.body?.backupCode
+          factor: normalizeSecondFactorInput({
+            totpCode: req.body?.totpCode,
+            legacyTotpCode: req.body?.code,
+            backupCode: req.body?.backupCode
+          }).factor
         });
     if (!disabled.ok) {
       return res.status(400).json({ error: "invalid code" });

@@ -4,6 +4,7 @@ const UserSecurity = require("../models/UserSecurity");
 const Session = require("../models/Session");
 const { hashSessionId } = require("../utils/sessionSecurity");
 const { consumeSecondFactor } = require("../security/totp/secondFactor");
+const { normalizeSecondFactorInput } = require("../security/totp/secondFactorInput");
 
 const RECENT_AUTH_WINDOW_MS = Number(process.env.RECENT_AUTH_WINDOW_MINUTES || 15) * 60 * 1000;
 
@@ -47,7 +48,15 @@ async function verifyPasswordFallback(user, password) {
   }
 }
 
-async function recentAuth(req, res, next) {
+function factorFromRequest(req, { allowLegacyTotpCode = false } = {}) {
+  return normalizeSecondFactorInput({
+    totpCode: req.body?.totpCode,
+    legacyTotpCode: allowLegacyTotpCode ? req.body?.code : undefined,
+    backupCode: req.body?.backupCode
+  }).factor;
+}
+
+async function recentAuthWithPolicy(req, res, next, { allowLegacyTotpCode = false } = {}) {
   try {
     const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
     if (!user) {
@@ -72,8 +81,7 @@ async function recentAuth(req, res, next) {
 
     const secondFactor = await consumeSecondFactor({
       userId: user._id,
-      code: req.body?.totpCode || req.body?.code,
-      backupCode: req.body?.backupCode
+      factor: factorFromRequest(req, { allowLegacyTotpCode })
     });
     if (secondFactor.ok && secondFactor.required) {
       await markRecentlyAuthenticated(req);
@@ -101,14 +109,21 @@ async function recentAuth(req, res, next) {
   }
 }
 
+function recentAuth(req, res, next) {
+  return recentAuthWithPolicy(req, res, next);
+}
+
+function recentAuthWithLegacyTotpCode(req, res, next) {
+  return recentAuthWithPolicy(req, res, next, { allowLegacyTotpCode: true });
+}
+
 async function requireReauthentication(req, res, next) {
   try {
     const user = await User.findOne({ _id: req.user.userId, username: req.user.username });
     if (!user) return res.status(401).json({ error: "auth required" });
     const secondFactor = await consumeSecondFactor({
       userId: user._id,
-      code: req.body?.totpCode || req.body?.code,
-      backupCode: req.body?.backupCode
+      factor: factorFromRequest(req)
     });
     const verified = secondFactor.required
       ? secondFactor.ok
@@ -134,6 +149,7 @@ async function requireReauthentication(req, res, next) {
 
 module.exports = {
   recentAuth,
+  recentAuthWithLegacyTotpCode,
   requireReauthentication,
   markRecentlyAuthenticated,
   RECENT_AUTH_WINDOW_MS

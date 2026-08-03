@@ -29,7 +29,7 @@ export function disableTotp({ code, backupCode } = {}) {
   return apiRequest(`${API}/security/totp/disable`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, backupCode })
+    body: JSON.stringify({ totpCode: code, backupCode })
   });
 }
 

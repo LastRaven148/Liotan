@@ -41,6 +41,7 @@ const {
   verifyEmailCode
 } = require("./auth/emailCodeService");
 const { verifySecondFactorIfEnabled } = require("./auth/secondFactorService");
+const { normalizeSecondFactorInput } = require("../security/totp/secondFactorInput");
 
 
 const normalizeBaseUrl = (value) => {
@@ -392,10 +393,13 @@ async function login(req, res, next) {
         error: "invalid code"
       });
     }
+    const secondFactorInput = normalizeSecondFactorInput({
+      totpCode,
+      backupCode
+    });
     const secondFactor = await verifySecondFactorIfEnabled({
       user,
-      code: totpCode,
-      backupCode
+      factor: secondFactorInput.factor
     });
     if (!secondFactor.ok) {
       return res.status(401).json({
@@ -473,10 +477,13 @@ async function resetPassword(req, res, next) {
         error: "invalid code"
       });
     }
+    const secondFactorInput = normalizeSecondFactorInput({
+      totpCode: req.body?.totpCode,
+      backupCode: req.body?.backupCode
+    });
     const secondFactor = await verifySecondFactorIfEnabled({
       user,
-      code: req.body?.totpCode,
-      backupCode: req.body?.backupCode
+      factor: secondFactorInput.factor
     });
     if (!secondFactor.ok) {
       return res.status(401).json({
