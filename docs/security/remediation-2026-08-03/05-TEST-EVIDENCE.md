@@ -83,3 +83,28 @@ This file records concise, reproducible local evidence. Production systems and s
 - Exit code: 0; 56 passed, 0 failed, 0 skipped.
 - Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `npm run test:crypto-static`; syntax checks for the model, service, controllers, route guard and request logger; `git diff --check`.
 - Exit codes: all 0; 31 unit tests, security regression, crypto static analysis, syntax, and whitespace checks passed.
+
+## Full Stage 1 and release evidence
+
+- Date/time: 2026-08-03T04:01+03:00 to 2026-08-03T04:48:32+03:00.
+- Lockfile installs: `npm ci`; `npm ci --prefix client`; `npm ci --prefix server`.
+- Exit codes: all 0. Dependencies were installed only from the three repository lockfiles.
+- Pre-bump commands: `npm run version:check`; `npm test`; `npm run release:check`.
+- Exit codes: all 0 on the completed runs. The pre-bump release gate passed on `57.4.4`.
+- Version command: `npm run version:prod -- 57.4.5`, followed by `npm run version:check`.
+- Exit codes: both 0. Root, client, and server manifests and lockfiles are synchronized at `57.4.5` in commit `f218c4d`.
+- First post-bump `npm run release:check`: exit code 1 after every functional, browser, coverage, supply-chain, audit, and privacy check had passed. `sbom:generate` correctly updated the three tracked CycloneDX documents from `57.4.4` to `57.4.5`; the clean-source release guard then rejected the dirty tracked tree. Comparison against `HEAD` proved that every SBOM difference was exactly the production-version substitution, with valid JSON and unchanged component inventory. The synchronized SBOM refresh was committed as `47269d1`.
+- Final command: `npm run release:check` from the clean tracked tree at `47269d1`.
+- Exit code: 0. Result: release check passed on `57.4.5` in 332.7 seconds.
+- Server matrix: 31 unit passed, 56 integration passed, 0 failed, 0 skipped.
+- Browser matrix: Chromium 37 passed; Firefox 37 passed; WebKit 37 passed; total 111 passed, 0 failed, 0 skipped.
+- Coverage gate: 3 passed; 96.99% statements/lines, 82.35% branches, 100% functions.
+- Build and static gates: client production build, 197-file server syntax check, architecture map, production import/dead-code graph, CSS architecture/reproducibility, workflow security, crypto static, security regression, media storage, deployment bundle, installer invariants, archive compatibility, privacy, encrypted-reply privacy, VPS configuration, license policy, and reproducible SBOM all passed.
+- Production dependency audit: root 0 vulnerabilities; client 0 vulnerabilities; server 0 vulnerabilities (`npm audit --omit=dev` as invoked by the release gate).
+- Release artifact evidence: `release/Liotan-57.4.5-clean.zip`, 2.83 MB, reproduced twice with SHA-256 `6C3A84325DAE0AB98CBBB77060302127B5D57EB86163ED7E44754AB19992ABC9`.
+
+## Test-infrastructure incidents
+
+- One earlier combined command was terminated by the command runner timeout and produced `EPIPE`; it was rerun with a sufficient timeout and is not counted as a project test result.
+- A privacy-audit attempt found console statements only inside a task-local Playwright browser cache placed under a repository-visible `.codex-cache`. The cache was moved under ignored `node_modules/.cache`, the repository source remained unchanged, and both direct privacy audit and the subsequent full release gates passed with zero findings.
+- The first post-bump release gate failure described above was not hidden or labelled flaky; it exposed the required tracked SBOM refresh and was resolved by synchronizing the generated evidence before the final clean-tree gate.
