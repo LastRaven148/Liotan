@@ -3,9 +3,15 @@ const User = require("../models/User");
 const securityPolicy = require("../security/policies/securityPolicy");
 const { getSupportPolicy } = require("../security/support/supportPolicy");
 const { getOrCreateUserSecurity, publicSecurityState } = require("../security/securityState");
-const { encryptJson, decryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
-const { generateSecret, verifyTotp, otpauthUrl } = require("../security/totp/totp");
-const { generateBackupCodes, consumeBackupCode } = require("../security/recovery/backupCodes");
+const { encryptJson, randomToken, sha256 } = require("../security/crypto/secureEnvelope");
+const { generateSecret, otpauthUrl } = require("../security/totp/totp");
+const { generateBackupCodes } = require("../security/recovery/backupCodes");
+const {
+  activateTotp,
+  disableTotpAfterConsumedFactor,
+  disableTotpWithSecondFactor
+} = require("../security/totp/secondFactor");
+const { normalizeSecondFactorInput } = require("../security/totp/secondFactorInput");
 const { getSessionRestrictionState } = require("../utils/sessionSecurity");
 
 async function getCurrentUser(req) {
@@ -93,27 +99,20 @@ async function enableTotp(req, res, next) {
   try {
     const user = await getCurrentUser(req);
     if (!user) return res.status(401).json({ error: "unauthorized" });
-    const state = await getOrCreateUserSecurity(user);
-    if (state.totp.enabled) {
-      return res.status(409).json({ error: "totp already enabled" });
-    }
-    if (!state.totp.pendingSecretEnvelope) {
-      return res.status(400).json({ error: "totp setup required" });
-    }
-    const { secret } = decryptJson(state.totp.pendingSecretEnvelope, `totp:${user._id}`);
-    const verified = verifyTotp(secret, req.body?.code);
-    if (!verified.ok) {
+    const activated = await activateTotp({ userId: user._id, code: req.body?.code });
+    if (!activated.ok) {
+      if (activated.reason === "already-enabled") {
+        return res.status(409).json({ error: "totp already enabled" });
+      }
+      if (activated.reason === "setup-required") {
+        return res.status(400).json({ error: "totp setup required" });
+      }
+      if (activated.reason === "conflict") {
+        return res.status(409).json({ error: "totp setup changed" });
+      }
       return res.status(400).json({ error: "invalid code" });
     }
-    const { codes, hashes } = generateBackupCodes();
-    state.totp.enabled = true;
-    state.totp.enabledAt = new Date();
-    state.totp.secretEnvelope = state.totp.pendingSecretEnvelope;
-    state.totp.pendingSecretEnvelope = null;
-    state.totp.lastUsedStep = verified.step;
-    state.totp.backupCodeHashes = hashes;
-    await state.save();
-    res.json({ ok: true, backupCodes: codes });
+    res.json({ ok: true, backupCodes: activated.backupCodes });
   } catch (err) {
     next(err);
   }
@@ -123,23 +122,26 @@ async function disableTotp(req, res, next) {
   try {
     const user = await getCurrentUser(req);
     if (!user) return res.status(401).json({ error: "unauthorized" });
-    const state = await getOrCreateUserSecurity(user);
-    if (!state.totp.enabled) {
-      return res.json({ ok: true });
-    }
-    const { secret } = decryptJson(state.totp.secretEnvelope, `totp:${user._id}`);
-    const verified = verifyTotp(secret, req.body?.code, { lastUsedStep: state.totp.lastUsedStep });
-    const backup = !verified.ok ? consumeBackupCode(state.totp.backupCodeHashes || [], req.body?.backupCode) : { ok: false };
-    if (!verified.ok && !backup.ok) {
+    const factorWasConsumed = Boolean(
+      req.reauthentication?.factorConsumed &&
+      ["totp", "backup-code"].includes(req.reauthentication.method)
+    );
+    const disabled = factorWasConsumed
+      ? { ok: await disableTotpAfterConsumedFactor({
+          userId: user._id,
+          stateBinding: req.reauthentication.factorStateBinding
+        }) }
+      : await disableTotpWithSecondFactor({
+          userId: user._id,
+          factor: normalizeSecondFactorInput({
+            totpCode: req.body?.totpCode,
+            legacyTotpCode: req.body?.code,
+            backupCode: req.body?.backupCode
+          }).factor
+        });
+    if (!disabled.ok) {
       return res.status(400).json({ error: "invalid code" });
     }
-    state.totp.enabled = false;
-    state.totp.enabledAt = null;
-    state.totp.secretEnvelope = null;
-    state.totp.pendingSecretEnvelope = null;
-    state.totp.lastUsedStep = null;
-    state.totp.backupCodeHashes = [];
-    await state.save();
     res.json({ ok: true });
   } catch (err) {
     next(err);

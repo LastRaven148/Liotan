@@ -15,12 +15,16 @@ function createRequestId() {
 
 function getSafePath(req) {
   const original = String(req.originalUrl || req.url || "");
+  const redacted = original.replace(
+    /(\/auth\/email-change\/cancel\/)[^/?#]+/g,
+    "$1[redacted]"
+  );
 
   if (privacy.logQueryString) {
-    return original.slice(0, 300);
+    return redacted.slice(0, 300);
   }
 
-  return original.split("?")[0].slice(0, 300);
+  return redacted.split("?")[0].slice(0, 300);
 }
 
 function requestContext(req, res, next) {
@@ -59,3 +63,4 @@ function requestContext(req, res, next) {
 }
 
 module.exports = requestContext;
+module.exports.getSafePath = getSafePath;

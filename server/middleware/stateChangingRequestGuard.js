@@ -7,7 +7,9 @@ function hasValidStateHeader(req) {
 }
 
 function isTokenProtectedBrowserAction(req) {
-  return /^\/auth\/register\/cancel\/[^/]+\/action\/[^/]+$/.test(req.path || "");
+  const path = req.path || "";
+  return /^\/auth\/register\/cancel\/[^/]+\/action\/[^/]+$/.test(path) ||
+    /^\/auth\/email-change\/cancel\/[A-Za-z0-9_-]{32,256}$/.test(path);
 }
 
 function stateChangingRequestGuard(req, res, next) {

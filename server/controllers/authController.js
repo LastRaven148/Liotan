@@ -41,6 +41,7 @@ const {
   verifyEmailCode
 } = require("./auth/emailCodeService");
 const { verifySecondFactorIfEnabled } = require("./auth/secondFactorService");
+const { normalizeSecondFactorInput } = require("../security/totp/secondFactorInput");
 
 
 const normalizeBaseUrl = (value) => {
@@ -392,10 +393,13 @@ async function login(req, res, next) {
         error: "invalid code"
       });
     }
+    const secondFactorInput = normalizeSecondFactorInput({
+      totpCode,
+      backupCode
+    });
     const secondFactor = await verifySecondFactorIfEnabled({
       user,
-      code: totpCode,
-      backupCode
+      factor: secondFactorInput.factor
     });
     if (!secondFactor.ok) {
       return res.status(401).json({
@@ -403,10 +407,14 @@ async function login(req, res, next) {
         secondFactorRequired: true
       });
     }
-    await consumeEmailCode({
+    const consumed = await consumeEmailCode({
       emailHash,
-      purpose: "login"
+      purpose: "login",
+      code
     });
+    if (!consumed) {
+      return res.status(400).json({ error: "invalid code" });
+    }
     user.lastSeen = new Date();
     await user.save();
 
@@ -461,23 +469,30 @@ async function resetPassword(req, res, next) {
     const verified = await verifyEmailCode({
       emailHash,
       purpose: "reset",
-      code
+      code,
+      consume: false
     });
     if (!verified) {
       return res.status(400).json({
         error: "invalid code"
       });
     }
+    const secondFactorInput = normalizeSecondFactorInput({
+      totpCode: req.body?.totpCode,
+      backupCode: req.body?.backupCode
+    });
     const secondFactor = await verifySecondFactorIfEnabled({
       user,
-      code: req.body?.totpCode,
-      backupCode: req.body?.backupCode
+      factor: secondFactorInput.factor
     });
     if (!secondFactor.ok) {
       return res.status(401).json({
         error: "second factor required",
         secondFactorRequired: true
       });
+    }
+    if (!await consumeEmailCode({ emailHash, purpose: "reset", code })) {
+      return res.status(400).json({ error: "invalid code" });
     }
     user.password = await bcrypt.hash(password, 12);
     await user.save();

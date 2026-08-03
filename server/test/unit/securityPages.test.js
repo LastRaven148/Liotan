@@ -3,11 +3,13 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+  sendEmailChangeCancelPage,
   sendRegistrationSecurityPage,
   sendSecurityPageCss,
   sendSimpleSecurityPage
 } = require("../../controllers/auth/securityPages");
 const { getRegistrationCancelUrl } = require("../../controllers/authController");
+const { getSafePath } = require("../../middleware/requestContext");
 
 function createResponse() {
   return {
@@ -57,6 +59,29 @@ test("security stylesheet is served as CSS with every required action class", ()
   for (const selector of [".card", ".details", ".danger", ".danger-dark", ".ghost", ".input", ".is-danger"]) {
     assert.match(response.body, new RegExp(selector.replace(".", "\\.")));
   }
+});
+
+test("email-change cancellation page requires an explicit POST without active content", () => {
+  const response = createResponse();
+  const token = "b".repeat(48);
+  sendEmailChangeCancelPage(response, {
+    token,
+    req: { headers: { "accept-language": "en" } }
+  });
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body, new RegExp(`<form method="post" action="/auth/email-change/cancel/${token}"`));
+  assert.match(response.body, /name="confirm" value="1"/);
+  assert.equal(response.body.split(token).length - 1, 1);
+  assert.doesNotMatch(response.body, /<script\b|<img\b|onload=|autosubmit/i);
+});
+
+test("request logging redacts email-change cancellation capabilities", () => {
+  const token = "c".repeat(48);
+  const safePath = getSafePath({
+    originalUrl: `/auth/email-change/cancel/${token}?source=email`
+  });
+  assert.equal(safePath, "/auth/email-change/cancel/[redacted]");
+  assert.doesNotMatch(safePath, new RegExp(token));
 });
 
 test("security email links use the dedicated security origin", () => {

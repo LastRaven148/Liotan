@@ -230,6 +230,12 @@ function getRegistrationActionUrl(token, action) {
   return `/auth/register/cancel/${encodeURIComponent(safeToken)}/action/${encodeURIComponent(safeAction)}`;
 }
 
+function getEmailChangeCancelActionUrl(token) {
+  const clean = String(token || "").trim();
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(clean)) return "/";
+  return `/auth/email-change/cancel/${encodeURIComponent(clean)}`;
+}
+
 function isConfirmedSecurityAction(req) {
   return req.method === "POST" && String(req.body?.confirm || "") === "1";
 }
@@ -360,6 +366,35 @@ function sendSecurityConfirmPage(res, { token, action, title, text, req }) {
 </html>`);
 }
 
+function sendEmailChangeCancelPage(res, { token, req }) {
+  const locale = getSecurityPageLocale(req);
+  const title = locale === "ru" ? "Отменить смену email?" : "Cancel the email change?";
+  const text = locale === "ru"
+    ? "Подтвердите отмену. Простое открытие этой страницы ничего не изменяет. После подтверждения все активные сессии будут завершены."
+    : "Confirm the cancellation. Opening this page alone changes nothing. After confirmation, all active sessions will be ended.";
+  const button = locale === "ru" ? "Да, отменить смену email" : "Yes, cancel the email change";
+  const action = getEmailChangeCancelActionUrl(token);
+  sendHtml(res, 200, `<!doctype html>
+<html lang="${locale}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  ${securityStylesheetLink()}
+</head>
+<body>
+  <main class="card is-danger">
+    <h1>${escapeHtml(title)}</h1>
+    <p class="muted">${escapeHtml(text)}</p>
+    <form method="post" action="${action}">
+      <input type="hidden" name="confirm" value="1" />
+      <button class="btn danger" type="submit">${escapeHtml(button)}</button>
+    </form>
+  </main>
+</body>
+</html>`);
+}
+
 async function sendSuspiciousRegistrationPage(res, { token, record, req }) {
   const locale = getSecurityPageLocale(req);
   const copy = securityText(locale);
@@ -483,6 +518,7 @@ module.exports = {
   sendChangePasswordPage,
   sendDeleteStepOnePage,
   sendDeleteStepTwoPage,
+  sendEmailChangeCancelPage,
   sendRegistrationSecurityPage,
   sendSecurityConfirmPage,
   sendSimpleSecurityPage,

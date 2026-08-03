@@ -4,7 +4,11 @@ const AttachmentUpload = require("../../models/AttachmentUpload");
 const { uploadToR2, streamFromR2, deleteFromR2 } = require("../../utils/uploadToR2");
 const { registerAttachmentUpload } = require("../../services/attachmentOwnership");
 const { sha256Base64Url } = require("../../security/cryptoV4");
-const { randomId } = require("./shared");
+const {
+  authorizedClientIds,
+  normalizeClientIds
+} = require("../../security/cryptoRosterState");
+const { assertConversationAccess, randomId } = require("./shared");
 const { MAX_ENCRYPTED_MEDIA_SIZE } = require("../../middleware/uploadSecurity");
 const {
   reserveMediaTransfer,
@@ -113,7 +117,15 @@ async function uploadMedia(req, res, next) {
 const MAX_RANGE_BYTES = 8 * 1024 * 1024;
 
 function parseRangeForQuota(rangeHeader, totalBytes) {
-  if (!rangeHeader) return { range: "", bytes: totalBytes };
+  if (!rangeHeader) {
+    return {
+      range: "",
+      bytes: totalBytes,
+      start: 0,
+      end: totalBytes - 1,
+      partial: false
+    };
+  }
   const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
   if (!match || (!match[1] && !match[2])) return null;
   if (match[1]) {
@@ -123,11 +135,78 @@ function parseRangeForQuota(rangeHeader, totalBytes) {
       start < 0 || requestedEnd < start || start >= totalBytes) return null;
     const end = Math.min(requestedEnd, totalBytes - 1);
     if (end - start + 1 > MAX_RANGE_BYTES) return null;
-    return { range: `bytes=${start}-${end}`, bytes: end - start + 1 };
+    return {
+      range: `bytes=${start}-${end}`,
+      bytes: end - start + 1,
+      start,
+      end,
+      partial: true
+    };
   }
   const suffix = Number(match[2]);
   if (!Number.isSafeInteger(suffix) || suffix <= 0 || suffix > MAX_RANGE_BYTES) return null;
-  return { range: `bytes=-${Math.min(suffix, totalBytes)}`, bytes: Math.min(suffix, totalBytes) };
+  const bytes = Math.min(suffix, totalBytes);
+  return {
+    range: `bytes=-${bytes}`,
+    bytes,
+    start: totalBytes - bytes,
+    end: totalBytes - 1,
+    partial: true
+  };
+}
+
+function upstreamMediaError(message) {
+  const error = new Error(message);
+  error.status = 502;
+  error.code = "R2_MEDIA_RESPONSE_INVALID";
+  return error;
+}
+
+function singleHeader(headers, name) {
+  const value = headers?.[name];
+  if (Array.isArray(value)) return value.length === 1 ? String(value[0]).trim() : "";
+  return value === undefined || value === null ? "" : String(value).trim();
+}
+
+function validateMediaResponse(object, expected, totalBytes) {
+  const statusCode = Number(object?.statusCode);
+  const requiredStatus = expected.partial ? 206 : 200;
+  if (statusCode !== requiredStatus) {
+    throw upstreamMediaError("R2 returned an unexpected encrypted media status");
+  }
+
+  const contentLength = singleHeader(object?.headers, "content-length");
+  if (!/^\d+$/.test(contentLength) || Number(contentLength) !== expected.bytes) {
+    throw upstreamMediaError("R2 returned an unexpected encrypted media length");
+  }
+
+  const contentRange = singleHeader(object?.headers, "content-range");
+  if (expected.partial) {
+    const requiredRange = `bytes ${expected.start}-${expected.end}/${totalBytes}`;
+    if (contentRange !== requiredRange) {
+      throw upstreamMediaError("R2 returned an unexpected encrypted media range");
+    }
+  } else if (contentRange) {
+    throw upstreamMediaError("R2 returned a range for a full encrypted media response");
+  }
+}
+
+function downloadableMediaBytes(upload) {
+  const ciphertextBytes = Number(upload?.ciphertextBytes);
+  if (Number.isSafeInteger(ciphertextBytes) && ciphertextBytes > 0) {
+    return ciphertextBytes <= MAX_ENCRYPTED_MEDIA_SIZE ? ciphertextBytes : 0;
+  }
+
+  // Quarantined pre-lifecycle records can predate ciphertextBytes. Their
+  // original size is the only locally authenticated length available; an
+  // absent or invalid value must fail closed instead of treating the configured
+  // maximum as the object's exact length.
+  const legacyBytes = Number(upload?.size);
+  return Number.isSafeInteger(legacyBytes) &&
+    legacyBytes > 0 &&
+    legacyBytes <= MAX_ENCRYPTED_MEDIA_SIZE
+    ? legacyBytes
+    : 0;
 }
 
 async function downloadMedia(req, res, next) {
@@ -147,9 +226,8 @@ async function downloadMedia(req, res, next) {
     if (!activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(403).json({ error: "crypto device is not an active MLS member" });
     }
-    const totalBytes = Number(upload.ciphertextBytes) > 0
-      ? Number(upload.ciphertextBytes)
-      : MAX_ENCRYPTED_MEDIA_SIZE;
+    const totalBytes = downloadableMediaBytes(upload);
+    if (!totalBytes) return res.status(404).json({ error: "media not found" });
     const parsedRange = parseRangeForQuota(String(req.headers.range || "").trim(), totalBytes);
     if (!parsedRange) {
       res.setHeader("Content-Range", `bytes */${totalBytes}`);
@@ -161,28 +239,39 @@ async function downloadMedia(req, res, next) {
       conversationId: upload.cryptoConversationId,
       uploadId: upload.uploadId
     });
-    await streamFromR2(upload.storageKey, res, {
+    const stream = await streamFromR2(upload.storageKey, res, {
       range: parsedRange.range,
+      expectedBytes: parsedRange.bytes,
       storageClass: "private-media",
       onResponse: object => {
-        res.status(object.statusCode === 206 ? 206 : 200);
+        validateMediaResponse(object, parsedRange, totalBytes);
+        res.status(parsedRange.partial ? 206 : 200);
         res.setHeader("Content-Type", "application/octet-stream");
         res.setHeader("Cache-Control", "private, no-store, max-age=0");
         res.setHeader("X-Content-Type-Options", "nosniff");
         res.setHeader("Content-Disposition", "attachment; filename=liotan-encrypted-media.bin");
         res.setHeader("Accept-Ranges", "bytes");
-        if (object.headers?.["content-range"]) res.setHeader("Content-Range", object.headers["content-range"]);
-        if (object.headers?.["content-length"]) res.setHeader("Content-Length", object.headers["content-length"]);
+        if (parsedRange.partial) {
+          res.setHeader("Content-Range", `bytes ${parsedRange.start}-${parsedRange.end}/${totalBytes}`);
+        }
+        res.setHeader("Content-Length", String(parsedRange.bytes));
       }
     });
-    await completeMediaTransfer(quota.reservationId, parsedRange.bytes);
+    const completed = await completeMediaTransfer(quota.reservationId, parsedRange.bytes);
+    if (!completed) throw new Error("media quota reservation expired before download completion");
     quota = null;
+    await stream.finalize();
+    res.end();
     return undefined;
   } catch (err) {
     if (quota?.reservationId) {
       await releaseMediaTransfer(quota.reservationId).catch(() => {});
     }
-    if (err.status) return res.status(err.status).json({ error: err.message });
+    if (res.headersSent) {
+      if (!res.writableEnded) res.destroy(err);
+      return next(err);
+    }
+    if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
     return next(err);
   }
 }

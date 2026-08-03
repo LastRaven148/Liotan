@@ -32,6 +32,7 @@ const {
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
+  authorizeEmailChangeConfirmation,
   confirmEmailChange,
   cancelEmailChange,
   cancelRegistration,
@@ -115,11 +116,18 @@ router.post(
   authLimiter,
   authMiddleware,
   restrictedSessionGuard,
+  authorizeEmailChangeConfirmation,
   recentAuth,
   confirmEmailChange
 );
 
 router.get(
+  "/auth/email-change/cancel/:token",
+  authLimiter,
+  cancelEmailChange
+);
+
+router.post(
   "/auth/email-change/cancel/:token",
   authLimiter,
   cancelEmailChange

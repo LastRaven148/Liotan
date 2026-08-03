@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const http = require("node:http");
 const { after, before, test } = require("node:test");
 const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const supertest = require("supertest");
@@ -24,9 +25,173 @@ let CryptoConversation;
 let canonicalJson;
 let signAuthToken;
 let hashSessionId;
+let r2Module;
+let originalStreamFromR2;
+let mediaStreamBehavior;
+let mediaStreamInvocation;
+
+function mockMediaStream(ciphertext, {
+  error = null,
+  responseStatus = null,
+  responseHeaders = null,
+  beforeEnd = null
+} = {}) {
+  const source = Buffer.from(ciphertext);
+  mediaStreamBehavior = async (key, responseTarget, options = {}) => {
+    mediaStreamInvocation = { key, options };
+    if (error) throw error;
+
+    let body = source;
+    let statusCode = 200;
+    const headers = {};
+    const range = String(options.range || "");
+    if (range) {
+      statusCode = 206;
+      const explicit = /^bytes=(\d+)-(\d+)$/.exec(range);
+      const suffix = /^bytes=-(\d+)$/.exec(range);
+      let start;
+      let end;
+      if (explicit) {
+        start = Number(explicit[1]);
+        end = Number(explicit[2]);
+      } else if (suffix) {
+        const bytes = Number(suffix[1]);
+        start = Math.max(0, source.length - bytes);
+        end = source.length - 1;
+      } else {
+        throw new Error(`test received unexpected normalized range: ${range}`);
+      }
+      body = source.subarray(start, end + 1);
+      headers["content-range"] = `bytes ${start}-${end}/${source.length}`;
+    }
+    headers["content-length"] = String(body.length);
+    for (const [name, value] of Object.entries(responseHeaders || {})) {
+      if (value === null || value === undefined) delete headers[name];
+      else headers[name] = String(value);
+    }
+    options.onResponse?.({ statusCode: responseStatus ?? statusCode, headers });
+    if (beforeEnd) await beforeEnd({ key, options, responseTarget });
+    const leadingBody = body.subarray(0, Math.max(0, body.length - 1));
+    const finalBody = body.subarray(Math.max(0, body.length - 1));
+    if (leadingBody.length) responseTarget.write(leadingBody);
+    return {
+      statusCode: responseStatus ?? statusCode,
+      headers,
+      key,
+      bytes: body.length,
+      finalize: () => new Promise((resolve, reject) => {
+        responseTarget.write(finalBody, error => error ? reject(error) : resolve());
+      })
+    };
+  };
+}
+
+async function createMediaFixture(prefix, { includeOutsider = false, ciphertext = null } = {}) {
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const body = ciphertext || Buffer.from(`liotan-${prefix}-ciphertext`);
+  const alice = await createAccount(`${prefix}_a`);
+  const bob = await createAccount(`${prefix}_b`);
+  const outsider = includeOutsider ? await createAccount(`${prefix}_o`) : null;
+  const { conversationId } = await initializePrivateConversation(alice, bob);
+  const uploadId = `${prefix}-${crypto.randomBytes(12).toString("base64url")}`;
+  const storageKey = `liotan/mls/${prefix}-private.liotanmedia`;
+
+  async function createUpload(overrides = {}) {
+    const ciphertextBytes = overrides.ciphertextBytes ?? body.length;
+    return AttachmentUpload.create({
+      uploadId: overrides.uploadId || uploadId,
+      owner: alice.username,
+      name: "encrypted.liotanmedia",
+      type: "file",
+      mimeType: "application/octet-stream",
+      size: overrides.size ?? ciphertextBytes,
+      ciphertextBytes,
+      encrypted: true,
+      protocol: "mls-media-1",
+      cryptoConversationId: overrides.cryptoConversationId || conversationId,
+      cryptoClientId: alice.clientId,
+      bindingId: overrides.bindingId || crypto.randomBytes(24).toString("base64url"),
+      ciphertextHash: crypto.randomBytes(32).toString("base64url"),
+      boundClientMessageId: crypto.randomUUID(),
+      lifecycleState: overrides.lifecycleState || "committed",
+      committedAt: overrides.lifecycleState && overrides.lifecycleState !== "committed" ? null : new Date(),
+      storageKey: overrides.storageKey || storageKey,
+      storageType: "r2:private-media"
+    });
+  }
+
+  function download(account, id = uploadId, range = "") {
+    const path = `/crypto/v4/media/${encodeURIComponent(id)}`;
+    let request = requestFor(account, "GET", path).set(signedHeaders(account, "GET", path));
+    if (range) request = request.set("Range", range);
+    return request;
+  }
+
+  await createUpload();
+  return { alice, bob, outsider, conversationId, uploadId, storageKey, ciphertext: body, createUpload, download };
+}
+
+async function latestMediaReservation(userId) {
+  const MediaTransferReservation = require("../../models/MediaTransferReservation");
+  return MediaTransferReservation.findOne({ userId, direction: "download" })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+async function waitForMediaReservationState(userId, state) {
+  const deadline = Date.now() + 3000;
+  do {
+    const reservation = await latestMediaReservation(userId);
+    if (reservation?.state === state) return reservation;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  } while (Date.now() < deadline);
+  const reservation = await latestMediaReservation(userId);
+  assert.equal(reservation?.state, state);
+  return reservation;
+}
 
 function rawPublicKey(publicKey) {
   return publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+}
+
+function decodeTestBase32(input) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const char of String(input).toUpperCase()) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function testTotpCodeAtStep(secret, step) {
+  const securityPolicy = require("../../security/policies/securityPolicy");
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const digest = crypto.createHmac("sha1", decodeTestBase32(secret)).update(counter).digest(); // nosemgrep: crypto-weak-algorithm - test implementation of RFC 6238 for integration fixtures.
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value = ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(value % 10 ** securityPolicy.totp.digits)
+    .padStart(securityPolicy.totp.digits, "0");
+}
+
+function currentTestTotpStep() {
+  const securityPolicy = require("../../security/policies/securityPolicy");
+  return Math.floor(Date.now() / 1000 / securityPolicy.totp.period);
+}
+
+function normalizedSecondFactor(input) {
+  return require("../../security/totp/secondFactorInput")
+    .normalizeSecondFactorInput(input).factor;
 }
 
 function signCanonical(privateKey, domain, value) {
@@ -500,6 +665,15 @@ before(async () => {
   process.env.DEVICE_AUTH_V2_ENFORCED_AT = "2099-01-01T00:00:00.000Z";
   process.env.DEVICE_AUTH_V1_REQUESTS_DISABLED_AT = "2099-01-01T00:00:00.000Z";
 
+  r2Module = require("../../utils/uploadToR2");
+  originalStreamFromR2 = r2Module.streamFromR2;
+  r2Module.streamFromR2 = (...args) => {
+    if (typeof mediaStreamBehavior !== "function") {
+      throw new Error("unexpected R2 media stream in integration test");
+    }
+    return mediaStreamBehavior(...args);
+  };
+
   replSet = await MongoMemoryReplSet.create({
     binary: { version: "8.0.14" },
     replSet: { count: 1, storageEngine: "wiredTiger" }
@@ -525,6 +699,7 @@ after(async () => {
   if (server?.listening) await new Promise(resolve => server.close(resolve));
   if (mongoose) await mongoose.disconnect();
   if (replSet) await replSet.stop();
+  if (r2Module && originalStreamFromR2) r2Module.streamFromR2 = originalStreamFromR2;
 });
 
 test("MLS delivery service enforces identity, device, replay, epochs and membership", async () => {
@@ -626,6 +801,400 @@ test("MLS delivery service enforces identity, device, replay, epochs and members
 
   const conversation = await CryptoConversation.findOne({ conversationId }).lean();
   assert.equal(conversation.blockedForEpochChange, false);
+});
+
+test("MLS media download streams exact full and partial ciphertext with matching quota", async () => {
+  const fixture = await createMediaFixture("med_ok");
+  mockMediaStream(fixture.ciphertext);
+  const full = await fixture.download(fixture.alice);
+  assert.equal(full.status, 200, full.text);
+  assert.equal(full.headers["content-type"], "application/octet-stream");
+  assert.match(full.headers["cache-control"] || "", /private/);
+  assert.match(full.headers["cache-control"] || "", /no-store/);
+  assert.equal(full.headers["content-disposition"], "attachment; filename=liotan-encrypted-media.bin");
+  assert.equal(full.headers["content-length"], String(fixture.ciphertext.length));
+  assert.deepEqual(full.body, fixture.ciphertext);
+  assert.equal(mediaStreamInvocation.key, fixture.storageKey);
+  assert.equal(mediaStreamInvocation.options.storageClass, "private-media");
+  assert.equal(mediaStreamInvocation.options.expectedBytes, fixture.ciphertext.length);
+  let reservation = await latestMediaReservation(fixture.alice.user._id);
+  assert.equal(reservation.state, "completed");
+  assert.equal(reservation.declaredBytes, fixture.ciphertext.length);
+  assert.equal(reservation.actualBytes, fixture.ciphertext.length);
+
+  mockMediaStream(fixture.ciphertext);
+  const partial = await fixture.download(fixture.alice, fixture.uploadId, "bytes=2-7");
+  assert.equal(partial.status, 206, partial.text);
+  assert.equal(partial.headers["content-range"], `bytes 2-7/${fixture.ciphertext.length}`);
+  assert.equal(partial.headers["content-length"], "6");
+  assert.deepEqual(partial.body, fixture.ciphertext.subarray(2, 8));
+  assert.equal(mediaStreamInvocation.options.expectedBytes, 6);
+  reservation = await latestMediaReservation(fixture.alice.user._id);
+  assert.equal(reservation.state, "completed");
+  assert.equal(reservation.declaredBytes, 6);
+  assert.equal(reservation.actualBytes, 6);
+});
+
+test("MLS media download uses a positive legacy size and rejects unknown legacy lengths", async () => {
+  const fixture = await createMediaFixture("med_legacy");
+  const legacyUploadId = `${fixture.uploadId}-legacy`;
+  await fixture.createUpload({
+    uploadId: legacyUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    lifecycleState: "legacy-unverified",
+    ciphertextBytes: 0,
+    size: fixture.ciphertext.length
+  });
+
+  mockMediaStream(fixture.ciphertext);
+  const legacy = await fixture.download(fixture.alice, legacyUploadId);
+  assert.equal(legacy.status, 200, legacy.text);
+  assert.deepEqual(legacy.body, fixture.ciphertext);
+  assert.equal(mediaStreamInvocation.options.expectedBytes, fixture.ciphertext.length);
+
+  const unknownLengthId = `${fixture.uploadId}-unknown-length`;
+  await fixture.createUpload({
+    uploadId: unknownLengthId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    lifecycleState: "legacy-unverified",
+    ciphertextBytes: 0,
+    size: 0
+  });
+  const unknownLength = await fixture.download(fixture.alice, unknownLengthId);
+  assert.equal(unknownLength.status, 404, unknownLength.text);
+});
+
+test("MLS media download rejects invalid client ranges and inconsistent R2 responses", async () => {
+  const fixture = await createMediaFixture("med_rng");
+  const invalidRange = await fixture.download(fixture.alice, fixture.uploadId, "bytes=999-1000");
+  assert.equal(invalidRange.status, 416, invalidRange.text);
+  assert.equal(invalidRange.headers["content-range"], `bytes */${fixture.ciphertext.length}`);
+
+  const oversizedUploadId = `${fixture.uploadId}-oversized`;
+  const oversizedBytes = 8 * 1024 * 1024 + 1;
+  await fixture.createUpload({
+    uploadId: oversizedUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    ciphertextBytes: oversizedBytes
+  });
+  const excessiveRange = await fixture.download(fixture.alice, oversizedUploadId, `bytes=0-${oversizedBytes - 1}`);
+  assert.equal(excessiveRange.status, 416, excessiveRange.text);
+  assert.equal(excessiveRange.headers["content-range"], `bytes */${oversizedBytes}`);
+
+  mockMediaStream(fixture.ciphertext, { responseStatus: 206 });
+  const wrongStatus = await fixture.download(fixture.alice);
+  assert.equal(wrongStatus.status, 502, wrongStatus.text);
+  assert.equal(wrongStatus.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, {
+    responseHeaders: { "content-range": `bytes 3-8/${fixture.ciphertext.length}` }
+  });
+  const wrongRange = await fixture.download(fixture.alice, fixture.uploadId, "bytes=2-7");
+  assert.equal(wrongRange.status, 502, wrongRange.text);
+  assert.equal(wrongRange.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, {
+    responseHeaders: { "content-length": String(fixture.ciphertext.length + 1) }
+  });
+  const wrongLength = await fixture.download(fixture.alice);
+  assert.equal(wrongLength.status, 502, wrongLength.text);
+  assert.equal(wrongLength.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+});
+
+test("MLS media download hides object state and enforces lifecycle and device policy", async () => {
+  const AttachmentUpload = require("../../models/AttachmentUpload");
+  const fixture = await createMediaFixture("med_auth", { includeOutsider: true });
+  const unknown = await fixture.download(fixture.alice, "unknown-media-upload");
+  assert.equal(unknown.status, 404, unknown.text);
+
+  const inaccessible = await fixture.download(fixture.outsider);
+  assert.equal(inaccessible.status, 404, inaccessible.text);
+  assert.doesNotMatch(inaccessible.text, new RegExp(fixture.storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const lifecycleUploadIds = [];
+  for (const lifecycleState of ["temporary", "deletion-pending"]) {
+    const lifecycleUploadId = `${fixture.uploadId}-${lifecycleState}`;
+    lifecycleUploadIds.push(lifecycleUploadId);
+    await fixture.createUpload({
+      uploadId: lifecycleUploadId,
+      bindingId: crypto.randomBytes(24).toString("base64url"),
+      lifecycleState
+    });
+    const rejected = await fixture.download(fixture.alice, lifecycleUploadId);
+    assert.equal(rejected.status, 404, rejected.text);
+  }
+  await AttachmentUpload.deleteMany({ uploadId: { $in: lifecycleUploadIds } });
+
+  const revoked = await createAccount("med_auth_rev");
+  await CryptoDevice.updateOne({ clientId: revoked.clientId }, { $set: { status: "revoked" } });
+  const revokedResponse = await fixture.download(revoked);
+  assert.equal(revokedResponse.status, 401, revokedResponse.text);
+  assert.equal(revokedResponse.body.error, "valid crypto device signature required");
+
+  const expired = await createAccount("med_auth_exp");
+  const resolved = await signedJson(expired, "POST", "/crypto/v4/conversations/resolve", {
+    chatType: "private",
+    targetUsername: expired.username
+  });
+  assert.equal(resolved.status, 200, resolved.text);
+  const expiredUploadId = `${fixture.uploadId}-expired`;
+  await fixture.createUpload({
+    uploadId: expiredUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    cryptoConversationId: resolved.body.conversationId
+  });
+  await CryptoDevice.updateOne({ clientId: expired.clientId }, {
+    $set: { manifestExpiresAt: new Date(Date.now() - 1000) }
+  });
+  const expiredResponse = await fixture.download(expired, expiredUploadId);
+  assert.equal(expiredResponse.status, 401, expiredResponse.text);
+  assert.equal(expiredResponse.body.error, "crypto device manifest expired");
+  const expiredConversation = await CryptoConversation.findOne({
+    conversationId: resolved.body.conversationId
+  }).lean();
+  assert.equal(expiredConversation.blockedForEpochChange, true);
+});
+
+test("MLS media download releases quota after upstream failure and client abort", async () => {
+  const fixture = await createMediaFixture("med_err");
+  const missingError = new Error("mocked R2 object is missing");
+  missingError.status = 502;
+  missingError.code = "R2_OBJECT_NOT_FOUND";
+  mockMediaStream(fixture.ciphertext, { error: missingError });
+  const missing = await fixture.download(fixture.alice);
+  assert.equal(missing.status, 502, missing.text);
+  assert.equal(missing.body.error, "server error");
+  assert.doesNotMatch(missing.text, new RegExp(fixture.storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mockMediaStream(fixture.ciphertext, { error: new Error("mocked R2 timeout") });
+  const timeout = await fixture.download(fixture.alice);
+  assert.equal(timeout.status, 500, timeout.text);
+  assert.equal(timeout.body.error, "server error");
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+
+  mediaStreamBehavior = async (key, responseTarget, options = {}) => {
+    mediaStreamInvocation = { key, options };
+    options.onResponse?.({
+      statusCode: 200,
+      headers: { "content-length": String(fixture.ciphertext.length) }
+    });
+    responseTarget.write(fixture.ciphertext.subarray(0, 1));
+    await new Promise(resolve => responseTarget.once("close", resolve));
+    const error = new Error("mocked client disconnected");
+    error.code = "ERR_STREAM_PREMATURE_CLOSE";
+    throw error;
+  };
+
+  const path = `/crypto/v4/media/${encodeURIComponent(fixture.uploadId)}`;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve();
+    };
+    const request = http.request({
+      hostname: "127.0.0.1",
+      port: server.address().port,
+      method: "GET",
+      path,
+      headers: {
+        Cookie: fixture.alice.cookie,
+        ...signedHeaders(fixture.alice, "GET", path)
+      }
+    }, response => {
+      response.once("data", () => {
+        response.destroy();
+        request.destroy();
+        finish();
+      });
+      response.once("error", error => {
+        if (error?.code === "ECONNRESET") finish();
+        else finish(error);
+      });
+    });
+    request.once("error", error => {
+      if (error?.code === "ECONNRESET") finish();
+      else finish(error);
+    });
+    request.end();
+  });
+  await waitForMediaReservationState(fixture.alice.user._id, "released");
+});
+
+test("MLS media download treats a lost post-stream quota reservation as a server failure", async () => {
+  const { releaseMediaTransfer } = require("../../services/mediaQuota");
+  const fixture = await createMediaFixture("med_settle");
+  mockMediaStream(fixture.ciphertext, {
+    beforeEnd: async () => {
+      const reservation = await latestMediaReservation(fixture.alice.user._id);
+      assert.equal(reservation.state, "reserved");
+      assert.equal(await releaseMediaTransfer(reservation.reservationId), true);
+    }
+  });
+  await assert.rejects(
+    fixture.download(fixture.alice),
+    error => ["ECONNRESET", "ECONNABORTED"].includes(error?.code) || /aborted|socket hang up/i.test(String(error?.message || ""))
+  );
+  assert.equal((await latestMediaReservation(fixture.alice.user._id)).state, "released");
+});
+
+test("email codes enforce atomic attempts, expiry, replacement and one-time consumption", async () => {
+  const EmailCode = require("../../models/EmailCode");
+  const {
+    consumeEmailCode,
+    saveEmailCode,
+    verifyEmailCode
+  } = require("../../controllers/auth/emailCodeService");
+  const emailHash = crypto.createHash("sha256").update("atomic-email-code@example.test").digest("hex");
+
+  await saveEmailCode({ emailHash, purpose: "login", code: "12345678" });
+  const wrongAttempts = await Promise.all(Array.from({ length: 20 }, () => verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: "87654321",
+    consume: false
+  })));
+  assert.deepEqual(new Set(wrongAttempts), new Set([false]));
+  let record = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.equal(record.attempts, 5);
+  assert.equal(await verifyEmailCode({ emailHash, purpose: "login", code: "12345678" }), false);
+
+  await saveEmailCode({ emailHash, purpose: "login", code: "23456781" });
+  const consumers = await Promise.all(Array.from({ length: 10 }, () => verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: "23456781"
+  })));
+  assert.equal(consumers.filter(Boolean).length, 1);
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "login" }), 0);
+
+  await saveEmailCode({ emailHash, purpose: "reset", code: "34567812" });
+  await EmailCode.updateOne(
+    { emailHash, purpose: "reset" },
+    { $set: { createdAt: new Date(Date.now() - 60 * 60 * 1000) } }
+  );
+  assert.equal(await verifyEmailCode({ emailHash, purpose: "reset", code: "34567812" }), false);
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "reset" }), 1);
+
+  const concurrentCodes = Array.from({ length: 10 }, (_, index) => `${45678120 + index}`);
+  await Promise.all(concurrentCodes.map(code => saveEmailCode({
+    emailHash,
+    purpose: "register",
+    code
+  })));
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "register" }), 1);
+  const accepted = await Promise.all(concurrentCodes.map(code => verifyEmailCode({
+    emailHash,
+    purpose: "register",
+    code,
+    consume: false
+  })));
+  assert.equal(accepted.filter(Boolean).length, 1);
+
+  await saveEmailCode({ emailHash, purpose: "change_current", code: "56781234" });
+  await saveEmailCode({ emailHash, purpose: "change_current", code: "67812345" });
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "56781234",
+    consume: false
+  }), false);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "67812345"
+  }), true);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "67812345"
+  }), false);
+
+  await EmailCode.collection.insertMany([0, 1].map(index => ({
+    emailHash,
+    purpose: "change_new",
+    codeHash: `legacy-${index}`,
+    attempts: 0,
+    createdAt: new Date()
+  })));
+  await saveEmailCode({ emailHash, purpose: "change_new", code: "78123456" });
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "change_new" }), 1);
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "change_new",
+    code: "78123456"
+  }), true);
+});
+
+test("stale wrong email-code attempts cannot exhaust a replacement generation", async () => {
+  const EmailCode = require("../../models/EmailCode");
+  const {
+    consumeEmailCode,
+    saveEmailCode,
+    verifyEmailCode
+  } = require("../../controllers/auth/emailCodeService");
+  const emailHash = crypto.createHash("sha256")
+    .update("email-code-generation-race@example.test")
+    .digest("hex");
+  const generationACode = "81234567";
+  const generationBCode = "82345671";
+
+  await saveEmailCode({ emailHash, purpose: "login", code: generationACode });
+  const generationA = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.match(generationA.generation, /^[A-Za-z0-9_-]{24}$/);
+
+  const originalUpdateOne = EmailCode.updateOne;
+  let releaseStaleUpdates;
+  const staleUpdatesReleased = new Promise(resolve => { releaseStaleUpdates = resolve; });
+  let allStaleUpdatesReached;
+  const staleUpdatesReached = new Promise(resolve => { allStaleUpdatesReached = resolve; });
+  let intercepted = 0;
+
+  EmailCode.updateOne = function updateOneWithGenerationBarrier(filter, update, options) {
+    if (update?.$inc?.attempts === 1 && filter?.generation === generationA.generation) {
+      intercepted += 1;
+      if (intercepted === 20) allStaleUpdatesReached();
+      return staleUpdatesReleased.then(() => originalUpdateOne.call(this, filter, update, options));
+    }
+    return originalUpdateOne.call(this, filter, update, options);
+  };
+
+  try {
+    const staleAttempts = Promise.all(Array.from({ length: 20 }, () => verifyEmailCode({
+      emailHash,
+      purpose: "login",
+      code: "87651234",
+      consume: false
+    })));
+    await staleUpdatesReached;
+    await saveEmailCode({ emailHash, purpose: "login", code: generationBCode });
+    releaseStaleUpdates();
+    assert.deepEqual(new Set(await staleAttempts), new Set([false]));
+  } finally {
+    releaseStaleUpdates();
+    EmailCode.updateOne = originalUpdateOne;
+  }
+
+  const generationB = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.notEqual(generationB.generation, generationA.generation);
+  assert.equal(generationB.attempts, 0);
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: generationBCode,
+    consume: false
+  }), true);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "login",
+    code: generationACode
+  }), false);
 });
 
 test("a cryptographic device signature cannot cross its bound browser session", async () => {
@@ -2042,6 +2611,1165 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
     .get("/auth/session")
     .set("Cookie", cookie)
     .expect(401);
+});
+
+test("email-code auth flows consume only after all prior factors and admit one concurrent operation", async () => {
+  const bcrypt = require("bcrypt");
+  const EmailCode = require("../../models/EmailCode");
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { verifyTotp } = require("../../security/totp/totp");
+  const { hashEmail } = require("../../utils/privacy");
+  const { verifyEmailCode } = require("../../controllers/auth/emailCodeService");
+
+  async function issueCode({ email, purpose, password = "" }) {
+    const path = purpose === "login" ? "/login/code" : "/auth/email-code";
+    const response = await supertest(app)
+      .post(path)
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send(purpose === "login" ? { email, password } : { email, purpose });
+    assert.equal(response.status, 200, response.text);
+    assert.match(response.body.devCode || "", /^\d{8}$/);
+    return response.body.devCode;
+  }
+
+  async function registerConcurrently({ email, username, password }) {
+    const code = await issueCode({ email, purpose: "register" });
+    const responses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+      .post("/register")
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send({ email, username, password, code })));
+    assert.equal(responses.filter(response => response.status === 200).length, 1);
+    assert.equal(responses.filter(response => response.status === 400).length, 9);
+    assert.equal(await User.countDocuments({ username }), 1);
+    const success = responses.find(response => response.status === 200);
+    return {
+      code,
+      cookie: success.headers["set-cookie"]?.[0]?.split(";")[0],
+      user: await User.findOne({ username })
+    };
+  }
+
+  const password = "atomic auth password";
+  const firstEmail = "atomic-factor@example.test";
+  const firstEmailHash = hashEmail(firstEmail);
+  const first = await registerConcurrently({
+    email: firstEmail,
+    username: "atomic_factor",
+    password
+  });
+  assert.equal(await EmailCode.countDocuments({ emailHash: firstEmailHash, purpose: "register" }), 0);
+
+  const loginCode = await issueCode({ email: firstEmail, purpose: "login", password });
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: firstEmail, password: "wrong password", code: loginCode })
+    .expect(400);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "login",
+    code: loginCode,
+    consume: false
+  }), true);
+
+  const totpSecret = "JBSWY3DPEHPK3PXP";
+  const invalidTotpCode = ["000000", "111111", "222222", "333333"]
+    .find(code => !verifyTotp(totpSecret, code).ok);
+  assert.match(invalidTotpCode || "", /^\d{6}$/);
+  await UserSecurity.create({
+    userId: first.user._id,
+    username: first.user.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret: totpSecret }, `totp:${first.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: firstEmail, password, code: loginCode, totpCode: invalidTotpCode })
+    .expect(401);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "login",
+    code: loginCode,
+    consume: false
+  }), true);
+
+  const resetWithSecondFactor = await issueCode({ email: firstEmail, purpose: "reset" });
+  await supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: firstEmail,
+      password: "replacement password",
+      code: resetWithSecondFactor,
+      totpCode: invalidTotpCode
+    })
+    .expect(401);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "reset",
+    code: resetWithSecondFactor,
+    consume: false
+  }), true);
+
+  const secondEmail = "atomic-flow@example.test";
+  const secondEmailHash = hashEmail(secondEmail);
+  const second = await registerConcurrently({
+    email: secondEmail,
+    username: "atomic_flow",
+    password
+  });
+  const concurrentLoginCode = await issueCode({ email: secondEmail, purpose: "login", password });
+  const loginResponses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: secondEmail, password, code: concurrentLoginCode })));
+  assert.equal(loginResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(loginResponses.filter(response => response.status === 400).length, 9);
+  assert.equal(await EmailCode.countDocuments({ emailHash: secondEmailHash, purpose: "login" }), 0);
+  const loginCookie = loginResponses.find(response => response.status === 200)
+    .headers["set-cookie"]?.[0]?.split(";")[0];
+  assert.match(loginCookie || "", /^liotan_auth=/);
+
+  await Session.collection.updateMany({ userId: second.user._id }, {
+    $set: {
+      createdAt: new Date(Date.now() - 73 * 60 * 60 * 1000),
+      reauthenticatedAt: null
+    }
+  });
+  const currentCodeResponse = await supertest(app)
+    .post("/auth/email-change/current")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ currentEmail: secondEmail });
+  assert.equal(currentCodeResponse.status, 200, currentCodeResponse.text);
+  const currentCode = currentCodeResponse.body.devCode;
+  const currentVerifications = await Promise.all([0, 1].map(() => supertest(app)
+    .post("/auth/email-change/verify-current")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ currentEmail: secondEmail, code: currentCode })));
+  assert.equal(currentVerifications.filter(response => response.status === 200).length, 1);
+  const emailChangeToken = currentVerifications.find(response => response.status === 200).body.emailChangeToken;
+
+  const newEmail = "atomic-flow-new@example.test";
+  const newEmailHash = hashEmail(newEmail);
+  const newCodeResponse = await supertest(app)
+    .post("/auth/email-change/new-code")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ token: emailChangeToken, newEmail });
+  assert.equal(newCodeResponse.status, 200, newCodeResponse.text);
+  const newCode = newCodeResponse.body.devCode;
+  await supertest(app)
+    .post("/auth/email-change/confirm")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      token: emailChangeToken,
+      currentEmail: secondEmail,
+      newEmail,
+      code: "00000000",
+      currentPassword: password
+    })
+    .expect(400);
+  assert.equal(await verifyEmailCode({
+    emailHash: newEmailHash,
+    purpose: "change_new",
+    code: newCode,
+    consume: false
+  }), true);
+  assert.equal(await Session.countDocuments({ userId: second.user._id, reauthenticatedAt: { $ne: null } }), 0);
+
+  const confirmations = await Promise.all([0, 1].map(() => supertest(app)
+    .post("/auth/email-change/confirm")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      token: emailChangeToken,
+      currentEmail: secondEmail,
+      newEmail,
+      code: newCode,
+      currentPassword: password
+    })));
+  assert.equal(confirmations.filter(response => response.status === 200).length, 1);
+  assert.equal(confirmations.filter(response => response.status === 400).length, 1);
+  assert.equal(await PendingEmailChange.countDocuments({ userId: second.user._id, newEmailHash }), 1);
+
+  const resetCode = await issueCode({ email: secondEmail, purpose: "reset" });
+  const newPassword = "atomic reset password";
+  const resetResponses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: secondEmail, password: newPassword, code: resetCode })));
+  assert.equal(resetResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(resetResponses.filter(response => response.status === 400).length, 9);
+  assert.equal(await EmailCode.countDocuments({ emailHash: secondEmailHash, purpose: "reset" }), 0);
+  const updatedUser = await User.findById(second.user._id).lean();
+  assert.equal(await bcrypt.compare(newPassword, updatedUser.password), true);
+});
+
+test("TOTP steps and backup codes admit exactly one concurrent consumer", async () => {
+  const UserSecurity = require("../../models/UserSecurity");
+  const { verifySecondFactorIfEnabled } = require("../../controllers/auth/secondFactorService");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+
+  const totpAccount = await createAuthenticatedUser("atomic_totp");
+  const secret = "JBSWY3DPEHPK3PXP";
+  const step = currentTestTotpStep();
+  await UserSecurity.create({
+    userId: totpAccount.user._id,
+    username: totpAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${totpAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  const totpResults = await Promise.allSettled(Array.from({ length: 10 }, () =>
+    verifySecondFactorIfEnabled({
+      user: totpAccount.user,
+      factor: normalizedSecondFactor({ totpCode: testTotpCodeAtStep(secret, step) })
+    })));
+
+  const backupAccount = await createAuthenticatedUser("atomic_backup");
+  const { codes, hashes } = generateBackupCodes(4);
+  await UserSecurity.create({
+    userId: backupAccount.user._id,
+    username: backupAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${backupAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: hashes
+    }
+  });
+  const backupResults = await Promise.allSettled(Array.from({ length: 10 }, () =>
+    verifySecondFactorIfEnabled({
+      user: backupAccount.user,
+      factor: normalizedSecondFactor({ backupCode: codes[0] })
+    })));
+  assert.deepEqual({
+    totpWinners: totpResults.filter(result => result.status === "fulfilled" && result.value.ok).length,
+    totpErrors: totpResults.filter(result => result.status === "rejected").length,
+    backupWinners: backupResults.filter(result => result.status === "fulfilled" && result.value.ok).length,
+    backupErrors: backupResults.filter(result => result.status === "rejected").length
+  }, {
+    totpWinners: 1,
+    totpErrors: 0,
+    backupWinners: 1,
+    backupErrors: 0
+  });
+  const backupState = await UserSecurity.findOne({ userId: backupAccount.user._id }).lean();
+  assert.deepEqual(backupState.totp.backupCodeHashes.sort(), hashes.slice(1).sort());
+
+  const previousStep = await verifySecondFactorIfEnabled({
+    user: totpAccount.user,
+    factor: normalizedSecondFactor({ totpCode: testTotpCodeAtStep(secret, step - 1) })
+  });
+  assert.equal(previousStep.ok, false);
+
+  delete require.cache[require.resolve("../../controllers/auth/secondFactorService")];
+  delete require.cache[require.resolve("../../security/totp/secondFactor")];
+  const restartedService = require("../../controllers/auth/secondFactorService");
+  const restartReplay = await restartedService.verifySecondFactorIfEnabled({
+    user: totpAccount.user,
+    factor: normalizedSecondFactor({ totpCode: testTotpCodeAtStep(secret, step) })
+  });
+  assert.equal(restartReplay.ok, false);
+
+  const twoWayAccount = await createAuthenticatedUser("backup_two_way");
+  const twoWayCodes = generateBackupCodes(3);
+  await UserSecurity.create({
+    userId: twoWayAccount.user._id,
+    username: twoWayAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${twoWayAccount.user._id}`),
+      backupCodeHashes: twoWayCodes.hashes
+    }
+  });
+  const twoWayResults = await Promise.all([0, 1].map(() =>
+    restartedService.verifySecondFactorIfEnabled({
+      user: twoWayAccount.user,
+      factor: normalizedSecondFactor({ backupCode: twoWayCodes.codes[0] })
+    })));
+  assert.equal(twoWayResults.filter(result => result.ok).length, 1);
+
+  const failureAccount = await createAuthenticatedUser("totp_db_failure");
+  await UserSecurity.create({
+    userId: failureAccount.user._id,
+    username: failureAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${failureAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  const originalUpdateOne = UserSecurity.updateOne;
+  UserSecurity.updateOne = async () => {
+    const error = new Error("simulated transient write failure");
+    error.code = 112;
+    throw error;
+  };
+  try {
+    await assert.rejects(() => restartedService.verifySecondFactorIfEnabled({
+      user: failureAccount.user,
+      factor: normalizedSecondFactor({ totpCode: testTotpCodeAtStep(secret, step) })
+    }), /simulated transient write failure/);
+  } finally {
+    UserSecurity.updateOne = originalUpdateOne;
+  }
+  const failureState = await UserSecurity.findOne({ userId: failureAccount.user._id }).lean();
+  assert.equal(failureState.totp.lastUsedStep, null);
+});
+
+test("strict second-factor selection rejects missing and ambiguous inputs without consumption", async () => {
+  const UserSecurity = require("../../models/UserSecurity");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+  const { consumeSecondFactor } = require("../../security/totp/secondFactor");
+  const { normalizeSecondFactorInput } = require("../../security/totp/secondFactorInput");
+  const secret = "JBSWY3DPEHPK3PXP";
+
+  async function createFactorFixture(label) {
+    const account = await createAuthenticatedUser(label);
+    const backup = generateBackupCodes(3);
+    await UserSecurity.create({
+      userId: account.user._id,
+      username: account.username,
+      totp: {
+        enabled: true,
+        secretEnvelope: encryptJson({ secret }, `totp:${account.user._id}`),
+        lastUsedStep: null,
+        backupCodeHashes: backup.hashes
+      }
+    });
+    const totpCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+    return { account, backup, totpCode };
+  }
+
+  async function assertRejectedWithoutConsumption(label, input) {
+    const fixture = await createFactorFixture(label);
+    const actualInput = typeof input === "function" ? input(fixture) : input;
+    const normalized = normalizeSecondFactorInput(actualInput);
+    assert.equal(normalized.ok, false);
+    const result = await consumeSecondFactor({
+      userId: fixture.account.user._id,
+      factor: normalized.factor
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.required, true);
+    const state = await UserSecurity.findOne({ userId: fixture.account.user._id }).lean();
+    assert.equal(state.totp.lastUsedStep, null);
+    assert.deepEqual(state.totp.backupCodeHashes.sort(), fixture.backup.hashes.sort());
+  }
+
+  await assertRejectedWithoutConsumption("factor_missing", {});
+  await assertRejectedWithoutConsumption("factor_both_valid", fixture => ({
+    totpCode: fixture.totpCode,
+    backupCode: fixture.backup.codes[0]
+  }));
+  await assertRejectedWithoutConsumption("factor_bad_totp", fixture => ({
+    totpCode: fixture.totpCode === "000000" ? "000001" : "000000",
+    backupCode: fixture.backup.codes[0]
+  }));
+  await assertRejectedWithoutConsumption("factor_bad_backup", fixture => ({
+    totpCode: fixture.totpCode,
+    backupCode: "ZZZZ-ZZZZ-ZZZZ"
+  }));
+  await assertRejectedWithoutConsumption("factor_oversized", {
+    totpCode: "1".repeat(33)
+  });
+
+  const totpOnly = await createFactorFixture("factor_totp_only");
+  const totpFactor = normalizeSecondFactorInput({ totpCode: totpOnly.totpCode });
+  assert.equal((await consumeSecondFactor({
+    userId: totpOnly.account.user._id,
+    factor: totpFactor.factor
+  })).ok, true);
+  assert.equal((await consumeSecondFactor({
+    userId: totpOnly.account.user._id,
+    factor: totpFactor.factor
+  })).ok, false);
+
+  const backupOnly = await createFactorFixture("factor_backup_only");
+  const backupFactor = normalizeSecondFactorInput({ backupCode: backupOnly.backup.codes[0] });
+  assert.equal((await consumeSecondFactor({
+    userId: backupOnly.account.user._id,
+    factor: backupFactor.factor
+  })).ok, true);
+  assert.equal((await consumeSecondFactor({
+    userId: backupOnly.account.user._id,
+    factor: backupFactor.factor
+  })).ok, false);
+  const backupState = await UserSecurity.findOne({ userId: backupOnly.account.user._id }).lean();
+  assert.equal(backupState.totp.backupCodeHashes.includes(backupOnly.backup.hashes[0]), false);
+  assert.deepEqual(
+    backupState.totp.backupCodeHashes.sort(),
+    backupOnly.backup.hashes.slice(1).sort()
+  );
+});
+
+test("login orders password and email checks before atomic second-factor consumption", async () => {
+  const bcrypt = require("bcrypt");
+  const UserSecurity = require("../../models/UserSecurity");
+  const {
+    saveEmailCode,
+    verifyEmailCode
+  } = require("../../controllers/auth/emailCodeService");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+  const { hashEmail } = require("../../utils/privacy");
+  const secret = "JBSWY3DPEHPK3PXP";
+  const password = "atomic login password";
+
+  async function createFixture(label, backupCodeCount = 0) {
+    const email = `${label}@example.test`;
+    const user = await User.create({
+      username: label,
+      password: await bcrypt.hash(password, 12),
+      emailHash: hashEmail(email),
+      emailVerified: true
+    });
+    const backup = generateBackupCodes(backupCodeCount);
+    await UserSecurity.create({
+      userId: user._id,
+      username: user.username,
+      totp: {
+        enabled: true,
+        secretEnvelope: encryptJson({ secret }, `totp:${user._id}`),
+        lastUsedStep: null,
+        backupCodeHashes: backup.hashes
+      }
+    });
+    return { user, email, emailHash: hashEmail(email), backup };
+  }
+
+  async function runLoginRace(label, count) {
+    const fixture = await createFixture(label);
+    const emailCode = "13572468";
+    await saveEmailCode({ emailHash: fixture.emailHash, purpose: "login", code: emailCode });
+    const totpCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+    const responses = await Promise.all(Array.from({ length: count }, () => supertest(app)
+      .post("/login")
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send({ email: fixture.email, password, code: emailCode, totpCode })));
+    assert.equal(responses.filter(response => response.status === 200).length, 1);
+    assert.equal(responses.filter(response => response.status !== 200).length, count - 1);
+    assert.equal(await Session.countDocuments({ userId: fixture.user._id, revokedAt: null }), 1);
+    return responses;
+  }
+
+  const twoWay = await runLoginRace("totp_login_two", 2);
+  assert.equal(twoWay.filter(response => response.status === 401).length, 1);
+  await runLoginRace("totp_login_ten", 10);
+
+  const ordered = await createFixture("factor_ordering", 3);
+  const orderedEmailCode = "24681357";
+  await saveEmailCode({
+    emailHash: ordered.emailHash,
+    purpose: "login",
+    code: orderedEmailCode
+  });
+  const orderedTotp = testTotpCodeAtStep(secret, currentTestTotpStep());
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password: "wrong password",
+      code: orderedEmailCode,
+      totpCode: orderedTotp
+    })
+    .expect(400);
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password,
+      code: "99999999",
+      totpCode: orderedTotp,
+      backupCode: ordered.backup.codes[0]
+    })
+    .expect(400);
+  const orderedState = await UserSecurity.findOne({ userId: ordered.user._id }).lean();
+  assert.equal(orderedState.totp.lastUsedStep, null);
+  assert.deepEqual(orderedState.totp.backupCodeHashes.sort(), ordered.backup.hashes.sort());
+
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password,
+      code: orderedEmailCode,
+      totpCode: orderedTotp,
+      backupCode: ordered.backup.codes[0]
+    })
+    .expect(401);
+  const ambiguousLoginState = await UserSecurity.findOne({ userId: ordered.user._id }).lean();
+  assert.equal(ambiguousLoginState.totp.lastUsedStep, null);
+  assert.deepEqual(ambiguousLoginState.totp.backupCodeHashes.sort(), ordered.backup.hashes.sort());
+  assert.equal(await verifyEmailCode({
+    emailHash: ordered.emailHash,
+    purpose: "login",
+    code: orderedEmailCode,
+    consume: false
+  }), true);
+
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password,
+      code: orderedEmailCode,
+      totpCode: orderedTotp
+    })
+    .expect(200);
+  const successfulLoginState = await UserSecurity.findOne({ userId: ordered.user._id }).lean();
+  assert.equal(Number.isInteger(successfulLoginState.totp.lastUsedStep), true);
+  assert.deepEqual(successfulLoginState.totp.backupCodeHashes.sort(), ordered.backup.hashes.sort());
+
+  const reset = await createFixture("factor_reset", 3);
+  const resetEmailCode = "86421357";
+  const resetPassword = "strict reset password";
+  await saveEmailCode({
+    emailHash: reset.emailHash,
+    purpose: "reset",
+    code: resetEmailCode
+  });
+  const resetTotp = testTotpCodeAtStep(secret, currentTestTotpStep());
+  await supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: reset.email,
+      password: resetPassword,
+      code: resetEmailCode,
+      totpCode: resetTotp,
+      backupCode: reset.backup.codes[0]
+    })
+    .expect(401);
+  const ambiguousResetState = await UserSecurity.findOne({ userId: reset.user._id }).lean();
+  assert.equal(ambiguousResetState.totp.lastUsedStep, null);
+  assert.deepEqual(ambiguousResetState.totp.backupCodeHashes.sort(), reset.backup.hashes.sort());
+  assert.equal(await verifyEmailCode({
+    emailHash: reset.emailHash,
+    purpose: "reset",
+    code: resetEmailCode,
+    consume: false
+  }), true);
+  assert.equal(await bcrypt.compare(password, (await User.findById(reset.user._id)).password), true);
+
+  await supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: reset.email,
+      password: resetPassword,
+      code: resetEmailCode,
+      totpCode: resetTotp
+    })
+    .expect(200);
+  assert.equal(await bcrypt.compare(
+    resetPassword,
+    (await User.findById(reset.user._id)).password
+  ), true);
+});
+
+test("recent-auth, explicit reauthentication, TOTP enable and disable share atomic semantics", async () => {
+  const UserSecurity = require("../../models/UserSecurity");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const {
+    consumeSecondFactor,
+    disableTotpAfterConsumedFactor
+  } = require("../../security/totp/secondFactor");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+  const { requireReauthentication } = require("../../middleware/recentAuth");
+  const secret = "JBSWY3DPEHPK3PXP";
+
+  async function enableFixture(account, { pending = false, backupCodeHashes = [] } = {}) {
+    const envelope = encryptJson({ secret }, `totp:${account.user._id}`);
+    await UserSecurity.create({
+      userId: account.user._id,
+      username: account.username,
+      totp: pending ? {
+        enabled: false,
+        pendingSecretEnvelope: envelope
+      } : {
+        enabled: true,
+        secretEnvelope: envelope,
+        lastUsedStep: null,
+        backupCodeHashes
+      }
+    });
+  }
+
+  async function ageSessions(userId) {
+    await Session.collection.updateMany({ userId }, {
+      $set: {
+        createdAt: new Date(Date.now() - 73 * 60 * 60 * 1000),
+        reauthenticatedAt: null
+      }
+    });
+  }
+
+  const recentAccount = await createAuthenticatedUser("recent_atomic");
+  const recentOther = await createAdditionalSession(recentAccount);
+  await enableFixture(recentAccount);
+  await ageSessions(recentAccount.user._id);
+  const recentCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const recentResponses = await Promise.all([recentAccount, recentOther].map(account =>
+    sessionJson(account, "POST", "/security/vault/prepare", { totpCode: recentCode })));
+  assert.equal(recentResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(recentResponses.filter(response => response.status === 401).length, 1);
+
+  const ambiguousRecent = await createAuthenticatedUser("recent_ambiguous");
+  const ambiguousRecentBackup = generateBackupCodes(2);
+  await enableFixture(ambiguousRecent, {
+    backupCodeHashes: ambiguousRecentBackup.hashes
+  });
+  await ageSessions(ambiguousRecent.user._id);
+  const ambiguousRecentCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const ambiguousRecentResponse = await sessionJson(
+    ambiguousRecent,
+    "POST",
+    "/security/vault/prepare",
+    {
+      totpCode: ambiguousRecentCode,
+      backupCode: ambiguousRecentBackup.codes[0]
+    }
+  );
+  assert.equal(ambiguousRecentResponse.status, 401);
+  const ambiguousRecentState = await UserSecurity.findOne({
+    userId: ambiguousRecent.user._id
+  }).lean();
+  assert.equal(ambiguousRecentState.totp.lastUsedStep, null);
+  assert.deepEqual(
+    ambiguousRecentState.totp.backupCodeHashes.sort(),
+    ambiguousRecentBackup.hashes.sort()
+  );
+
+  const explicitAccount = await createAuthenticatedUser("explicit_atomic");
+  const explicitOther = await createAdditionalSession(explicitAccount);
+  await enableFixture(explicitAccount);
+  await Session.updateMany({ userId: explicitAccount.user._id }, { $set: { reauthenticatedAt: null } });
+  const explicitCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+
+  function runExplicit(account, body = { totpCode: explicitCode }) {
+    return new Promise((resolve, reject) => {
+      const req = {
+        user: {
+          userId: account.user._id,
+          username: account.username,
+          sid: account.sessionId
+        },
+        body
+      };
+      const res = {
+        statusCode: 200,
+        status(statusCode) {
+          this.statusCode = statusCode;
+          return this;
+        },
+        json(body) {
+          resolve({ next: false, status: this.statusCode, body });
+        }
+      };
+      requireReauthentication(req, res, error => {
+        if (error) reject(error);
+        else resolve({ next: true, status: 200, reauthentication: req.reauthentication });
+      });
+    });
+  }
+
+  const explicitResults = await Promise.all(
+    [explicitAccount, explicitOther].map(account => runExplicit(account))
+  );
+  assert.equal(explicitResults.filter(result => result.next).length, 1);
+  assert.equal(explicitResults.filter(result => result.status === 401).length, 1);
+
+  const ambiguousExplicit = await createAuthenticatedUser("explicit_ambiguous");
+  const ambiguousExplicitBackup = generateBackupCodes(2);
+  await enableFixture(ambiguousExplicit, {
+    backupCodeHashes: ambiguousExplicitBackup.hashes
+  });
+  await Session.updateMany({ userId: ambiguousExplicit.user._id }, {
+    $set: { reauthenticatedAt: null }
+  });
+  const ambiguousExplicitCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const ambiguousExplicitResult = await runExplicit(ambiguousExplicit, {
+    totpCode: ambiguousExplicitCode,
+    backupCode: ambiguousExplicitBackup.codes[0]
+  });
+  assert.equal(ambiguousExplicitResult.next, false);
+  assert.equal(ambiguousExplicitResult.status, 401);
+  const ambiguousExplicitState = await UserSecurity.findOne({
+    userId: ambiguousExplicit.user._id
+  }).lean();
+  assert.equal(ambiguousExplicitState.totp.lastUsedStep, null);
+  assert.deepEqual(
+    ambiguousExplicitState.totp.backupCodeHashes.sort(),
+    ambiguousExplicitBackup.hashes.sort()
+  );
+
+  const setupAccount = await createAuthenticatedUser("setup_atomic");
+  await enableFixture(setupAccount, { pending: true });
+  await ageSessions(setupAccount.user._id);
+  await Session.updateMany({ userId: setupAccount.user._id }, {
+    $set: { reauthenticatedAt: new Date() }
+  });
+  const setupCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const setupResponses = await Promise.all([0, 1].map(() =>
+    sessionJson(setupAccount, "POST", "/security/totp/enable", { code: setupCode })));
+  assert.equal(
+    setupResponses.filter(response => response.status === 200).length,
+    1,
+    setupResponses.map(response => `${response.status}:${response.text}`).join(" | ")
+  );
+  assert.equal(setupResponses.filter(response => response.status === 409).length, 1);
+  const setupState = await UserSecurity.findOne({ userId: setupAccount.user._id }).lean();
+  assert.equal(setupState.totp.enabled, true);
+  assert.equal(setupState.totp.backupCodeHashes.length > 0, true);
+
+  const disableAccount = await createAuthenticatedUser("disable_atomic");
+  await enableFixture(disableAccount);
+  await ageSessions(disableAccount.user._id);
+  const disableCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const disableResponse = await sessionJson(
+    disableAccount,
+    "POST",
+    "/security/totp/disable",
+    { code: disableCode }
+  );
+  assert.equal(disableResponse.status, 200, disableResponse.text);
+  const disabledState = await UserSecurity.findOne({ userId: disableAccount.user._id }).lean();
+  assert.equal(disabledState.totp.enabled, false);
+  assert.equal(disabledState.totp.secretEnvelope, null);
+  assert.deepEqual(disabledState.totp.backupCodeHashes, []);
+
+  const disableBackupAccount = await createAuthenticatedUser("disable_backup");
+  const disableBackupCodes = generateBackupCodes(2);
+  await enableFixture(disableBackupAccount, {
+    backupCodeHashes: disableBackupCodes.hashes
+  });
+  await ageSessions(disableBackupAccount.user._id);
+  const disableBackupResponse = await sessionJson(
+    disableBackupAccount,
+    "POST",
+    "/security/totp/disable",
+    { backupCode: disableBackupCodes.codes[0] }
+  );
+  assert.equal(disableBackupResponse.status, 200, disableBackupResponse.text);
+  const disabledBackupState = await UserSecurity.findOne({
+    userId: disableBackupAccount.user._id
+  }).lean();
+  assert.equal(disabledBackupState.totp.enabled, false);
+  assert.equal(disabledBackupState.totp.secretEnvelope, null);
+  assert.deepEqual(disabledBackupState.totp.backupCodeHashes, []);
+
+  const disableAmbiguousAccount = await createAuthenticatedUser("disable_ambiguous");
+  const disableAmbiguousCodes = generateBackupCodes(2);
+  await enableFixture(disableAmbiguousAccount, {
+    backupCodeHashes: disableAmbiguousCodes.hashes
+  });
+  await ageSessions(disableAmbiguousAccount.user._id);
+  const disableAmbiguousTotp = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const disableAmbiguousResponse = await sessionJson(
+    disableAmbiguousAccount,
+    "POST",
+    "/security/totp/disable",
+    {
+      totpCode: disableAmbiguousTotp,
+      backupCode: disableAmbiguousCodes.codes[0]
+    }
+  );
+  assert.equal(disableAmbiguousResponse.status, 401);
+  const disableAmbiguousState = await UserSecurity.findOne({
+    userId: disableAmbiguousAccount.user._id
+  }).lean();
+  assert.equal(disableAmbiguousState.totp.enabled, true);
+  assert.equal(disableAmbiguousState.totp.lastUsedStep, null);
+  assert.deepEqual(
+    disableAmbiguousState.totp.backupCodeHashes.sort(),
+    disableAmbiguousCodes.hashes.sort()
+  );
+
+  const disableAliasAccount = await createAuthenticatedUser("disable_alias");
+  await enableFixture(disableAliasAccount);
+  await ageSessions(disableAliasAccount.user._id);
+  const disableAliasCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const disableAliasResponse = await sessionJson(
+    disableAliasAccount,
+    "POST",
+    "/security/totp/disable",
+    {
+      code: disableAliasCode,
+      totpCode: disableAliasCode === "000000" ? "000001" : "000000"
+    }
+  );
+  assert.equal(disableAliasResponse.status, 401);
+  const disableAliasState = await UserSecurity.findOne({
+    userId: disableAliasAccount.user._id
+  }).lean();
+  assert.equal(disableAliasState.totp.enabled, true);
+  assert.equal(disableAliasState.totp.lastUsedStep, null);
+
+  const replacementAccount = await createAuthenticatedUser("disable_replacement");
+  await enableFixture(replacementAccount);
+  const replacementCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const consumedOldState = await consumeSecondFactor({
+    userId: replacementAccount.user._id,
+    factor: normalizedSecondFactor({ totpCode: replacementCode })
+  });
+  assert.equal(consumedOldState.ok, true);
+  const newSecret = "KRSXG5DSNFXGOIDB";
+  const newEnvelope = encryptJson({ secret: newSecret }, `totp:${replacementAccount.user._id}`);
+  await UserSecurity.updateOne({ userId: replacementAccount.user._id }, {
+    $set: {
+      "totp.enabled": true,
+      "totp.secretEnvelope": newEnvelope,
+      "totp.lastUsedStep": null,
+      "totp.backupCodeHashes": []
+    }
+  });
+  assert.equal(await disableTotpAfterConsumedFactor({
+    userId: replacementAccount.user._id,
+    stateBinding: consumedOldState.stateBinding
+  }), false);
+  const replacementState = await UserSecurity.findOne({ userId: replacementAccount.user._id }).lean();
+  assert.equal(replacementState.totp.enabled, true);
+  assert.deepEqual(replacementState.totp.secretEnvelope, newEnvelope);
+});
+
+test("email-change cancellation GET is a non-mutating confirmation page", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const { sha256 } = require("../../security/crypto/secureEnvelope");
+  const account = await createAuthenticatedUser("cancel_scanner");
+  const token = crypto.randomBytes(32).toString("base64url");
+  const pending = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(token),
+    status: "pending",
+    applyAfter: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    cancelExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000)
+  });
+
+  const scans = await Promise.all(Array.from({ length: 3 }, () =>
+    supertest(app).get(`/auth/email-change/cancel/${encodeURIComponent(token)}`)));
+  for (const response of scans) {
+    assert.equal(response.status, 200, response.text);
+    assert.match(response.headers["content-type"] || "", /^text\/html/);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.equal(response.headers["referrer-policy"], "no-referrer");
+    assert.equal(response.headers["x-frame-options"], "DENY");
+    assert.match(response.headers["content-security-policy"] || "", /frame-ancestors 'none'/);
+    assert.match(response.text, /<form[^>]+method="post"/i);
+    assert.equal(response.text.split(token).length - 1, 1);
+    assert.doesNotMatch(response.text, /<script\b|<img\b|onload=|autosubmit/i);
+  }
+  assert.equal((await PendingEmailChange.findById(pending._id).lean()).status, "pending");
+  const unconfirmed = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(token)}`)
+    .type("form")
+    .send({});
+  assert.equal(unconfirmed.status, 400, unconfirmed.text);
+  assert.equal((await PendingEmailChange.findById(pending._id).lean()).status, "pending");
+});
+
+test("email-change cancellation finds a valid token after 150 pending records", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const { sha256 } = require("../../security/crypto/secureEnvelope");
+  const account = await createAuthenticatedUser("cancel_indexed");
+  await createAdditionalSession(account);
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const applyAfter = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const fillers = Array.from({ length: 150 }, (_, index) => ({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.createHash("sha256").update(`old-${index}`).digest("hex"),
+    newEmailHash: crypto.createHash("sha256").update(`new-${index}`).digest("hex"),
+    cancelTokenHash: sha256(`filler-token-${crypto.randomUUID()}`),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  }));
+  const insertedFillers = await PendingEmailChange.insertMany(fillers);
+  const targetToken = crypto.randomBytes(32).toString("base64url");
+  const target = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(targetToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  await UserSecurity.create({
+    userId: account.user._id,
+    username: account.username,
+    highRiskLock: {
+      lockedUntil: applyAfter,
+      reason: "pending_email_change",
+      pendingEmailChangeId: String(target._id)
+    }
+  });
+
+  const address = server.address();
+  const socket = createSocketClient(`http://127.0.0.1:${address.port}`, {
+    transports: ["websocket"],
+    extraHeaders: { Cookie: account.cookie },
+    reconnection: false,
+    timeout: 3000
+  });
+  await new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("connect_error", reject);
+  });
+  const disconnected = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("cancelled email-change socket remained connected")), 3000);
+    socket.once("disconnect", reason => {
+      clearTimeout(timer);
+      resolve(reason);
+    });
+  });
+
+  const posts = await Promise.all([0, 1].map(() => supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(targetToken)}`)
+    .type("form")
+    .send({ confirm: "1" })));
+  await disconnected;
+  assert.equal(posts.filter(response => response.status === 200).length, 1);
+  assert.equal(posts.filter(response => response.status === 400).length, 1);
+  assert.equal(posts.some(response => response.text.includes(targetToken)), false);
+
+  const cancelled = await PendingEmailChange.findById(target._id).lean();
+  assert.equal(cancelled.status, "cancelled");
+  assert.ok(cancelled.cancelledAt instanceof Date);
+  assert.ok(cancelled.cancellationRequestedAt instanceof Date);
+  assert.ok(cancelled.cancellationFinalizedAt instanceof Date);
+  assert.equal(await PendingEmailChange.countDocuments({
+    _id: { $in: insertedFillers.map(item => item._id) },
+    status: "pending"
+  }), 150);
+  assert.equal(await Session.countDocuments({ userId: account.user._id, revokedAt: null }), 0);
+  assert.equal(socket.connected, false);
+  const clearedSecurity = await UserSecurity.findOne({ userId: account.user._id }).lean();
+  assert.equal(clearedSecurity.highRiskLock.reason, "");
+  assert.equal(clearedSecurity.highRiskLock.pendingEmailChangeId, "");
+
+  const cancelledAt = cancelled.cancelledAt.getTime();
+  const finalizedAt = cancelled.cancellationFinalizedAt.getTime();
+  const reuse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(targetToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(reuse.status, 400, reuse.text);
+  assert.doesNotMatch(reuse.text, new RegExp(targetToken));
+  const reusedRecord = await PendingEmailChange.findById(target._id).lean();
+  assert.equal(reusedRecord.cancelledAt.getTime(), cancelledAt);
+  assert.equal(reusedRecord.cancellationFinalizedAt.getTime(), finalizedAt);
+
+  const wrongToken = crypto.randomBytes(32).toString("base64url");
+  const wrong = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(wrongToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(wrong.status, 400, wrong.text);
+  assert.doesNotMatch(wrong.text, new RegExp(wrongToken));
+
+  const expiredToken = crypto.randomBytes(32).toString("base64url");
+  const expired = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(expiredToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: new Date(Date.now() - 1000)
+  });
+  const expiredResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(expiredToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(expiredResponse.status, 400, expiredResponse.text);
+  assert.equal((await PendingEmailChange.findById(expired._id).lean()).status, "pending");
+
+  const supersededAccount = await createAuthenticatedUser("cancel_old");
+  const supersededToken = crypto.randomBytes(32).toString("base64url");
+  await PendingEmailChange.create({
+    userId: supersededAccount.user._id,
+    username: supersededAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(supersededToken),
+    status: "cancelled",
+    cancelledAt: new Date(),
+    cancellationRequestedAt: null,
+    cancellationFinalizedAt: null,
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  const supersededResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(supersededToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(supersededResponse.status, 400, supersededResponse.text);
+  assert.equal(await Session.countDocuments({
+    userId: supersededAccount.user._id,
+    revokedAt: null
+  }), 1);
+
+  const lockAccount = await createAuthenticatedUser("cancel_lock");
+  const oldToken = crypto.randomBytes(32).toString("base64url");
+  const oldPending = await PendingEmailChange.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(oldToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  const newPending = await PendingEmailChange.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(crypto.randomBytes(32).toString("base64url")),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  await UserSecurity.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    highRiskLock: {
+      lockedUntil: applyAfter,
+      reason: "pending_email_change",
+      pendingEmailChangeId: String(newPending._id)
+    }
+  });
+  const oldResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(oldToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(oldResponse.status, 200, oldResponse.text);
+  assert.equal((await PendingEmailChange.findById(oldPending._id).lean()).status, "cancelled");
+  assert.equal((await PendingEmailChange.findById(newPending._id).lean()).status, "pending");
+  const preservedLock = await UserSecurity.findOne({ userId: lockAccount.user._id }).lean();
+  assert.equal(preservedLock.highRiskLock.reason, "pending_email_change");
+  assert.equal(preservedLock.highRiskLock.pendingEmailChangeId, String(newPending._id));
+
+  const indexes = await PendingEmailChange.collection.indexes();
+  const tokenIndex = indexes.find(index => index.key?.cancelTokenHash === 1);
+  assert.equal(tokenIndex?.unique, true);
+});
+
+test("email-change cancellation worker leases unfinished cleanup and retries with backoff", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const {
+    runEmailChangeCancellationFinalizer
+  } = require("../../security/emailChange/emailChangeSecurity");
+
+  async function createUnfinishedCancellation(prefix) {
+    const account = await createAuthenticatedUser(prefix);
+    await createAdditionalSession(account);
+    const requestedAt = new Date(Date.now() - 1000);
+    const pending = await PendingEmailChange.create({
+      userId: account.user._id,
+      username: account.username,
+      oldEmailHash: crypto.randomBytes(32).toString("hex"),
+      newEmailHash: crypto.randomBytes(32).toString("hex"),
+      cancelTokenHash: crypto.randomBytes(32).toString("hex"),
+      status: "cancelled",
+      cancelledAt: requestedAt,
+      cancellationRequestedAt: requestedAt,
+      cancellationFinalizedAt: null,
+      applyAfter: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      cancelExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000)
+    });
+    await UserSecurity.create({
+      userId: account.user._id,
+      username: account.username,
+      highRiskLock: {
+        lockedUntil: pending.applyAfter,
+        reason: "pending_email_change",
+        pendingEmailChangeId: String(pending._id)
+      }
+    });
+    return { account, pending };
+  }
+
+  const recovered = await createUnfinishedCancellation("cancel_worker");
+  const parallel = await Promise.all([
+    runEmailChangeCancellationFinalizer({ batchSize: 1, owner: "worker-a" }),
+    runEmailChangeCancellationFinalizer({ batchSize: 1, owner: "worker-b" })
+  ]);
+  assert.equal(parallel.reduce((sum, result) => sum + result.claimed, 0), 1);
+  assert.equal(parallel.reduce((sum, result) => sum + result.finalized, 0), 1);
+  const finalized = await PendingEmailChange.findById(recovered.pending._id).lean();
+  assert.ok(finalized.cancellationFinalizedAt instanceof Date);
+  assert.equal(finalized.cancellationLeaseOwner, "");
+  assert.equal(finalized.cancellationLeaseExpiresAt, null);
+  assert.equal(await Session.countDocuments({
+    userId: recovered.account.user._id,
+    revokedAt: null
+  }), 0);
+  const recoveredSecurity = await UserSecurity.findOne({ userId: recovered.account.user._id }).lean();
+  assert.equal(recoveredSecurity.highRiskLock.reason, "");
+
+  const retry = await createUnfinishedCancellation("cancel_worker_retry");
+  const failed = await runEmailChangeCancellationFinalizer({
+    batchSize: 1,
+    owner: "worker-failure",
+    finalizeCancellation: async () => {
+      const error = new Error("simulated cancellation cleanup failure");
+      error.code = "SIMULATED_CLEANUP_FAILURE";
+      throw error;
+    }
+  });
+  assert.deepEqual(failed, { claimed: 1, finalized: 0, failed: 1 });
+  let retryRecord = await PendingEmailChange.findById(retry.pending._id).lean();
+  assert.equal(retryRecord.cancellationAttempts, 1);
+  assert.ok(retryRecord.cancellationLastErrorAt instanceof Date);
+  assert.equal(retryRecord.cancellationLastErrorCode, "SIMULATED_CLEANUP_FAILURE");
+  assert.ok(retryRecord.cancellationRetryAt.getTime() > retryRecord.cancellationLastErrorAt.getTime());
+  assert.equal(retryRecord.cancellationLeaseOwner, "");
+
+  const beforeBackoff = await runEmailChangeCancellationFinalizer({ batchSize: 1 });
+  assert.deepEqual(beforeBackoff, { claimed: 0, finalized: 0, failed: 0 });
+  await PendingEmailChange.updateOne({ _id: retry.pending._id }, {
+    $set: { cancellationRetryAt: new Date(Date.now() - 1) }
+  });
+  const retried = await runEmailChangeCancellationFinalizer({ batchSize: 1 });
+  assert.deepEqual(retried, { claimed: 1, finalized: 1, failed: 0 });
+  retryRecord = await PendingEmailChange.findById(retry.pending._id).lean();
+  assert.ok(retryRecord.cancellationFinalizedAt instanceof Date);
+  assert.equal(await Session.countDocuments({
+    userId: retry.account.user._id,
+    revokedAt: null
+  }), 0);
 });
 
 test("profile endpoint does not expose private fields to unrelated users", async () => {
