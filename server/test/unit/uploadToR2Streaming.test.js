@@ -79,6 +79,20 @@ test("private R2 streaming enforces exact bytes and propagates target aborts", a
     assert.equal(Buffer.concat(received).length, 0);
   });
 
+  await t.test("rejects multi-chunk overflow before forwarding an earlier chunk", async () => {
+    const received = [];
+    await assert.rejects(
+      withR2Response({
+        chunks: [Buffer.from("abcd"), Buffer.from("efgh")],
+        headers: { "content-length": "8" }
+      }, () => streamFromR2("private/object", collectingTarget(received), {
+        expectedBytes: 6
+      })),
+      error => error?.code === "R2_STREAM_LENGTH_MISMATCH"
+    );
+    assert.equal(Buffer.concat(received).length, 0);
+  });
+
   await t.test("rejects a body shorter than the reservation", async () => {
     const received = [];
     await assert.rejects(

@@ -104,7 +104,7 @@ async function createMediaFixture(prefix, { includeOutsider = false, ciphertext 
       name: "encrypted.liotanmedia",
       type: "file",
       mimeType: "application/octet-stream",
-      size: ciphertextBytes,
+      size: overrides.size ?? ciphertextBytes,
       ciphertextBytes,
       encrypted: true,
       protocol: "mls-media-1",
@@ -830,6 +830,35 @@ test("MLS media download streams exact full and partial ciphertext with matching
   assert.equal(reservation.actualBytes, 6);
 });
 
+test("MLS media download uses a positive legacy size and rejects unknown legacy lengths", async () => {
+  const fixture = await createMediaFixture("med_legacy");
+  const legacyUploadId = `${fixture.uploadId}-legacy`;
+  await fixture.createUpload({
+    uploadId: legacyUploadId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    lifecycleState: "legacy-unverified",
+    ciphertextBytes: 0,
+    size: fixture.ciphertext.length
+  });
+
+  mockMediaStream(fixture.ciphertext);
+  const legacy = await fixture.download(fixture.alice, legacyUploadId);
+  assert.equal(legacy.status, 200, legacy.text);
+  assert.deepEqual(legacy.body, fixture.ciphertext);
+  assert.equal(mediaStreamInvocation.options.expectedBytes, fixture.ciphertext.length);
+
+  const unknownLengthId = `${fixture.uploadId}-unknown-length`;
+  await fixture.createUpload({
+    uploadId: unknownLengthId,
+    bindingId: crypto.randomBytes(24).toString("base64url"),
+    lifecycleState: "legacy-unverified",
+    ciphertextBytes: 0,
+    size: 0
+  });
+  const unknownLength = await fixture.download(fixture.alice, unknownLengthId);
+  assert.equal(unknownLength.status, 404, unknownLength.text);
+});
+
 test("MLS media download rejects invalid client ranges and inconsistent R2 responses", async () => {
   const fixture = await createMediaFixture("med_rng");
   const invalidRange = await fixture.download(fixture.alice, fixture.uploadId, "bytes=999-1000");
@@ -1096,6 +1125,71 @@ test("email codes enforce atomic attempts, expiry, replacement and one-time cons
     purpose: "change_new",
     code: "78123456"
   }), true);
+});
+
+test("stale wrong email-code attempts cannot exhaust a replacement generation", async () => {
+  const EmailCode = require("../../models/EmailCode");
+  const {
+    consumeEmailCode,
+    saveEmailCode,
+    verifyEmailCode
+  } = require("../../controllers/auth/emailCodeService");
+  const emailHash = crypto.createHash("sha256")
+    .update("email-code-generation-race@example.test")
+    .digest("hex");
+  const generationACode = "81234567";
+  const generationBCode = "82345671";
+
+  await saveEmailCode({ emailHash, purpose: "login", code: generationACode });
+  const generationA = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.match(generationA.generation, /^[A-Za-z0-9_-]{24}$/);
+
+  const originalUpdateOne = EmailCode.updateOne;
+  let releaseStaleUpdates;
+  const staleUpdatesReleased = new Promise(resolve => { releaseStaleUpdates = resolve; });
+  let allStaleUpdatesReached;
+  const staleUpdatesReached = new Promise(resolve => { allStaleUpdatesReached = resolve; });
+  let intercepted = 0;
+
+  EmailCode.updateOne = function updateOneWithGenerationBarrier(filter, update, options) {
+    if (update?.$inc?.attempts === 1 && filter?.generation === generationA.generation) {
+      intercepted += 1;
+      if (intercepted === 20) allStaleUpdatesReached();
+      return staleUpdatesReleased.then(() => originalUpdateOne.call(this, filter, update, options));
+    }
+    return originalUpdateOne.call(this, filter, update, options);
+  };
+
+  try {
+    const staleAttempts = Promise.all(Array.from({ length: 20 }, () => verifyEmailCode({
+      emailHash,
+      purpose: "login",
+      code: "87651234",
+      consume: false
+    })));
+    await staleUpdatesReached;
+    await saveEmailCode({ emailHash, purpose: "login", code: generationBCode });
+    releaseStaleUpdates();
+    assert.deepEqual(new Set(await staleAttempts), new Set([false]));
+  } finally {
+    releaseStaleUpdates();
+    EmailCode.updateOne = originalUpdateOne;
+  }
+
+  const generationB = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.notEqual(generationB.generation, generationA.generation);
+  assert.equal(generationB.attempts, 0);
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: generationBCode,
+    consume: false
+  }), true);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "login",
+    code: generationACode
+  }), false);
 });
 
 test("a cryptographic device signature cannot cross its bound browser session", async () => {
@@ -2916,6 +3010,10 @@ test("login orders password and email checks before atomic second-factor consump
 test("recent-auth, explicit reauthentication, TOTP enable and disable share atomic semantics", async () => {
   const UserSecurity = require("../../models/UserSecurity");
   const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const {
+    consumeSecondFactor,
+    disableTotpAfterConsumedFactor
+  } = require("../../security/totp/secondFactor");
   const { requireReauthentication } = require("../../middleware/recentAuth");
   const secret = "JBSWY3DPEHPK3PXP";
 
@@ -3026,6 +3124,32 @@ test("recent-auth, explicit reauthentication, TOTP enable and disable share atom
   assert.equal(disabledState.totp.enabled, false);
   assert.equal(disabledState.totp.secretEnvelope, null);
   assert.deepEqual(disabledState.totp.backupCodeHashes, []);
+
+  const replacementAccount = await createAuthenticatedUser("disable_replacement");
+  await enableFixture(replacementAccount);
+  const replacementCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const consumedOldState = await consumeSecondFactor({
+    userId: replacementAccount.user._id,
+    code: replacementCode
+  });
+  assert.equal(consumedOldState.ok, true);
+  const newSecret = "KRSXG5DSNFXGOIDB";
+  const newEnvelope = encryptJson({ secret: newSecret }, `totp:${replacementAccount.user._id}`);
+  await UserSecurity.updateOne({ userId: replacementAccount.user._id }, {
+    $set: {
+      "totp.enabled": true,
+      "totp.secretEnvelope": newEnvelope,
+      "totp.lastUsedStep": null,
+      "totp.backupCodeHashes": []
+    }
+  });
+  assert.equal(await disableTotpAfterConsumedFactor({
+    userId: replacementAccount.user._id,
+    stateBinding: consumedOldState.stateBinding
+  }), false);
+  const replacementState = await UserSecurity.findOne({ userId: replacementAccount.user._id }).lean();
+  assert.equal(replacementState.totp.enabled, true);
+  assert.deepEqual(replacementState.totp.secretEnvelope, newEnvelope);
 });
 
 test("email-change cancellation GET is a non-mutating confirmation page", async () => {
@@ -3257,6 +3381,93 @@ test("email-change cancellation finds a valid token after 150 pending records", 
   const indexes = await PendingEmailChange.collection.indexes();
   const tokenIndex = indexes.find(index => index.key?.cancelTokenHash === 1);
   assert.equal(tokenIndex?.unique, true);
+});
+
+test("email-change cancellation worker leases unfinished cleanup and retries with backoff", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const {
+    runEmailChangeCancellationFinalizer
+  } = require("../../security/emailChange/emailChangeSecurity");
+
+  async function createUnfinishedCancellation(prefix) {
+    const account = await createAuthenticatedUser(prefix);
+    await createAdditionalSession(account);
+    const requestedAt = new Date(Date.now() - 1000);
+    const pending = await PendingEmailChange.create({
+      userId: account.user._id,
+      username: account.username,
+      oldEmailHash: crypto.randomBytes(32).toString("hex"),
+      newEmailHash: crypto.randomBytes(32).toString("hex"),
+      cancelTokenHash: crypto.randomBytes(32).toString("hex"),
+      status: "cancelled",
+      cancelledAt: requestedAt,
+      cancellationRequestedAt: requestedAt,
+      cancellationFinalizedAt: null,
+      applyAfter: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      cancelExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000)
+    });
+    await UserSecurity.create({
+      userId: account.user._id,
+      username: account.username,
+      highRiskLock: {
+        lockedUntil: pending.applyAfter,
+        reason: "pending_email_change",
+        pendingEmailChangeId: String(pending._id)
+      }
+    });
+    return { account, pending };
+  }
+
+  const recovered = await createUnfinishedCancellation("cancel_worker");
+  const parallel = await Promise.all([
+    runEmailChangeCancellationFinalizer({ batchSize: 1, owner: "worker-a" }),
+    runEmailChangeCancellationFinalizer({ batchSize: 1, owner: "worker-b" })
+  ]);
+  assert.equal(parallel.reduce((sum, result) => sum + result.claimed, 0), 1);
+  assert.equal(parallel.reduce((sum, result) => sum + result.finalized, 0), 1);
+  const finalized = await PendingEmailChange.findById(recovered.pending._id).lean();
+  assert.ok(finalized.cancellationFinalizedAt instanceof Date);
+  assert.equal(finalized.cancellationLeaseOwner, "");
+  assert.equal(finalized.cancellationLeaseExpiresAt, null);
+  assert.equal(await Session.countDocuments({
+    userId: recovered.account.user._id,
+    revokedAt: null
+  }), 0);
+  const recoveredSecurity = await UserSecurity.findOne({ userId: recovered.account.user._id }).lean();
+  assert.equal(recoveredSecurity.highRiskLock.reason, "");
+
+  const retry = await createUnfinishedCancellation("cancel_worker_retry");
+  const failed = await runEmailChangeCancellationFinalizer({
+    batchSize: 1,
+    owner: "worker-failure",
+    finalizeCancellation: async () => {
+      const error = new Error("simulated cancellation cleanup failure");
+      error.code = "SIMULATED_CLEANUP_FAILURE";
+      throw error;
+    }
+  });
+  assert.deepEqual(failed, { claimed: 1, finalized: 0, failed: 1 });
+  let retryRecord = await PendingEmailChange.findById(retry.pending._id).lean();
+  assert.equal(retryRecord.cancellationAttempts, 1);
+  assert.ok(retryRecord.cancellationLastErrorAt instanceof Date);
+  assert.equal(retryRecord.cancellationLastErrorCode, "SIMULATED_CLEANUP_FAILURE");
+  assert.ok(retryRecord.cancellationRetryAt.getTime() > retryRecord.cancellationLastErrorAt.getTime());
+  assert.equal(retryRecord.cancellationLeaseOwner, "");
+
+  const beforeBackoff = await runEmailChangeCancellationFinalizer({ batchSize: 1 });
+  assert.deepEqual(beforeBackoff, { claimed: 0, finalized: 0, failed: 0 });
+  await PendingEmailChange.updateOne({ _id: retry.pending._id }, {
+    $set: { cancellationRetryAt: new Date(Date.now() - 1) }
+  });
+  const retried = await runEmailChangeCancellationFinalizer({ batchSize: 1 });
+  assert.deepEqual(retried, { claimed: 1, finalized: 1, failed: 0 });
+  retryRecord = await PendingEmailChange.findById(retry.pending._id).lean();
+  assert.ok(retryRecord.cancellationFinalizedAt instanceof Date);
+  assert.equal(await Session.countDocuments({
+    userId: retry.account.user._id,
+    revokedAt: null
+  }), 0);
 });
 
 test("profile endpoint does not expose private fields to unrelated users", async () => {

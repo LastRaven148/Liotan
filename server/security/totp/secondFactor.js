@@ -56,7 +56,8 @@ async function consumeSecondFactor({ userId, code, backupCode }) {
       return {
         ok: result.modifiedCount === 1,
         required: true,
-        method: "totp"
+        method: "totp",
+        stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
       };
     }
   }
@@ -68,6 +69,7 @@ async function consumeSecondFactor({ userId, code, backupCode }) {
         _id: state._id,
         userId,
         "totp.enabled": true,
+        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
         "totp.backupCodeHashes": matchingHash
       }, {
         $pull: { "totp.backupCodeHashes": matchingHash }
@@ -75,7 +77,8 @@ async function consumeSecondFactor({ userId, code, backupCode }) {
       return {
         ok: result.modifiedCount === 1,
         required: true,
-        method: "backup-code"
+        method: "backup-code",
+        stateBinding: result.modifiedCount === 1 ? state.totp.secretEnvelope : null
       };
     }
   }
@@ -133,10 +136,12 @@ function disableTotpUpdate() {
   };
 }
 
-async function disableTotpAfterConsumedFactor({ userId }) {
+async function disableTotpAfterConsumedFactor({ userId, stateBinding }) {
+  if (!stateBinding || typeof stateBinding !== "object") return false;
   const result = await UserSecurity.updateOne({
     userId,
-    "totp.enabled": true
+    "totp.enabled": true,
+    ...envelopeQuery("totp.secretEnvelope", stateBinding)
   }, disableTotpUpdate());
   return result.modifiedCount === 1;
 }
@@ -172,6 +177,7 @@ async function disableTotpWithSecondFactor({ userId, code, backupCode }) {
         _id: state._id,
         userId,
         "totp.enabled": true,
+        ...envelopeQuery("totp.secretEnvelope", state.totp.secretEnvelope),
         "totp.backupCodeHashes": matchingHash
       }, disableTotpUpdate());
       return { ok: result.modifiedCount === 1 };

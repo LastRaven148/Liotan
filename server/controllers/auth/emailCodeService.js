@@ -41,6 +41,25 @@ function currentLookup(emailHash, purpose) {
   return { ...lookup, _id: currentEmailCodeId(lookup) };
 }
 
+function newGeneration() {
+  return crypto.randomBytes(18).toString("base64url");
+}
+
+function exactGeneration(record) {
+  const generation = String(record?.generation || "");
+  return generation
+    ? { generation }
+    : { generation: { $exists: false } };
+}
+
+function codeHashesEqual(left, right) {
+  const leftBytes = Buffer.from(String(left || ""), "hex");
+  const rightBytes = Buffer.from(String(right || ""), "hex");
+  return leftBytes.length === 32 &&
+    rightBytes.length === 32 &&
+    crypto.timingSafeEqual(leftBytes, rightBytes);
+}
+
 function unexpiredLookup(lookup) {
   return {
     ...lookup,
@@ -92,6 +111,7 @@ async function saveEmailCode({ emailHash, purpose, code }) {
         emailHash: lookup.emailHash,
         purpose: lookup.purpose,
         codeHash: hmac(code),
+        generation: newGeneration(),
         attempts: 0,
         createdAt: new Date()
       }
@@ -119,20 +139,29 @@ async function verifyEmailCode({ emailHash, purpose, code, consume = true }) {
   }
   const lookup = currentLookup(emailHash, purpose);
   const codeHash = hmac(code);
-  const validCodeQuery = {
-    ...unexpiredLookup(lookup),
-    codeHash
+  const record = await EmailCode.findOne(unexpiredLookup(lookup))
+    .select("_id codeHash generation attempts createdAt")
+    .lean();
+  if (!record) return false;
+
+  const exactRecord = {
+    _id: lookup._id,
+    codeHash: record.codeHash,
+    ...exactGeneration(record),
+    attempts: { $lt: MAX_EMAIL_CODE_ATTEMPTS },
+    createdAt: {
+      $eq: record.createdAt,
+      $gte: new Date(Date.now() - emailCodeTtlSeconds() * 1000)
+    }
   };
-  const accepted = consume
-    ? await EmailCode.findOneAndDelete(validCodeQuery)
-    : await EmailCode.exists(validCodeQuery);
-  if (accepted) return true;
+
+  if (codeHashesEqual(record.codeHash, codeHash)) {
+    if (!consume) return true;
+    return Boolean(await EmailCode.findOneAndDelete(exactRecord));
+  }
 
   await EmailCode.updateOne(
-    {
-      ...unexpiredLookup(lookup),
-      codeHash: { $ne: codeHash }
-    },
+    exactRecord,
     { $inc: { attempts: 1 } }
   );
   return false;

@@ -6,6 +6,8 @@ const { encryptJson, decryptJson, randomToken, sha256 } = require("../crypto/sec
 const { revokeAllUserSessions } = require("../../utils/sessionSecurity");
 
 const CANCEL_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,256}$/;
+const CANCELLATION_LEASE_MS = 60_000;
+const CANCELLATION_BATCH_SIZE = 20;
 
 function hoursToMs(hours) {
   return Number(hours || 0) * 60 * 60 * 1000;
@@ -178,14 +180,138 @@ async function clearMatchingEmailChangeLock(pending) {
 async function finalizeEmailChangeCancellation(pending) {
   await clearMatchingEmailChangeLock(pending);
   await revokeAllUserSessions({ userId: pending.userId });
-  await PendingEmailChange.updateOne({
+  const finalized = await PendingEmailChange.updateOne({
     _id: pending._id,
     status: "cancelled",
     cancellationRequestedAt: { $type: "date" },
-    cancellationFinalizedAt: null
+    cancellationFinalizedAt: null,
+    cancellationLeaseOwner: pending.cancellationLeaseOwner
   }, {
-    $set: { cancellationFinalizedAt: new Date() }
+    $set: {
+      cancellationFinalizedAt: new Date(),
+      cancellationLeaseOwner: "",
+      cancellationLeaseExpiresAt: null,
+      cancellationRetryAt: null
+    }
   });
+  if (finalized.modifiedCount !== 1) {
+    const error = new Error("email-change cancellation lease was lost");
+    error.code = "EMAIL_CHANGE_CANCELLATION_LEASE_LOST";
+    throw error;
+  }
+}
+
+function cancellationRetryDelay(attempts) {
+  return Math.min(
+    60 * 60 * 1000,
+    1000 * (2 ** Math.min(12, Math.max(0, Number(attempts || 1) - 1)))
+  );
+}
+
+function boundedCancellationBatchSize(value) {
+  return Math.max(1, Math.min(Number(value) || CANCELLATION_BATCH_SIZE, 100));
+}
+
+async function claimEmailChangeCancellation({ pendingId, owner, now = new Date(), leaseMs = CANCELLATION_LEASE_MS }) {
+  const query = {
+    status: "cancelled",
+    cancellationRequestedAt: { $type: "date" },
+    cancellationFinalizedAt: null,
+    $and: [
+      {
+        $or: [
+          { cancellationRetryAt: null },
+          { cancellationRetryAt: { $exists: false } },
+          { cancellationRetryAt: { $lte: now } }
+        ]
+      },
+      {
+        $or: [
+          { cancellationLeaseExpiresAt: null },
+          { cancellationLeaseExpiresAt: { $exists: false } },
+          { cancellationLeaseExpiresAt: { $lte: now } }
+        ]
+      }
+    ]
+  };
+  if (pendingId) query._id = pendingId;
+
+  return PendingEmailChange.findOneAndUpdate(query, {
+    $set: {
+      cancellationLeaseOwner: owner,
+      cancellationLeaseExpiresAt: new Date(now.getTime() + Math.max(5_000, Number(leaseMs) || CANCELLATION_LEASE_MS))
+    }
+  }, {
+    sort: { cancellationRequestedAt: 1, _id: 1 },
+    returnDocument: "after"
+  });
+}
+
+function cancellationErrorCode(error) {
+  return String(error?.code || error?.name || "EMAIL_CHANGE_CANCELLATION_FAILED")
+    .replace(/[^A-Za-z0-9_-]/g, "_")
+    .slice(0, 80);
+}
+
+async function recordCancellationFailure(pending, error, now = new Date()) {
+  const attempts = Number(pending.cancellationAttempts || 0) + 1;
+  await PendingEmailChange.updateOne({
+    _id: pending._id,
+    status: "cancelled",
+    cancellationFinalizedAt: null,
+    cancellationLeaseOwner: pending.cancellationLeaseOwner
+  }, {
+    $set: {
+      cancellationLeaseOwner: "",
+      cancellationLeaseExpiresAt: null,
+      cancellationRetryAt: new Date(now.getTime() + cancellationRetryDelay(attempts)),
+      cancellationLastErrorAt: now,
+      cancellationLastErrorCode: cancellationErrorCode(error)
+    },
+    $inc: { cancellationAttempts: 1 }
+  });
+}
+
+async function processClaimedCancellation(pending, finalizeCancellation = finalizeEmailChangeCancellation) {
+  try {
+    await finalizeCancellation(pending);
+  } catch (error) {
+    await recordCancellationFailure(pending, error);
+    throw error;
+  }
+}
+
+async function finalizeRequestedCancellation(pending) {
+  const owner = randomToken(18);
+  const claimed = await claimEmailChangeCancellation({ pendingId: pending._id, owner });
+  if (!claimed) return false;
+  await processClaimedCancellation(claimed);
+  return true;
+}
+
+async function runEmailChangeCancellationFinalizer({
+  batchSize = CANCELLATION_BATCH_SIZE,
+  owner = randomToken(18),
+  now,
+  finalizeCancellation = finalizeEmailChangeCancellation
+} = {}) {
+  const result = { claimed: 0, finalized: 0, failed: 0 };
+  const limit = boundedCancellationBatchSize(batchSize);
+  for (let index = 0; index < limit; index += 1) {
+    const claimed = await claimEmailChangeCancellation({
+      owner,
+      now: now || new Date()
+    });
+    if (!claimed) break;
+    result.claimed += 1;
+    try {
+      await processClaimedCancellation(claimed, finalizeCancellation);
+      result.finalized += 1;
+    } catch {
+      result.failed += 1;
+    }
+  }
+  return result;
 }
 
 async function cancelPendingEmailChange(token) {
@@ -218,11 +344,11 @@ async function cancelPendingEmailChange(token) {
       cancellationRequestedAt: { $type: "date" },
       cancellationFinalizedAt: null
     });
-    if (pending) await finalizeEmailChangeCancellation(pending);
+    if (pending) await finalizeRequestedCancellation(pending);
     return { ok: false };
   }
 
-  await finalizeEmailChangeCancellation(pending);
+  await finalizeRequestedCancellation(pending);
   return { ok: true };
 }
 
@@ -239,6 +365,7 @@ module.exports = {
   createPendingEmailChange,
   applyEligiblePendingEmailChanges,
   cancelPendingEmailChange,
+  runEmailChangeCancellationFinalizer,
   getPendingNewEmail,
   getEmailChangeWindows
 };

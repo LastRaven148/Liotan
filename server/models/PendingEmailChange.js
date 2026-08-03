@@ -67,6 +67,32 @@ const pendingEmailChangeSchema = new mongoose.Schema(
     cancellationFinalizedAt: {
       type: Date,
       default: null
+    },
+    cancellationLeaseOwner: {
+      type: String,
+      default: ""
+    },
+    cancellationLeaseExpiresAt: {
+      type: Date,
+      default: null
+    },
+    cancellationRetryAt: {
+      type: Date,
+      default: null
+    },
+    cancellationAttempts: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    cancellationLastErrorAt: {
+      type: Date,
+      default: null
+    },
+    cancellationLastErrorCode: {
+      type: String,
+      default: "",
+      maxlength: 80
     }
   },
   { timestamps: true }
@@ -74,6 +100,12 @@ const pendingEmailChangeSchema = new mongoose.Schema(
 
 pendingEmailChangeSchema.index({ userId: 1, status: 1, createdAt: -1 });
 pendingEmailChangeSchema.index({ newEmailHash: 1, status: 1, applyAfter: 1 });
+pendingEmailChangeSchema.index({
+  status: 1,
+  cancellationFinalizedAt: 1,
+  cancellationRetryAt: 1,
+  cancellationLeaseExpiresAt: 1
+});
 
 module.exports =
   mongoose.models.PendingEmailChange ||

@@ -191,6 +191,24 @@ function validateMediaResponse(object, expected, totalBytes) {
   }
 }
 
+function downloadableMediaBytes(upload) {
+  const ciphertextBytes = Number(upload?.ciphertextBytes);
+  if (Number.isSafeInteger(ciphertextBytes) && ciphertextBytes > 0) {
+    return ciphertextBytes <= MAX_ENCRYPTED_MEDIA_SIZE ? ciphertextBytes : 0;
+  }
+
+  // Quarantined pre-lifecycle records can predate ciphertextBytes. Their
+  // original size is the only locally authenticated length available; an
+  // absent or invalid value must fail closed instead of treating the configured
+  // maximum as the object's exact length.
+  const legacyBytes = Number(upload?.size);
+  return Number.isSafeInteger(legacyBytes) &&
+    legacyBytes > 0 &&
+    legacyBytes <= MAX_ENCRYPTED_MEDIA_SIZE
+    ? legacyBytes
+    : 0;
+}
+
 async function downloadMedia(req, res, next) {
   let quota = null;
   try {
@@ -208,9 +226,8 @@ async function downloadMedia(req, res, next) {
     if (!activeIds.includes(req.cryptoDevice.clientId) || !policyIds.includes(req.cryptoDevice.clientId)) {
       return res.status(403).json({ error: "crypto device is not an active MLS member" });
     }
-    const totalBytes = Number(upload.ciphertextBytes) > 0
-      ? Number(upload.ciphertextBytes)
-      : MAX_ENCRYPTED_MEDIA_SIZE;
+    const totalBytes = downloadableMediaBytes(upload);
+    if (!totalBytes) return res.status(404).json({ error: "media not found" });
     const parsedRange = parseRangeForQuota(String(req.headers.range || "").trim(), totalBytes);
     if (!parsedRange) {
       res.setHeader("Content-Range", `bytes */${totalBytes}`);

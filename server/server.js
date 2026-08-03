@@ -5,6 +5,7 @@ const { server, io } = require("./app");
 const removePasswordIdentityBackups = require("./startup/removePasswordIdentityBackups");
 const scheduleAttachmentCleanup = require("./startup/scheduleAttachmentCleanup");
 const scheduleDeletionWorkflows = require("./startup/scheduleDeletionWorkflows");
+const scheduleEmailChangeCancellationFinalizer = require("./startup/scheduleEmailChangeCancellationFinalizer");
 const logger = require("./utils/logger");
 const { getMailStatus } = require("./utils/mailer");
 const { version } = require("./config/version");
@@ -29,6 +30,7 @@ async function start() {
     await removePasswordIdentityBackups();
     scheduleAttachmentCleanup(logger);
     scheduleDeletionWorkflows(logger, io);
+    scheduleEmailChangeCancellationFinalizer(logger);
 
     server.listen(env.PORT, env.HOST, () => {
       logger.info("SERVER READY", {

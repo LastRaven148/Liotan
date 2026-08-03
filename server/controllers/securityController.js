@@ -126,7 +126,10 @@ async function disableTotp(req, res, next) {
       ["totp", "backup-code"].includes(req.reauthentication.method)
     );
     const disabled = factorWasConsumed
-      ? { ok: await disableTotpAfterConsumedFactor({ userId: user._id }) }
+      ? { ok: await disableTotpAfterConsumedFactor({
+          userId: user._id,
+          stateBinding: req.reauthentication.factorStateBinding
+        }) }
       : await disableTotpWithSecondFactor({
           userId: user._id,
           code: req.body?.code,

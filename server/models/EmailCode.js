@@ -32,6 +32,11 @@ const emailCodeSchema =
       required: true
     },
 
+    generation: {
+      type: String,
+      required: true
+    },
+
     attempts: {
       type: Number,
       default: 0

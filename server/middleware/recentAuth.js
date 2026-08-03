@@ -77,7 +77,11 @@ async function recentAuth(req, res, next) {
     });
     if (secondFactor.ok && secondFactor.required) {
       await markRecentlyAuthenticated(req);
-      req.reauthentication = { method: secondFactor.method, factorConsumed: true };
+      req.reauthentication = {
+        method: secondFactor.method,
+        factorConsumed: true,
+        factorStateBinding: secondFactor.stateBinding
+      };
       return next();
     }
 
@@ -119,7 +123,8 @@ async function requireReauthentication(req, res, next) {
     await markRecentlyAuthenticated(req);
     req.reauthentication = {
       method: secondFactor.required ? secondFactor.method : "password",
-      factorConsumed: secondFactor.required
+      factorConsumed: secondFactor.required,
+      factorStateBinding: secondFactor.required ? secondFactor.stateBinding : null
     };
     return next();
   } catch (err) {
