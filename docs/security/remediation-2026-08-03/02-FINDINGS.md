@@ -1,6 +1,6 @@
 # Stage 0 findings
 
-All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c1342214` before remediation.
+The technical descriptions, preconditions, impacts, and baseline evidence below describe baseline SHA `1c50c64491e622f441684903b5a945b9c1342214` before remediation. Each `Status`, `Remediation`, and `Verification` field reflects the current remediation branch.
 
 ## SEC-2026-08-001 — Broken MLS encrypted media download runtime path
 
@@ -17,11 +17,11 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Required evidence: full/range route tests, invalid/excessive range, unknown/inaccessible/revoked/expired/lifecycle cases, missing/erroring R2, quota release, and no undefined identifier.
 - Baseline evidence: `media.js` imported no access/roster helpers, while the download path referenced all three. A pre-fix route-level run returned 500 and logged `ReferenceError` before streaming.
 - Remediation: imported the existing shared access and roster primitives; routed 5xx R2 errors through the common sanitized error handler; added a real authenticated route test with mocked private R2 and the real Mongo-backed quota, conversation, device-auth, and session layers.
-- Verification: 49/49 server integration tests, 2/2 attachment unit tests, media-storage regression, crypto static analysis, syntax check, and `git diff --check` passed. Revoked devices retain the existing generic 401 device-auth response rather than disclosing that a known device is revoked.
+- Verification: the original fix passed 49/49 server integration tests and 2/2 attachment unit tests. Follow-up commit `6b160ac` split the monolithic media case into five independently named route tests and added low-level streaming tests for exact byte counts, premature target closure, invalid upstream status/range/length, client abort, and post-stream quota-settlement failure. Revoked devices retain the existing generic 401 device-auth response rather than disclosing that a known device is revoked.
 
 ## SEC-2026-08-002 — Non-atomic email code attempts, consumption, replacement, and expiry
 
-- Severity: Critical for one-time authentication semantics.
+- Severity: High for one-time authentication semantics. Exploitation still requires possession of the applicable valid email code and any earlier mandatory factor; no unauthenticated service-wide compromise was demonstrated.
 - Status: **FIXED**.
 - Affected files: `emailCodeService.js`, `EmailCode.js`, every email-code caller, tests, and possibly a durable index migration.
 - Current behavior: replacement is `deleteMany` followed by `create`; verification is `findOne` followed by document `save` or `deleteOne`; successful non-consuming verification is separated from later consumption; expiry is not part of the security query; `{ emailHash, purpose }` is non-unique.
@@ -99,7 +99,7 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Availability: legitimate email change is cancelled without user intent.
 - Exploitability: common mail scanners routinely issue GET requests; knowledge of the link is inherent to scanning.
 - Proposed fix: GET renders a self-contained no-store confirmation page; POST performs one atomic transition, revokes sessions, disconnects sockets, and clears only the matching email-change lock.
-- Required evidence: repeated GETs do not mutate, POST does, parallel POST has one transition, invalid/expired/reused tokens fail safely, security headers are present, and no raw token is logged.
+- Required evidence: repeated GETs do not mutate, POST does, parallel POST has one transition, invalid/expired/reused tokens fail safely, security headers are present, and the raw capability is redacted from the application request-context logger.
 - Baseline evidence: `authRoutes.js` lines 122–126 route GET directly to the mutating controller.
-- Remediation: GET now renders a no-script/no-image confirmation page and never queries or mutates cancellation state; POST with an explicit form confirmation performs the atomic transition. The capability-protected form has a narrow state-change-guard exception, while all ordinary CSRF rules remain unchanged. Successful cancellation uses the shared session revocation helper, disconnects live sockets, and clears a high-risk lock only when its internal pending-operation ID matches. Request-path logging redacts the raw cancellation capability.
+- Remediation: GET now renders a no-script/no-image confirmation page and never queries or mutates cancellation state; POST with an explicit form confirmation performs the atomic transition. The capability-protected form has a narrow state-change-guard exception, while all ordinary CSRF rules remain unchanged. Successful cancellation uses the shared session revocation helper, disconnects live sockets, and clears a high-risk lock only when its internal pending-operation ID matches. The application request-context logger redacts the raw cancellation capability; this does not claim redaction in browser history, reverse-proxy, CDN, mail-scanner, or infrastructure access logs.
 - Verification: three simulated scanner GETs return HTML 200 with no-store, no-referrer, frame denial and CSP while the record stays pending. Unconfirmed POST is rejected. Confirmed POST revokes two sessions and disconnects a real WebSocket. Reuse/wrong/expired responses contain no token; a cancellation for an older operation cannot clear the lock belonging to a newer pending change.
