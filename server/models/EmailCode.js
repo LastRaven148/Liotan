@@ -3,6 +3,11 @@ const mongoose =
 
 const emailCodeSchema =
   new mongoose.Schema({
+    _id: {
+      type: String,
+      required: true
+    },
+
     emailHash: {
       type: String,
       required: true,

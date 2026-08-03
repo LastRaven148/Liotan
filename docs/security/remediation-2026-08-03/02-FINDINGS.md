@@ -22,7 +22,7 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 ## SEC-2026-08-002 — Non-atomic email code attempts, consumption, replacement, and expiry
 
 - Severity: Critical for one-time authentication semantics.
-- Status: **OPEN**.
+- Status: **FIXED**.
 - Affected files: `emailCodeService.js`, `EmailCode.js`, every email-code caller, tests, and possibly a durable index migration.
 - Current behavior: replacement is `deleteMany` followed by `create`; verification is `findOne` followed by document `save` or `deleteOne`; successful non-consuming verification is separated from later consumption; expiry is not part of the security query; `{ emailHash, purpose }` is non-unique.
 - Preconditions: concurrent requests using the same code, concurrent resend, delayed TTL cleanup, or multifactor flows that validate factors in separate operations.
@@ -33,6 +33,8 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Proposed fix: one current record per lookup, explicit expiry query, atomic failed-attempt increments, and a fail-safe reservation/consume primitive that commits only after all required factors pass.
 - Required evidence: 20-way wrong attempts, 10-way consume, expired-record rejection, resend/save races, and registration/login/reset/email-change concurrency.
 - Baseline evidence: `emailCodeService.js` lines 61–91 and `EmailCode.js` lines 35–45.
+- Remediation: each `{ emailHash, purpose }` now maps to a deterministic string `_id`, so MongoDB's built-in unique `_id` index is the single-record invariant without a deployment-time index migration. Save is an atomic upsert, security queries bind the deterministic ID and an explicit creation cutoff, incorrect attempts use a bounded atomic increment, and successful consumption uses an exact `findOneAndDelete`. Legacy ObjectId records cannot authenticate and are removed after the replacement record exists. Login, reset, registration, and email-change confirmation consume the exact supplied code once and only after prior mandatory factors have passed.
+- Verification: the pre-fix 20-way wrong-code reproduction left `attempts = 1`; after remediation, 20-way rejection stops at 5. Ten-way consume, ten-way save, expiry, sequential resend, legacy-record cleanup, and direct consume tests pass. Route-level races prove one registration, login, reset, current-email verification, and new-email confirmation winner; wrong password, wrong TOTP, and wrong new-email code preserve the still-required email code. The complete server suite passes 51/51 integration and 29/29 unit tests.
 
 ## SEC-2026-08-003 — Non-atomic TOTP step consumption
 

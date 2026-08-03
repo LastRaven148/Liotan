@@ -828,6 +828,94 @@ test("authorized MLS media download enforces roster, lifecycle, ranges, quota an
   assert.equal(expiredConversation.blockedForEpochChange, true);
 });
 
+test("email codes enforce atomic attempts, expiry, replacement and one-time consumption", async () => {
+  const EmailCode = require("../../models/EmailCode");
+  const {
+    consumeEmailCode,
+    saveEmailCode,
+    verifyEmailCode
+  } = require("../../controllers/auth/emailCodeService");
+  const emailHash = crypto.createHash("sha256").update("atomic-email-code@example.test").digest("hex");
+
+  await saveEmailCode({ emailHash, purpose: "login", code: "12345678" });
+  const wrongAttempts = await Promise.all(Array.from({ length: 20 }, () => verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: "87654321",
+    consume: false
+  })));
+  assert.deepEqual(new Set(wrongAttempts), new Set([false]));
+  let record = await EmailCode.findOne({ emailHash, purpose: "login" }).lean();
+  assert.equal(record.attempts, 5);
+  assert.equal(await verifyEmailCode({ emailHash, purpose: "login", code: "12345678" }), false);
+
+  await saveEmailCode({ emailHash, purpose: "login", code: "23456781" });
+  const consumers = await Promise.all(Array.from({ length: 10 }, () => verifyEmailCode({
+    emailHash,
+    purpose: "login",
+    code: "23456781"
+  })));
+  assert.equal(consumers.filter(Boolean).length, 1);
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "login" }), 0);
+
+  await saveEmailCode({ emailHash, purpose: "reset", code: "34567812" });
+  await EmailCode.updateOne(
+    { emailHash, purpose: "reset" },
+    { $set: { createdAt: new Date(Date.now() - 60 * 60 * 1000) } }
+  );
+  assert.equal(await verifyEmailCode({ emailHash, purpose: "reset", code: "34567812" }), false);
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "reset" }), 1);
+
+  const concurrentCodes = Array.from({ length: 10 }, (_, index) => `${45678120 + index}`);
+  await Promise.all(concurrentCodes.map(code => saveEmailCode({
+    emailHash,
+    purpose: "register",
+    code
+  })));
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "register" }), 1);
+  const accepted = await Promise.all(concurrentCodes.map(code => verifyEmailCode({
+    emailHash,
+    purpose: "register",
+    code,
+    consume: false
+  })));
+  assert.equal(accepted.filter(Boolean).length, 1);
+
+  await saveEmailCode({ emailHash, purpose: "change_current", code: "56781234" });
+  await saveEmailCode({ emailHash, purpose: "change_current", code: "67812345" });
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "56781234",
+    consume: false
+  }), false);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "67812345"
+  }), true);
+  assert.equal(await consumeEmailCode({
+    emailHash,
+    purpose: "change_current",
+    code: "67812345"
+  }), false);
+
+  await EmailCode.collection.insertMany([0, 1].map(index => ({
+    emailHash,
+    purpose: "change_new",
+    codeHash: `legacy-${index}`,
+    attempts: 0,
+    createdAt: new Date()
+  })));
+  await saveEmailCode({ emailHash, purpose: "change_new", code: "78123456" });
+  assert.equal(await EmailCode.countDocuments({ emailHash, purpose: "change_new" }), 1);
+  assert.equal(await verifyEmailCode({
+    emailHash,
+    purpose: "change_new",
+    code: "78123456"
+  }), true);
+});
+
 test("a cryptographic device signature cannot cross its bound browser session", async () => {
   const account = await createAccount("bound_device");
   const otherSession = await createAdditionalSession(account);
@@ -2242,6 +2330,208 @@ test("authentication lifecycle consumes codes and requires explicit reauthentica
     .get("/auth/session")
     .set("Cookie", cookie)
     .expect(401);
+});
+
+test("email-code auth flows consume only after all prior factors and admit one concurrent operation", async () => {
+  const bcrypt = require("bcrypt");
+  const EmailCode = require("../../models/EmailCode");
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { verifyTotp } = require("../../security/totp/totp");
+  const { hashEmail } = require("../../utils/privacy");
+  const { verifyEmailCode } = require("../../controllers/auth/emailCodeService");
+
+  async function issueCode({ email, purpose, password = "" }) {
+    const path = purpose === "login" ? "/login/code" : "/auth/email-code";
+    const response = await supertest(app)
+      .post(path)
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send(purpose === "login" ? { email, password } : { email, purpose });
+    assert.equal(response.status, 200, response.text);
+    assert.match(response.body.devCode || "", /^\d{8}$/);
+    return response.body.devCode;
+  }
+
+  async function registerConcurrently({ email, username, password }) {
+    const code = await issueCode({ email, purpose: "register" });
+    const responses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+      .post("/register")
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send({ email, username, password, code })));
+    assert.equal(responses.filter(response => response.status === 200).length, 1);
+    assert.equal(responses.filter(response => response.status === 400).length, 9);
+    assert.equal(await User.countDocuments({ username }), 1);
+    const success = responses.find(response => response.status === 200);
+    return {
+      code,
+      cookie: success.headers["set-cookie"]?.[0]?.split(";")[0],
+      user: await User.findOne({ username })
+    };
+  }
+
+  const password = "atomic auth password";
+  const firstEmail = "atomic-factor@example.test";
+  const firstEmailHash = hashEmail(firstEmail);
+  const first = await registerConcurrently({
+    email: firstEmail,
+    username: "atomic_factor",
+    password
+  });
+  assert.equal(await EmailCode.countDocuments({ emailHash: firstEmailHash, purpose: "register" }), 0);
+
+  const loginCode = await issueCode({ email: firstEmail, purpose: "login", password });
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: firstEmail, password: "wrong password", code: loginCode })
+    .expect(400);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "login",
+    code: loginCode,
+    consume: false
+  }), true);
+
+  const totpSecret = "JBSWY3DPEHPK3PXP";
+  const invalidTotpCode = ["000000", "111111", "222222", "333333"]
+    .find(code => !verifyTotp(totpSecret, code).ok);
+  assert.match(invalidTotpCode || "", /^\d{6}$/);
+  await UserSecurity.create({
+    userId: first.user._id,
+    username: first.user.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret: totpSecret }, `totp:${first.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: firstEmail, password, code: loginCode, totpCode: invalidTotpCode })
+    .expect(401);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "login",
+    code: loginCode,
+    consume: false
+  }), true);
+
+  const resetWithSecondFactor = await issueCode({ email: firstEmail, purpose: "reset" });
+  await supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: firstEmail,
+      password: "replacement password",
+      code: resetWithSecondFactor,
+      totpCode: invalidTotpCode
+    })
+    .expect(401);
+  assert.equal(await verifyEmailCode({
+    emailHash: firstEmailHash,
+    purpose: "reset",
+    code: resetWithSecondFactor,
+    consume: false
+  }), true);
+
+  const secondEmail = "atomic-flow@example.test";
+  const secondEmailHash = hashEmail(secondEmail);
+  const second = await registerConcurrently({
+    email: secondEmail,
+    username: "atomic_flow",
+    password
+  });
+  const concurrentLoginCode = await issueCode({ email: secondEmail, purpose: "login", password });
+  const loginResponses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: secondEmail, password, code: concurrentLoginCode })));
+  assert.equal(loginResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(loginResponses.filter(response => response.status === 400).length, 9);
+  assert.equal(await EmailCode.countDocuments({ emailHash: secondEmailHash, purpose: "login" }), 0);
+  const loginCookie = loginResponses.find(response => response.status === 200)
+    .headers["set-cookie"]?.[0]?.split(";")[0];
+  assert.match(loginCookie || "", /^liotan_auth=/);
+
+  await Session.collection.updateMany({ userId: second.user._id }, {
+    $set: {
+      createdAt: new Date(Date.now() - 73 * 60 * 60 * 1000),
+      reauthenticatedAt: null
+    }
+  });
+  const currentCodeResponse = await supertest(app)
+    .post("/auth/email-change/current")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ currentEmail: secondEmail });
+  assert.equal(currentCodeResponse.status, 200, currentCodeResponse.text);
+  const currentCode = currentCodeResponse.body.devCode;
+  const currentVerifications = await Promise.all([0, 1].map(() => supertest(app)
+    .post("/auth/email-change/verify-current")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ currentEmail: secondEmail, code: currentCode })));
+  assert.equal(currentVerifications.filter(response => response.status === 200).length, 1);
+  const emailChangeToken = currentVerifications.find(response => response.status === 200).body.emailChangeToken;
+
+  const newEmail = "atomic-flow-new@example.test";
+  const newEmailHash = hashEmail(newEmail);
+  const newCodeResponse = await supertest(app)
+    .post("/auth/email-change/new-code")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ token: emailChangeToken, newEmail });
+  assert.equal(newCodeResponse.status, 200, newCodeResponse.text);
+  const newCode = newCodeResponse.body.devCode;
+  await supertest(app)
+    .post("/auth/email-change/confirm")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      token: emailChangeToken,
+      currentEmail: secondEmail,
+      newEmail,
+      code: "00000000",
+      currentPassword: password
+    })
+    .expect(400);
+  assert.equal(await verifyEmailCode({
+    emailHash: newEmailHash,
+    purpose: "change_new",
+    code: newCode,
+    consume: false
+  }), true);
+  assert.equal(await Session.countDocuments({ userId: second.user._id, reauthenticatedAt: { $ne: null } }), 0);
+
+  const confirmations = await Promise.all([0, 1].map(() => supertest(app)
+    .post("/auth/email-change/confirm")
+    .set("Cookie", loginCookie)
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      token: emailChangeToken,
+      currentEmail: secondEmail,
+      newEmail,
+      code: newCode,
+      currentPassword: password
+    })));
+  assert.equal(confirmations.filter(response => response.status === 200).length, 1);
+  assert.equal(confirmations.filter(response => response.status === 400).length, 1);
+  assert.equal(await PendingEmailChange.countDocuments({ userId: second.user._id, newEmailHash }), 1);
+
+  const resetCode = await issueCode({ email: secondEmail, purpose: "reset" });
+  const newPassword = "atomic reset password";
+  const resetResponses = await Promise.all(Array.from({ length: 10 }, () => supertest(app)
+    .post("/password/reset")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({ email: secondEmail, password: newPassword, code: resetCode })));
+  assert.equal(resetResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(resetResponses.filter(response => response.status === 400).length, 9);
+  assert.equal(await EmailCode.countDocuments({ emailHash: secondEmailHash, purpose: "reset" }), 0);
+  const updatedUser = await User.findById(second.user._id).lean();
+  assert.equal(await bcrypt.compare(newPassword, updatedUser.password), true);
 });
 
 test("profile endpoint does not expose private fields to unrelated users", async () => {

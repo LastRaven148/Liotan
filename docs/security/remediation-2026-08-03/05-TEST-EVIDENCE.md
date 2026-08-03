@@ -37,3 +37,18 @@ This file records concise, reproducible local evidence. Production systems and s
 - Exit code: 0; 2 passed, 0 failed, 0 skipped.
 - Additional commands: `npm run test:media-storage`; `npm run test:crypto-static`; `node --check server/controllers/cryptoV4/media.js`; `git diff --check`.
 - Exit codes: all 0. Media-storage and crypto-static regressions passed; syntax and whitespace checks were clean.
+
+## SEC-2026-08-002 — Atomic, expiry-bound email codes
+
+- Date/time: 2026-08-03T03:24–03:36+03:00.
+- Pre-fix command: `npm run test:integration --prefix server` after adding the Mongo-backed concurrency reproduction.
+- Exit code: 1; 49 passed, 1 failed. Twenty simultaneous incorrect submissions left `attempts = 1` instead of the required cap of 5, confirming a lost-update race.
+- Primitive post-fix command: `npm run test:integration --prefix server`.
+- Exit code: 0; 50 passed, 0 failed. The test covers 20-way incorrect attempts, 10-way correct consumption, a physically present expired record, 10 simultaneous replacements, sequential resend invalidation, exact one-time consume, and removal of legacy ObjectId duplicates.
+- First full-flow command: `npm run test:integration --prefix server`.
+- Exit code: 1; 50 passed, 1 failed. The new fixture attempted to age immutable `Session.createdAt` through Mongoose, so the tested session correctly remained under the existing 72-hour restriction. No production defect was indicated; the fixture was changed to use the raw test collection and to clear `reauthenticatedAt`.
+- Final full-flow command: `npm run test:integration --prefix server`.
+- Exit code: 0; 51 passed, 0 failed, 0 skipped. Route-level coverage includes ten-way registration, login and password-reset races; two-way current-email verification and new-email confirmation; preservation after wrong password, wrong TOTP and wrong new-email code; and exactly one resulting user, session operation, password mutation, or pending email change.
+- Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `node --check` for every changed controller/service/route; `git diff --check`.
+- Exit codes: all 0; 29 unit tests and the security regression passed, with clean syntax and whitespace.
+- Transition evidence: security queries address only a deterministic string `_id` derived from validated `{ emailHash, purpose }`; therefore old ObjectId records are fail-closed and cannot authenticate. A successful new-code upsert is followed by cleanup of other same-pair records, which the integration test verifies. No new production index or data migration is required; any outstanding pre-remediation email code must be resent.

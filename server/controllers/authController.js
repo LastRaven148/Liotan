@@ -403,10 +403,14 @@ async function login(req, res, next) {
         secondFactorRequired: true
       });
     }
-    await consumeEmailCode({
+    const consumed = await consumeEmailCode({
       emailHash,
-      purpose: "login"
+      purpose: "login",
+      code
     });
+    if (!consumed) {
+      return res.status(400).json({ error: "invalid code" });
+    }
     user.lastSeen = new Date();
     await user.save();
 
@@ -461,7 +465,8 @@ async function resetPassword(req, res, next) {
     const verified = await verifyEmailCode({
       emailHash,
       purpose: "reset",
-      code
+      code,
+      consume: false
     });
     if (!verified) {
       return res.status(400).json({
@@ -478,6 +483,9 @@ async function resetPassword(req, res, next) {
         error: "second factor required",
         secondFactorRequired: true
       });
+    }
+    if (!await consumeEmailCode({ emailHash, purpose: "reset", code })) {
+      return res.status(400).json({ error: "invalid code" });
     }
     user.password = await bcrypt.hash(password, 12);
     await user.save();

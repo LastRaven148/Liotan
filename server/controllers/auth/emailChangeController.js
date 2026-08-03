@@ -11,13 +11,12 @@ const {
 } = require("../../security/emailChange/emailChangeSecurity");
 const {
   authLookupError,
+  consumeEmailCode,
   createCode,
   emailCodeResponse,
   saveEmailCode,
   verifyEmailCode
 } = require("./emailCodeService");
-const { verifySecondFactorIfEnabled } = require("./secondFactorService");
-
 function signEmailChangeToken(user, currentEmailHash) {
   return jwt.sign({
     userId: user._id.toString(),
@@ -112,7 +111,7 @@ async function sendEmailChangeNewCode(req, res, next) {
   }
 }
 
-async function confirmEmailChange(req, res, next) {
+async function authorizeEmailChangeConfirmation(req, res, next) {
   try {
     const tokenPayload = verifyEmailChangeToken(req.body?.token, req);
     const cleanEmail = normalizeEmail(req.body?.newEmail);
@@ -133,16 +132,46 @@ async function confirmEmailChange(req, res, next) {
     if (exists) {
       return res.status(400).json({ error: authLookupError("email already used") });
     }
-    if (!await verifyEmailCode({ emailHash: newEmailHash, purpose: "change_new", code })) {
+    if (!await verifyEmailCode({
+      emailHash: newEmailHash,
+      purpose: "change_new",
+      code,
+      consume: false
+    })) {
       return res.status(400).json({ error: "invalid code" });
     }
-    const secondFactor = await verifySecondFactorIfEnabled({
+    req.emailChangeConfirmation = {
       user,
-      code: req.body?.totpCode,
-      backupCode: req.body?.backupCode
-    });
-    if (!secondFactor.ok) {
-      return res.status(401).json({ error: "second factor required", secondFactorRequired: true });
+      tokenPayload,
+      cleanEmail,
+      currentEmail,
+      newEmailHash,
+      code
+    };
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function confirmEmailChange(req, res, next) {
+  try {
+    const confirmation = req.emailChangeConfirmation;
+    if (!confirmation) return res.status(400).json({ error: "invalid request" });
+    const {
+      user,
+      tokenPayload,
+      cleanEmail,
+      currentEmail,
+      newEmailHash,
+      code
+    } = confirmation;
+    if (!await consumeEmailCode({
+      emailHash: newEmailHash,
+      purpose: "change_new",
+      code
+    })) {
+      return res.status(400).json({ error: "invalid code" });
     }
     const { pending, cancelUrl } = await createPendingEmailChange({
       user,
@@ -180,6 +209,7 @@ module.exports = {
   startEmailChangeCurrent,
   verifyEmailChangeCurrent,
   sendEmailChangeNewCode,
+  authorizeEmailChangeConfirmation,
   confirmEmailChange,
   cancelEmailChange
 };
