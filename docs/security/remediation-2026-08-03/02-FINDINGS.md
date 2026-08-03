@@ -39,7 +39,7 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 ## SEC-2026-08-003 — Non-atomic TOTP step consumption
 
 - Severity: High.
-- Status: **OPEN**.
+- Status: **FIXED**.
 - Affected files: `secondFactorService.js`, `recentAuth.js`, TOTP primitives, `UserSecurity.js`, security-controller callers, and tests.
 - Current behavior: callers read `lastUsedStep`, verify in memory, assign a new step, and save the whole document. Parallel requests can validate against the same old step before either save wins.
 - Preconditions: two or more requests carrying the same currently valid TOTP.
@@ -50,11 +50,13 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Proposed fix: compute the candidate step in memory, then accept it only through a conditional atomic update that advances `lastUsedStep` and modifies exactly one document.
 - Required evidence: 2-way and 10-way login races, recent-auth and explicit reauthentication races, previous-step and restart persistence, and controlled DB write failures.
 - Baseline evidence: `secondFactorService.js` lines 12–19 and `recentAuth.js` lines 52–62 duplicate the same read-modify-save sequence.
+- Remediation: all authentication callers now use one shared atomic second-factor service. TOTP verification computes a candidate step in memory, but acceptance requires an exact secret-envelope match, enabled TOTP, a stored step lower than the candidate, and one modified MongoDB document. The service never moves the step backwards or returns it to an HTTP caller. `recentAuth`, explicit reauthentication, login/reset, TOTP activation, and TOTP disable no longer implement independent read-modify-save consumption.
+- Verification: the pre-fix ten-way race accepted the same current TOTP ten times. Post-fix two-way and ten-way login races admit exactly one session, two-session recent-auth and explicit reauthentication admit one factor consumer, previous-step and simulated-process-restart replays fail from durable DB state, concurrent activation has one winner, stale-session disable consumes the factor once, and a simulated transient Mongo write failure rejects without changing the stored step. The full server integration suite passes 54/54.
 
 ## SEC-2026-08-004 — Non-atomic backup-code consumption
 
 - Severity: High.
-- Status: **OPEN**.
+- Status: **FIXED**.
 - Affected files: the same second-factor callers, `backupCodes.js`, `UserSecurity.js`, and tests.
 - Current behavior: a matching hash is removed from an in-memory array and the whole `UserSecurity` document is saved. Parallel requests can both accept the same hash and can overwrite unrelated array changes.
 - Preconditions: concurrent requests with the same valid backup code.
@@ -65,6 +67,8 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Proposed fix: identify the matching stored hash using timing-safe comparison, then atomically `$pull` that exact hash with success only when one document is modified.
 - Required evidence: 2-way and 10-way consumption, exactly one remaining-count decrement, preservation of other codes, and controlled DB failure.
 - Baseline evidence: `backupCodes.js` returns a replacement array; both `secondFactorService.js` and `recentAuth.js` assign it and call `save()`.
+- Remediation: the shared service finds the stored matching hash with the existing timing-safe comparison and conditionally `$pull`s that exact value. Authentication succeeds only when MongoDB modifies one enabled-TOTP document; no caller writes an old full-array snapshot.
+- Verification: before remediation a ten-way request produced one winner plus nine Mongoose `VersionError` failures rather than defined rejections. Post-fix both two-way and ten-way races produce exactly one success and no database errors, while every unrelated backup hash remains and the count decreases exactly once. Wrong password and wrong email code leave both the TOTP step and backup hashes unchanged.
 
 ## SEC-2026-08-005 — Email-change cancellation scans only the first 100 pending records
 

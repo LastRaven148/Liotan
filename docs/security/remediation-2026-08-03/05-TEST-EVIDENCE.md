@@ -52,3 +52,19 @@ This file records concise, reproducible local evidence. Production systems and s
 - Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `node --check` for every changed controller/service/route; `git diff --check`.
 - Exit codes: all 0; 29 unit tests and the security regression passed, with clean syntax and whitespace.
 - Transition evidence: security queries address only a deterministic string `_id` derived from validated `{ emailHash, purpose }`; therefore old ObjectId records are fail-closed and cannot authenticate. A successful new-code upsert is followed by cleanup of other same-pair records, which the integration test verifies. No new production index or data migration is required; any outstanding pre-remediation email code must be resent.
+
+## SEC-2026-08-003/004 — Atomic TOTP and backup-code consumption
+
+- Date/time: 2026-08-03T03:39–03:50+03:00.
+- First pre-fix targeted command: `node --test --test-concurrency=1 --test-timeout=120000 --test-name-pattern="TOTP steps and backup codes" server/test/integration/cryptoV4.integration.test.js`.
+- Exit code: 1. The same TOTP step produced 10 successes instead of 1.
+- Expanded pre-fix targeted command: the same command after collecting both races with `Promise.allSettled`.
+- Exit code: 1. Exact result: `totpWinners = 10`, `totpErrors = 0`, `backupWinners = 1`, `backupErrors = 9`. Backup exclusion depended on Mongoose `VersionError` rather than a controlled conditional consume.
+- Post-fix targeted commands: the same TOTP/backup name-pattern; then `--test-name-pattern="TOTP steps|login orders|recent-auth"`; and individual recent-auth reruns while correcting two test-only fixture errors.
+- Final targeted result: 3 passed, 0 failed, 0 skipped among selected tests. Covered ten-way direct TOTP, two-way and ten-way backup consumption, remaining-hash preservation, previous-step rejection, same-step replay after clearing/reloading the service modules, two-way and ten-way login, two-session recent-auth, two-session explicit reauthentication, wrong password/email-code ordering, concurrent TOTP activation, stale-session TOTP disable, and a simulated Mongo error code 112 with unchanged `lastUsedStep`.
+- Fixture corrections: names longer than the existing auth-token username policy caused `auth required`, and one async request helper was incorrectly chained with `.expect`. Both were corrected in test code before product evaluation.
+- Full command: `npm run test:integration --prefix server`.
+- Exit code: 0; 54 passed, 0 failed, 0 skipped.
+- Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `npm run test:crypto-static`; syntax checks for the shared service, middleware and controller; `git diff --check`.
+- Exit codes: all 0; 29 unit tests, security regression, crypto static analysis, syntax, and whitespace checks passed.
+- Implementation evidence: `rg` after remediation finds authentication-time `verifyTotp`, `lastUsedStep`, and `totp.backupCodeHashes` consumption only in `security/totp/secondFactor.js`; `secondFactorService`, `recentAuth`, and `requireReauthentication` delegate to it. Security-controller activation and disable use conditional updates rather than document `save()`.

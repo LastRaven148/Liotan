@@ -20,20 +20,14 @@ function normalizeBackupCode(code) {
   return String(code || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
-function consumeBackupCode(hashes, code) {
+function findBackupCodeHash(hashes, code) {
+  if (!normalizeBackupCode(code)) return null;
   const hash = sha256(normalizeBackupCode(code));
-  const index = hashes.findIndex(item => timingSafeEqualHex(item, hash));
-  if (index === -1) {
-    return { ok: false, hashes };
-  }
-  return {
-    ok: true,
-    hashes: hashes.filter((_, currentIndex) => currentIndex !== index)
-  };
+  return hashes.find(item => timingSafeEqualHex(item, hash)) || null;
 }
 
 module.exports = {
   generateBackupCodes,
-  consumeBackupCode,
+  findBackupCodeHash,
   normalizeBackupCode
 };

@@ -69,6 +69,41 @@ function rawPublicKey(publicKey) {
   return publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
 }
 
+function decodeTestBase32(input) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  const bytes = [];
+  for (const char of String(input).toUpperCase()) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function testTotpCodeAtStep(secret, step) {
+  const securityPolicy = require("../../security/policies/securityPolicy");
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const digest = crypto.createHmac("sha1", decodeTestBase32(secret)).update(counter).digest(); // nosemgrep: crypto-weak-algorithm - test implementation of RFC 6238 for integration fixtures.
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value = ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(value % 10 ** securityPolicy.totp.digits)
+    .padStart(securityPolicy.totp.digits, "0");
+}
+
+function currentTestTotpStep() {
+  const securityPolicy = require("../../security/policies/securityPolicy");
+  return Math.floor(Date.now() / 1000 / securityPolicy.totp.period);
+}
+
 function signCanonical(privateKey, domain, value) {
   return crypto.sign(
     null,
@@ -2532,6 +2567,318 @@ test("email-code auth flows consume only after all prior factors and admit one c
   assert.equal(await EmailCode.countDocuments({ emailHash: secondEmailHash, purpose: "reset" }), 0);
   const updatedUser = await User.findById(second.user._id).lean();
   assert.equal(await bcrypt.compare(newPassword, updatedUser.password), true);
+});
+
+test("TOTP steps and backup codes admit exactly one concurrent consumer", async () => {
+  const UserSecurity = require("../../models/UserSecurity");
+  const { verifySecondFactorIfEnabled } = require("../../controllers/auth/secondFactorService");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+
+  const totpAccount = await createAuthenticatedUser("atomic_totp");
+  const secret = "JBSWY3DPEHPK3PXP";
+  const step = currentTestTotpStep();
+  await UserSecurity.create({
+    userId: totpAccount.user._id,
+    username: totpAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${totpAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  const totpResults = await Promise.allSettled(Array.from({ length: 10 }, () =>
+    verifySecondFactorIfEnabled({ user: totpAccount.user, code: testTotpCodeAtStep(secret, step) })));
+
+  const backupAccount = await createAuthenticatedUser("atomic_backup");
+  const { codes, hashes } = generateBackupCodes(4);
+  await UserSecurity.create({
+    userId: backupAccount.user._id,
+    username: backupAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${backupAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: hashes
+    }
+  });
+  const backupResults = await Promise.allSettled(Array.from({ length: 10 }, () =>
+    verifySecondFactorIfEnabled({ user: backupAccount.user, backupCode: codes[0] })));
+  assert.deepEqual({
+    totpWinners: totpResults.filter(result => result.status === "fulfilled" && result.value.ok).length,
+    totpErrors: totpResults.filter(result => result.status === "rejected").length,
+    backupWinners: backupResults.filter(result => result.status === "fulfilled" && result.value.ok).length,
+    backupErrors: backupResults.filter(result => result.status === "rejected").length
+  }, {
+    totpWinners: 1,
+    totpErrors: 0,
+    backupWinners: 1,
+    backupErrors: 0
+  });
+  const backupState = await UserSecurity.findOne({ userId: backupAccount.user._id }).lean();
+  assert.deepEqual(backupState.totp.backupCodeHashes.sort(), hashes.slice(1).sort());
+
+  const previousStep = await verifySecondFactorIfEnabled({
+    user: totpAccount.user,
+    code: testTotpCodeAtStep(secret, step - 1)
+  });
+  assert.equal(previousStep.ok, false);
+
+  delete require.cache[require.resolve("../../controllers/auth/secondFactorService")];
+  delete require.cache[require.resolve("../../security/totp/secondFactor")];
+  const restartedService = require("../../controllers/auth/secondFactorService");
+  const restartReplay = await restartedService.verifySecondFactorIfEnabled({
+    user: totpAccount.user,
+    code: testTotpCodeAtStep(secret, step)
+  });
+  assert.equal(restartReplay.ok, false);
+
+  const twoWayAccount = await createAuthenticatedUser("backup_two_way");
+  const twoWayCodes = generateBackupCodes(3);
+  await UserSecurity.create({
+    userId: twoWayAccount.user._id,
+    username: twoWayAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${twoWayAccount.user._id}`),
+      backupCodeHashes: twoWayCodes.hashes
+    }
+  });
+  const twoWayResults = await Promise.all([0, 1].map(() =>
+    restartedService.verifySecondFactorIfEnabled({
+      user: twoWayAccount.user,
+      backupCode: twoWayCodes.codes[0]
+    })));
+  assert.equal(twoWayResults.filter(result => result.ok).length, 1);
+
+  const failureAccount = await createAuthenticatedUser("totp_db_failure");
+  await UserSecurity.create({
+    userId: failureAccount.user._id,
+    username: failureAccount.username,
+    totp: {
+      enabled: true,
+      secretEnvelope: encryptJson({ secret }, `totp:${failureAccount.user._id}`),
+      lastUsedStep: null,
+      backupCodeHashes: []
+    }
+  });
+  const originalUpdateOne = UserSecurity.updateOne;
+  UserSecurity.updateOne = async () => {
+    const error = new Error("simulated transient write failure");
+    error.code = 112;
+    throw error;
+  };
+  try {
+    await assert.rejects(() => restartedService.verifySecondFactorIfEnabled({
+      user: failureAccount.user,
+      code: testTotpCodeAtStep(secret, step)
+    }), /simulated transient write failure/);
+  } finally {
+    UserSecurity.updateOne = originalUpdateOne;
+  }
+  const failureState = await UserSecurity.findOne({ userId: failureAccount.user._id }).lean();
+  assert.equal(failureState.totp.lastUsedStep, null);
+});
+
+test("login orders password and email checks before atomic second-factor consumption", async () => {
+  const bcrypt = require("bcrypt");
+  const UserSecurity = require("../../models/UserSecurity");
+  const { saveEmailCode } = require("../../controllers/auth/emailCodeService");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { generateBackupCodes } = require("../../security/recovery/backupCodes");
+  const { hashEmail } = require("../../utils/privacy");
+  const secret = "JBSWY3DPEHPK3PXP";
+  const password = "atomic login password";
+
+  async function createFixture(label, backupCodeCount = 0) {
+    const email = `${label}@example.test`;
+    const user = await User.create({
+      username: label,
+      password: await bcrypt.hash(password, 12),
+      emailHash: hashEmail(email),
+      emailVerified: true
+    });
+    const backup = generateBackupCodes(backupCodeCount);
+    await UserSecurity.create({
+      userId: user._id,
+      username: user.username,
+      totp: {
+        enabled: true,
+        secretEnvelope: encryptJson({ secret }, `totp:${user._id}`),
+        lastUsedStep: null,
+        backupCodeHashes: backup.hashes
+      }
+    });
+    return { user, email, emailHash: hashEmail(email), backup };
+  }
+
+  async function runLoginRace(label, count) {
+    const fixture = await createFixture(label);
+    const emailCode = "13572468";
+    await saveEmailCode({ emailHash: fixture.emailHash, purpose: "login", code: emailCode });
+    const totpCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+    const responses = await Promise.all(Array.from({ length: count }, () => supertest(app)
+      .post("/login")
+      .set("X-Liotan-CSRF", CSRF_HEADER)
+      .send({ email: fixture.email, password, code: emailCode, totpCode })));
+    assert.equal(responses.filter(response => response.status === 200).length, 1);
+    assert.equal(responses.filter(response => response.status !== 200).length, count - 1);
+    assert.equal(await Session.countDocuments({ userId: fixture.user._id, revokedAt: null }), 1);
+    return responses;
+  }
+
+  const twoWay = await runLoginRace("totp_login_two", 2);
+  assert.equal(twoWay.filter(response => response.status === 401).length, 1);
+  await runLoginRace("totp_login_ten", 10);
+
+  const ordered = await createFixture("factor_ordering", 3);
+  const orderedEmailCode = "24681357";
+  await saveEmailCode({
+    emailHash: ordered.emailHash,
+    purpose: "login",
+    code: orderedEmailCode
+  });
+  const orderedTotp = testTotpCodeAtStep(secret, currentTestTotpStep());
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password: "wrong password",
+      code: orderedEmailCode,
+      totpCode: orderedTotp
+    })
+    .expect(400);
+  await supertest(app)
+    .post("/login")
+    .set("X-Liotan-CSRF", CSRF_HEADER)
+    .send({
+      email: ordered.email,
+      password,
+      code: "99999999",
+      totpCode: orderedTotp,
+      backupCode: ordered.backup.codes[0]
+    })
+    .expect(400);
+  const orderedState = await UserSecurity.findOne({ userId: ordered.user._id }).lean();
+  assert.equal(orderedState.totp.lastUsedStep, null);
+  assert.deepEqual(orderedState.totp.backupCodeHashes.sort(), ordered.backup.hashes.sort());
+});
+
+test("recent-auth, explicit reauthentication, TOTP enable and disable share atomic semantics", async () => {
+  const UserSecurity = require("../../models/UserSecurity");
+  const { encryptJson } = require("../../security/crypto/secureEnvelope");
+  const { requireReauthentication } = require("../../middleware/recentAuth");
+  const secret = "JBSWY3DPEHPK3PXP";
+
+  async function enableFixture(account, { pending = false } = {}) {
+    const envelope = encryptJson({ secret }, `totp:${account.user._id}`);
+    await UserSecurity.create({
+      userId: account.user._id,
+      username: account.username,
+      totp: pending ? {
+        enabled: false,
+        pendingSecretEnvelope: envelope
+      } : {
+        enabled: true,
+        secretEnvelope: envelope,
+        lastUsedStep: null,
+        backupCodeHashes: []
+      }
+    });
+  }
+
+  async function ageSessions(userId) {
+    await Session.collection.updateMany({ userId }, {
+      $set: {
+        createdAt: new Date(Date.now() - 73 * 60 * 60 * 1000),
+        reauthenticatedAt: null
+      }
+    });
+  }
+
+  const recentAccount = await createAuthenticatedUser("recent_atomic");
+  const recentOther = await createAdditionalSession(recentAccount);
+  await enableFixture(recentAccount);
+  await ageSessions(recentAccount.user._id);
+  const recentCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const recentResponses = await Promise.all([recentAccount, recentOther].map(account =>
+    sessionJson(account, "POST", "/security/vault/prepare", { totpCode: recentCode })));
+  assert.equal(recentResponses.filter(response => response.status === 200).length, 1);
+  assert.equal(recentResponses.filter(response => response.status === 401).length, 1);
+
+  const explicitAccount = await createAuthenticatedUser("explicit_atomic");
+  const explicitOther = await createAdditionalSession(explicitAccount);
+  await enableFixture(explicitAccount);
+  await Session.updateMany({ userId: explicitAccount.user._id }, { $set: { reauthenticatedAt: null } });
+  const explicitCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+
+  function runExplicit(account) {
+    return new Promise((resolve, reject) => {
+      const req = {
+        user: {
+          userId: account.user._id,
+          username: account.username,
+          sid: account.sessionId
+        },
+        body: { totpCode: explicitCode }
+      };
+      const res = {
+        statusCode: 200,
+        status(statusCode) {
+          this.statusCode = statusCode;
+          return this;
+        },
+        json(body) {
+          resolve({ next: false, status: this.statusCode, body });
+        }
+      };
+      requireReauthentication(req, res, error => {
+        if (error) reject(error);
+        else resolve({ next: true, status: 200, reauthentication: req.reauthentication });
+      });
+    });
+  }
+
+  const explicitResults = await Promise.all([explicitAccount, explicitOther].map(runExplicit));
+  assert.equal(explicitResults.filter(result => result.next).length, 1);
+  assert.equal(explicitResults.filter(result => result.status === 401).length, 1);
+
+  const setupAccount = await createAuthenticatedUser("setup_atomic");
+  await enableFixture(setupAccount, { pending: true });
+  await ageSessions(setupAccount.user._id);
+  await Session.updateMany({ userId: setupAccount.user._id }, {
+    $set: { reauthenticatedAt: new Date() }
+  });
+  const setupCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const setupResponses = await Promise.all([0, 1].map(() =>
+    sessionJson(setupAccount, "POST", "/security/totp/enable", { code: setupCode })));
+  assert.equal(
+    setupResponses.filter(response => response.status === 200).length,
+    1,
+    setupResponses.map(response => `${response.status}:${response.text}`).join(" | ")
+  );
+  assert.equal(setupResponses.filter(response => response.status === 409).length, 1);
+  const setupState = await UserSecurity.findOne({ userId: setupAccount.user._id }).lean();
+  assert.equal(setupState.totp.enabled, true);
+  assert.equal(setupState.totp.backupCodeHashes.length > 0, true);
+
+  const disableAccount = await createAuthenticatedUser("disable_atomic");
+  await enableFixture(disableAccount);
+  await ageSessions(disableAccount.user._id);
+  const disableCode = testTotpCodeAtStep(secret, currentTestTotpStep());
+  const disableResponse = await sessionJson(
+    disableAccount,
+    "POST",
+    "/security/totp/disable",
+    { code: disableCode }
+  );
+  assert.equal(disableResponse.status, 200, disableResponse.text);
+  const disabledState = await UserSecurity.findOne({ userId: disableAccount.user._id }).lean();
+  assert.equal(disabledState.totp.enabled, false);
+  assert.equal(disabledState.totp.secretEnvelope, null);
+  assert.deepEqual(disabledState.totp.backupCodeHashes, []);
 });
 
 test("profile endpoint does not expose private fields to unrelated users", async () => {
