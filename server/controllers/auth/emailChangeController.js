@@ -17,6 +17,11 @@ const {
   saveEmailCode,
   verifyEmailCode
 } = require("./emailCodeService");
+const {
+  sendEmailChangeCancelPage,
+  sendSimpleSecurityPage
+} = require("./securityPages");
+
 function signEmailChangeToken(user, currentEmailHash) {
   return jwt.sign({
     userId: user._id.toString(),
@@ -198,8 +203,26 @@ async function confirmEmailChange(req, res, next) {
 
 async function cancelEmailChange(req, res, next) {
   try {
-    const ok = await cancelPendingEmailChange(req.params.token);
-    return res.status(ok ? 200 : 400).json({ ok });
+    if (req.method === "GET") {
+      return sendEmailChangeCancelPage(res, { token: req.params.token, req });
+    }
+    if (String(req.body?.confirm || "") !== "1") {
+      return sendSimpleSecurityPage(res, {
+        ok: false,
+        title: "Request rejected",
+        message: "The cancellation was not confirmed."
+      });
+    }
+    const result = await cancelPendingEmailChange(req.params.token);
+    return sendSimpleSecurityPage(res, result.ok ? {
+      ok: true,
+      title: "Email change cancelled",
+      message: "The pending email change was cancelled and active sessions were ended."
+    } : {
+      ok: false,
+      title: "Link unavailable",
+      message: "This security link is invalid, expired, or has already been used."
+    });
   } catch (err) {
     return next(err);
   }

@@ -59,6 +59,14 @@ const pendingEmailChangeSchema = new mongoose.Schema(
     cancelledAt: {
       type: Date,
       default: null
+    },
+    cancellationRequestedAt: {
+      type: Date,
+      default: null
+    },
+    cancellationFinalizedAt: {
+      type: Date,
+      default: null
     }
   },
   { timestamps: true }

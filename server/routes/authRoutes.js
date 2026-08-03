@@ -127,6 +127,12 @@ router.get(
   cancelEmailChange
 );
 
+router.post(
+  "/auth/email-change/cancel/:token",
+  authLimiter,
+  cancelEmailChange
+);
+
 router.get(
   "/auth/register/cancel/:token",
   cancelRegistration

@@ -48,7 +48,8 @@ const userSecuritySchema = new mongoose.Schema(
     },
     highRiskLock: {
       lockedUntil: { type: Date, default: null },
-      reason: { type: String, default: "" }
+      reason: { type: String, default: "" },
+      pendingEmailChangeId: { type: String, default: "" }
     }
   },
   { timestamps: true }

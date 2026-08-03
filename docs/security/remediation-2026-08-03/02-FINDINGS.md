@@ -73,7 +73,7 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 ## SEC-2026-08-005 — Email-change cancellation scans only the first 100 pending records
 
 - Severity: Medium.
-- Status: **OPEN** (the unique cancel-token index is **ALREADY_FIXED**, but the runtime lookup does not use it).
+- Status: **FIXED** (the unique cancel-token index was already present and is now used by the runtime lookup).
 - Affected files: `emailChangeSecurity.js`, `PendingEmailChange.js`, and integration tests.
 - Current behavior: `cancelPendingEmailChange` loads at most 100 pending documents and manually compares token hashes despite an existing unique index on `cancelTokenHash`.
 - Preconditions: the target record is outside the selected first 100 pending records.
@@ -84,11 +84,13 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Proposed fix: direct indexed lookup combined with an atomic pending/unexpired-to-cancelled transition.
 - Required evidence: target after 150 records, parallel cancellation, expiry/reuse behavior, session revocation, socket disconnect, and lock ownership.
 - Baseline evidence: `emailChangeSecurity.js` lines 136–153; the model already declares `cancelTokenHash` unique and indexed.
+- Remediation: cancellation now performs one indexed `findOneAndUpdate` by `cancelTokenHash`, `status: pending`, and an explicit `cancelExpiresAt > now` condition. The winning request transitions exactly one record. A separate durable `cancellationRequestedAt`/`cancellationFinalizedAt` pair makes post-transition session/socket cleanup safely retryable without treating historical or superseded cancelled records as unfinished work.
+- Verification: an authenticated integration fixture inserted 150 pending records before the target; two parallel POST requests found the target directly, produced one 200 and one safe 400, changed only the target, and left all 150 fillers pending. Expired, wrong, superseded, and reused tokens remain unchanged. The existing `cancelTokenHash_1` index is asserted unique in MongoDB; no index migration is required.
 
 ## SEC-2026-08-006 — Email-change cancellation mutates state through GET
 
 - Severity: Medium.
-- Status: **OPEN**.
+- Status: **FIXED**.
 - Affected files: `authRoutes.js`, `emailChangeController.js`, security-page helpers, email-change security service, and tests.
 - Current behavior: `GET /auth/email-change/cancel/:token` invokes cancellation immediately. Email security scanners and link previewers can therefore mutate account state.
 - Preconditions: an automated scanner or browser follows a valid secret cancellation URL.
@@ -99,3 +101,5 @@ All statuses below describe baseline SHA `1c50c64491e622f441684903b5a945b9c13422
 - Proposed fix: GET renders a self-contained no-store confirmation page; POST performs one atomic transition, revokes sessions, disconnects sockets, and clears only the matching email-change lock.
 - Required evidence: repeated GETs do not mutate, POST does, parallel POST has one transition, invalid/expired/reused tokens fail safely, security headers are present, and no raw token is logged.
 - Baseline evidence: `authRoutes.js` lines 122–126 route GET directly to the mutating controller.
+- Remediation: GET now renders a no-script/no-image confirmation page and never queries or mutates cancellation state; POST with an explicit form confirmation performs the atomic transition. The capability-protected form has a narrow state-change-guard exception, while all ordinary CSRF rules remain unchanged. Successful cancellation uses the shared session revocation helper, disconnects live sockets, and clears a high-risk lock only when its internal pending-operation ID matches. Request-path logging redacts the raw cancellation capability.
+- Verification: three simulated scanner GETs return HTML 200 with no-store, no-referrer, frame denial and CSP while the record stays pending. Unconfirmed POST is rejected. Confirmed POST revokes two sessions and disconnects a real WebSocket. Reuse/wrong/expired responses contain no token; a cancellation for an older operation cannot clear the lock belonging to a newer pending change.

@@ -68,3 +68,18 @@ This file records concise, reproducible local evidence. Production systems and s
 - Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `npm run test:crypto-static`; syntax checks for the shared service, middleware and controller; `git diff --check`.
 - Exit codes: all 0; 29 unit tests, security regression, crypto static analysis, syntax, and whitespace checks passed.
 - Implementation evidence: `rg` after remediation finds authentication-time `verifyTotp`, `lastUsedStep`, and `totp.backupCodeHashes` consumption only in `security/totp/secondFactor.js`; `secondFactorService`, `recentAuth`, and `requireReauthentication` delegate to it. Security-controller activation and disable use conditional updates rather than document `save()`.
+
+## SEC-2026-08-005/006 — Indexed, POST-confirmed email-change cancellation
+
+- Date/time: 2026-08-03T03:53–04:01+03:00.
+- Pre-fix targeted command: `node --test --test-concurrency=1 --test-timeout=120000 --test-name-pattern="email-change cancellation" server/test/integration/cryptoV4.integration.test.js`.
+- Exit code: 1; 0 passed, 2 failed. GET returned `application/json` and invoked cancellation instead of rendering HTML; direct cancellation of a valid target inserted after 150 pending records returned false.
+- Post-fix targeted commands: the same name-pattern command; `node --test server/test/unit/securityPages.test.js`; syntax checks; `git diff --check`.
+- Exit codes: all 0. Targeted integration: 2 passed. Security-page unit: 6 passed. The target test covers 150 earlier records, direct unique-index evidence, two parallel POSTs with one transition, expired/wrong/reused/superseded tokens, an unconfirmed POST, two active sessions, a real connected WebSocket, matching and nonmatching operation locks, and response token absence.
+- Scanner/page evidence: three GET requests return 200 HTML and leave the record pending; the page has no script, image, auto-submit, or inline style, and includes the capability exactly once in its POST form action. Route responses assert `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and CSP `frame-ancestors 'none'`.
+- Logging evidence: the request-context unit test proves `/auth/email-change/cancel/<capability>` is recorded as `/auth/email-change/cancel/[redacted]`, including when the original URL has a query string.
+- Transition evidence: `cancelTokenHash` already has a unique MongoDB index. New optional state/lock fields are backward-compatible and need no data migration. Historical/superseded cancelled records lack `cancellationRequestedAt` and therefore cannot trigger retry cleanup; legacy locks without an operation ID are cleared only when no other pending operation exists.
+- Full command: `npm run test:integration --prefix server`.
+- Exit code: 0; 56 passed, 0 failed, 0 skipped.
+- Additional commands: `npm run test:unit --prefix server`; `npm run test:security`; `npm run test:crypto-static`; syntax checks for the model, service, controllers, route guard and request logger; `git diff --check`.
+- Exit codes: all 0; 31 unit tests, security regression, crypto static analysis, syntax, and whitespace checks passed.

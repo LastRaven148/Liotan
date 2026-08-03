@@ -2881,6 +2881,237 @@ test("recent-auth, explicit reauthentication, TOTP enable and disable share atom
   assert.deepEqual(disabledState.totp.backupCodeHashes, []);
 });
 
+test("email-change cancellation GET is a non-mutating confirmation page", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const { sha256 } = require("../../security/crypto/secureEnvelope");
+  const account = await createAuthenticatedUser("cancel_scanner");
+  const token = crypto.randomBytes(32).toString("base64url");
+  const pending = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(token),
+    status: "pending",
+    applyAfter: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    cancelExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000)
+  });
+
+  const scans = await Promise.all(Array.from({ length: 3 }, () =>
+    supertest(app).get(`/auth/email-change/cancel/${encodeURIComponent(token)}`)));
+  for (const response of scans) {
+    assert.equal(response.status, 200, response.text);
+    assert.match(response.headers["content-type"] || "", /^text\/html/);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.equal(response.headers["referrer-policy"], "no-referrer");
+    assert.equal(response.headers["x-frame-options"], "DENY");
+    assert.match(response.headers["content-security-policy"] || "", /frame-ancestors 'none'/);
+    assert.match(response.text, /<form[^>]+method="post"/i);
+    assert.equal(response.text.split(token).length - 1, 1);
+    assert.doesNotMatch(response.text, /<script\b|<img\b|onload=|autosubmit/i);
+  }
+  assert.equal((await PendingEmailChange.findById(pending._id).lean()).status, "pending");
+  const unconfirmed = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(token)}`)
+    .type("form")
+    .send({});
+  assert.equal(unconfirmed.status, 400, unconfirmed.text);
+  assert.equal((await PendingEmailChange.findById(pending._id).lean()).status, "pending");
+});
+
+test("email-change cancellation finds a valid token after 150 pending records", async () => {
+  const PendingEmailChange = require("../../models/PendingEmailChange");
+  const UserSecurity = require("../../models/UserSecurity");
+  const { sha256 } = require("../../security/crypto/secureEnvelope");
+  const account = await createAuthenticatedUser("cancel_indexed");
+  await createAdditionalSession(account);
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const applyAfter = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const fillers = Array.from({ length: 150 }, (_, index) => ({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.createHash("sha256").update(`old-${index}`).digest("hex"),
+    newEmailHash: crypto.createHash("sha256").update(`new-${index}`).digest("hex"),
+    cancelTokenHash: sha256(`filler-token-${crypto.randomUUID()}`),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  }));
+  const insertedFillers = await PendingEmailChange.insertMany(fillers);
+  const targetToken = crypto.randomBytes(32).toString("base64url");
+  const target = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(targetToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  await UserSecurity.create({
+    userId: account.user._id,
+    username: account.username,
+    highRiskLock: {
+      lockedUntil: applyAfter,
+      reason: "pending_email_change",
+      pendingEmailChangeId: String(target._id)
+    }
+  });
+
+  const address = server.address();
+  const socket = createSocketClient(`http://127.0.0.1:${address.port}`, {
+    transports: ["websocket"],
+    extraHeaders: { Cookie: account.cookie },
+    reconnection: false,
+    timeout: 3000
+  });
+  await new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("connect_error", reject);
+  });
+  const disconnected = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("cancelled email-change socket remained connected")), 3000);
+    socket.once("disconnect", reason => {
+      clearTimeout(timer);
+      resolve(reason);
+    });
+  });
+
+  const posts = await Promise.all([0, 1].map(() => supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(targetToken)}`)
+    .type("form")
+    .send({ confirm: "1" })));
+  await disconnected;
+  assert.equal(posts.filter(response => response.status === 200).length, 1);
+  assert.equal(posts.filter(response => response.status === 400).length, 1);
+  assert.equal(posts.some(response => response.text.includes(targetToken)), false);
+
+  const cancelled = await PendingEmailChange.findById(target._id).lean();
+  assert.equal(cancelled.status, "cancelled");
+  assert.ok(cancelled.cancelledAt instanceof Date);
+  assert.ok(cancelled.cancellationRequestedAt instanceof Date);
+  assert.ok(cancelled.cancellationFinalizedAt instanceof Date);
+  assert.equal(await PendingEmailChange.countDocuments({
+    _id: { $in: insertedFillers.map(item => item._id) },
+    status: "pending"
+  }), 150);
+  assert.equal(await Session.countDocuments({ userId: account.user._id, revokedAt: null }), 0);
+  assert.equal(socket.connected, false);
+  const clearedSecurity = await UserSecurity.findOne({ userId: account.user._id }).lean();
+  assert.equal(clearedSecurity.highRiskLock.reason, "");
+  assert.equal(clearedSecurity.highRiskLock.pendingEmailChangeId, "");
+
+  const cancelledAt = cancelled.cancelledAt.getTime();
+  const finalizedAt = cancelled.cancellationFinalizedAt.getTime();
+  const reuse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(targetToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(reuse.status, 400, reuse.text);
+  assert.doesNotMatch(reuse.text, new RegExp(targetToken));
+  const reusedRecord = await PendingEmailChange.findById(target._id).lean();
+  assert.equal(reusedRecord.cancelledAt.getTime(), cancelledAt);
+  assert.equal(reusedRecord.cancellationFinalizedAt.getTime(), finalizedAt);
+
+  const wrongToken = crypto.randomBytes(32).toString("base64url");
+  const wrong = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(wrongToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(wrong.status, 400, wrong.text);
+  assert.doesNotMatch(wrong.text, new RegExp(wrongToken));
+
+  const expiredToken = crypto.randomBytes(32).toString("base64url");
+  const expired = await PendingEmailChange.create({
+    userId: account.user._id,
+    username: account.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(expiredToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: new Date(Date.now() - 1000)
+  });
+  const expiredResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(expiredToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(expiredResponse.status, 400, expiredResponse.text);
+  assert.equal((await PendingEmailChange.findById(expired._id).lean()).status, "pending");
+
+  const supersededAccount = await createAuthenticatedUser("cancel_old");
+  const supersededToken = crypto.randomBytes(32).toString("base64url");
+  await PendingEmailChange.create({
+    userId: supersededAccount.user._id,
+    username: supersededAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(supersededToken),
+    status: "cancelled",
+    cancelledAt: new Date(),
+    cancellationRequestedAt: null,
+    cancellationFinalizedAt: null,
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  const supersededResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(supersededToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(supersededResponse.status, 400, supersededResponse.text);
+  assert.equal(await Session.countDocuments({
+    userId: supersededAccount.user._id,
+    revokedAt: null
+  }), 1);
+
+  const lockAccount = await createAuthenticatedUser("cancel_lock");
+  const oldToken = crypto.randomBytes(32).toString("base64url");
+  const oldPending = await PendingEmailChange.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(oldToken),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  const newPending = await PendingEmailChange.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    oldEmailHash: crypto.randomBytes(32).toString("hex"),
+    newEmailHash: crypto.randomBytes(32).toString("hex"),
+    cancelTokenHash: sha256(crypto.randomBytes(32).toString("base64url")),
+    status: "pending",
+    applyAfter,
+    cancelExpiresAt: expiresAt
+  });
+  await UserSecurity.create({
+    userId: lockAccount.user._id,
+    username: lockAccount.username,
+    highRiskLock: {
+      lockedUntil: applyAfter,
+      reason: "pending_email_change",
+      pendingEmailChangeId: String(newPending._id)
+    }
+  });
+  const oldResponse = await supertest(app)
+    .post(`/auth/email-change/cancel/${encodeURIComponent(oldToken)}`)
+    .type("form")
+    .send({ confirm: "1" });
+  assert.equal(oldResponse.status, 200, oldResponse.text);
+  assert.equal((await PendingEmailChange.findById(oldPending._id).lean()).status, "cancelled");
+  assert.equal((await PendingEmailChange.findById(newPending._id).lean()).status, "pending");
+  const preservedLock = await UserSecurity.findOne({ userId: lockAccount.user._id }).lean();
+  assert.equal(preservedLock.highRiskLock.reason, "pending_email_change");
+  assert.equal(preservedLock.highRiskLock.pendingEmailChangeId, String(newPending._id));
+
+  const indexes = await PendingEmailChange.collection.indexes();
+  const tokenIndex = indexes.find(index => index.key?.cancelTokenHash === 1);
+  assert.equal(tokenIndex?.unique, true);
+});
+
 test("profile endpoint does not expose private fields to unrelated users", async () => {
   const viewer = await createAuthenticatedUser("profile_viewer");
   const target = await createAuthenticatedUser("profile_target");
