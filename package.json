@@ -50,7 +50,7 @@
     "supply-chain": "npm run licenses:check && npm run sbom:generate"
   },
   "devDependencies": {
-    "@babel/parser": "8.0.4",
+    "@babel/parser": "8.0.5",
     "@cyclonedx/cyclonedx-npm": "6.0.0",
     "@playwright/test": "1.61.1",
     "archiver": "8.0.0",
